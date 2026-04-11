@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+.venv/
+env/
+venv/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets
+.env
+
+# Data / Index / Cache（你這專案超重要）
+data/
+storage/
+*.index
+*.faiss
+*.json
+
+# Logs
+*.log

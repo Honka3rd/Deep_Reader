@@ -1,0 +1,15 @@
+# frequently used command
+
+# reset virtual environment
+rm -rf .venv
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+
+# install dependencies
+python -m pip install -r requirements.txt
+
+# check environments
+which python
+python -V
+python -m pip --version
