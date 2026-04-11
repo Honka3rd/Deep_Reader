@@ -1,6 +1,0 @@
-{
-  "content_hash": "858d276a21d9d27f6a8d8141fe703aac",
-  "embedding_model": "text-embedding-3-small",
-  "chunk_size": 300,
-  "chunk_overlap": 50
-}
