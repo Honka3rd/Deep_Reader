@@ -28,3 +28,7 @@ storage/
 
 # Logs
 *.log
+
+# macOS
+.AppleDouble
+.LSOverride
