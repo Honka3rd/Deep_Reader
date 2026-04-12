@@ -26,6 +26,21 @@ class NodeRecord:
     def position(self):
         return self.metadata.get("position")
 
+    def chunk_index(self):
+        return self.metadata.get("chunk_index")
+
+    def char_start(self):
+        return self.metadata.get("char_start")
+
+    def char_end(self):
+        return self.metadata.get("char_end")
+
+    def prev_node_id(self):
+        return self.metadata.get("prev_node_id")
+
+    def next_node_id(self):
+        return self.metadata.get("next_node_id")
+
     @classmethod
     def from_persisted_dict(cls, data: dict) -> "NodeRecord":
         obj = cls.__new__(cls)
@@ -36,5 +51,10 @@ class NodeRecord:
             "source": data.get("source"),
             "chapter": data.get("chapter"),
             "position": data.get("position"),
+            "chunk_index": data.get("chunk_index"),
+            "char_start": data.get("char_start"),
+            "char_end": data.get("char_end"),
+            "prev_node_id": data.get("prev_node_id"),
+            "next_node_id": data.get("next_node_id"),
         }
         return obj

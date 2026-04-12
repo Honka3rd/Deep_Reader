@@ -19,6 +19,8 @@ class FaissIndexBundle:
     embedder: Embedder
     relevance_evaluator: QuestionRelevanceEvaluator
     profile: DocumentProfile
+    node_key_to_faiss_id: Dict[str, int]
+    chunk_index_to_faiss_id: Dict[int, int]
 
     def set_profile(self, profile: DocumentProfile):
         self.profile = profile
@@ -45,6 +47,17 @@ class FaissIndexBundle:
         self.id_to_record = id_to_record
         self.dimension = dimension
         self.document_language = document_language
+        self.node_key_to_faiss_id = {
+            record.node_key(): faiss_id
+            for faiss_id, record in self.id_to_record.items()
+            if record.node_key()
+        }
+        self.chunk_index_to_faiss_id = {
+            chunk_index: faiss_id
+            for faiss_id, record in self.id_to_record.items()
+            for chunk_index in [record.chunk_index()]
+            if isinstance(chunk_index, int)
+        }
 
     @staticmethod
     def _normalize_text(text: str) -> str:
@@ -107,7 +120,165 @@ class FaissIndexBundle:
         print("FaissIndexBundle#build_context:", texts)
         return "\n".join(texts)
 
-    def answer(self, query: str, top_k: int = 3) :
+    def _record_from_faiss_id(self, faiss_id: int) -> NodeRecord | None:
+        return self.id_to_record.get(int(faiss_id))
+
+    def _resolve_neighbor_by_link(
+        self,
+        record: NodeRecord,
+        is_prev: bool,
+    ) -> NodeRecord | None:
+        linked_node_key = record.prev_node_id() if is_prev else record.next_node_id()
+        if linked_node_key is None:
+            return None
+        linked_faiss_id = self.node_key_to_faiss_id.get(str(linked_node_key))
+        if linked_faiss_id is None:
+            return None
+        return self._record_from_faiss_id(linked_faiss_id)
+
+    def _resolve_neighbor_by_chunk_index(
+        self,
+        record: NodeRecord,
+        is_prev: bool,
+    ) -> NodeRecord | None:
+        center_chunk_index = record.chunk_index()
+        if not isinstance(center_chunk_index, int):
+            return None
+        target_chunk_index = center_chunk_index - 1 if is_prev else center_chunk_index + 1
+        target_faiss_id = self.chunk_index_to_faiss_id.get(target_chunk_index)
+        if target_faiss_id is None:
+            return None
+        return self._record_from_faiss_id(target_faiss_id)
+
+    def _resolve_neighbor(
+        self,
+        record: NodeRecord,
+        is_prev: bool,
+    ) -> NodeRecord | None:
+        neighbor = self._resolve_neighbor_by_link(record, is_prev=is_prev)
+        if neighbor is not None:
+            return neighbor
+        return self._resolve_neighbor_by_chunk_index(record, is_prev=is_prev)
+
+    def _expand_side(
+        self,
+        center: NodeRecord,
+        radius: int,
+        is_prev: bool,
+    ) -> List[NodeRecord]:
+        side_nodes: List[NodeRecord] = []
+        cursor: NodeRecord = center
+        visited_node_ids: Set[int] = {center.node_id()}
+
+        for _ in range(radius):
+            neighbor = self._resolve_neighbor(cursor, is_prev=is_prev)
+            if neighbor is None:
+                break
+            if neighbor.node_id() in visited_node_ids:
+                break
+            visited_node_ids.add(neighbor.node_id())
+            side_nodes.append(neighbor)
+            cursor = neighbor
+
+        return side_nodes
+
+    def build_local_window(
+        self,
+        center: SearchMetadata | int,
+        radius: int = 1,
+    ) -> List[str]:
+        if radius < 0:
+            raise ValueError("radius must be >= 0")
+
+        center_faiss_id = center.faiss_id if isinstance(center, SearchMetadata) else int(center)
+        center_record = self._record_from_faiss_id(center_faiss_id)
+        if center_record is None:
+            return []
+
+        left_nodes = self._expand_side(center_record, radius=radius, is_prev=True)
+        right_nodes = self._expand_side(center_record, radius=radius, is_prev=False)
+
+        ordered_nodes: List[NodeRecord] = list(reversed(left_nodes)) + [center_record] + right_nodes
+        return [node.text() for node in ordered_nodes]
+
+    def build_context_with_window(
+        self,
+        query: str,
+        top_k: int = 3,
+        radius: int = 1,
+    ) -> str:
+        results: List[SearchMetadata] = self.search(query, top_k)
+        merged_texts: List[str] = []
+        seen_texts: Set[str] = set()
+
+        for result in results:
+            window_texts = self.build_local_window(result, radius=radius)
+            for text in window_texts:
+                normalized_text = self._normalize_text(text)
+                if normalized_text in seen_texts:
+                    continue
+                seen_texts.add(normalized_text)
+                merged_texts.append(text)
+
+        print("FaissIndexBundle#build_context_with_window:", merged_texts)
+        return "\n".join(merged_texts)
+
+    def _extract_chunk_index_from_result(self, result: SearchMetadata) -> int | None:
+        record = self.id_to_record.get(result.faiss_id)
+        if record is None:
+            return None
+        chunk_index = record.chunk_index()
+        if isinstance(chunk_index, int):
+            return chunk_index
+        return None
+
+    @staticmethod
+    def _build_retrieval_context_from_results(results: List[SearchMetadata]) -> str:
+        return "\n".join(result.text for result in results)
+
+    def _build_context_by_reading_position(
+        self,
+        results: List[SearchMetadata],
+        session_active_chunk_index: int | None,
+        near_chunk_threshold: int,
+        local_window_radius: int,
+    ) -> tuple[str, str]:
+        if not results:
+            print("FaissIndexBundle#context_mode: retrieval_mode (no_results)")
+            return "", "retrieval_mode"
+
+        best_result = results[0]
+        best_chunk_index = self._extract_chunk_index_from_result(best_result)
+
+        if (
+            isinstance(session_active_chunk_index, int)
+            and isinstance(best_chunk_index, int)
+            and abs(best_chunk_index - session_active_chunk_index) <= near_chunk_threshold
+        ):
+            local_texts = self.build_local_window(best_result, radius=local_window_radius)
+            if local_texts:
+                print(
+                    "FaissIndexBundle#context_mode: local_window_mode "
+                    f"(active={session_active_chunk_index}, best={best_chunk_index}, "
+                    f"threshold={near_chunk_threshold}, radius={local_window_radius})"
+                )
+                return "\n".join(local_texts), "local_reading_mode"
+
+        print(
+            "FaissIndexBundle#context_mode: retrieval_mode "
+            f"(active={session_active_chunk_index}, best={best_chunk_index}, "
+            f"threshold={near_chunk_threshold})"
+        )
+        return self._build_retrieval_context_from_results(results), "retrieval_mode"
+
+    def answer_with_results(
+        self,
+        query: str,
+        top_k: int = 3,
+        session_active_chunk_index: int | None = None,
+        near_chunk_threshold: int = 2,
+        local_window_radius: int = 1,
+    ) -> tuple[str, List[SearchMetadata]]:
         if self.profile is None:
             print("Warn:FaissIndexBundle.answer: profile is not ready")
         standardized_question = self.question_standardizer.standardize(
@@ -123,12 +294,23 @@ class FaissIndexBundle:
         print("FaissIndexBundle#ask answer_mode:", answer_mode)
 
         if answer_mode.level == "reject":
-            return "Not found"
-        context = "\n".join(result.text for result in results)
+            print("FaissIndexBundle#context_mode: retrieval_mode (answer_reject)")
+            return "Not found", results
+        context, prompt_mode = self._build_context_by_reading_position(
+            results=results,
+            session_active_chunk_index=session_active_chunk_index,
+            near_chunk_threshold=near_chunk_threshold,
+            local_window_radius=local_window_radius,
+        )
         prompt = self.prompt_assembler.build_answer_prompt(
             context=context,
             question=standardized_question,
             profile=self.profile,
             answer_mode=answer_mode,
+            prompt_mode=prompt_mode,
         )
-        return self.llm_provider.complete_text(prompt)
+        return self.llm_provider.complete_text(prompt), results
+
+    def answer(self, query: str, top_k: int = 3) :
+        answer_text, _ = self.answer_with_results(query, top_k)
+        return answer_text

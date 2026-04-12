@@ -95,11 +95,12 @@ class BundleFactory:
 
     def ensure_index_ready(self, config: StorageConfig, raw_text: str) -> FaissIndexBundle:
         doc_name = config.get_doc_name()
+        has_position_metadata = self.store.has_position_metadata(config)
 
         if config.exists() and self.fingerprint_handler.matches(
             raw_text,
             config.get_raw_meta_path(),
-        ):
+        ) and has_position_metadata:
             try:
                 return self.get_or_load(config, raw_text)
             except Exception as e:
@@ -108,6 +109,11 @@ class BundleFactory:
                 )
                 self.clear_artifacts(config, doc_name)
         else:
+            if config.exists() and not has_position_metadata:
+                print(
+                    "BundleFactory#ensure_index_ready: "
+                    f"legacy records schema detected for {doc_name}, rebuilding."
+                )
             self.clear_artifacts(config, doc_name)
 
         parsed_document = self.node_provider.parse(raw_text, config)

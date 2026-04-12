@@ -59,20 +59,46 @@ Document summary:
     4. Answer in {question.user_language}.
     """
 
+    @staticmethod
+    def _render_prompt_mode_guidance(prompt_mode: str) -> str:
+        if prompt_mode == "local_reading_mode":
+            return """Context mode:
+local_reading_mode
+
+Reading guidance:
+1. You are helping the user read around the currently active passage.
+2. Treat the provided context as a locally continuous window near where the user is reading.
+3. Prefer continuity and nearby textual evidence when describing people, events, tone, or intent.
+4. If needed, refer to immediate neighboring sentences in this local window before broad generalization.
+"""
+
+        return """Context mode:
+retrieval_mode
+
+Reading guidance:
+1. The provided context is assembled from retrieval results across the document.
+2. Use the retrieved evidence directly and avoid assumptions about nearby continuity unless explicitly shown.
+"""
+
     def build_answer_prompt(
         self,
         context: str,
         question: StandardizedQuestion,
         profile: DocumentProfile,
         answer_mode: AnswerMode,
+        prompt_mode: str = "retrieval_mode",
     ) -> str:
         rendered_profile: str = self.render_profile(profile)
         rules: str = self._render_rules(answer_mode, question)
+        mode_guidance: str = self._render_prompt_mode_guidance(prompt_mode)
         return f"""
 You are a literary and document analysis assistant.
 
 Rules:
 {rules}
+
+Mode guidance:
+{mode_guidance}
 
 profile:
 {rendered_profile}

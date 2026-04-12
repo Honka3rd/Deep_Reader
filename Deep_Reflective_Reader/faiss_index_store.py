@@ -47,6 +47,11 @@ class FaissIndexStore:
                     "source": record.source(),
                     "chapter": record.chapter(),
                     "position": record.position(),
+                    "chunk_index": record.chunk_index(),
+                    "char_start": record.char_start(),
+                    "char_end": record.char_end(),
+                    "prev_node_id": record.prev_node_id(),
+                    "next_node_id": record.next_node_id(),
                 }
                 for node_id, record in bundle.id_to_record.items()
             }
@@ -95,3 +100,33 @@ class FaissIndexStore:
             os.remove(records_path)
 
         print("FaissIndexStore#clear: index and records removed.")
+
+    @staticmethod
+    def has_position_metadata(config: StorageConfig) -> bool:
+        records_path = config.get_raw_records_path()
+        if not os.path.exists(records_path):
+            return False
+
+        try:
+            with open(records_path, "r", encoding="utf-8") as f:
+                payload: dict = json.load(f)
+
+            records = payload.get("records")
+            if not isinstance(records, dict) or not records:
+                return False
+
+            first_record = next(iter(records.values()))
+            if not isinstance(first_record, dict):
+                return False
+
+            required_fields = {
+                "chunk_index",
+                "char_start",
+                "char_end",
+                "prev_node_id",
+                "next_node_id",
+            }
+            return required_fields.issubset(first_record.keys())
+        except Exception as e:
+            print(f"FaissIndexStore#has_position_metadata failed: {e}")
+            return False
