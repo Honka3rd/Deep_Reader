@@ -14,7 +14,7 @@ from prompt_assembler import PromptAssembler
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator, AnswerMode
 
 class FaissIndexBundle:
-    """Runtime retrieval bundle that supports search, context assembly, and answering."""
+    """Runtime retrieval bundle that supports search and context utility methods."""
     faiss_index: faiss.IndexIDMap
     id_to_record: Dict[int, NodeRecord]
     dimension: int
@@ -246,6 +246,30 @@ Returns:
         available_by_total = self.max_prompt_tokens - non_context_tokens - self.reserved_output_tokens
         return max(0, min(self.max_context_tokens, available_by_total))
 
+    def compute_available_context_budget(
+        self,
+        question: "StandardizedQuestion",
+        answer_mode: AnswerMode,
+        prompt_mode: str,
+    ) -> int:
+        """Public wrapper for computing effective context token budget."""
+        return self._compute_available_context_budget(
+            question=question,
+            answer_mode=answer_mode,
+            prompt_mode=prompt_mode,
+        )
+
+    def join_texts_with_budget(
+        self,
+        texts: List[str],
+        max_context_tokens: int | None = None,
+    ) -> tuple[str, int, bool]:
+        """Public wrapper for joining text under context budget."""
+        return self._join_texts_with_budget(
+            texts=texts,
+            max_context_tokens=max_context_tokens,
+        )
+
     def search(
         self,
         query: str,
@@ -334,6 +358,28 @@ Args:
 Returns:
     Matching node record, or ``None`` if id is not present."""
         return self.id_to_record.get(int(faiss_id))
+
+    def get_node_by_id(self, faiss_id: int) -> NodeRecord | None:
+        """Return node record by FAISS id."""
+        return self._record_from_faiss_id(faiss_id)
+
+    def build_full_text_context(
+        self,
+        max_context_tokens: int | None = None,
+    ) -> tuple[str, int, bool]:
+        """Build full-document context (chunk-ordered) within token budget."""
+        ordered_records = sorted(
+            self.id_to_record.values(),
+            key=lambda record: (
+                record.chunk_index() if isinstance(record.chunk_index(), int) else 10**9,
+                record.node_id(),
+            ),
+        )
+        texts = [record.text() for record in ordered_records]
+        return self._join_texts_with_budget(
+            texts=texts,
+            max_context_tokens=max_context_tokens,
+        )
 
     def _resolve_neighbor_by_link(
         self,
@@ -570,196 +616,3 @@ Returns:
             f"truncated={truncated}",
         )
         return context
-
-    def _extract_chunk_index_from_result(self, result: SearchMetadata) -> int | None:
-        """Internal helper for extract chunk index from result.
-
-Args:
-    result: Result.
-
-Returns:
-    Chunk index for the retrieval hit, or ``None`` if unavailable."""
-        record = self.id_to_record.get(result.faiss_id)
-        if record is None:
-            return None
-        chunk_index = record.chunk_index()
-        if isinstance(chunk_index, int):
-            return chunk_index
-        return None
-
-    @staticmethod
-    def _extract_texts_from_results(results: List[SearchMetadata]) -> List[str]:
-        """Extract ordered chunk texts from retrieval hits.
-
-Args:
-    results: Ordered retrieval hits for current query.
-
-Returns:
-    Ordered chunk text list extracted from retrieval hits."""
-        return [result.text for result in results]
-
-    def _build_context_by_reading_position(
-        self,
-        results: List[SearchMetadata],
-        question: "StandardizedQuestion",
-        answer_mode: AnswerMode,
-        session_active_chunk_index: int | None,
-        near_chunk_threshold: int,
-        local_window_radius: int,
-    ) -> tuple[str, str]:
-        """Internal helper for build context by reading position.
-
-Args:
-    results: Ordered retrieval hits for current query.
-    session_active_chunk_index: Current active chunk index in session before this ask.
-    near_chunk_threshold: Chunk-index distance threshold treated as same reading area.
-    local_window_radius: Radius for local window expansion when local mode is used.
-
-Returns:
-    Tuple ``(context_text, prompt_mode)`` for downstream prompt assembly."""
-        if not results:
-            print("FaissIndexBundle#context_mode: retrieval_mode (no_results)")
-            return "", "retrieval_mode"
-
-        best_result = results[0]
-        best_chunk_index = self._extract_chunk_index_from_result(best_result)
-
-        if (
-            isinstance(session_active_chunk_index, int)
-            and isinstance(best_chunk_index, int)
-            and abs(best_chunk_index - session_active_chunk_index) <= near_chunk_threshold
-        ):
-            prompt_mode = "local_reading_mode"
-            context_budget = self._compute_available_context_budget(
-                question=question,
-                answer_mode=answer_mode,
-                prompt_mode=prompt_mode,
-            )
-            local_texts, used_tokens, truncated, used_radius = self.build_local_window_dynamic(
-                best_result,
-                max_context_tokens=context_budget,
-            )
-            if local_texts:
-                print(
-                    "FaissIndexBundle#context_mode: local_window_mode "
-                    f"(active={session_active_chunk_index}, best={best_chunk_index}, "
-                    f"threshold={near_chunk_threshold}, radius={used_radius}, "
-                    f"token_used={used_tokens}, budget={context_budget}, "
-                    f"truncated={truncated})"
-                )
-                return "\n".join(local_texts), prompt_mode
-
-        prompt_mode = "retrieval_mode"
-        context_budget = self._compute_available_context_budget(
-            question=question,
-            answer_mode=answer_mode,
-            prompt_mode=prompt_mode,
-        )
-        print(
-            "FaissIndexBundle#context_mode: retrieval_mode "
-            f"(active={session_active_chunk_index}, best={best_chunk_index}, "
-            f"threshold={near_chunk_threshold})"
-        )
-        texts = self._extract_texts_from_results(results)
-        context, used_tokens, truncated = self._join_texts_with_budget(
-            texts,
-            max_context_tokens=context_budget,
-        )
-        print(
-            "FaissIndexBundle#context_budget: retrieval_mode "
-            f"(token_used={used_tokens}, budget={context_budget}, truncated={truncated})"
-        )
-        return context, prompt_mode
-
-    def answer_with_results(
-        self,
-        query: str,
-        top_k: int = 3,
-        session_active_chunk_index: int | None = None,
-        near_chunk_threshold: int = 2,
-        local_window_radius: int = 1,
-    ) -> tuple[str, List[SearchMetadata]]:
-        """Return answer text plus retrieval results.
-
-Args:
-    query: Question text used in retrieval/answering flow.
-    top_k: Maximum number of retrieval hits to use.
-    session_active_chunk_index: Current active chunk index in session before this ask.
-    near_chunk_threshold: Chunk-index distance threshold treated as same reading area.
-    local_window_radius: Radius for local window expansion when local mode is used.
-
-Returns:
-    Tuple of answer text and retrieval hits."""
-        answer_text, results, _ = self.answer_with_trace(
-            query=query,
-            top_k=top_k,
-            session_active_chunk_index=session_active_chunk_index,
-            near_chunk_threshold=near_chunk_threshold,
-            local_window_radius=local_window_radius,
-        )
-        return answer_text, results
-
-    def answer_with_trace(
-        self,
-        query: str,
-        top_k: int = 3,
-        session_active_chunk_index: int | None = None,
-        near_chunk_threshold: int = 2,
-        local_window_radius: int = 1,
-    ) -> tuple[str, List[SearchMetadata], str]:
-        """Return answer text, retrieval hits, and chosen context mode.
-
-Args:
-    query: Question text used in retrieval/answering flow.
-    top_k: Maximum number of retrieval hits to use.
-    session_active_chunk_index: Current active chunk index in session before this ask.
-    near_chunk_threshold: Chunk-index distance threshold treated as same reading area.
-    local_window_radius: Radius for local window expansion when local mode is used.
-
-Returns:
-    Tuple of answer text, retrieval hits, and context mode."""
-        if self.profile is None:
-            print("Warn:FaissIndexBundle.answer: profile is not ready")
-        standardized_question = self.question_standardizer.standardize(
-            query=query,
-            document_language=self.document_language,
-        )
-        results = self.search(
-            standardized_question.standardized_query,
-            top_k,
-        )
-        answer_mode: AnswerMode = self.relevance_evaluator.evaluate(results)
-        print("FaissIndexBundle#ask standardized_question:", standardized_question)
-        print("FaissIndexBundle#ask answer_mode:", answer_mode)
-
-        if answer_mode.level == "reject":
-            print("FaissIndexBundle#context_mode: retrieval_mode (answer_reject)")
-            return "Not found", results, "retrieval_mode"
-        context, prompt_mode = self._build_context_by_reading_position(
-            results=results,
-            question=standardized_question,
-            answer_mode=answer_mode,
-            session_active_chunk_index=session_active_chunk_index,
-            near_chunk_threshold=near_chunk_threshold,
-            local_window_radius=local_window_radius,
-        )
-        prompt = self.prompt_assembler.build_answer_prompt(
-            context=context,
-            question=standardized_question,
-            profile=self.profile,
-            answer_mode=answer_mode,
-            prompt_mode=prompt_mode,
-        )
-        return self.llm_provider.complete_text(prompt), results, prompt_mode
-
-    def answer(self, query: str, top_k: int = 3) :
-        """Return answer text for compatibility callers.
-
-Args:
-    query: Question text used in retrieval/answering flow.
-    top_k: Maximum number of retrieval hits to use.
-
-Returns:
-    Final answer text."""
-        answer_text, _ = self.answer_with_results(query, top_k)
-        return answer_text

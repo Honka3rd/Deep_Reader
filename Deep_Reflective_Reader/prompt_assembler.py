@@ -83,7 +83,7 @@ Document summary:
         """Render mode-specific guidance for context interpretation.
 
         Args:
-            prompt_mode: ``local_reading_mode`` or ``retrieval_mode``.
+            prompt_mode: ``local_reading_mode`` / ``retrieval_mode`` / ``full_text_mode``.
 
         Returns:
             Additional guidance that tells the model how to use provided context.
@@ -97,6 +97,16 @@ Reading guidance:
 2. Treat the provided context as a locally continuous window near where the user is reading.
 3. Prefer continuity and nearby textual evidence when describing people, events, tone, or intent.
 4. If needed, refer to immediate neighboring sentences in this local window before broad generalization.
+"""
+
+        if prompt_mode == "full_text_mode":
+            return """Context mode:
+full_text_mode
+
+Reading guidance:
+1. The provided context covers the full document (possibly budget-trimmed).
+2. Prefer globally consistent interpretation across sections and avoid local overfitting.
+3. When evidence conflicts, state uncertainty explicitly and cite the stronger evidence in context.
 """
 
         return """Context mode:

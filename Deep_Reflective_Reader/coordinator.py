@@ -19,6 +19,9 @@ class Coordinator:
             embedding_batch_size: int = 64,
             bundle_cache_capacity: int = 3,
             session_recent_limit: int = 10,
+            base_near_chunk_threshold: int = 2,
+            min_near_chunk_threshold: int = 1,
+            max_near_chunk_threshold: int = 4,
     ):
         """Initialize runtime dependencies and in-memory session storage.
 
@@ -30,6 +33,9 @@ class Coordinator:
             embedding_batch_size: Batch size for index-time embedding calls.
             bundle_cache_capacity: Maximum bundle objects kept in memory cache.
             session_recent_limit: Max items kept in per-session recent history.
+            base_near_chunk_threshold: Base threshold for local-reading gate.
+            min_near_chunk_threshold: Lower bound for dynamic local-reading threshold.
+            max_near_chunk_threshold: Upper bound for dynamic local-reading threshold.
         """
         self.app_config = AppDIConfig(
             chunk_size=chunk_size,
@@ -39,11 +45,17 @@ class Coordinator:
             embedding_batch_size=embedding_batch_size,
             bundle_cache_capacity=bundle_cache_capacity,
             session_recent_limit=session_recent_limit,
+            base_near_chunk_threshold=base_near_chunk_threshold,
+            min_near_chunk_threshold=min_near_chunk_threshold,
+            max_near_chunk_threshold=max_near_chunk_threshold,
         )
 
         self.container = ApplicationLookupContainer.build(self.app_config)
         self.bundle_provider = self.container.bundle_provider()
         self.session_manager = self.container.session_manager()
+        self.context_orchestrator = self.container.context_orchestrator()
+        self.prompt_assembler = self.container.prompt_assembler()
+        self.llm_provider = self.container.llm_provider()
 
     def get_bundle(self, doc_name: str) -> FaissIndexBundle:
         """Ensure index/profile readiness and return query-ready bundle.
@@ -93,13 +105,23 @@ class Coordinator:
             )
 
         bundle = self.bundle_provider.get_bundle(doc_name)
-        answer_text, results, prompt_mode = bundle.answer_with_trace(
+        context_result = self.context_orchestrator.build(
             query=question,
+            bundle=bundle,
             top_k=top_k,
             session_active_chunk_index=session_active_chunk_index,
-            near_chunk_threshold=2,
-            local_window_radius=1,
         )
+        if context_result.answer_mode.level == "reject":
+            answer_text = "Not found"
+        else:
+            prompt = self.prompt_assembler.build_answer_prompt(
+                context=context_result.context_text,
+                question=context_result.standardized_question,
+                profile=bundle.profile,
+                answer_mode=context_result.answer_mode,
+                prompt_mode=context_result.prompt_mode,
+            )
+            answer_text = self.llm_provider.complete_text(prompt)
 
         if session is not None:
             self.session_manager.update_session(
@@ -107,14 +129,14 @@ class Coordinator:
                 result=SessionUpdateResult(
                     question=question,
                     bundle=bundle,
-                    results=results,
+                    results=context_result.results,
                 ),
             )
             print(
                 f"Coordinator#ask after: session_id={session.session_id}, "
                 f"active_chunk_index_before={session_active_chunk_index}, "
                 f"active_chunk_index_after={session.active_chunk_index}, "
-                f"context_mode={prompt_mode}"
+                f"context_mode={context_result.prompt_mode}"
             )
 
         return answer_text

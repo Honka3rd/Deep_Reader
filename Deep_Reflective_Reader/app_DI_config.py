@@ -10,3 +10,6 @@ class AppDIConfig:
     embedding_batch_size: int = 64
     bundle_cache_capacity: int = 3
     session_recent_limit: int = 10
+    base_near_chunk_threshold: int = 2
+    min_near_chunk_threshold: int = 1
+    max_near_chunk_threshold: int = 4

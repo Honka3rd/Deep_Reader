@@ -2,6 +2,7 @@ from dependency_injector import containers, providers
 
 from bundle_provider import BundleProvider
 from bundle_factory import BundleFactory
+from context_orchestrator import ContextOrchestrator
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
@@ -134,6 +135,15 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         session_recent_limit=config.session_recent_limit,
     )
 
+    context_orchestrator = providers.Singleton(
+        ContextOrchestrator,
+        question_standardizer=question_standardizer,
+        relevance_evaluator=relevance_evaluator,
+        base_near_chunk_threshold=config.base_near_chunk_threshold,
+        min_near_chunk_threshold=config.min_near_chunk_threshold,
+        max_near_chunk_threshold=config.max_near_chunk_threshold,
+    )
+
     @classmethod
     def build(cls, app_config: AppDIConfig) -> "ApplicationLookupContainer":
         """Build and configure application DI container.
@@ -153,7 +163,9 @@ Returns:
                 "embedding_batch_size": app_config.embedding_batch_size,
                 "bundle_cache_capacity": app_config.bundle_cache_capacity,
                 "session_recent_limit": app_config.session_recent_limit,
+                "base_near_chunk_threshold": app_config.base_near_chunk_threshold,
+                "min_near_chunk_threshold": app_config.min_near_chunk_threshold,
+                "max_near_chunk_threshold": app_config.max_near_chunk_threshold,
             }
         )
         return container
-
