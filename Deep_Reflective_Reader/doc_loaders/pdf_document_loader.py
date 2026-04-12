@@ -6,12 +6,25 @@ from .abstract_document_loader import AbstractDocumentLoader
 
 
 class PdfDocumentLoader(AbstractDocumentLoader):
+    """Load PDF document files and join extracted page text."""
     base_dir: Path
 
     def __init__(self, base_dir: str = "data/raw"):
+        """Initialize object state and injected dependencies.
+
+Args:
+    base_dir: Base dir.
+"""
         self.base_dir = Path(base_dir)
 
     def load(self, doc_name: str) -> str:
+        """Load persisted artifact and return parsed object/data.
+
+Args:
+    doc_name: Logical document name and artifact namespace (without extension).
+
+Returns:
+    Concatenated text extracted from all pages of ``<doc_name>.pdf``."""
         file_path = self.base_dir / f"{doc_name}.pdf"
 
         if not file_path.exists():

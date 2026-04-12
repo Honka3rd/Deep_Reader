@@ -3,9 +3,15 @@ from profile.document_profile import DocumentProfile
 
 
 class DocumentProfileBuilder:
+    """Generate topic/summary profile for a document."""
     llm_provider: LLMProvider
 
     def __init__(self, llm_provider: LLMProvider):
+        """Initialize object state and injected dependencies.
+
+Args:
+    llm_provider: Llm provider.
+"""
         self.llm_provider = llm_provider
 
     def build(
@@ -13,6 +19,14 @@ class DocumentProfileBuilder:
         text: str,
         document_language: str,
     ) -> DocumentProfile:
+        """Build document profile from raw text and detected language.
+
+Args:
+    text: Input text content.
+    document_language: Primary document language code (e.g. en/zh).
+
+Returns:
+    Profile containing topic, summary, and document language."""
         topic: str = self._detect_topic(text, document_language)
         summary: str = self._generate_summary(text, document_language, topic)
 
@@ -23,6 +37,14 @@ class DocumentProfileBuilder:
         )
 
     def _detect_topic(self, text: str, document_language: str) -> str:
+        """Internal helper for detect topic.
+
+Args:
+    text: Input text content.
+    document_language: Primary document language code (e.g. en/zh).
+
+Returns:
+    Short English topic label inferred from document content."""
         prompt = f"""
 You are a document classifier.
 
@@ -56,6 +78,15 @@ Document excerpt:
         document_language: str,
         topic: str,
     ) -> str:
+        """Internal helper for generate summary.
+
+Args:
+    text: Input text content.
+    document_language: Primary document language code (e.g. en/zh).
+    topic: Topic.
+
+Returns:
+    Prompt-conditioning summary text for downstream QA."""
         prompt = f"""
 You are a document profiling assistant.
 

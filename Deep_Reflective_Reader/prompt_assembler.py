@@ -3,8 +3,18 @@ from standardized.standardized_question import StandardizedQuestion
 from evaluated_answer.answer_mode import AnswerMode
 
 class PromptAssembler:
+    """Build final LLM prompts from rules, context mode, and profile."""
+
     @staticmethod
     def render_profile(profile: DocumentProfile) -> str:
+        """Render document profile into a stable prompt section.
+
+        Args:
+            profile: Topic/language/summary metadata generated for the document.
+
+        Returns:
+            Multiline profile block injected into the final answer prompt.
+        """
         topic: str = profile.topic.strip() if profile.topic else "unknown"
         summary: str = profile.summary.strip() if profile.summary else "No summary available."
         document_language: str = (
@@ -27,8 +37,17 @@ Document summary:
                 answer_mode: AnswerMode,
                 question: StandardizedQuestion,
         ) -> str:
-            if answer_mode.level == "strict":
-                return f"""Rules:
+        """Render answer constraints based on retrieval confidence.
+
+        Args:
+            answer_mode: Strict/cautious/reject mode from relevance evaluator.
+            question: Standardized question object with user/doc language fields.
+
+        Returns:
+            Rule text used in the prompt's instruction section.
+        """
+        if answer_mode.level == "strict":
+            return f"""Rules:
     1. Use ONLY the provided retrieved context.
     2. Do NOT use outside knowledge.
     3. If the evidence is insufficient, answer exactly: Not found.
@@ -39,8 +58,8 @@ Document summary:
     8. Answer in {question.user_language}.
     """
 
-            if answer_mode.level == "cautious":
-                return f"""Rules:
+        if answer_mode.level == "cautious":
+            return f"""Rules:
     1. Use the retrieved context as primary evidence.
     2. You may use the document summary as supporting background.
     3. Do NOT use outside knowledge.
@@ -52,7 +71,7 @@ Document summary:
     9. Answer in {question.user_language}.
     """
 
-            return f"""Rules:
+        return f"""Rules:
     1. The current question appears weakly related to the document.
     2. Answer exactly: Not found.
     3. The user's original question language is {question.user_language}.
@@ -61,6 +80,14 @@ Document summary:
 
     @staticmethod
     def _render_prompt_mode_guidance(prompt_mode: str) -> str:
+        """Render mode-specific guidance for context interpretation.
+
+        Args:
+            prompt_mode: ``local_reading_mode`` or ``retrieval_mode``.
+
+        Returns:
+            Additional guidance that tells the model how to use provided context.
+        """
         if prompt_mode == "local_reading_mode":
             return """Context mode:
 local_reading_mode
@@ -88,6 +115,18 @@ Reading guidance:
         answer_mode: AnswerMode,
         prompt_mode: str = "retrieval_mode",
     ) -> str:
+        """Assemble complete answer prompt passed to the LLM backend.
+
+        Args:
+            context: Evidence context selected by retrieval/local-window logic.
+            question: Standardized question payload used in current QA turn.
+            profile: Document profile metadata for global disambiguation.
+            answer_mode: Strictness mode controlling answer constraints.
+            prompt_mode: Context mode flag controlling local vs global wording.
+
+        Returns:
+            Final prompt string for model completion.
+        """
         rendered_profile: str = self.render_profile(profile)
         rules: str = self._render_rules(answer_mode, question)
         mode_guidance: str = self._render_prompt_mode_guidance(prompt_mode)

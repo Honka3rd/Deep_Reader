@@ -1,6 +1,8 @@
 from dependency_injector import containers, providers
 
+from bundle_provider import BundleProvider
 from bundle_factory import BundleFactory
+from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile_store import DocumentProfileStore
@@ -17,8 +19,10 @@ from llama_index.core.node_parser import SentenceSplitter
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
 from api_key_provider import APIKeyProvider
 from app_DI_config import AppDIConfig
+from session_manager import SessionManager
 
 class ApplicationLookupContainer(containers.DeclarativeContainer):
+    """Dependency-injection container that wires runtime providers and factories."""
     wiring_config = containers.WiringConfiguration()
     config = providers.Configuration()
 
@@ -113,8 +117,32 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         cache_capacity=config.bundle_cache_capacity,
     )
 
+    document_loader_factory = providers.Singleton(
+        DocumentLoaderFactory,
+    )
+
+    bundle_provider = providers.Singleton(
+        BundleProvider,
+        storage_config_factory=storage_config_factory.provider,
+        fingerprint_handler_factory=fingerprint_handler_factory.provider,
+        bundle_factory_provider=bundle_factory_provider.provider,
+        loader_factory=document_loader_factory,
+    )
+
+    session_manager = providers.Singleton(
+        SessionManager,
+        session_recent_limit=config.session_recent_limit,
+    )
+
     @classmethod
     def build(cls, app_config: AppDIConfig) -> "ApplicationLookupContainer":
+        """Build and configure application DI container.
+
+Args:
+    app_config: App config.
+
+Returns:
+    Container instance wired with values from ``app_config``."""
         container = cls()
         container.config.from_dict(
             {
@@ -124,10 +152,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
                 "llm_model": app_config.llm_model,
                 "embedding_batch_size": app_config.embedding_batch_size,
                 "bundle_cache_capacity": app_config.bundle_cache_capacity,
+                "session_recent_limit": app_config.session_recent_limit,
             }
         )
         return container
-
-
-
 

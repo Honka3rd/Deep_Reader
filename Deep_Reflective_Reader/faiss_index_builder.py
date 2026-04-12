@@ -14,6 +14,7 @@ from prompt_assembler import PromptAssembler
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
 
 class FaissIndexBuilder:
+    """Create FAISS index structures from parsed document nodes."""
     embedder: Embedder
     batch_size: int
 
@@ -26,6 +27,16 @@ class FaissIndexBuilder:
             relevance_evaluator: QuestionRelevanceEvaluator,
             batch_size: int = 64
     ):
+        """Initialize object state and injected dependencies.
+
+Args:
+    embedder: Embedder.
+    llm_provider: Llm provider.
+    question_standardizer: Question standardizer.
+    prompt_assembler: Prompt assembler.
+    relevance_evaluator: Relevance evaluator.
+    batch_size: Batch size.
+"""
         self.embedder = embedder
         self.llm_provider = llm_provider
         self.prompt_assembler = prompt_assembler
@@ -34,6 +45,13 @@ class FaissIndexBuilder:
         self.relevance_evaluator = relevance_evaluator
 
     def build_from_parsed_document(self, parsed: ParsedDocument) -> FaissIndexBundle:
+        """Build a FAISS index bundle from parsed nodes.
+
+Args:
+    parsed: Parsed.
+
+Returns:
+    Ready-to-query ``FaissIndexBundle`` built from parsed document nodes."""
         dimension: int = self.embedder.probe_vector_dimension()
 
         base_index: faiss.IndexFlatL2 = faiss.IndexFlatL2(dimension)

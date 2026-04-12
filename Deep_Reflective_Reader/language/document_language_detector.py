@@ -5,19 +5,26 @@ from llm_provider import LLMProvider
 from storage_config import StorageConfig
 
 class DocumentLanguageDetector:
+    """Detect and cache primary language for a document."""
     llm_provider: LLMProvider
 
     def __init__(self, llm_provider: LLMProvider):
+        """Initialize object state and injected dependencies.
+
+Args:
+    llm_provider: Llm provider.
+"""
         self.llm_provider = llm_provider
 
     def detect(self, text: str, config: StorageConfig | None = None) -> str:
-        """
-        Detect document language with persistence-aware fallback:
+        """Detect primary language for the given document text.
 
-        1. Try document_profile.json
-        2. Try records.json
-        3. Fallback to LLM detection
-        """
+Args:
+    text: Input text content.
+    config: StorageConfig describing filesystem artifact paths.
+
+Returns:
+    Normalized language code (for example: ``en``, ``zh``, ``ja``)."""
         language = self._load_from_profile(config)
         if language:
             print(f"DocumentLanguageDetector#detect: loaded from profile -> {language}")
@@ -34,6 +41,13 @@ class DocumentLanguageDetector:
 
     @staticmethod
     def _load_from_profile(config: StorageConfig | None) -> str | None:
+        """Internal helper for load from profile.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths.
+
+Returns:
+    Language code from profile when available; otherwise ``None``."""
         if config is None:
             return None
 
@@ -55,6 +69,13 @@ class DocumentLanguageDetector:
 
     @staticmethod
     def _load_from_records(config: StorageConfig | None) -> str | None:
+        """Internal helper for load from records.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths.
+
+Returns:
+    Language code from records when available; otherwise ``None``."""
         if config is None:
             return None
 
@@ -75,6 +96,13 @@ class DocumentLanguageDetector:
         return None
 
     def _detect_with_llm(self, text: str) -> str:
+        """Internal helper for detect with llm.
+
+Args:
+    text: Input text content.
+
+Returns:
+    Language code inferred from LLM output after normalization."""
         prompt = f"""
 Detect the primary language of the following document.
 Return only a short language code such as: en, zh, ja, fr, de.

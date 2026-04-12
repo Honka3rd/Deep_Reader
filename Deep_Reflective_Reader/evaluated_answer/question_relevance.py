@@ -5,8 +5,17 @@ from search_metadata import SearchMetadata
 
 
 class QuestionRelevanceEvaluator:
+    """Convert retrieval scores into strict/cautious/reject modes."""
+
     @staticmethod
     def evaluate(results: List[SearchMetadata]) -> AnswerMode:
+        """Evaluate retrieval quality and map it to an answer mode.
+
+Args:
+    results: Ordered retrieval hits for current query.
+
+Returns:
+    Selected answer mode (`strict`, `cautious`, or `reject`) with reason."""
         if not results:
             return AnswerMode(
                 level="reject",

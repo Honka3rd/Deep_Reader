@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class ReadingSession:
+    """Store in-memory reading progress keyed by session_id."""
     session_id: str
     doc_name: str
     active_chunk_index: int | None = None

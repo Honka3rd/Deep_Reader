@@ -14,6 +14,7 @@ from prompt_assembler import PromptAssembler
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
 
 class FaissIndexStore:
+    """Save/load FAISS index artifacts and serialized node records."""
     embedder: Embedder
     def __init__(
             self,
@@ -23,6 +24,14 @@ class FaissIndexStore:
             prompt_assembler: PromptAssembler,
             relevance_evaluator: QuestionRelevanceEvaluator,
     ) -> None:
+        """Initialize object state and injected dependencies.
+
+Args:
+    embedder: Embedder.
+    llm_provider: Llm provider.
+    question_standardizer: Question standardizer.
+    prompt_assembler: Prompt assembler.
+    relevance_evaluator: Relevance evaluator."""
         self.embedder = embedder
         self.llm_provider = llm_provider
         self.question_standardizer = question_standardizer
@@ -34,6 +43,11 @@ class FaissIndexStore:
             bundle: FaissIndexBundle,
             config: StorageConfig
     ) -> None:
+        """Persist artifact/data to storage.
+
+Args:
+    bundle: Active FaissIndexBundle used for lookup and metadata access.
+    config: StorageConfig describing filesystem artifact paths."""
         faiss.write_index(bundle.faiss_index, config.get_raw_index_path())
 
         payload: dict = {
@@ -64,6 +78,13 @@ class FaissIndexStore:
         self,
         config: StorageConfig
     ) -> FaissIndexBundle:
+        """Load persisted artifact and return parsed object/data.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths.
+
+Returns:
+    Reconstructed ``FaissIndexBundle`` loaded from persisted files."""
         loaded_index = faiss.read_index(config.get_raw_index_path())
 
         with open(config.get_raw_records_path(), "r", encoding="utf-8") as f:
@@ -89,9 +110,10 @@ class FaissIndexStore:
     def clear(
             config: StorageConfig
     ) -> None:
-        """
-        刪除 faiss index 和 records，強制重建用
-        """
+        """Remove persisted artifacts for clean rebuild.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths."""
         index_path = config.get_raw_index_path()
         if os.path.exists(index_path):
             os.remove(index_path)
@@ -103,6 +125,13 @@ class FaissIndexStore:
 
     @staticmethod
     def has_position_metadata(config: StorageConfig) -> bool:
+        """Check whether persisted records include required positional fields.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths.
+
+Returns:
+    ``True`` when required positional fields exist in stored records."""
         records_path = config.get_raw_records_path()
         if not os.path.exists(records_path):
             return False

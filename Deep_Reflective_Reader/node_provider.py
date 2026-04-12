@@ -8,6 +8,7 @@ from parsed_document import ParsedDocument
 from storage_config import StorageConfig
 
 class NodeProvider(object):
+    """Parse raw document text into retrievable nodes with positional metadata."""
     parser: SentenceSplitter
     language_detector: DocumentLanguageDetector
     def __init__(
@@ -16,10 +17,24 @@ class NodeProvider(object):
             detector: DocumentLanguageDetector
     ):
         # Text chunking behavior can be overridden by injecting a custom parser.
+        """Initialize object state and injected dependencies.
+
+Args:
+    parser: Parser.
+    detector: Detector.
+"""
         self.parser = parser
         self.language_detector = detector
 
     def parse(self, text: str, config: StorageConfig) -> ParsedDocument:
+        """Parse document text into nodes and attach positional metadata.
+
+Args:
+    text: Input text content.
+    config: StorageConfig describing filesystem artifact paths.
+
+Returns:
+    Parsed document with chunk nodes and detected document language."""
         document: Document = Document(text=text)
         document_language: str = self.language_detector.detect(
             text=text,

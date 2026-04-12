@@ -4,9 +4,15 @@ from standardized.standardized_question import StandardizedQuestion
 from llm_provider import LLMProvider
 
 class QuestionStandardizer:
+    """Detect and align question language to document language."""
     llm_provider: LLMProvider
 
     def __init__(self, llm_provider: LLMProvider):
+        """Initialize object state and injected dependencies.
+
+Args:
+    llm_provider: Llm provider.
+"""
         self.llm_provider = llm_provider
 
     def standardize(
@@ -14,6 +20,14 @@ class QuestionStandardizer:
         query: str,
         document_language: str,
     ) -> StandardizedQuestion:
+        """Normalize/translate question to match target document language.
+
+Args:
+    query: Question text used in retrieval/answering flow.
+    document_language: Primary document language code (e.g. en/zh).
+
+Returns:
+    Language-aligned question payload for retrieval and prompting."""
         prompt = f"""
 You are a language processor.
 

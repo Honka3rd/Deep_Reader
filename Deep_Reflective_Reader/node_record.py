@@ -2,47 +2,73 @@ from llama_index.core.schema import BaseNode
 
 
 class NodeRecord:
+    """Persisted representation of a chunk node and its metadata fields."""
     def __init__(self, node: BaseNode, node_id: int) -> None:
+        """Create a serializable record from a runtime node.
+
+        Args:
+            node: Parsed LlamaIndex node containing text and metadata.
+            node_id: Internal integer id used as FAISS-side physical key.
+        """
         self._node_id = node_id
         self._node_key: str = getattr(node, "node_id", None) or getattr(node, "id_", "") or str(node_id)
         self._node_text: str = node.text.strip()
         self.metadata: dict = getattr(node, "metadata", {}) or {}
 
     def node_id(self):
+        """Return internal numeric id of this record."""
         return self._node_id
 
     def node_key(self) -> str:
+        """Return original node identifier from parser/source system."""
         return self._node_key
 
     def text(self):
+        """Return normalized chunk text stored in this record."""
         return self._node_text
 
     def source(self):
+        """Return optional source metadata (file/chapter source)."""
         return self.metadata.get("source")
 
     def chapter(self):
+        """Return optional chapter metadata when available."""
         return self.metadata.get("chapter")
 
     def position(self):
+        """Return optional legacy position metadata."""
         return self.metadata.get("position")
 
     def chunk_index(self):
+        """Return chunk index in parsing order."""
         return self.metadata.get("chunk_index")
 
     def char_start(self):
+        """Return inclusive start character offset in original document."""
         return self.metadata.get("char_start")
 
     def char_end(self):
+        """Return exclusive end character offset in original document."""
         return self.metadata.get("char_end")
 
     def prev_node_id(self):
+        """Return previous node key in local reading chain."""
         return self.metadata.get("prev_node_id")
 
     def next_node_id(self):
+        """Return next node key in local reading chain."""
         return self.metadata.get("next_node_id")
 
     @classmethod
     def from_persisted_dict(cls, data: dict) -> "NodeRecord":
+        """Rebuild ``NodeRecord`` from serialized JSON payload.
+
+        Args:
+            data: One record object loaded from ``records.json``.
+
+        Returns:
+            Reconstructed ``NodeRecord`` instance.
+        """
         obj = cls.__new__(cls)
         obj._node_id = data["node_id"]
         obj._node_key = data["node_key"]

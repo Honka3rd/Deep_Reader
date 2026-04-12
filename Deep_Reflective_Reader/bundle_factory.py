@@ -13,6 +13,7 @@ from profile.document_profile_store import DocumentProfileStore
 
 
 class BundleFactory:
+    """Build, cache, reload, and invalidate per-document FAISS bundles."""
     builder: FaissIndexBuilder
     node_provider: NodeProvider
     fingerprint_handler: FingerprintHandler
@@ -32,6 +33,17 @@ class BundleFactory:
         profile_store: DocumentProfileStore,
         cache_capacity: int = 3,
     ):
+        """Initialize object state and injected dependencies.
+
+Args:
+    builder: Builder.
+    fingerprint_handler: Fingerprint handler.
+    store: Store.
+    node_provider: Node provider.
+    profile_builder: Profile builder.
+    profile_store: Profile store.
+    cache_capacity: Cache capacity.
+"""
         self.builder = builder
         self.node_provider = node_provider
         self.fingerprint_handler = fingerprint_handler
@@ -42,17 +54,28 @@ class BundleFactory:
         self.bundle_cache = OrderedDict()
 
     def invalidate(self, doc_name: str) -> None:
+        """Remove a cached bundle entry for the specified document.
+
+Args:
+    doc_name: Logical document name and artifact namespace (without extension)."""
         self.bundle_cache.pop(doc_name, None)
 
     def clear(self) -> None:
+        """Remove persisted artifacts for clean rebuild."""
         self.bundle_cache.clear()
 
     def _evict_if_needed(self) -> None:
+        """Internal helper for evict if needed."""
         while len(self.bundle_cache) > self.cache_capacity:
             evicted_doc_name, _ = self.bundle_cache.popitem(last=False)
             print(f"BundleFactory#evict: evicted '{evicted_doc_name}' from cache")
 
     def _put_cache(self, doc_name: str, bundle: FaissIndexBundle) -> None:
+        """Internal helper for put cache.
+
+Args:
+    doc_name: Logical document name and artifact namespace (without extension).
+    bundle: Active FaissIndexBundle used for lookup and metadata access."""
         if doc_name in self.bundle_cache:
             self.bundle_cache.pop(doc_name)
 
@@ -60,6 +83,11 @@ class BundleFactory:
         self._evict_if_needed()
 
     def clear_artifacts(self, config: StorageConfig, doc_name: str) -> None:
+        """Remove persisted artifacts and cached bundle for a document.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths.
+    doc_name: Logical document name and artifact namespace (without extension)."""
         self.store.clear(config)
         self.profile_store.clear(config)
         self.fingerprint_handler.clear(config.get_raw_meta_path())
@@ -71,6 +99,15 @@ class BundleFactory:
         raw_text: str,
         document_language: str,
     ) -> DocumentProfile:
+        """Ensure document profile exists and rebuild when missing/corrupted.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths.
+    raw_text: Raw full document text before parsing/indexing.
+    document_language: Primary document language code (e.g. en/zh).
+
+Returns:
+    Loaded or newly generated document profile for the target document."""
         if self.profile_store.exists(config):
             try:
                 print(
@@ -94,6 +131,14 @@ class BundleFactory:
         return profile
 
     def ensure_index_ready(self, config: StorageConfig, raw_text: str) -> FaissIndexBundle:
+        """Ensure index artifacts are reusable; rebuild when needed.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths.
+    raw_text: Raw full document text before parsing/indexing.
+
+Returns:
+    Query-ready bundle guaranteed to match current document fingerprint."""
         doc_name = config.get_doc_name()
         has_position_metadata = self.store.has_position_metadata(config)
 
@@ -138,6 +183,14 @@ class BundleFactory:
         config: StorageConfig,
         raw_text: str | None = None,
     ) -> FaissIndexBundle:
+        """Return cached bundle or lazily load it from persisted artifacts.
+
+Args:
+    config: StorageConfig describing filesystem artifact paths.
+    raw_text: Raw full document text before parsing/indexing.
+
+Returns:
+    Cached or lazily loaded query-ready bundle for ``config``."""
         doc_name: str = config.get_doc_name()
 
         cached_bundle = self.bundle_cache.get(doc_name)
