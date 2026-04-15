@@ -1,5 +1,6 @@
 import json
 
+from language.language_code import LanguageCode, LanguageCodeResolver
 from standardized.standardized_question import StandardizedQuestion
 from llm_provider import LLMProvider
 
@@ -28,6 +29,16 @@ Args:
 
 Returns:
     Language-aligned question payload for retrieval and prompting."""
+        document_language_code = LanguageCodeResolver.resolve(document_language)
+        if document_language_code == LanguageCode.UNKNOWN:
+            print(
+                "Warn:QuestionStandardizer#standardize: unknown document language",
+                f"raw={document_language}",
+            )
+            raise ValueError(
+                f"Unsupported document language: {document_language}"
+            )
+
         prompt = f"""
 You are a language processor.
 
@@ -44,7 +55,7 @@ Return JSON in this exact format:
   "standardized_query": "..."
 }}
 
-Target document language: {document_language}
+Target document language: {document_language_code.value}
 User query: {query}
 """
 
@@ -65,9 +76,20 @@ User query: {query}
                 f"QuestionStandardizer#standardize: invalid payload: {payload}"
             )
 
+        user_language_code = LanguageCodeResolver.resolve(str(user_language))
+        if user_language_code == LanguageCode.UNKNOWN:
+            print(
+                "Warn:QuestionStandardizer#standardize: unknown user language",
+                f"raw={user_language}",
+                f"query={query}",
+            )
+            raise ValueError(
+                f"Unsupported user language: {user_language}"
+            )
+
         return StandardizedQuestion(
             original_query=query,
             standardized_query=standardized_query,
-            user_language=user_language,
-            document_language=document_language,
+            user_language=user_language_code,
+            document_language=document_language_code,
         )

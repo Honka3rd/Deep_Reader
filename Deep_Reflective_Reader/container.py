@@ -14,6 +14,8 @@ from node_provider import NodeProvider
 from openai_embedder import OpenAIEmbedder
 from openai_llm_provider import OpenAILLMProvider
 from prompt_assembler import PromptAssembler
+from question_scope_keywords_provider import QuestionScopeKeywordsProvider
+from question_scope_resolver import QuestionScopeResolver
 from standardized.question_standardizer import QuestionStandardizer
 from storage_config import StorageConfig
 from llama_index.core.node_parser import SentenceSplitter
@@ -135,13 +137,25 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         session_recent_limit=config.session_recent_limit,
     )
 
+    question_scope_keywords_provider = providers.Singleton(
+        QuestionScopeKeywordsProvider,
+    )
+
+    question_scope_resolver = providers.Singleton(
+        QuestionScopeResolver,
+        keywords_provider=question_scope_keywords_provider,
+        embedder=embedder,
+    )
+
     context_orchestrator = providers.Singleton(
         ContextOrchestrator,
         question_standardizer=question_standardizer,
         relevance_evaluator=relevance_evaluator,
+        question_scope_resolver=question_scope_resolver,
         base_near_chunk_threshold=config.base_near_chunk_threshold,
         min_near_chunk_threshold=config.min_near_chunk_threshold,
         max_near_chunk_threshold=config.max_near_chunk_threshold,
+        global_scope_min_top_k=config.global_scope_min_top_k,
     )
 
     @classmethod
@@ -166,6 +180,7 @@ Returns:
                 "base_near_chunk_threshold": app_config.base_near_chunk_threshold,
                 "min_near_chunk_threshold": app_config.min_near_chunk_threshold,
                 "max_near_chunk_threshold": app_config.max_near_chunk_threshold,
+                "global_scope_min_top_k": app_config.global_scope_min_top_k,
             }
         )
         return container

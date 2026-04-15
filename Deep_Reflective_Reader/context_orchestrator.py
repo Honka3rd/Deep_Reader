@@ -4,6 +4,8 @@ from typing import Any
 from evaluated_answer.answer_mode import AnswerMode
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
 from faiss_index_bundle import FaissIndexBundle
+from question_scope_resolver import QuestionScopeResolver, QuestionScopeResolution
+from qa_enums import AnswerLevel, ContextMode, PromptMode, QuestionScope
 from search_metadata import SearchMetadata
 from standardized.question_standardizer import QuestionStandardizer
 from standardized.standardized_question import StandardizedQuestion
@@ -13,8 +15,8 @@ from standardized.standardized_question import StandardizedQuestion
 class ContextBuildResult:
     """Structured context-selection output for one ask turn."""
     context_text: str
-    mode: str
-    prompt_mode: str
+    mode: ContextMode
+    prompt_mode: PromptMode
     metadata: dict[str, Any]
     standardized_question: StandardizedQuestion
     answer_mode: AnswerMode
@@ -25,24 +27,30 @@ class ContextOrchestrator:
     """Decide context strategy (full/local/retrieval) for a QA turn."""
     question_standardizer: QuestionStandardizer
     relevance_evaluator: QuestionRelevanceEvaluator
+    question_scope_resolver: QuestionScopeResolver
     base_near_chunk_threshold: int
     min_near_chunk_threshold: int
     max_near_chunk_threshold: int
+    global_scope_min_top_k: int
 
     def __init__(
         self,
         question_standardizer: QuestionStandardizer,
         relevance_evaluator: QuestionRelevanceEvaluator,
+        question_scope_resolver: QuestionScopeResolver,
         base_near_chunk_threshold: int = 2,
         min_near_chunk_threshold: int = 1,
         max_near_chunk_threshold: int = 4,
+        global_scope_min_top_k: int = 8,
     ):
         """Initialize orchestrator from injected strategy dependencies."""
         self.question_standardizer = question_standardizer
         self.relevance_evaluator = relevance_evaluator
+        self.question_scope_resolver = question_scope_resolver
         self.base_near_chunk_threshold = base_near_chunk_threshold
         self.min_near_chunk_threshold = min_near_chunk_threshold
         self.max_near_chunk_threshold = max_near_chunk_threshold
+        self.global_scope_min_top_k = global_scope_min_top_k
 
     def _resolve_near_chunk_threshold(
         self,
@@ -55,13 +63,13 @@ class ContextOrchestrator:
             return threshold
 
         best_score = min(result.score for result in results)
-        if answer_mode.level == "strict":
+        if answer_mode.level == AnswerLevel.STRICT:
             # Stronger retrieval match => allow slightly wider local continuity.
             if best_score < 1.00:
                 threshold += 1
             elif best_score > 1.08:
                 threshold -= 1
-        elif answer_mode.level == "cautious":
+        elif answer_mode.level == AnswerLevel.CAUTIOUS:
             # Cautious mode narrows local continuity gate.
             threshold -= 1
 
@@ -98,7 +106,7 @@ class ContextOrchestrator:
         if total_records == 0 or total_records > top_k:
             return None
 
-        prompt_mode = "full_text_mode"
+        prompt_mode = PromptMode.FULL_TEXT
         context_budget = bundle.compute_available_context_budget(
             question=question,
             answer_mode=answer_mode,
@@ -116,7 +124,7 @@ class ContextOrchestrator:
         )
         return ContextBuildResult(
             context_text=context_text,
-            mode="full_text_mode",
+            mode=ContextMode.FULL_TEXT,
             prompt_mode=prompt_mode,
             metadata={
                 "token_used": used_tokens,
@@ -144,21 +152,49 @@ class ContextOrchestrator:
             query=query,
             document_language=bundle.document_language,
         )
+        scope_resolution: QuestionScopeResolution = self.question_scope_resolver.resolve(
+            standardized_question
+        )
+        scope = scope_resolution.scope
+        effective_top_k = (
+            top_k
+            if scope == QuestionScope.LOCAL
+            else max(top_k, self.global_scope_min_top_k)
+        )
         results = bundle.search(
             standardized_question.standardized_query,
-            top_k,
+            effective_top_k,
         )
         answer_mode: AnswerMode = self.relevance_evaluator.evaluate(results)
         print("FaissIndexBundle#ask standardized_question:", standardized_question)
         print("FaissIndexBundle#ask answer_mode:", answer_mode)
+        print(
+            "ContextOrchestrator#scope:",
+            f"scope={scope.value}",
+            f"method={scope_resolution.method}",
+            f"lang={scope_resolution.query_language.value}",
+            f"keyword={scope_resolution.matched_keyword}",
+            f"similarity={scope_resolution.similarity}",
+            f"requested_top_k={top_k}",
+            f"effective_top_k={effective_top_k}",
+        )
 
-        if answer_mode.level == "reject":
+        if answer_mode.level == AnswerLevel.REJECT:
             print("FaissIndexBundle#context_mode: retrieval_mode (answer_reject)")
             return ContextBuildResult(
                 context_text="",
-                mode="retrieval_mode",
-                prompt_mode="retrieval_mode",
-                metadata={"reason": "answer_reject"},
+                mode=ContextMode.RETRIEVAL,
+                prompt_mode=PromptMode.RETRIEVAL,
+                metadata={
+                    "reason": "answer_reject",
+                    "scope": scope.value,
+                    "scope_method": scope_resolution.method,
+                    "scope_language": scope_resolution.query_language.value,
+                    "scope_keyword": scope_resolution.matched_keyword,
+                    "scope_similarity": scope_resolution.similarity,
+                    "requested_top_k": top_k,
+                    "effective_top_k": effective_top_k,
+                },
                 standardized_question=standardized_question,
                 answer_mode=answer_mode,
                 results=results,
@@ -168,14 +204,23 @@ class ContextOrchestrator:
             bundle=bundle,
             question=standardized_question,
             answer_mode=answer_mode,
-            top_k=top_k,
+            top_k=effective_top_k,
         )
         if full_text_result is not None:
             return ContextBuildResult(
                 context_text=full_text_result.context_text,
                 mode=full_text_result.mode,
                 prompt_mode=full_text_result.prompt_mode,
-                metadata=full_text_result.metadata,
+                metadata={
+                    **full_text_result.metadata,
+                    "scope": scope.value,
+                    "scope_method": scope_resolution.method,
+                    "scope_language": scope_resolution.query_language.value,
+                    "scope_keyword": scope_resolution.matched_keyword,
+                    "scope_similarity": scope_resolution.similarity,
+                    "requested_top_k": top_k,
+                    "effective_top_k": effective_top_k,
+                },
                 standardized_question=standardized_question,
                 answer_mode=answer_mode,
                 results=results,
@@ -186,7 +231,7 @@ class ContextOrchestrator:
             results=results,
         )
 
-        if results:
+        if scope == QuestionScope.LOCAL and results:
             best_result = results[0]
             best_chunk_index = self._extract_chunk_index(bundle, best_result)
             if (
@@ -194,7 +239,7 @@ class ContextOrchestrator:
                 and isinstance(best_chunk_index, int)
                 and abs(best_chunk_index - session_active_chunk_index) <= near_chunk_threshold
             ):
-                prompt_mode = "local_reading_mode"
+                prompt_mode = PromptMode.LOCAL_READING
                 context_budget = bundle.compute_available_context_budget(
                     question=standardized_question,
                     answer_mode=answer_mode,
@@ -214,9 +259,16 @@ class ContextOrchestrator:
                     )
                     return ContextBuildResult(
                         context_text="\n".join(local_texts),
-                        mode="local_window_mode",
+                        mode=ContextMode.LOCAL_WINDOW,
                         prompt_mode=prompt_mode,
                         metadata={
+                            "scope": scope.value,
+                            "scope_method": scope_resolution.method,
+                            "scope_language": scope_resolution.query_language.value,
+                            "scope_keyword": scope_resolution.matched_keyword,
+                            "scope_similarity": scope_resolution.similarity,
+                            "requested_top_k": top_k,
+                            "effective_top_k": effective_top_k,
                             "active_chunk_index": session_active_chunk_index,
                             "best_chunk_index": best_chunk_index,
                             "threshold": near_chunk_threshold,
@@ -231,7 +283,7 @@ class ContextOrchestrator:
                     )
 
         best_chunk_index = self._extract_chunk_index(bundle, results[0]) if results else None
-        prompt_mode = "retrieval_mode"
+        prompt_mode = PromptMode.RETRIEVAL
         context_budget = bundle.compute_available_context_budget(
             question=standardized_question,
             answer_mode=answer_mode,
@@ -253,9 +305,16 @@ class ContextOrchestrator:
         )
         return ContextBuildResult(
             context_text=context_text,
-            mode="retrieval_mode",
+            mode=ContextMode.RETRIEVAL,
             prompt_mode=prompt_mode,
             metadata={
+                "scope": scope.value,
+                "scope_method": scope_resolution.method,
+                "scope_language": scope_resolution.query_language.value,
+                "scope_keyword": scope_resolution.matched_keyword,
+                "scope_similarity": scope_resolution.similarity,
+                "requested_top_k": top_k,
+                "effective_top_k": effective_top_k,
                 "active_chunk_index": session_active_chunk_index,
                 "best_chunk_index": best_chunk_index,
                 "threshold": near_chunk_threshold,

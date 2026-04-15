@@ -13,3 +13,4 @@ class AppDIConfig:
     base_near_chunk_threshold: int = 2
     min_near_chunk_threshold: int = 1
     max_near_chunk_threshold: int = 4
+    global_scope_min_top_k: int = 8

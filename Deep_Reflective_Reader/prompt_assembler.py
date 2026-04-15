@@ -1,4 +1,5 @@
 from profile.document_profile import DocumentProfile
+from qa_enums import AnswerLevel, PromptMode
 from standardized.standardized_question import StandardizedQuestion
 from evaluated_answer.answer_mode import AnswerMode
 
@@ -46,7 +47,7 @@ Document summary:
         Returns:
             Rule text used in the prompt's instruction section.
         """
-        if answer_mode.level == "strict":
+        if answer_mode.level == AnswerLevel.STRICT:
             return f"""Rules:
     1. Use ONLY the provided retrieved context.
     2. Do NOT use outside knowledge.
@@ -58,7 +59,7 @@ Document summary:
     8. Answer in {question.user_language}.
     """
 
-        if answer_mode.level == "cautious":
+        if answer_mode.level == AnswerLevel.CAUTIOUS:
             return f"""Rules:
     1. Use the retrieved context as primary evidence.
     2. You may use the document summary as supporting background.
@@ -79,16 +80,23 @@ Document summary:
     """
 
     @staticmethod
-    def _render_prompt_mode_guidance(prompt_mode: str) -> str:
+    def _render_prompt_mode_guidance(prompt_mode: PromptMode | str) -> str:
         """Render mode-specific guidance for context interpretation.
 
         Args:
-            prompt_mode: ``local_reading_mode`` / ``retrieval_mode`` / ``full_text_mode``.
+            prompt_mode: ``PromptMode`` value or compatible raw string.
 
         Returns:
             Additional guidance that tells the model how to use provided context.
         """
-        if prompt_mode == "local_reading_mode":
+        mode = prompt_mode
+        if isinstance(mode, str):
+            try:
+                mode = PromptMode(mode)
+            except ValueError:
+                mode = PromptMode.RETRIEVAL
+
+        if mode == PromptMode.LOCAL_READING:
             return """Context mode:
 local_reading_mode
 
@@ -99,7 +107,7 @@ Reading guidance:
 4. If needed, refer to immediate neighboring sentences in this local window before broad generalization.
 """
 
-        if prompt_mode == "full_text_mode":
+        if mode == PromptMode.FULL_TEXT:
             return """Context mode:
 full_text_mode
 
@@ -123,7 +131,7 @@ Reading guidance:
         question: StandardizedQuestion,
         profile: DocumentProfile,
         answer_mode: AnswerMode,
-        prompt_mode: str = "retrieval_mode",
+        prompt_mode: PromptMode | str = PromptMode.RETRIEVAL,
     ) -> str:
         """Assemble complete answer prompt passed to the LLM backend.
 

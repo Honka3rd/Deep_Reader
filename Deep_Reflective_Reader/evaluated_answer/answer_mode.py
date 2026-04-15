@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 
+from qa_enums import AnswerLevel
+
 
 @dataclass(frozen=True)
 class AnswerMode:
     """Answer strictness decision derived from retrieval relevance."""
-    level: str   # "strict" | "cautious" | "reject"
+    level: AnswerLevel
     reason: str

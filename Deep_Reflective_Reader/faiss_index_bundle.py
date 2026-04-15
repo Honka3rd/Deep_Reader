@@ -11,6 +11,7 @@ from llm_provider import LLMProvider
 from standardized.question_standardizer import QuestionStandardizer
 from profile.document_profile import DocumentProfile
 from prompt_assembler import PromptAssembler
+from qa_enums import PromptMode
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator, AnswerMode
 
 class FaissIndexBundle:
@@ -201,7 +202,7 @@ Returns:
         self,
         question: "StandardizedQuestion",
         answer_mode: AnswerMode,
-        prompt_mode: str,
+        prompt_mode: PromptMode | str,
     ) -> int:
         """Estimate token usage of prompt parts excluding retrieved context.
 
@@ -226,7 +227,7 @@ Returns:
         self,
         question: "StandardizedQuestion",
         answer_mode: AnswerMode,
-        prompt_mode: str,
+        prompt_mode: PromptMode | str,
     ) -> int:
         """Compute effective context budget under total prompt token constraint.
 
@@ -250,7 +251,7 @@ Returns:
         self,
         question: "StandardizedQuestion",
         answer_mode: AnswerMode,
-        prompt_mode: str,
+        prompt_mode: PromptMode | str,
     ) -> int:
         """Public wrapper for computing effective context token budget."""
         return self._compute_available_context_budget(

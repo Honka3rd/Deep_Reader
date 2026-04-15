@@ -1,6 +1,7 @@
 from typing import List
 
 from evaluated_answer.answer_mode import AnswerMode
+from qa_enums import AnswerLevel
 from search_metadata import SearchMetadata
 
 
@@ -18,7 +19,7 @@ Returns:
     Selected answer mode (`strict`, `cautious`, or `reject`) with reason."""
         if not results:
             return AnswerMode(
-                level="reject",
+                level=AnswerLevel.REJECT,
                 reason="no retrieval results",
             )
 
@@ -28,17 +29,17 @@ Returns:
         # 這些閾值先作為起點，之後再按你的資料微調
         if best_score < 1.10:
             return AnswerMode(
-                level="strict",
+                level=AnswerLevel.STRICT,
                 reason=f"strong retrieval match: {best_score:.4f}",
             )
 
         if best_score < 1.28:
             return AnswerMode(
-                level="cautious",
+                level=AnswerLevel.CAUTIOUS,
                 reason=f"partial retrieval match: {best_score:.4f}",
             )
 
         return AnswerMode(
-            level="reject",
+            level=AnswerLevel.REJECT,
             reason=f"weak retrieval match: {best_score:.4f}",
         )

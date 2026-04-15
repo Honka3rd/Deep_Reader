@@ -1,6 +1,7 @@
 from app_DI_config import AppDIConfig
 from container import ApplicationLookupContainer
 from faiss_index_bundle import FaissIndexBundle
+from qa_enums import AnswerLevel
 from reading_session import ReadingSession
 from session_manager import SessionUpdateResult
 
@@ -22,6 +23,7 @@ class Coordinator:
             base_near_chunk_threshold: int = 2,
             min_near_chunk_threshold: int = 1,
             max_near_chunk_threshold: int = 4,
+            global_scope_min_top_k: int = 8,
     ):
         """Initialize runtime dependencies and in-memory session storage.
 
@@ -36,6 +38,7 @@ class Coordinator:
             base_near_chunk_threshold: Base threshold for local-reading gate.
             min_near_chunk_threshold: Lower bound for dynamic local-reading threshold.
             max_near_chunk_threshold: Upper bound for dynamic local-reading threshold.
+            global_scope_min_top_k: Minimum retrieval top_k when scope is global.
         """
         self.app_config = AppDIConfig(
             chunk_size=chunk_size,
@@ -48,6 +51,7 @@ class Coordinator:
             base_near_chunk_threshold=base_near_chunk_threshold,
             min_near_chunk_threshold=min_near_chunk_threshold,
             max_near_chunk_threshold=max_near_chunk_threshold,
+            global_scope_min_top_k=global_scope_min_top_k,
         )
 
         self.container = ApplicationLookupContainer.build(self.app_config)
@@ -111,7 +115,7 @@ class Coordinator:
             top_k=top_k,
             session_active_chunk_index=session_active_chunk_index,
         )
-        if context_result.answer_mode.level == "reject":
+        if context_result.answer_mode.level == AnswerLevel.REJECT:
             answer_text = "Not found"
         else:
             prompt = self.prompt_assembler.build_answer_prompt(
