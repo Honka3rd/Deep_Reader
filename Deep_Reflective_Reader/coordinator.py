@@ -24,6 +24,7 @@ class Coordinator:
             min_near_chunk_threshold: int = 1,
             max_near_chunk_threshold: int = 4,
             global_scope_min_top_k: int = 8,
+            global_coverage_chunk_gap: int = 2,
     ):
         """Initialize runtime dependencies and in-memory session storage.
 
@@ -39,6 +40,7 @@ class Coordinator:
             min_near_chunk_threshold: Lower bound for dynamic local-reading threshold.
             max_near_chunk_threshold: Upper bound for dynamic local-reading threshold.
             global_scope_min_top_k: Minimum retrieval top_k when scope is global.
+            global_coverage_chunk_gap: Chunk-index neighborhood distance for global coverage dedup.
         """
         self.app_config = AppDIConfig(
             chunk_size=chunk_size,
@@ -52,6 +54,7 @@ class Coordinator:
             min_near_chunk_threshold=min_near_chunk_threshold,
             max_near_chunk_threshold=max_near_chunk_threshold,
             global_scope_min_top_k=global_scope_min_top_k,
+            global_coverage_chunk_gap=global_coverage_chunk_gap,
         )
 
         self.container = ApplicationLookupContainer.build(self.app_config)

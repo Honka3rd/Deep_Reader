@@ -3,6 +3,7 @@ from dependency_injector import containers, providers
 from bundle_provider import BundleProvider
 from bundle_factory import BundleFactory
 from context_orchestrator import ContextOrchestrator
+from coverage_oriented_context_builder import CoverageOrientedContextBuilder
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
@@ -147,11 +148,17 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         embedder=embedder,
     )
 
+    global_coverage_context_builder = providers.Singleton(
+        CoverageOrientedContextBuilder,
+        nearby_chunk_distance=config.global_coverage_chunk_gap,
+    )
+
     context_orchestrator = providers.Singleton(
         ContextOrchestrator,
         question_standardizer=question_standardizer,
         relevance_evaluator=relevance_evaluator,
         question_scope_resolver=question_scope_resolver,
+        global_coverage_context_builder=global_coverage_context_builder,
         base_near_chunk_threshold=config.base_near_chunk_threshold,
         min_near_chunk_threshold=config.min_near_chunk_threshold,
         max_near_chunk_threshold=config.max_near_chunk_threshold,
@@ -181,6 +188,7 @@ Returns:
                 "min_near_chunk_threshold": app_config.min_near_chunk_threshold,
                 "max_near_chunk_threshold": app_config.max_near_chunk_threshold,
                 "global_scope_min_top_k": app_config.global_scope_min_top_k,
+                "global_coverage_chunk_gap": app_config.global_coverage_chunk_gap,
             }
         )
         return container

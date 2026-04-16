@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from coverage_oriented_context_builder import CoverageOrientedContextBuilder
 from evaluated_answer.answer_mode import AnswerMode
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
 from faiss_index_bundle import FaissIndexBundle
@@ -28,6 +29,7 @@ class ContextOrchestrator:
     question_standardizer: QuestionStandardizer
     relevance_evaluator: QuestionRelevanceEvaluator
     question_scope_resolver: QuestionScopeResolver
+    global_coverage_context_builder: CoverageOrientedContextBuilder
     base_near_chunk_threshold: int
     min_near_chunk_threshold: int
     max_near_chunk_threshold: int
@@ -38,6 +40,7 @@ class ContextOrchestrator:
         question_standardizer: QuestionStandardizer,
         relevance_evaluator: QuestionRelevanceEvaluator,
         question_scope_resolver: QuestionScopeResolver,
+        global_coverage_context_builder: CoverageOrientedContextBuilder,
         base_near_chunk_threshold: int = 2,
         min_near_chunk_threshold: int = 1,
         max_near_chunk_threshold: int = 4,
@@ -47,6 +50,7 @@ class ContextOrchestrator:
         self.question_standardizer = question_standardizer
         self.relevance_evaluator = relevance_evaluator
         self.question_scope_resolver = question_scope_resolver
+        self.global_coverage_context_builder = global_coverage_context_builder
         self.base_near_chunk_threshold = base_near_chunk_threshold
         self.min_near_chunk_threshold = min_near_chunk_threshold
         self.max_near_chunk_threshold = max_near_chunk_threshold
@@ -294,7 +298,21 @@ class ContextOrchestrator:
             f"(active={session_active_chunk_index}, best={best_chunk_index}, "
             f"threshold={near_chunk_threshold})"
         )
-        texts = self._extract_texts(results)
+        context_results = results
+        if scope == QuestionScope.GLOBAL:
+            coverage_selection = self.global_coverage_context_builder.select_for_global_scope(
+                bundle=bundle,
+                results=results,
+            )
+            context_results = coverage_selection.selected_results
+            print(
+                "ContextOrchestrator#global_coverage:",
+                f"raw_chunk_indices={coverage_selection.raw_chunk_indices}",
+                f"selected_chunk_indices={coverage_selection.selected_chunk_indices}",
+                f"evidence_count={len(context_results)}",
+            )
+
+        texts = self._extract_texts(context_results)
         context_text, used_tokens, truncated = bundle.join_texts_with_budget(
             texts,
             max_context_tokens=context_budget,
@@ -321,6 +339,9 @@ class ContextOrchestrator:
                 "token_used": used_tokens,
                 "budget": context_budget,
                 "truncated": truncated,
+                "global_coverage_evidence_count": len(context_results)
+                if scope == QuestionScope.GLOBAL
+                else None,
             },
             standardized_question=standardized_question,
             answer_mode=answer_mode,
