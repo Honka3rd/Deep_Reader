@@ -128,14 +128,7 @@ class ContextOrchestrator:
         capability_used = False
 
         if scope == QuestionScope.GLOBAL:
-            try:
-                capabilities = bundle.llm_provider.get_model_capabilities()
-            except Exception as e:
-                print(
-                    "Warn:ContextOrchestrator#full_text_gate: "
-                    f"failed to read model capabilities, fallback_to_bundle_default. error={e}"
-                )
-                capabilities = None
+            capabilities = bundle.model_capabilities
 
             if capabilities is not None:
                 effective_input_budget = max(

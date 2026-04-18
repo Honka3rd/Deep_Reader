@@ -2,8 +2,10 @@ from dependency_injector import containers, providers
 
 from bundle_provider import BundleProvider
 from bundle_factory import BundleFactory
+from context.document_context_builder import DocumentContextBuilder
 from context.context_orchestrator import ContextOrchestrator
 from context.coverage_oriented_context_builder import CoverageOrientedContextBuilder
+from context.token_budget_manager import TokenBudgetManager
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
@@ -47,6 +49,14 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     )
 
     prompt_assembler = providers.Singleton(PromptAssembler)
+    token_budget_manager = providers.Singleton(
+        TokenBudgetManager,
+        prompt_assembler=prompt_assembler,
+    )
+    document_context_builder = providers.Singleton(
+        DocumentContextBuilder,
+        token_budget_manager=token_budget_manager,
+    )
 
     question_standardizer = providers.Singleton(
         QuestionStandardizer,
@@ -87,9 +97,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         FaissIndexBuilder,
         embedder=embedder,
         llm_provider=llm_provider,
-        question_standardizer=question_standardizer,
-        prompt_assembler=prompt_assembler,
-        relevance_evaluator=relevance_evaluator,
+        token_budget_manager=token_budget_manager,
+        document_context_builder=document_context_builder,
         target_max_input_tokens=config.target_max_input_tokens,
         target_max_output_tokens=config.target_max_output_tokens,
         target_max_context_tokens=config.target_max_context_tokens,
@@ -113,9 +122,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         FaissIndexStore,
         embedder=embedder,
         llm_provider=llm_provider,
-        question_standardizer=question_standardizer,
-        prompt_assembler=prompt_assembler,
-        relevance_evaluator=relevance_evaluator,
+        token_budget_manager=token_budget_manager,
+        document_context_builder=document_context_builder,
         target_max_input_tokens=config.target_max_input_tokens,
         target_max_output_tokens=config.target_max_output_tokens,
         target_max_context_tokens=config.target_max_context_tokens,

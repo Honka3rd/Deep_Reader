@@ -1,18 +1,17 @@
-import re
 from typing import Dict, List, Set
 
 import faiss
 import numpy as np
 
+from context.document_context_builder import DocumentContextBuilder
+from context.token_budget_manager import TokenBudgetManager
 from embeddings.embedder import Embedder
+from llm.llm_model_capabilities import LLMModelCapabilities
 from retrieval.node_record import NodeRecord
 from retrieval.search_metadata import SearchMetadata
-from llm.llm_provider import LLMProvider
-from question.standardized.question_standardizer import QuestionStandardizer
 from profile.document_profile import DocumentProfile
-from prompts.prompt_assembler import PromptAssembler
 from question.qa_enums import PromptMode
-from evaluated_answer.question_relevance import QuestionRelevanceEvaluator, AnswerMode
+from evaluated_answer.answer_mode import AnswerMode
 
 class FaissIndexBundle:
     """Runtime retrieval bundle that supports search and context utility methods."""
@@ -20,13 +19,15 @@ class FaissIndexBundle:
     id_to_record: Dict[int, NodeRecord]
     dimension: int
     embedder: Embedder
-    relevance_evaluator: QuestionRelevanceEvaluator
     profile: DocumentProfile
     node_key_to_faiss_id: Dict[str, int]
     chunk_index_to_faiss_id: Dict[int, int]
     max_context_tokens: int
     max_prompt_tokens: int
     reserved_output_tokens: int
+    model_capabilities: LLMModelCapabilities | None
+    token_budget_manager: TokenBudgetManager
+    document_context_builder: DocumentContextBuilder
 
     def set_profile(self, profile: DocumentProfile):
         """Set profile.
@@ -43,10 +44,9 @@ Returns:
         self,
         faiss_index: faiss.IndexIDMap,
         embedder: Embedder,
-        llm_provider: LLMProvider,
-        prompt_assembler: PromptAssembler,
-        question_standardizer: QuestionStandardizer,
-        relevance_evaluator: QuestionRelevanceEvaluator,
+        model_capabilities: LLMModelCapabilities | None,
+        token_budget_manager: TokenBudgetManager,
+        document_context_builder: DocumentContextBuilder,
         id_to_record: Dict[int, NodeRecord],
         dimension: int,
         document_language: str,
@@ -59,10 +59,7 @@ Returns:
 Args:
     faiss_index: Faiss index.
     embedder: Embedder.
-    llm_provider: Llm provider.
-    prompt_assembler: Prompt assembler.
-    question_standardizer: Question standardizer.
-    relevance_evaluator: Relevance evaluator.
+    model_capabilities: Optional static model capability metadata for this runtime.
     id_to_record: Id to record.
     dimension: Dimension.
     document_language: Primary document language code (e.g. en/zh).
@@ -72,16 +69,15 @@ Args:
 """
         self.faiss_index = faiss_index
         self.embedder = embedder
-        self.llm_provider = llm_provider
-        self.prompt_assembler = prompt_assembler
-        self.question_standardizer = question_standardizer
-        self.relevance_evaluator = relevance_evaluator
+        self.model_capabilities = model_capabilities
         self.id_to_record = id_to_record
         self.dimension = dimension
         self.document_language = document_language
         self.max_context_tokens = max_context_tokens
         self.max_prompt_tokens = max_prompt_tokens
         self.reserved_output_tokens = reserved_output_tokens
+        self.token_budget_manager = token_budget_manager
+        self.document_context_builder = document_context_builder
         self.node_key_to_faiss_id = {
             record.node_key(): faiss_id
             for faiss_id, record in self.id_to_record.items()
@@ -105,98 +101,28 @@ Returns:
     Text with collapsed whitespace for deduplication/comparison."""
         return " ".join(text.strip().split())
 
-    @staticmethod
-    def _estimate_tokens(text: str) -> int:
-        """Estimate token count with a mixed-language heuristic.
-
-Args:
-    text: Input text content.
-
-Returns:
-    Rough token estimate used for context budget control.
-        """
-        if not text:
-            return 0
-
-        cjk_and_kana = len(re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff]", text))
-        hangul = len(re.findall(r"[\uac00-\ud7af]", text))
-
-        ascii_chars = 0
-        other_chars = 0
-        for ch in text:
-            if ch.isspace():
-                continue
-            if ord(ch) < 128:
-                ascii_chars += 1
-            else:
-                other_chars += 1
-
-        # Remove CJK/Hangul/Kana already counted separately.
-        other_non_cjk = max(0, other_chars - cjk_and_kana - hangul)
-        ascii_tokens = (ascii_chars + 3) // 4
-        return max(1, cjk_and_kana + hangul + ascii_tokens + other_non_cjk)
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count with a mixed-language heuristic."""
+        return self.token_budget_manager.estimate_tokens(text)
 
     def _truncate_text_to_token_budget(self, text: str, budget_tokens: int) -> str:
-        """Truncate one text segment to fit within token budget.
-
-Args:
-    text: Input text content.
-    budget_tokens: Max allowed token estimate for returned text.
-
-Returns:
-    Truncated text that does not exceed ``budget_tokens`` under estimator.
-        """
-        if budget_tokens <= 0:
-            return ""
-        if self._estimate_tokens(text) <= budget_tokens:
-            return text
-
-        lo, hi = 0, len(text)
-        best = ""
-        while lo <= hi:
-            mid = (lo + hi) // 2
-            candidate = text[:mid]
-            if self._estimate_tokens(candidate) <= budget_tokens:
-                best = candidate
-                lo = mid + 1
-            else:
-                hi = mid - 1
-        return best.rstrip()
+        """Truncate one text segment to fit within token budget."""
+        return self.token_budget_manager.truncate_text_to_token_budget(
+            text=text,
+            budget_tokens=budget_tokens,
+        )
 
     def _join_texts_with_budget(
         self,
         texts: List[str],
         max_context_tokens: int | None = None,
     ) -> tuple[str, int, bool]:
-        """Join ordered texts while respecting context token budget.
-
-        Args:
-            texts: Candidate context chunks in order.
-            max_context_tokens: Optional override of bundle budget.
-
-        Returns:
-            Tuple ``(context_text, used_tokens, truncated)``.
-        """
-        budget = max_context_tokens or self.max_context_tokens
-        kept: List[str] = []
-        used_tokens = 0
-        truncated = False
-
-        for i, text in enumerate(texts):
-            text_tokens = self._estimate_tokens(text)
-            if used_tokens + text_tokens > budget:
-                # Keep first evidence chunk in truncated form if nothing has been added yet.
-                if i == 0 and not kept and budget > 0:
-                    clipped = self._truncate_text_to_token_budget(text, budget)
-                    if clipped:
-                        kept.append(clipped)
-                        used_tokens = self._estimate_tokens(clipped)
-                truncated = True
-                break
-            kept.append(text)
-            used_tokens += text_tokens
-
-        return "\n".join(kept), used_tokens, truncated
+        """Join ordered texts while respecting context token budget."""
+        return self.token_budget_manager.join_texts_with_budget(
+            texts=texts,
+            default_max_context_tokens=self.max_context_tokens,
+            max_context_tokens=max_context_tokens,
+        )
 
     def _estimate_non_context_prompt_tokens(
         self,
@@ -204,24 +130,13 @@ Returns:
         answer_mode: AnswerMode,
         prompt_mode: PromptMode | str,
     ) -> int:
-        """Estimate token usage of prompt parts excluding retrieved context.
-
-Args:
-    question: Standardized question payload used in current QA turn.
-    answer_mode: Strictness mode controlling answer rules.
-    prompt_mode: Context source mode for prompt wording.
-
-Returns:
-    Estimated tokens consumed by prompt template/profile/question sections.
-        """
-        base_prompt = self.prompt_assembler.build_answer_prompt(
-            context="",
+        """Estimate token usage of prompt parts excluding retrieved context."""
+        return self.token_budget_manager.estimate_non_context_prompt_tokens(
             question=question,
-            profile=self.profile,
             answer_mode=answer_mode,
             prompt_mode=prompt_mode,
+            profile=self.profile,
         )
-        return self._estimate_tokens(base_prompt)
 
     def _compute_available_context_budget(
         self,
@@ -232,39 +147,19 @@ Returns:
         max_prompt_tokens: int | None = None,
         reserved_output_tokens: int | None = None,
     ) -> int:
-        """Compute effective context budget under total prompt token constraint.
-
-Args:
-    question: Standardized question payload used in current QA turn.
-    answer_mode: Strictness mode controlling answer rules.
-    prompt_mode: Context source mode for prompt wording.
-
-    Returns:
-    Context-token budget after subtracting non-context prompt and output reserve.
-    Optional overrides allow mode-specific budget policy (e.g. global full-text).
-        """
-        non_context_tokens = self._estimate_non_context_prompt_tokens(
+        """Compute effective context budget under total prompt token constraint."""
+        return self.token_budget_manager.compute_available_context_budget(
             question=question,
             answer_mode=answer_mode,
             prompt_mode=prompt_mode,
+            profile=self.profile,
+            default_max_context_tokens=self.max_context_tokens,
+            default_max_prompt_tokens=self.max_prompt_tokens,
+            default_reserved_output_tokens=self.reserved_output_tokens,
+            max_context_tokens=max_context_tokens,
+            max_prompt_tokens=max_prompt_tokens,
+            reserved_output_tokens=reserved_output_tokens,
         )
-        effective_context_limit = (
-            self.max_context_tokens if max_context_tokens is None else max_context_tokens
-        )
-        effective_prompt_limit = (
-            self.max_prompt_tokens if max_prompt_tokens is None else max_prompt_tokens
-        )
-        effective_output_reserve = (
-            self.reserved_output_tokens
-            if reserved_output_tokens is None
-            else reserved_output_tokens
-        )
-        available_by_total = (
-            effective_prompt_limit
-            - non_context_tokens
-            - effective_output_reserve
-        )
-        return max(0, min(effective_context_limit, available_by_total))
 
     def compute_available_context_budget(
         self,
@@ -407,90 +302,50 @@ Returns:
         max_context_tokens: int | None = None,
     ) -> tuple[str, int, bool]:
         """Build full-document context (chunk-ordered) within token budget."""
-        ordered_records = sorted(
-            self.id_to_record.values(),
-            key=lambda record: (
-                record.chunk_index() if isinstance(record.chunk_index(), int) else 10**9,
-                record.node_id(),
-            ),
-        )
-        texts = [record.text() for record in ordered_records]
-        return self._join_texts_with_budget(
-            texts=texts,
+        return self.document_context_builder.build_full_text_context(
+            bundle=self,
             max_context_tokens=max_context_tokens,
         )
 
     def estimate_full_text_tokens(self) -> int:
         """Estimate token usage for full document text in chunk order."""
-        ordered_records = sorted(
-            self.id_to_record.values(),
-            key=lambda record: (
-                record.chunk_index() if isinstance(record.chunk_index(), int) else 10**9,
-                record.node_id(),
-            ),
-        )
-        return sum(self._estimate_tokens(record.text()) for record in ordered_records)
+        return self.document_context_builder.estimate_full_text_tokens(self)
 
     def _resolve_neighbor_by_link(
         self,
         record: NodeRecord,
         is_prev: bool,
     ) -> NodeRecord | None:
-        """Internal helper for resolve neighbor by link.
-
-Args:
-    record: Record.
-    is_prev: Direction flag for neighbor traversal (previous when True).
-
-Returns:
-    Linked neighbor record by node-id relation, or ``None`` if unavailable."""
-        linked_node_key = record.prev_node_id() if is_prev else record.next_node_id()
-        if linked_node_key is None:
-            return None
-        linked_faiss_id = self.node_key_to_faiss_id.get(str(linked_node_key))
-        if linked_faiss_id is None:
-            return None
-        return self._record_from_faiss_id(linked_faiss_id)
+        """Compatibility wrapper delegated to document context builder."""
+        return self.document_context_builder._resolve_neighbor_by_link(
+            bundle=self,
+            record=record,
+            is_prev=is_prev,
+        )
 
     def _resolve_neighbor_by_chunk_index(
         self,
         record: NodeRecord,
         is_prev: bool,
     ) -> NodeRecord | None:
-        """Internal helper for resolve neighbor by chunk index.
-
-Args:
-    record: Record.
-    is_prev: Direction flag for neighbor traversal (previous when True).
-
-Returns:
-    Neighbor record by adjacent chunk index, or ``None`` if unavailable."""
-        center_chunk_index = record.chunk_index()
-        if not isinstance(center_chunk_index, int):
-            return None
-        target_chunk_index = center_chunk_index - 1 if is_prev else center_chunk_index + 1
-        target_faiss_id = self.chunk_index_to_faiss_id.get(target_chunk_index)
-        if target_faiss_id is None:
-            return None
-        return self._record_from_faiss_id(target_faiss_id)
+        """Compatibility wrapper delegated to document context builder."""
+        return self.document_context_builder._resolve_neighbor_by_chunk_index(
+            bundle=self,
+            record=record,
+            is_prev=is_prev,
+        )
 
     def _resolve_neighbor(
         self,
         record: NodeRecord,
         is_prev: bool,
     ) -> NodeRecord | None:
-        """Internal helper for resolve neighbor.
-
-Args:
-    record: Record.
-    is_prev: Direction flag for neighbor traversal (previous when True).
-
-Returns:
-    Best-effort neighbor record resolved by link first, then chunk index."""
-        neighbor = self._resolve_neighbor_by_link(record, is_prev=is_prev)
-        if neighbor is not None:
-            return neighbor
-        return self._resolve_neighbor_by_chunk_index(record, is_prev=is_prev)
+        """Compatibility wrapper delegated to document context builder."""
+        return self.document_context_builder._resolve_neighbor(
+            bundle=self,
+            record=record,
+            is_prev=is_prev,
+        )
 
     def _expand_side(
         self,
@@ -498,30 +353,13 @@ Returns:
         radius: int,
         is_prev: bool,
     ) -> List[NodeRecord]:
-        """Internal helper for expand side.
-
-Args:
-    center: Center hit (SearchMetadata or FAISS id) for local window build.
-    radius: Neighbor expansion radius on each side of center chunk.
-    is_prev: Direction flag for neighbor traversal (previous when True).
-
-Returns:
-    Ordered neighbor records collected on one side of the center node."""
-        side_nodes: List[NodeRecord] = []
-        cursor: NodeRecord = center
-        visited_node_ids: Set[int] = {center.node_id()}
-
-        for _ in range(radius):
-            neighbor = self._resolve_neighbor(cursor, is_prev=is_prev)
-            if neighbor is None:
-                break
-            if neighbor.node_id() in visited_node_ids:
-                break
-            visited_node_ids.add(neighbor.node_id())
-            side_nodes.append(neighbor)
-            cursor = neighbor
-
-        return side_nodes
+        """Compatibility wrapper delegated to document context builder."""
+        return self.document_context_builder._expand_side(
+            bundle=self,
+            center=center,
+            radius=radius,
+            is_prev=is_prev,
+        )
 
     def build_local_window(
         self,
@@ -534,21 +372,13 @@ Args:
     center: Center hit (SearchMetadata or FAISS id) for local window build.
     radius: Neighbor expansion radius on each side of center chunk.
 
-Returns:
+        Returns:
     Ordered text chunks around center (left->center->right)."""
-        if radius < 0:
-            raise ValueError("radius must be >= 0")
-
-        center_faiss_id = center.faiss_id if isinstance(center, SearchMetadata) else int(center)
-        center_record = self._record_from_faiss_id(center_faiss_id)
-        if center_record is None:
-            return []
-
-        left_nodes = self._expand_side(center_record, radius=radius, is_prev=True)
-        right_nodes = self._expand_side(center_record, radius=radius, is_prev=False)
-
-        ordered_nodes: List[NodeRecord] = list(reversed(left_nodes)) + [center_record] + right_nodes
-        return [node.text() for node in ordered_nodes]
+        return self.document_context_builder.build_local_window(
+            bundle=self,
+            center=center,
+            radius=radius,
+        )
 
     def build_local_window_dynamic(
         self,
@@ -564,71 +394,11 @@ Returns:
         Returns:
             Tuple ``(window_texts, used_tokens, truncated, used_radius)``.
         """
-        budget = max_context_tokens or self.max_context_tokens
-        center_faiss_id = center.faiss_id if isinstance(center, SearchMetadata) else int(center)
-        center_record = self._record_from_faiss_id(center_faiss_id)
-        if center_record is None:
-            return [], 0, False, 0
-
-        center_text = center_record.text()
-        center_tokens = self._estimate_tokens(center_text)
-
-        if budget <= 0:
-            return [], 0, True, 0
-
-        if center_tokens > budget:
-            clipped_center = self._truncate_text_to_token_budget(center_text, budget)
-            used_tokens = self._estimate_tokens(clipped_center) if clipped_center else 0
-            return ([clipped_center] if clipped_center else []), used_tokens, True, 0
-
-        left_nodes: List[NodeRecord] = []
-        right_nodes: List[NodeRecord] = []
-        used_tokens = center_tokens
-        truncated = False
-        used_radius = 0
-
-        # Always keep center chunk for semantic anchor.
-        left_cursor = center_record
-        right_cursor = center_record
-        visited_node_ids: Set[int] = {center_record.node_id()}
-
-        while True:
-            progressed = False
-            used_this_step = False
-
-            left_neighbor = self._resolve_neighbor(left_cursor, is_prev=True)
-            if left_neighbor is not None and left_neighbor.node_id() not in visited_node_ids:
-                left_tokens = self._estimate_tokens(left_neighbor.text())
-                if used_tokens + left_tokens <= budget:
-                    left_nodes.append(left_neighbor)
-                    left_cursor = left_neighbor
-                    visited_node_ids.add(left_neighbor.node_id())
-                    used_tokens += left_tokens
-                    progressed = True
-                    used_this_step = True
-                else:
-                    truncated = True
-
-            right_neighbor = self._resolve_neighbor(right_cursor, is_prev=False)
-            if right_neighbor is not None and right_neighbor.node_id() not in visited_node_ids:
-                right_tokens = self._estimate_tokens(right_neighbor.text())
-                if used_tokens + right_tokens <= budget:
-                    right_nodes.append(right_neighbor)
-                    right_cursor = right_neighbor
-                    visited_node_ids.add(right_neighbor.node_id())
-                    used_tokens += right_tokens
-                    progressed = True
-                    used_this_step = True
-                else:
-                    truncated = True
-
-            if used_this_step:
-                used_radius += 1
-            if not progressed:
-                break
-
-        ordered_nodes: List[NodeRecord] = list(reversed(left_nodes)) + [center_record] + right_nodes
-        return [node.text() for node in ordered_nodes], used_tokens, truncated, used_radius
+        return self.document_context_builder.build_local_window_dynamic(
+            bundle=self,
+            center=center,
+            max_context_tokens=max_context_tokens,
+        )
 
     def build_context_with_window(
         self,
@@ -645,24 +415,9 @@ Args:
 
 Returns:
     Merged context text from window-expanded hits."""
-        results: List[SearchMetadata] = self.search(query, top_k)
-        merged_texts: List[str] = []
-        seen_texts: Set[str] = set()
-
-        for result in results:
-            window_texts = self.build_local_window(result, radius=radius)
-            for text in window_texts:
-                normalized_text = self._normalize_text(text)
-                if normalized_text in seen_texts:
-                    continue
-                seen_texts.add(normalized_text)
-                merged_texts.append(text)
-
-        context, used_tokens, truncated = self._join_texts_with_budget(merged_texts)
-        print(
-            "FaissIndexBundle#build_context_with_window:",
-            f"token_used={used_tokens}",
-            f"budget={self.max_context_tokens}",
-            f"truncated={truncated}",
+        return self.document_context_builder.build_context_with_window(
+            bundle=self,
+            query=query,
+            top_k=top_k,
+            radius=radius,
         )
-        return context
