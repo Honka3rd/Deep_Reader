@@ -103,12 +103,9 @@ class ContextOrchestrator:
         bundle: FaissIndexBundle,
         question: StandardizedQuestion,
         answer_mode: AnswerMode,
-        top_k: int,
     ) -> ContextBuildResult | None:
-        """Try full-text mode for small documents that fit available budget."""
+        """Try full-text mode when estimated full text fits available budget."""
         total_records = len(bundle.id_to_record)
-        if total_records == 0 or total_records > top_k:
-            return None
 
         prompt_mode = PromptMode.FULL_TEXT
         context_budget = bundle.compute_available_context_budget(
@@ -116,10 +113,33 @@ class ContextOrchestrator:
             answer_mode=answer_mode,
             prompt_mode=prompt_mode,
         )
+        estimated_full_text_tokens = bundle.estimate_full_text_tokens()
+        should_trigger_full_text = (
+            total_records > 0
+            and context_budget > 0
+            and estimated_full_text_tokens <= context_budget
+        )
+        print(
+            "ContextOrchestrator#full_text_gate:",
+            f"total_records={total_records}",
+            f"estimated_full_text_tokens={estimated_full_text_tokens}",
+            f"available_context_budget={context_budget}",
+            f"triggered={should_trigger_full_text}",
+        )
+        if not should_trigger_full_text:
+            return None
+
         context_text, used_tokens, truncated = bundle.build_full_text_context(
             max_context_tokens=context_budget,
         )
         if not context_text or truncated:
+            print(
+                "ContextOrchestrator#full_text_gate:",
+                f"total_records={total_records}",
+                f"estimated_full_text_tokens={estimated_full_text_tokens}",
+                f"available_context_budget={context_budget}",
+                "triggered=False",
+            )
             return None
 
         print(
@@ -208,7 +228,6 @@ class ContextOrchestrator:
             bundle=bundle,
             question=standardized_question,
             answer_mode=answer_mode,
-            top_k=effective_top_k,
         )
         if full_text_result is not None:
             return ContextBuildResult(

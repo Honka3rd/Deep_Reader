@@ -382,6 +382,17 @@ Returns:
             max_context_tokens=max_context_tokens,
         )
 
+    def estimate_full_text_tokens(self) -> int:
+        """Estimate token usage for full document text in chunk order."""
+        ordered_records = sorted(
+            self.id_to_record.values(),
+            key=lambda record: (
+                record.chunk_index() if isinstance(record.chunk_index(), int) else 10**9,
+                record.node_id(),
+            ),
+        )
+        return sum(self._estimate_tokens(record.text()) for record in ordered_records)
+
     def _resolve_neighbor_by_link(
         self,
         record: NodeRecord,
