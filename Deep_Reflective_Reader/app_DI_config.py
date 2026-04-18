@@ -15,6 +15,15 @@ class AppDIConfig:
     # Chat/completion model used for answer generation.
     # Introduced so answer quality/cost/latency tradeoff can be tuned without code changes.
     llm_model: str = "gpt-4.1-mini"
+    # App-level target for max prompt/input tokens before clamping to model capability.
+    # Introduced to separate business budget policy from model hard limits.
+    target_max_input_tokens: int = 3200
+    # App-level target for max generated tokens before clamping to model capability.
+    # Introduced to explicitly control output length/cost and avoid implicit defaults.
+    target_max_output_tokens: int = 500
+    # App-level target for context section token budget (subset of input budget).
+    # Introduced to tune retrieval context size independently from total prompt budget.
+    target_max_context_tokens: int = 1500
     # Batch size for embedding calls during index build.
     # Introduced to control build throughput and API pressure.
     embedding_batch_size: int = 64

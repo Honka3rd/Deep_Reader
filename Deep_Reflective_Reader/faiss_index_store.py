@@ -12,10 +12,13 @@ from llm_provider import LLMProvider
 from standardized.question_standardizer import QuestionStandardizer
 from prompt_assembler import PromptAssembler
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
+from token_budget_resolver import EffectiveTokenBudgets, resolve_effective_token_budgets
 
 class FaissIndexStore:
     """Save/load FAISS index artifacts and serialized node records."""
     embedder: Embedder
+    token_budgets: EffectiveTokenBudgets
+
     def __init__(
             self,
             embedder: Embedder,
@@ -23,6 +26,9 @@ class FaissIndexStore:
             question_standardizer: QuestionStandardizer,
             prompt_assembler: PromptAssembler,
             relevance_evaluator: QuestionRelevanceEvaluator,
+            target_max_input_tokens: int = 3200,
+            target_max_output_tokens: int = 500,
+            target_max_context_tokens: int = 1500,
     ) -> None:
         """Initialize object state and injected dependencies.
 
@@ -31,12 +37,29 @@ Args:
     llm_provider: Llm provider.
     question_standardizer: Question standardizer.
     prompt_assembler: Prompt assembler.
-    relevance_evaluator: Relevance evaluator."""
+    relevance_evaluator: Relevance evaluator.
+    target_max_input_tokens: App input-token target before model-capability clamp.
+    target_max_output_tokens: App output-token target before model-capability clamp.
+    target_max_context_tokens: App context-token target for retrieval context size."""
         self.embedder = embedder
         self.llm_provider = llm_provider
         self.question_standardizer = question_standardizer
         self.prompt_assembler = prompt_assembler
         self.relevance_evaluator = relevance_evaluator
+        self.token_budgets = resolve_effective_token_budgets(
+            capabilities=self.llm_provider.get_model_capabilities(),
+            target_max_input_tokens=target_max_input_tokens,
+            target_max_output_tokens=target_max_output_tokens,
+            target_max_context_tokens=target_max_context_tokens,
+        )
+        print(
+            "TokenBudget#store:",
+            f"target_input={self.token_budgets.target_max_input_tokens}",
+            f"target_output={self.token_budgets.target_max_output_tokens}",
+            f"target_context={self.token_budgets.target_max_context_tokens}",
+            f"effective_input={self.token_budgets.effective_input_budget}",
+            f"effective_output={self.token_budgets.effective_output_budget}",
+        )
 
     @staticmethod
     def save(
@@ -103,7 +126,10 @@ Returns:
             question_standardizer=self.question_standardizer,
             prompt_assembler=self.prompt_assembler,
             document_language=payload["document_language"],
-            relevance_evaluator=self.relevance_evaluator
+            relevance_evaluator=self.relevance_evaluator,
+            max_context_tokens=self.token_budgets.target_max_context_tokens,
+            max_prompt_tokens=self.token_budgets.effective_input_budget,
+            reserved_output_tokens=self.token_budgets.effective_output_budget,
         )
 
     @staticmethod

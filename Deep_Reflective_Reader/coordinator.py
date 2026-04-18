@@ -17,6 +17,9 @@ class Coordinator:
             chunk_overlap: int = 50,
             embedding_model: str = "text-embedding-3-small",
             llm_model: str = "gpt-4.1-mini",
+            target_max_input_tokens: int = 3200,
+            target_max_output_tokens: int = 500,
+            target_max_context_tokens: int = 1500,
             embedding_batch_size: int = 64,
             bundle_cache_capacity: int = 3,
             session_recent_limit: int = 10,
@@ -33,6 +36,9 @@ class Coordinator:
             chunk_overlap: Splitter chunk overlap size.
             embedding_model: Embedding model name.
             llm_model: LLM model name.
+            target_max_input_tokens: Target prompt/input budget before model clamp.
+            target_max_output_tokens: Target completion budget before model clamp.
+            target_max_context_tokens: Target retrieval-context token budget.
             embedding_batch_size: Batch size for index-time embedding calls.
             bundle_cache_capacity: Maximum bundle objects kept in memory cache.
             session_recent_limit: Max items kept in per-session recent history.
@@ -47,6 +53,9 @@ class Coordinator:
             chunk_overlap=chunk_overlap,
             embedding_model=embedding_model,
             llm_model=llm_model,
+            target_max_input_tokens=target_max_input_tokens,
+            target_max_output_tokens=target_max_output_tokens,
+            target_max_context_tokens=target_max_context_tokens,
             embedding_batch_size=embedding_batch_size,
             bundle_cache_capacity=bundle_cache_capacity,
             session_recent_limit=session_recent_limit,

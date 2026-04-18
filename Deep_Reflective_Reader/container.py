@@ -36,6 +36,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         OpenAILLMProvider,
         api_key_provider=api_key_provider,
         model=config.llm_model,
+        target_max_output_tokens=config.target_max_output_tokens,
     )
 
     embedder = providers.Singleton(
@@ -88,6 +89,9 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         question_standardizer=question_standardizer,
         prompt_assembler=prompt_assembler,
         relevance_evaluator=relevance_evaluator,
+        target_max_input_tokens=config.target_max_input_tokens,
+        target_max_output_tokens=config.target_max_output_tokens,
+        target_max_context_tokens=config.target_max_context_tokens,
         batch_size=config.embedding_batch_size,
     )
 
@@ -109,6 +113,9 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         question_standardizer=question_standardizer,
         prompt_assembler=prompt_assembler,
         relevance_evaluator=relevance_evaluator,
+        target_max_input_tokens=config.target_max_input_tokens,
+        target_max_output_tokens=config.target_max_output_tokens,
+        target_max_context_tokens=config.target_max_context_tokens,
     )
 
     bundle_factory_provider = providers.Factory(
@@ -181,6 +188,9 @@ Returns:
                 "chunk_overlap": app_config.chunk_overlap,
                 "embedding_model": app_config.embedding_model,
                 "llm_model": app_config.llm_model,
+                "target_max_input_tokens": app_config.target_max_input_tokens,
+                "target_max_output_tokens": app_config.target_max_output_tokens,
+                "target_max_context_tokens": app_config.target_max_context_tokens,
                 "embedding_batch_size": app_config.embedding_batch_size,
                 "bundle_cache_capacity": app_config.bundle_cache_capacity,
                 "session_recent_limit": app_config.session_recent_limit,

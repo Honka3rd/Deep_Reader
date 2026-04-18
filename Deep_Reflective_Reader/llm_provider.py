@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+from llm_model_capabilities import LLMModelCapabilities
+
 
 class LLMProvider(ABC):
     """Abstract interface for text completion backends."""
@@ -13,4 +15,9 @@ Args:
 
 Returns:
     Model-generated plain text response."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_model_capabilities(self) -> LLMModelCapabilities:
+        """Return static model capability metadata used for runtime budgeting."""
         raise NotImplementedError

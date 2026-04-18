@@ -12,11 +12,14 @@ from standardized.question_standardizer import QuestionStandardizer
 from parsed_document import ParsedDocument
 from prompt_assembler import PromptAssembler
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
+from token_budget_resolver import EffectiveTokenBudgets, resolve_effective_token_budgets
 
 class FaissIndexBuilder:
     """Create FAISS index structures from parsed document nodes."""
     embedder: Embedder
+    llm_provider: LLMProvider
     batch_size: int
+    token_budgets: EffectiveTokenBudgets
 
     def __init__(
             self,
@@ -25,6 +28,9 @@ class FaissIndexBuilder:
             question_standardizer: QuestionStandardizer,
             prompt_assembler: PromptAssembler,
             relevance_evaluator: QuestionRelevanceEvaluator,
+            target_max_input_tokens: int = 3200,
+            target_max_output_tokens: int = 500,
+            target_max_context_tokens: int = 1500,
             batch_size: int = 64
     ):
         """Initialize object state and injected dependencies.
@@ -35,6 +41,9 @@ Args:
     question_standardizer: Question standardizer.
     prompt_assembler: Prompt assembler.
     relevance_evaluator: Relevance evaluator.
+    target_max_input_tokens: App input-token target before model-capability clamp.
+    target_max_output_tokens: App output-token target before model-capability clamp.
+    target_max_context_tokens: App context-token target for retrieval context size.
     batch_size: Batch size.
 """
         self.embedder = embedder
@@ -43,6 +52,20 @@ Args:
         self.batch_size = batch_size
         self.question_standardizer = question_standardizer
         self.relevance_evaluator = relevance_evaluator
+        self.token_budgets = resolve_effective_token_budgets(
+            capabilities=self.llm_provider.get_model_capabilities(),
+            target_max_input_tokens=target_max_input_tokens,
+            target_max_output_tokens=target_max_output_tokens,
+            target_max_context_tokens=target_max_context_tokens,
+        )
+        print(
+            "TokenBudget#builder:",
+            f"target_input={self.token_budgets.target_max_input_tokens}",
+            f"target_output={self.token_budgets.target_max_output_tokens}",
+            f"target_context={self.token_budgets.target_max_context_tokens}",
+            f"effective_input={self.token_budgets.effective_input_budget}",
+            f"effective_output={self.token_budgets.effective_output_budget}",
+        )
 
     def build_from_parsed_document(self, parsed: ParsedDocument) -> FaissIndexBundle:
         """Build a FAISS index bundle from parsed nodes.
@@ -99,4 +122,7 @@ Returns:
             prompt_assembler=self.prompt_assembler,
             document_language=parsed.document_language,
             relevance_evaluator=self.relevance_evaluator,
+            max_context_tokens=self.token_budgets.target_max_context_tokens,
+            max_prompt_tokens=self.token_budgets.effective_input_budget,
+            reserved_output_tokens=self.token_budgets.effective_output_budget,
         )
