@@ -4,8 +4,6 @@ import faiss
 import numpy as np
 from llama_index.core.schema import BaseNode
 
-from context.document_context_builder import DocumentContextBuilder
-from context.token_budget_manager import TokenBudgetManager
 from embeddings.embedder import Embedder
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from retrieval.node_record import NodeRecord
@@ -21,15 +19,11 @@ class FaissIndexBuilder:
     model_capabilities: LLMModelCapabilities | None
     batch_size: int
     token_budgets: EffectiveTokenBudgets
-    token_budget_manager: TokenBudgetManager
-    document_context_builder: DocumentContextBuilder
 
     def __init__(
             self,
             embedder: Embedder,
             llm_provider: LLMProvider,
-            token_budget_manager: TokenBudgetManager,
-            document_context_builder: DocumentContextBuilder,
             *,
             target_max_input_tokens: int,
             target_max_output_tokens: int,
@@ -43,8 +37,6 @@ class FaissIndexBuilder:
 Args:
     embedder: Embedder.
     llm_provider: Llm provider.
-    token_budget_manager: Token-budget manager singleton.
-    document_context_builder: Document-context builder singleton.
     target_max_input_tokens: App input-token target before model-capability clamp.
     target_max_output_tokens: App output-token target before model-capability clamp.
     target_max_context_tokens: App context-token target for retrieval context size.
@@ -54,8 +46,6 @@ Args:
 """
         self.embedder = embedder
         self.llm_provider = llm_provider
-        self.token_budget_manager = token_budget_manager
-        self.document_context_builder = document_context_builder
         self.batch_size = batch_size
         capabilities: LLMModelCapabilities | None
         try:
@@ -141,8 +131,6 @@ Returns:
             model_capabilities=self.model_capabilities,
             id_to_record=id_to_record,
             dimension=dimension,
-            token_budget_manager=self.token_budget_manager,
-            document_context_builder=self.document_context_builder,
             document_language=parsed.document_language,
             max_context_tokens=self.token_budgets.effective_context_budget,
             max_prompt_tokens=self.token_budgets.effective_input_budget,

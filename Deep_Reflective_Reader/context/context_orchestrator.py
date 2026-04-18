@@ -2,7 +2,9 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from context.document_context_builder import DocumentContextBuilder
 from context.coverage_oriented_context_builder import CoverageOrientedContextBuilder
+from context.token_budget_manager import TokenBudgetManager
 from evaluated_answer.answer_mode import AnswerMode
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
 from retrieval.faiss_index_bundle import FaissIndexBundle
@@ -31,6 +33,8 @@ class ContextOrchestrator:
     relevance_evaluator: QuestionRelevanceEvaluator
     question_scope_resolver: QuestionScopeResolver
     global_coverage_context_builder: CoverageOrientedContextBuilder
+    token_budget_manager: TokenBudgetManager
+    document_context_builder: DocumentContextBuilder
     base_near_chunk_threshold: int
     min_near_chunk_threshold: int
     max_near_chunk_threshold: int
@@ -44,6 +48,8 @@ class ContextOrchestrator:
         relevance_evaluator: QuestionRelevanceEvaluator,
         question_scope_resolver: QuestionScopeResolver,
         global_coverage_context_builder: CoverageOrientedContextBuilder,
+        token_budget_manager: TokenBudgetManager,
+        document_context_builder: DocumentContextBuilder,
         base_near_chunk_threshold: int = 2,
         min_near_chunk_threshold: int = 1,
         max_near_chunk_threshold: int = 4,
@@ -56,6 +62,8 @@ class ContextOrchestrator:
         self.relevance_evaluator = relevance_evaluator
         self.question_scope_resolver = question_scope_resolver
         self.global_coverage_context_builder = global_coverage_context_builder
+        self.token_budget_manager = token_budget_manager
+        self.document_context_builder = document_context_builder
         self.base_near_chunk_threshold = base_near_chunk_threshold
         self.min_near_chunk_threshold = min_near_chunk_threshold
         self.max_near_chunk_threshold = max_near_chunk_threshold
@@ -109,6 +117,30 @@ class ContextOrchestrator:
         """Extract ordered chunk texts from retrieval hits."""
         return [result.text for result in results]
 
+    def _compute_available_context_budget(
+        self,
+        bundle: FaissIndexBundle,
+        question: StandardizedQuestion,
+        answer_mode: AnswerMode,
+        prompt_mode: PromptMode | str,
+        max_context_tokens: int | None = None,
+        max_prompt_tokens: int | None = None,
+        reserved_output_tokens: int | None = None,
+    ) -> int:
+        """Compute context budget via token-budget manager service."""
+        return self.token_budget_manager.compute_available_context_budget(
+            question=question,
+            answer_mode=answer_mode,
+            prompt_mode=prompt_mode,
+            profile=bundle.profile,
+            default_max_context_tokens=bundle.max_context_tokens,
+            default_max_prompt_tokens=bundle.max_prompt_tokens,
+            default_reserved_output_tokens=bundle.reserved_output_tokens,
+            max_context_tokens=max_context_tokens,
+            max_prompt_tokens=max_prompt_tokens,
+            reserved_output_tokens=reserved_output_tokens,
+        )
+
     def _maybe_build_full_text_context(
         self,
         bundle: FaissIndexBundle,
@@ -120,7 +152,9 @@ class ContextOrchestrator:
         total_records = len(bundle.id_to_record)
 
         prompt_mode = PromptMode.FULL_TEXT
-        estimated_full_text_tokens = bundle.estimate_full_text_tokens()
+        estimated_full_text_tokens = self.document_context_builder.estimate_full_text_tokens(
+            bundle=bundle,
+        )
         effective_input_budget = bundle.max_prompt_tokens
         effective_output_budget = bundle.reserved_output_tokens
         effective_context_budget = bundle.max_context_tokens
@@ -148,7 +182,8 @@ class ContextOrchestrator:
                         * self.full_text_context_budget_utilization_ratio
                     ),
                 )
-                context_budget = bundle.compute_available_context_budget_with_override(
+                context_budget = self._compute_available_context_budget(
+                    bundle=bundle,
                     question=question,
                     answer_mode=answer_mode,
                     prompt_mode=prompt_mode,
@@ -159,13 +194,15 @@ class ContextOrchestrator:
                 budget_policy = "model_capability_ratio"
                 capability_used = True
             else:
-                context_budget = bundle.compute_available_context_budget(
+                context_budget = self._compute_available_context_budget(
+                    bundle=bundle,
                     question=question,
                     answer_mode=answer_mode,
                     prompt_mode=prompt_mode,
                 )
         else:
-            context_budget = bundle.compute_available_context_budget(
+            context_budget = self._compute_available_context_budget(
+                bundle=bundle,
                 question=question,
                 answer_mode=answer_mode,
                 prompt_mode=prompt_mode,
@@ -192,7 +229,8 @@ class ContextOrchestrator:
         if not should_trigger_full_text:
             return None
 
-        context_text, used_tokens, truncated = bundle.build_full_text_context(
+        context_text, used_tokens, truncated = self.document_context_builder.build_full_text_context(
+            bundle=bundle,
             max_context_tokens=context_budget,
         )
         if not context_text or truncated:
@@ -339,14 +377,18 @@ class ContextOrchestrator:
                 and abs(best_chunk_index - session_active_chunk_index) <= near_chunk_threshold
             ):
                 prompt_mode = PromptMode.LOCAL_READING
-                context_budget = bundle.compute_available_context_budget(
+                context_budget = self._compute_available_context_budget(
+                    bundle=bundle,
                     question=standardized_question,
                     answer_mode=answer_mode,
                     prompt_mode=prompt_mode,
                 )
-                local_texts, used_tokens, truncated, used_radius = bundle.build_local_window_dynamic(
-                    best_result,
-                    max_context_tokens=context_budget,
+                local_texts, used_tokens, truncated, used_radius = (
+                    self.document_context_builder.build_local_window_dynamic(
+                        bundle=bundle,
+                        center=best_result,
+                        max_context_tokens=context_budget,
+                    )
                 )
                 if local_texts:
                     print(
@@ -383,7 +425,8 @@ class ContextOrchestrator:
 
         best_chunk_index = self._extract_chunk_index(bundle, results[0]) if results else None
         prompt_mode = PromptMode.RETRIEVAL
-        context_budget = bundle.compute_available_context_budget(
+        context_budget = self._compute_available_context_budget(
+            bundle=bundle,
             question=standardized_question,
             answer_mode=answer_mode,
             prompt_mode=prompt_mode,
@@ -408,8 +451,9 @@ class ContextOrchestrator:
             )
 
         texts = self._extract_texts(context_results)
-        context_text, used_tokens, truncated = bundle.join_texts_with_budget(
-            texts,
+        context_text, used_tokens, truncated = self.token_budget_manager.join_texts_with_budget(
+            texts=texts,
+            default_max_context_tokens=bundle.max_context_tokens,
             max_context_tokens=context_budget,
         )
         print(
