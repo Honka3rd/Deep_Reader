@@ -1,8 +1,8 @@
 from typing import List
 
 from evaluated_answer.answer_mode import AnswerMode
-from qa_enums import AnswerLevel
-from search_metadata import SearchMetadata
+from question.qa_enums import AnswerLevel
+from retrieval.search_metadata import SearchMetadata
 
 
 class QuestionRelevanceEvaluator:

@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from typing import Dict
 
-from faiss_index_bundle import FaissIndexBundle
-from reading_session import ReadingSession
-from search_metadata import SearchMetadata
+from retrieval.faiss_index_bundle import FaissIndexBundle
+from session.reading_session import ReadingSession
+from retrieval.search_metadata import SearchMetadata
 
 
 @dataclass(frozen=True)

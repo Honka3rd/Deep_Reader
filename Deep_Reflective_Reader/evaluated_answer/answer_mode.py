@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from qa_enums import AnswerLevel
+from question.qa_enums import AnswerLevel
 
 
 @dataclass(frozen=True)

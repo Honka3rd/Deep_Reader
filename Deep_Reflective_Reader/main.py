@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 
-from coordinator import Coordinator
+from app.coordinator import Coordinator
 from api_schemas import (
     PrepareDocumentRequest,
     AskDocumentRequest,

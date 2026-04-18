@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from llm_model_capabilities import LLMModelCapabilities
+from llm.llm_model_capabilities import LLMModelCapabilities
 
 
 class LLMProvider(ABC):

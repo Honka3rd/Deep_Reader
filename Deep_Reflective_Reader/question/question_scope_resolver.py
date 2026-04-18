@@ -3,11 +3,11 @@ from dataclasses import dataclass
 import faiss
 import numpy as np
 
-from embedder import Embedder
+from embeddings.embedder import Embedder
 from language.language_code import LanguageCode, LanguageCodeResolver
-from qa_enums import QuestionScope
-from question_scope_keywords_provider import QuestionScopeKeywordsProvider
-from standardized.standardized_question import StandardizedQuestion
+from question.qa_enums import QuestionScope
+from question.question_scope_keywords_provider import QuestionScopeKeywordsProvider
+from question.standardized.standardized_question import StandardizedQuestion
 
 
 @dataclass(frozen=True)

@@ -2,8 +2,8 @@ from typing import List
 
 from llama_index.embeddings.openai import OpenAIEmbedding
 
-from api_key_provider import APIKeyProvider
-from embedder import Embedder
+from auth.api_key_provider import APIKeyProvider
+from embeddings.embedder import Embedder
 
 
 class OpenAIEmbedder(Embedder):

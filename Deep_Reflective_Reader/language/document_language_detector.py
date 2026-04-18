@@ -1,8 +1,8 @@
 import json
 import os
 
-from llm_provider import LLMProvider
-from storage_config import StorageConfig
+from llm.llm_provider import LLMProvider
+from config.storage_config import StorageConfig
 
 class DocumentLanguageDetector:
     """Detect and cache primary language for a document."""

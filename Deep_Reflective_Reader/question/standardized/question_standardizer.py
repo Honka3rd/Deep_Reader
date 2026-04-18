@@ -1,8 +1,8 @@
 import json
 
 from language.language_code import LanguageCode, LanguageCodeResolver
-from standardized.standardized_question import StandardizedQuestion
-from llm_provider import LLMProvider
+from question.standardized.standardized_question import StandardizedQuestion
+from llm.llm_provider import LLMProvider
 
 class QuestionStandardizer:
     """Detect and align question language to document language."""

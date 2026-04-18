@@ -4,14 +4,14 @@ from typing import Dict, List, Set
 import faiss
 import numpy as np
 
-from embedder import Embedder
-from node_record import NodeRecord
-from search_metadata import SearchMetadata
-from llm_provider import LLMProvider
-from standardized.question_standardizer import QuestionStandardizer
+from embeddings.embedder import Embedder
+from retrieval.node_record import NodeRecord
+from retrieval.search_metadata import SearchMetadata
+from llm.llm_provider import LLMProvider
+from question.standardized.question_standardizer import QuestionStandardizer
 from profile.document_profile import DocumentProfile
-from prompt_assembler import PromptAssembler
-from qa_enums import PromptMode
+from prompts.prompt_assembler import PromptAssembler
+from question.qa_enums import PromptMode
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator, AnswerMode
 
 class FaissIndexBundle:

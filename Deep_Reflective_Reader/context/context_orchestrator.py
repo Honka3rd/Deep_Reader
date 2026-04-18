@@ -2,15 +2,15 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from coverage_oriented_context_builder import CoverageOrientedContextBuilder
+from context.coverage_oriented_context_builder import CoverageOrientedContextBuilder
 from evaluated_answer.answer_mode import AnswerMode
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
-from faiss_index_bundle import FaissIndexBundle
-from question_scope_resolver import QuestionScopeResolver, QuestionScopeResolution
-from qa_enums import AnswerLevel, ContextMode, PromptMode, QuestionScope
-from search_metadata import SearchMetadata
-from standardized.question_standardizer import QuestionStandardizer
-from standardized.standardized_question import StandardizedQuestion
+from retrieval.faiss_index_bundle import FaissIndexBundle
+from question.question_scope_resolver import QuestionScopeResolver, QuestionScopeResolution
+from question.qa_enums import AnswerLevel, ContextMode, PromptMode, QuestionScope
+from retrieval.search_metadata import SearchMetadata
+from question.standardized.question_standardizer import QuestionStandardizer
+from question.standardized.standardized_question import StandardizedQuestion
 
 
 @dataclass(frozen=True)

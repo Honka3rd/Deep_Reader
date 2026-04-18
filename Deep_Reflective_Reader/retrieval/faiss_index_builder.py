@@ -4,16 +4,16 @@ import faiss
 import numpy as np
 from llama_index.core.schema import BaseNode
 
-from embedder import Embedder
-from faiss_index_bundle import FaissIndexBundle
-from node_record import NodeRecord
-from llm_provider import LLMProvider
-from standardized.question_standardizer import QuestionStandardizer
-from parsed_document import ParsedDocument
-from prompt_assembler import PromptAssembler
+from embeddings.embedder import Embedder
+from retrieval.faiss_index_bundle import FaissIndexBundle
+from retrieval.node_record import NodeRecord
+from llm.llm_provider import LLMProvider
+from question.standardized.question_standardizer import QuestionStandardizer
+from retrieval.parsed_document import ParsedDocument
+from prompts.prompt_assembler import PromptAssembler
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
-from llm_model_capabilities import LLMModelCapabilities
-from token_budget_resolver import EffectiveTokenBudgets, resolve_effective_token_budgets
+from llm.llm_model_capabilities import LLMModelCapabilities
+from config.token_budget_resolver import EffectiveTokenBudgets, resolve_effective_token_budgets
 
 class FaissIndexBuilder:
     """Create FAISS index structures from parsed document nodes."""
@@ -29,12 +29,13 @@ class FaissIndexBuilder:
             question_standardizer: QuestionStandardizer,
             prompt_assembler: PromptAssembler,
             relevance_evaluator: QuestionRelevanceEvaluator,
-            target_max_input_tokens: int = 3200,
-            target_max_output_tokens: int = 500,
-            target_max_context_tokens: int = 1500,
-            input_budget_utilization_ratio: float = 0.2,
-            context_budget_utilization_ratio: float = 0.9,
-            batch_size: int = 64
+            *,
+            target_max_input_tokens: int,
+            target_max_output_tokens: int,
+            target_max_context_tokens: int,
+            input_budget_utilization_ratio: float,
+            context_budget_utilization_ratio: float,
+            batch_size: int,
     ):
         """Initialize object state and injected dependencies.
 

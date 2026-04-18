@@ -4,16 +4,16 @@ import os
 
 import faiss
 
-from embedder import Embedder
-from faiss_index_bundle import FaissIndexBundle
-from node_record import NodeRecord
-from storage_config import StorageConfig
-from llm_provider import LLMProvider
-from standardized.question_standardizer import QuestionStandardizer
-from prompt_assembler import PromptAssembler
+from embeddings.embedder import Embedder
+from retrieval.faiss_index_bundle import FaissIndexBundle
+from retrieval.node_record import NodeRecord
+from config.storage_config import StorageConfig
+from llm.llm_provider import LLMProvider
+from question.standardized.question_standardizer import QuestionStandardizer
+from prompts.prompt_assembler import PromptAssembler
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
-from llm_model_capabilities import LLMModelCapabilities
-from token_budget_resolver import EffectiveTokenBudgets, resolve_effective_token_budgets
+from llm.llm_model_capabilities import LLMModelCapabilities
+from config.token_budget_resolver import EffectiveTokenBudgets, resolve_effective_token_budgets
 
 class FaissIndexStore:
     """Save/load FAISS index artifacts and serialized node records."""
@@ -27,11 +27,12 @@ class FaissIndexStore:
             question_standardizer: QuestionStandardizer,
             prompt_assembler: PromptAssembler,
             relevance_evaluator: QuestionRelevanceEvaluator,
-            target_max_input_tokens: int = 3200,
-            target_max_output_tokens: int = 500,
-            target_max_context_tokens: int = 1500,
-            input_budget_utilization_ratio: float = 0.2,
-            context_budget_utilization_ratio: float = 0.9,
+            *,
+            target_max_input_tokens: int,
+            target_max_output_tokens: int,
+            target_max_context_tokens: int,
+            input_budget_utilization_ratio: float,
+            context_budget_utilization_ratio: float,
     ) -> None:
         """Initialize object state and injected dependencies.
 

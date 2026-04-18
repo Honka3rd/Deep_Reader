@@ -1,12 +1,12 @@
 from collections import OrderedDict
 from typing import OrderedDict as OrderedDictType
 
-from faiss_index_bundle import FaissIndexBundle
-from faiss_index_builder import FaissIndexBuilder
-from faiss_index_store import FaissIndexStore
+from retrieval.faiss_index_bundle import FaissIndexBundle
+from retrieval.faiss_index_builder import FaissIndexBuilder
+from retrieval.faiss_index_store import FaissIndexStore
 from fingerprint_handler import FingerprintHandler
-from node_provider import NodeProvider
-from storage_config import StorageConfig
+from retrieval.node_provider import NodeProvider
+from config.storage_config import StorageConfig
 from profile.document_profile import DocumentProfile
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile_store import DocumentProfileStore

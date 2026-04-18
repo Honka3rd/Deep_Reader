@@ -2,35 +2,36 @@ from dependency_injector import containers, providers
 
 from bundle_provider import BundleProvider
 from bundle_factory import BundleFactory
-from context_orchestrator import ContextOrchestrator
-from coverage_oriented_context_builder import CoverageOrientedContextBuilder
+from context.context_orchestrator import ContextOrchestrator
+from context.coverage_oriented_context_builder import CoverageOrientedContextBuilder
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile_store import DocumentProfileStore
-from faiss_index_builder import FaissIndexBuilder
-from faiss_index_store import FaissIndexStore
+from retrieval.faiss_index_builder import FaissIndexBuilder
+from retrieval.faiss_index_store import FaissIndexStore
 from fingerprint_handler import FingerprintHandler
-from node_provider import NodeProvider
-from openai_embedder import OpenAIEmbedder
-from openai_llm_provider import OpenAILLMProvider
-from prompt_assembler import PromptAssembler
-from question_scope_keywords_provider import QuestionScopeKeywordsProvider
-from question_scope_resolver import QuestionScopeResolver
-from standardized.question_standardizer import QuestionStandardizer
-from storage_config import StorageConfig
+from retrieval.node_provider import NodeProvider
+from embeddings.openai_embedder import OpenAIEmbedder
+from llm.openai_llm_provider import OpenAILLMProvider
+from prompts.prompt_assembler import PromptAssembler
+from question.question_scope_keywords_provider import QuestionScopeKeywordsProvider
+from question.question_scope_resolver import QuestionScopeResolver
+from question.standardized.question_standardizer import QuestionStandardizer
+from config.storage_config import StorageConfig
 from llama_index.core.node_parser import SentenceSplitter
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
-from api_key_provider import APIKeyProvider
-from app_DI_config import AppDIConfig
-from session_manager import SessionManager
+from auth.api_key_provider import APIKeyProvider
+from auth.openai_api_key_provider import OpenAIAPIKeyProvider
+from config.app_DI_config import AppDIConfig
+from session.session_manager import SessionManager
 
 class ApplicationLookupContainer(containers.DeclarativeContainer):
     """Dependency-injection container that wires runtime providers and factories."""
     wiring_config = containers.WiringConfiguration()
     config = providers.Configuration()
 
-    api_key_provider = providers.Singleton(APIKeyProvider)
+    api_key_provider = providers.Singleton(OpenAIAPIKeyProvider)
 
     llm_provider = providers.Singleton(
         OpenAILLMProvider,

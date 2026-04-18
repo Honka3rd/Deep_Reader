@@ -1,4 +1,4 @@
-from llm_provider import LLMProvider
+from llm.llm_provider import LLMProvider
 from profile.document_profile import DocumentProfile
 
 

@@ -1,6 +1,6 @@
 from profile.document_profile import DocumentProfile
-from qa_enums import AnswerLevel, PromptMode
-from standardized.standardized_question import StandardizedQuestion
+from question.qa_enums import AnswerLevel, PromptMode
+from question.standardized.standardized_question import StandardizedQuestion
 from evaluated_answer.answer_mode import AnswerMode
 
 class PromptAssembler:

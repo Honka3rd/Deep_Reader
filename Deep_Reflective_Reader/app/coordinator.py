@@ -1,11 +1,12 @@
 from dataclasses import replace
 
-from app_DI_config import AppDIConfig
-from container import ApplicationLookupContainer
-from faiss_index_bundle import FaissIndexBundle
-from qa_enums import AnswerLevel
-from reading_session import ReadingSession
-from session_manager import SessionUpdateResult
+from config.app_DI_config import AppDIConfig
+from config.container import ApplicationLookupContainer
+from llm.openai_llm_provider import OpenAIModelName
+from retrieval.faiss_index_bundle import FaissIndexBundle
+from question.qa_enums import AnswerLevel
+from session.reading_session import ReadingSession
+from session.session_manager import SessionUpdateResult
 
 class Coordinator:
     """Coordinate document loading, index readiness, and session-aware QA orchestration."""
@@ -18,7 +19,7 @@ class Coordinator:
             chunk_size: int | None = None,
             chunk_overlap: int | None = None,
             embedding_model: str | None = None,
-            llm_model: str | None = None,
+            llm_model: OpenAIModelName | str | None = None,
             target_max_input_tokens: int | None = None,
             target_max_output_tokens: int | None = None,
             target_max_context_tokens: int | None = None,
@@ -58,7 +59,7 @@ class Coordinator:
             global_scope_min_top_k: Optional override for global-scope minimum retrieval top_k.
             global_coverage_chunk_gap: Optional override for global coverage dedup chunk gap.
         """
-        override_values: dict[str, int | float | str] = {}
+        override_values: dict[str, int | float | str | OpenAIModelName] = {}
         if chunk_size is not None:
             override_values["chunk_size"] = chunk_size
         if chunk_overlap is not None:

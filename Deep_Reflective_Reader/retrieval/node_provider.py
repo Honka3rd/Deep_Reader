@@ -4,8 +4,8 @@ from llama_index.core import Document
 from llama_index.core.schema import BaseNode
 from llama_index.core.node_parser import SentenceSplitter
 from language.document_language_detector import DocumentLanguageDetector
-from parsed_document import ParsedDocument
-from storage_config import StorageConfig
+from retrieval.parsed_document import ParsedDocument
+from config.storage_config import StorageConfig
 
 class NodeProvider(object):
     """Parse raw document text into retrievable nodes with positional metadata."""

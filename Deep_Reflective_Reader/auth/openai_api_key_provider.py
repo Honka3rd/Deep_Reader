@@ -1,7 +1,10 @@
 import os
 
-class APIKeyProvider:
-    """Load API key from environment and expose it to providers."""
+from auth.api_key_provider import APIKeyProvider
+
+
+class OpenAIAPIKeyProvider(APIKeyProvider):
+    """Load OpenAI API key from environment and expose it to providers."""
     api_key: str = ""
     def __init__(self, env_var: str = "OPENAI_API_KEY"):
         # Resolve API key from environment once and expose it via `get()`.

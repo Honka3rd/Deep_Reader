@@ -2,7 +2,7 @@ import json
 import os
 
 from profile.document_profile import DocumentProfile
-from storage_config import StorageConfig
+from config.storage_config import StorageConfig
 
 
 class DocumentProfileStore:

@@ -1,48 +1,59 @@
+from enum import StrEnum
 from llama_index.llms.openai import OpenAI
 from llama_index.llms.openai.responses import OpenAIResponses
 
-from api_key_provider import APIKeyProvider
-from llm_model_capabilities import (
+from auth.api_key_provider import APIKeyProvider
+from llm.llm_model_capabilities import (
     ENDPOINT_KIND_CHAT_COMPLETIONS,
     ENDPOINT_KIND_RESPONSES,
     LLMModelCapabilities,
 )
-from llm_provider import LLMProvider
+from llm.llm_provider import LLMProvider
+
+
+class OpenAIModelName(StrEnum):
+    """Canonical OpenAI model names used by this provider."""
+    GPT_4_1 = "gpt-4.1"
+    GPT_4_1_MINI = "gpt-4.1-mini"
+    GPT_4_1_NANO = "gpt-4.1-nano"
+    GPT_4O = "gpt-4o"
+    GPT_4O_MINI = "gpt-4o-mini"
 
 
 class OpenAILLMProvider(LLMProvider):
     """LLMProvider implementation backed by OpenAI via llama-index."""
     llm: OpenAI | OpenAIResponses
+    model_name: OpenAIModelName
     model_capabilities: LLMModelCapabilities
     effective_output_budget: int
 
-    MODEL_CAPABILITIES_BY_NAME: dict[str, LLMModelCapabilities] = {
-        "gpt-4.1": LLMModelCapabilities(
-            model_name="gpt-4.1",
+    MODEL_CAPABILITIES_BY_NAME: dict[OpenAIModelName, LLMModelCapabilities] = {
+        OpenAIModelName.GPT_4_1: LLMModelCapabilities(
+            model_name=OpenAIModelName.GPT_4_1.value,
             endpoint_kind=ENDPOINT_KIND_RESPONSES,
             max_input_tokens=1_047_576,
             max_output_tokens=32_768,
         ),
-        "gpt-4.1-mini": LLMModelCapabilities(
-            model_name="gpt-4.1-mini",
+        OpenAIModelName.GPT_4_1_MINI: LLMModelCapabilities(
+            model_name=OpenAIModelName.GPT_4_1_MINI.value,
             endpoint_kind=ENDPOINT_KIND_RESPONSES,
             max_input_tokens=1_047_576,
             max_output_tokens=32_768,
         ),
-        "gpt-4.1-nano": LLMModelCapabilities(
-            model_name="gpt-4.1-nano",
+        OpenAIModelName.GPT_4_1_NANO: LLMModelCapabilities(
+            model_name=OpenAIModelName.GPT_4_1_NANO.value,
             endpoint_kind=ENDPOINT_KIND_RESPONSES,
             max_input_tokens=1_047_576,
             max_output_tokens=32_768,
         ),
-        "gpt-4o": LLMModelCapabilities(
-            model_name="gpt-4o",
+        OpenAIModelName.GPT_4O: LLMModelCapabilities(
+            model_name=OpenAIModelName.GPT_4O.value,
             endpoint_kind=ENDPOINT_KIND_CHAT_COMPLETIONS,
             max_input_tokens=128_000,
             max_output_tokens=16_384,
         ),
-        "gpt-4o-mini": LLMModelCapabilities(
-            model_name="gpt-4o-mini",
+        OpenAIModelName.GPT_4O_MINI: LLMModelCapabilities(
+            model_name=OpenAIModelName.GPT_4O_MINI.value,
             endpoint_kind=ENDPOINT_KIND_CHAT_COMPLETIONS,
             max_input_tokens=128_000,
             max_output_tokens=16_384,
@@ -50,12 +61,37 @@ class OpenAILLMProvider(LLMProvider):
     }
 
     @classmethod
-    def _resolve_model_capabilities(cls, model: str) -> LLMModelCapabilities:
-        capabilities = cls.MODEL_CAPABILITIES_BY_NAME.get(model)
+    def _resolve_model_name(cls, model: OpenAIModelName | str) -> OpenAIModelName:
+        if isinstance(model, OpenAIModelName):
+            return model
+
+        normalized = model.strip().lower()
+        if not normalized:
+            raise ValueError("Model name cannot be empty.")
+
+        if normalized in OpenAIModelName._value2member_map_:
+            return OpenAIModelName(normalized)
+
+        # Compatibility path: accept underscore-typed names (e.g. gpt_4.1_mini).
+        alias = normalized.replace("_", "-")
+        if alias in OpenAIModelName._value2member_map_:
+            return OpenAIModelName(alias)
+
+        supported = ", ".join(model_name.value for model_name in OpenAIModelName)
+        raise ValueError(
+            f"Unsupported llm model '{model}'. Supported models: {supported}"
+        )
+
+    @classmethod
+    def _resolve_model_capabilities(
+        cls,
+        model_name: OpenAIModelName,
+    ) -> LLMModelCapabilities:
+        capabilities = cls.MODEL_CAPABILITIES_BY_NAME.get(model_name)
         if capabilities is None:
-            supported = ", ".join(sorted(cls.MODEL_CAPABILITIES_BY_NAME.keys()))
+            supported = ", ".join(model.value for model in OpenAIModelName)
             raise ValueError(
-                f"Unsupported llm model '{model}'. "
+                f"Unsupported llm model '{model_name.value}'. "
                 f"Supported models: {supported}"
             )
         return capabilities
@@ -63,7 +99,7 @@ class OpenAILLMProvider(LLMProvider):
     def __init__(
         self,
         api_key_provider: APIKeyProvider,
-        model: str = "gpt-4.1-mini",
+        model: OpenAIModelName | str = OpenAIModelName.GPT_4_1_MINI,
         target_max_output_tokens: int = 500,
     ):
         """Initialize object state and injected dependencies.
@@ -74,7 +110,8 @@ Args:
     target_max_output_tokens: App-level output-token target before model clamp.
 """
         api_key = api_key_provider.get()
-        self.model_capabilities = self._resolve_model_capabilities(model)
+        self.model_name = self._resolve_model_name(model)
+        self.model_capabilities = self._resolve_model_capabilities(self.model_name)
         if target_max_output_tokens <= 0:
             raise ValueError("target_max_output_tokens must be > 0")
         self.effective_output_budget = min(
@@ -84,12 +121,12 @@ Args:
 
         if self.model_capabilities.endpoint_kind == ENDPOINT_KIND_RESPONSES:
             self.llm = OpenAIResponses(
-                model=model,
+                model=self.model_name.value,
                 api_key=api_key,
             )
         else:
             self.llm = OpenAI(
-                model=model,
+                model=self.model_name.value,
                 api_key=api_key,
             )
 

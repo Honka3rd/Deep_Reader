@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass
 
-from llm_model_capabilities import LLMModelCapabilities
+from llm.llm_model_capabilities import LLMModelCapabilities
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from faiss_index_bundle import FaissIndexBundle
-from search_metadata import SearchMetadata
+from retrieval.faiss_index_bundle import FaissIndexBundle
+from retrieval.search_metadata import SearchMetadata
 
 
 @dataclass(frozen=True)

@@ -2,9 +2,9 @@ from collections.abc import Callable
 
 from bundle_factory import BundleFactory
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
-from faiss_index_bundle import FaissIndexBundle
+from retrieval.faiss_index_bundle import FaissIndexBundle
 from fingerprint_handler import FingerprintHandler
-from storage_config import StorageConfig
+from config.storage_config import StorageConfig
 
 
 class BundleProvider:
