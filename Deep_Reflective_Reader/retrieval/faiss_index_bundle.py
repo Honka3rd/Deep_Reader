@@ -42,9 +42,9 @@ Returns:
         id_to_record: Dict[int, NodeRecord],
         dimension: int,
         document_language: str,
-        max_context_tokens: int = 1500,
-        max_prompt_tokens: int = 3200,
-        reserved_output_tokens: int = 500,
+        max_context_tokens: int,
+        max_prompt_tokens: int,
+        reserved_output_tokens: int,
     ):
         """Initialize object state and injected dependencies.
 
@@ -55,10 +55,17 @@ Args:
     id_to_record: Id to record.
     dimension: Dimension.
     document_language: Primary document language code (e.g. en/zh).
-    max_context_tokens: Soft token budget for context text passed into prompt.
-    max_prompt_tokens: Soft total prompt budget (context + instructions + profile).
-    reserved_output_tokens: Reserved completion budget not available to prompt context.
+    max_context_tokens: Effective context token budget resolved upstream.
+    max_prompt_tokens: Effective input/prompt token budget resolved upstream.
+    reserved_output_tokens: Effective output reserve resolved upstream.
 """
+        if max_context_tokens <= 0:
+            raise ValueError("max_context_tokens must be > 0")
+        if max_prompt_tokens <= 0:
+            raise ValueError("max_prompt_tokens must be > 0")
+        if reserved_output_tokens <= 0:
+            raise ValueError("reserved_output_tokens must be > 0")
+
         self.faiss_index = faiss_index
         self.embedder = embedder
         self.model_capabilities = model_capabilities
