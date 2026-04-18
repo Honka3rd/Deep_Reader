@@ -228,6 +228,9 @@ Returns:
         question: "StandardizedQuestion",
         answer_mode: AnswerMode,
         prompt_mode: PromptMode | str,
+        max_context_tokens: int | None = None,
+        max_prompt_tokens: int | None = None,
+        reserved_output_tokens: int | None = None,
     ) -> int:
         """Compute effective context budget under total prompt token constraint.
 
@@ -236,16 +239,32 @@ Args:
     answer_mode: Strictness mode controlling answer rules.
     prompt_mode: Context source mode for prompt wording.
 
-Returns:
+    Returns:
     Context-token budget after subtracting non-context prompt and output reserve.
+    Optional overrides allow mode-specific budget policy (e.g. global full-text).
         """
         non_context_tokens = self._estimate_non_context_prompt_tokens(
             question=question,
             answer_mode=answer_mode,
             prompt_mode=prompt_mode,
         )
-        available_by_total = self.max_prompt_tokens - non_context_tokens - self.reserved_output_tokens
-        return max(0, min(self.max_context_tokens, available_by_total))
+        effective_context_limit = (
+            self.max_context_tokens if max_context_tokens is None else max_context_tokens
+        )
+        effective_prompt_limit = (
+            self.max_prompt_tokens if max_prompt_tokens is None else max_prompt_tokens
+        )
+        effective_output_reserve = (
+            self.reserved_output_tokens
+            if reserved_output_tokens is None
+            else reserved_output_tokens
+        )
+        available_by_total = (
+            effective_prompt_limit
+            - non_context_tokens
+            - effective_output_reserve
+        )
+        return max(0, min(effective_context_limit, available_by_total))
 
     def compute_available_context_budget(
         self,
@@ -258,6 +277,25 @@ Returns:
             question=question,
             answer_mode=answer_mode,
             prompt_mode=prompt_mode,
+        )
+
+    def compute_available_context_budget_with_override(
+        self,
+        question: "StandardizedQuestion",
+        answer_mode: AnswerMode,
+        prompt_mode: PromptMode | str,
+        max_context_tokens: int,
+        max_prompt_tokens: int,
+        reserved_output_tokens: int,
+    ) -> int:
+        """Compute context budget with explicit limits overriding bundle defaults."""
+        return self._compute_available_context_budget(
+            question=question,
+            answer_mode=answer_mode,
+            prompt_mode=prompt_mode,
+            max_context_tokens=max_context_tokens,
+            max_prompt_tokens=max_prompt_tokens,
+            reserved_output_tokens=reserved_output_tokens,
         )
 
     def join_texts_with_budget(

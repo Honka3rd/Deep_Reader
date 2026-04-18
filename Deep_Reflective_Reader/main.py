@@ -17,11 +17,7 @@ app = FastAPI(
 )
 
 # ⭐ 這裡很關鍵：Coordinator 是全域 singleton
-coordinator = Coordinator(
-    chunk_size=300,
-    chunk_overlap=50,
-    embedding_model="text-embedding-3-small",
-)
+coordinator = Coordinator()
 
 # ---------------------------
 # Health Check

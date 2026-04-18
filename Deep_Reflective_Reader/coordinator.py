@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from app_DI_config import AppDIConfig
 from container import ApplicationLookupContainer
 from faiss_index_bundle import FaissIndexBundle
@@ -13,58 +15,94 @@ class Coordinator:
 
     def __init__(
             self,
-            chunk_size: int = 300,
-            chunk_overlap: int = 50,
-            embedding_model: str = "text-embedding-3-small",
-            llm_model: str = "gpt-4.1-mini",
-            target_max_input_tokens: int = 3200,
-            target_max_output_tokens: int = 500,
-            target_max_context_tokens: int = 1500,
-            embedding_batch_size: int = 64,
-            bundle_cache_capacity: int = 3,
-            session_recent_limit: int = 10,
-            base_near_chunk_threshold: int = 2,
-            min_near_chunk_threshold: int = 1,
-            max_near_chunk_threshold: int = 4,
-            global_scope_min_top_k: int = 8,
-            global_coverage_chunk_gap: int = 2,
+            chunk_size: int | None = None,
+            chunk_overlap: int | None = None,
+            embedding_model: str | None = None,
+            llm_model: str | None = None,
+            target_max_input_tokens: int | None = None,
+            target_max_output_tokens: int | None = None,
+            target_max_context_tokens: int | None = None,
+            input_budget_utilization_ratio: float | None = None,
+            context_budget_utilization_ratio: float | None = None,
+            full_text_input_budget_utilization_ratio: float | None = None,
+            full_text_context_budget_utilization_ratio: float | None = None,
+            embedding_batch_size: int | None = None,
+            bundle_cache_capacity: int | None = None,
+            session_recent_limit: int | None = None,
+            base_near_chunk_threshold: int | None = None,
+            min_near_chunk_threshold: int | None = None,
+            max_near_chunk_threshold: int | None = None,
+            global_scope_min_top_k: int | None = None,
+            global_coverage_chunk_gap: int | None = None,
     ):
         """Initialize runtime dependencies and in-memory session storage.
 
         Args:
-            chunk_size: Splitter chunk size.
-            chunk_overlap: Splitter chunk overlap size.
-            embedding_model: Embedding model name.
-            llm_model: LLM model name.
-            target_max_input_tokens: Target prompt/input budget before model clamp.
-            target_max_output_tokens: Target completion budget before model clamp.
-            target_max_context_tokens: Target retrieval-context token budget.
-            embedding_batch_size: Batch size for index-time embedding calls.
-            bundle_cache_capacity: Maximum bundle objects kept in memory cache.
-            session_recent_limit: Max items kept in per-session recent history.
-            base_near_chunk_threshold: Base threshold for local-reading gate.
-            min_near_chunk_threshold: Lower bound for dynamic local-reading threshold.
-            max_near_chunk_threshold: Upper bound for dynamic local-reading threshold.
-            global_scope_min_top_k: Minimum retrieval top_k when scope is global.
-            global_coverage_chunk_gap: Chunk-index neighborhood distance for global coverage dedup.
+            chunk_size: Optional override for splitter chunk size.
+            chunk_overlap: Optional override for splitter chunk overlap size.
+            embedding_model: Optional override for embedding model name.
+            llm_model: Optional override for LLM model name.
+            target_max_input_tokens: Optional override for input budget before model clamp.
+            target_max_output_tokens: Optional override for output budget before model clamp.
+            target_max_context_tokens: Optional override for retrieval-context token budget.
+            input_budget_utilization_ratio: Optional override for input-capacity utilization ratio.
+            context_budget_utilization_ratio: Optional override for context budget utilization ratio.
+            full_text_input_budget_utilization_ratio: Optional override for global full-text input ratio.
+            full_text_context_budget_utilization_ratio: Optional override for global full-text context ratio.
+            embedding_batch_size: Optional override for index-time embedding batch size.
+            bundle_cache_capacity: Optional override for in-memory bundle cache capacity.
+            session_recent_limit: Optional override for per-session recent history length.
+            base_near_chunk_threshold: Optional override for local-reading base threshold.
+            min_near_chunk_threshold: Optional override for local-reading threshold lower bound.
+            max_near_chunk_threshold: Optional override for local-reading threshold upper bound.
+            global_scope_min_top_k: Optional override for global-scope minimum retrieval top_k.
+            global_coverage_chunk_gap: Optional override for global coverage dedup chunk gap.
         """
-        self.app_config = AppDIConfig(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            embedding_model=embedding_model,
-            llm_model=llm_model,
-            target_max_input_tokens=target_max_input_tokens,
-            target_max_output_tokens=target_max_output_tokens,
-            target_max_context_tokens=target_max_context_tokens,
-            embedding_batch_size=embedding_batch_size,
-            bundle_cache_capacity=bundle_cache_capacity,
-            session_recent_limit=session_recent_limit,
-            base_near_chunk_threshold=base_near_chunk_threshold,
-            min_near_chunk_threshold=min_near_chunk_threshold,
-            max_near_chunk_threshold=max_near_chunk_threshold,
-            global_scope_min_top_k=global_scope_min_top_k,
-            global_coverage_chunk_gap=global_coverage_chunk_gap,
-        )
+        override_values: dict[str, int | float | str] = {}
+        if chunk_size is not None:
+            override_values["chunk_size"] = chunk_size
+        if chunk_overlap is not None:
+            override_values["chunk_overlap"] = chunk_overlap
+        if embedding_model is not None:
+            override_values["embedding_model"] = embedding_model
+        if llm_model is not None:
+            override_values["llm_model"] = llm_model
+        if target_max_input_tokens is not None:
+            override_values["target_max_input_tokens"] = target_max_input_tokens
+        if target_max_output_tokens is not None:
+            override_values["target_max_output_tokens"] = target_max_output_tokens
+        if target_max_context_tokens is not None:
+            override_values["target_max_context_tokens"] = target_max_context_tokens
+        if input_budget_utilization_ratio is not None:
+            override_values["input_budget_utilization_ratio"] = input_budget_utilization_ratio
+        if context_budget_utilization_ratio is not None:
+            override_values["context_budget_utilization_ratio"] = context_budget_utilization_ratio
+        if full_text_input_budget_utilization_ratio is not None:
+            override_values["full_text_input_budget_utilization_ratio"] = (
+                full_text_input_budget_utilization_ratio
+            )
+        if full_text_context_budget_utilization_ratio is not None:
+            override_values["full_text_context_budget_utilization_ratio"] = (
+                full_text_context_budget_utilization_ratio
+            )
+        if embedding_batch_size is not None:
+            override_values["embedding_batch_size"] = embedding_batch_size
+        if bundle_cache_capacity is not None:
+            override_values["bundle_cache_capacity"] = bundle_cache_capacity
+        if session_recent_limit is not None:
+            override_values["session_recent_limit"] = session_recent_limit
+        if base_near_chunk_threshold is not None:
+            override_values["base_near_chunk_threshold"] = base_near_chunk_threshold
+        if min_near_chunk_threshold is not None:
+            override_values["min_near_chunk_threshold"] = min_near_chunk_threshold
+        if max_near_chunk_threshold is not None:
+            override_values["max_near_chunk_threshold"] = max_near_chunk_threshold
+        if global_scope_min_top_k is not None:
+            override_values["global_scope_min_top_k"] = global_scope_min_top_k
+        if global_coverage_chunk_gap is not None:
+            override_values["global_coverage_chunk_gap"] = global_coverage_chunk_gap
+
+        self.app_config = replace(AppDIConfig(), **override_values)
 
         self.container = ApplicationLookupContainer.build(self.app_config)
         self.bundle_provider = self.container.bundle_provider()

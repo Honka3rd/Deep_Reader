@@ -12,6 +12,7 @@ from llm_provider import LLMProvider
 from standardized.question_standardizer import QuestionStandardizer
 from prompt_assembler import PromptAssembler
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
+from llm_model_capabilities import LLMModelCapabilities
 from token_budget_resolver import EffectiveTokenBudgets, resolve_effective_token_budgets
 
 class FaissIndexStore:
@@ -29,6 +30,8 @@ class FaissIndexStore:
             target_max_input_tokens: int = 3200,
             target_max_output_tokens: int = 500,
             target_max_context_tokens: int = 1500,
+            input_budget_utilization_ratio: float = 0.2,
+            context_budget_utilization_ratio: float = 0.9,
     ) -> None:
         """Initialize object state and injected dependencies.
 
@@ -40,25 +43,44 @@ Args:
     relevance_evaluator: Relevance evaluator.
     target_max_input_tokens: App input-token target before model-capability clamp.
     target_max_output_tokens: App output-token target before model-capability clamp.
-    target_max_context_tokens: App context-token target for retrieval context size."""
+    target_max_context_tokens: App context-token target for retrieval context size.
+    input_budget_utilization_ratio: Safe utilization ratio for model input capacity.
+    context_budget_utilization_ratio: Safe utilization ratio for effective input -> context."""
         self.embedder = embedder
         self.llm_provider = llm_provider
         self.question_standardizer = question_standardizer
         self.prompt_assembler = prompt_assembler
         self.relevance_evaluator = relevance_evaluator
+        capabilities: LLMModelCapabilities | None
+        try:
+            capabilities = self.llm_provider.get_model_capabilities()
+        except Exception as e:
+            print(
+                "Warn:TokenBudget#store: failed to read model capabilities, "
+                f"using fallback policy. error={e}"
+            )
+            capabilities = None
+
         self.token_budgets = resolve_effective_token_budgets(
-            capabilities=self.llm_provider.get_model_capabilities(),
+            capabilities=capabilities,
             target_max_input_tokens=target_max_input_tokens,
             target_max_output_tokens=target_max_output_tokens,
             target_max_context_tokens=target_max_context_tokens,
+            input_budget_utilization_ratio=input_budget_utilization_ratio,
+            context_budget_utilization_ratio=context_budget_utilization_ratio,
         )
         print(
             "TokenBudget#store:",
-            f"target_input={self.token_budgets.target_max_input_tokens}",
-            f"target_output={self.token_budgets.target_max_output_tokens}",
-            f"target_context={self.token_budgets.target_max_context_tokens}",
-            f"effective_input={self.token_budgets.effective_input_budget}",
-            f"effective_output={self.token_budgets.effective_output_budget}",
+            f"model_capability=model={self.token_budgets.capability_model_name},"
+            f"endpoint={self.token_budgets.capability_endpoint_kind},"
+            f"max_input={self.token_budgets.capability_max_input_tokens},"
+            f"max_output={self.token_budgets.capability_max_output_tokens}",
+            f"utilization_ratios=input={self.token_budgets.input_budget_utilization_ratio},"
+            f"context={self.token_budgets.context_budget_utilization_ratio}",
+            f"effective_input_budget={self.token_budgets.effective_input_budget}",
+            f"effective_output_budget={self.token_budgets.effective_output_budget}",
+            f"effective_context_budget={self.token_budgets.effective_context_budget}",
+            f"fallback_used={self.token_budgets.fallback_used}",
         )
 
     @staticmethod
@@ -127,7 +149,7 @@ Returns:
             prompt_assembler=self.prompt_assembler,
             document_language=payload["document_language"],
             relevance_evaluator=self.relevance_evaluator,
-            max_context_tokens=self.token_budgets.target_max_context_tokens,
+            max_context_tokens=self.token_budgets.effective_context_budget,
             max_prompt_tokens=self.token_budgets.effective_input_budget,
             reserved_output_tokens=self.token_budgets.effective_output_budget,
         )

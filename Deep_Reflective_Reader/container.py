@@ -92,6 +92,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         target_max_input_tokens=config.target_max_input_tokens,
         target_max_output_tokens=config.target_max_output_tokens,
         target_max_context_tokens=config.target_max_context_tokens,
+        input_budget_utilization_ratio=config.input_budget_utilization_ratio,
+        context_budget_utilization_ratio=config.context_budget_utilization_ratio,
         batch_size=config.embedding_batch_size,
     )
 
@@ -116,6 +118,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         target_max_input_tokens=config.target_max_input_tokens,
         target_max_output_tokens=config.target_max_output_tokens,
         target_max_context_tokens=config.target_max_context_tokens,
+        input_budget_utilization_ratio=config.input_budget_utilization_ratio,
+        context_budget_utilization_ratio=config.context_budget_utilization_ratio,
     )
 
     bundle_factory_provider = providers.Factory(
@@ -170,6 +174,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         min_near_chunk_threshold=config.min_near_chunk_threshold,
         max_near_chunk_threshold=config.max_near_chunk_threshold,
         global_scope_min_top_k=config.global_scope_min_top_k,
+        full_text_input_budget_utilization_ratio=config.full_text_input_budget_utilization_ratio,
+        full_text_context_budget_utilization_ratio=config.full_text_context_budget_utilization_ratio,
     )
 
     @classmethod
@@ -191,6 +197,14 @@ Returns:
                 "target_max_input_tokens": app_config.target_max_input_tokens,
                 "target_max_output_tokens": app_config.target_max_output_tokens,
                 "target_max_context_tokens": app_config.target_max_context_tokens,
+                "input_budget_utilization_ratio": app_config.input_budget_utilization_ratio,
+                "context_budget_utilization_ratio": app_config.context_budget_utilization_ratio,
+                "full_text_input_budget_utilization_ratio": (
+                    app_config.full_text_input_budget_utilization_ratio
+                ),
+                "full_text_context_budget_utilization_ratio": (
+                    app_config.full_text_context_budget_utilization_ratio
+                ),
                 "embedding_batch_size": app_config.embedding_batch_size,
                 "bundle_cache_capacity": app_config.bundle_cache_capacity,
                 "session_recent_limit": app_config.session_recent_limit,

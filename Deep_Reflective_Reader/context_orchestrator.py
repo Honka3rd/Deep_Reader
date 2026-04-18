@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,6 +35,8 @@ class ContextOrchestrator:
     min_near_chunk_threshold: int
     max_near_chunk_threshold: int
     global_scope_min_top_k: int
+    full_text_input_budget_utilization_ratio: float
+    full_text_context_budget_utilization_ratio: float
 
     def __init__(
         self,
@@ -45,6 +48,8 @@ class ContextOrchestrator:
         min_near_chunk_threshold: int = 1,
         max_near_chunk_threshold: int = 4,
         global_scope_min_top_k: int = 8,
+        full_text_input_budget_utilization_ratio: float = 0.5,
+        full_text_context_budget_utilization_ratio: float = 0.7,
     ):
         """Initialize orchestrator from injected strategy dependencies."""
         self.question_standardizer = question_standardizer
@@ -55,6 +60,12 @@ class ContextOrchestrator:
         self.min_near_chunk_threshold = min_near_chunk_threshold
         self.max_near_chunk_threshold = max_near_chunk_threshold
         self.global_scope_min_top_k = global_scope_min_top_k
+        if not (0 < full_text_input_budget_utilization_ratio <= 1):
+            raise ValueError("full_text_input_budget_utilization_ratio must be in (0, 1]")
+        if not (0 < full_text_context_budget_utilization_ratio <= 1):
+            raise ValueError("full_text_context_budget_utilization_ratio must be in (0, 1]")
+        self.full_text_input_budget_utilization_ratio = full_text_input_budget_utilization_ratio
+        self.full_text_context_budget_utilization_ratio = full_text_context_budget_utilization_ratio
 
     def _resolve_near_chunk_threshold(
         self,
@@ -98,22 +109,75 @@ class ContextOrchestrator:
         """Extract ordered chunk texts from retrieval hits."""
         return [result.text for result in results]
 
-    @staticmethod
     def _maybe_build_full_text_context(
+        self,
         bundle: FaissIndexBundle,
         question: StandardizedQuestion,
         answer_mode: AnswerMode,
+        scope: QuestionScope,
     ) -> ContextBuildResult | None:
         """Try full-text mode when estimated full text fits available budget."""
         total_records = len(bundle.id_to_record)
 
         prompt_mode = PromptMode.FULL_TEXT
-        context_budget = bundle.compute_available_context_budget(
-            question=question,
-            answer_mode=answer_mode,
-            prompt_mode=prompt_mode,
-        )
         estimated_full_text_tokens = bundle.estimate_full_text_tokens()
+        effective_input_budget = bundle.max_prompt_tokens
+        effective_output_budget = bundle.reserved_output_tokens
+        effective_context_budget = bundle.max_context_tokens
+        budget_policy = "bundle_default"
+        capability_used = False
+
+        if scope == QuestionScope.GLOBAL:
+            try:
+                capabilities = bundle.llm_provider.get_model_capabilities()
+            except Exception as e:
+                print(
+                    "Warn:ContextOrchestrator#full_text_gate: "
+                    f"failed to read model capabilities, fallback_to_bundle_default. error={e}"
+                )
+                capabilities = None
+
+            if capabilities is not None:
+                effective_input_budget = max(
+                    1,
+                    math.floor(
+                        capabilities.max_input_tokens
+                        * self.full_text_input_budget_utilization_ratio
+                    ),
+                )
+                # Full-text path prioritizes model capability (with utilization headroom)
+                # instead of retrieval-oriented app target caps.
+                effective_output_budget = capabilities.max_output_tokens
+                effective_context_budget = max(
+                    1,
+                    math.floor(
+                        effective_input_budget
+                        * self.full_text_context_budget_utilization_ratio
+                    ),
+                )
+                context_budget = bundle.compute_available_context_budget_with_override(
+                    question=question,
+                    answer_mode=answer_mode,
+                    prompt_mode=prompt_mode,
+                    max_context_tokens=effective_context_budget,
+                    max_prompt_tokens=effective_input_budget,
+                    reserved_output_tokens=effective_output_budget,
+                )
+                budget_policy = "model_capability_ratio"
+                capability_used = True
+            else:
+                context_budget = bundle.compute_available_context_budget(
+                    question=question,
+                    answer_mode=answer_mode,
+                    prompt_mode=prompt_mode,
+                )
+        else:
+            context_budget = bundle.compute_available_context_budget(
+                question=question,
+                answer_mode=answer_mode,
+                prompt_mode=prompt_mode,
+            )
+
         should_trigger_full_text = (
             total_records > 0
             and context_budget > 0
@@ -121,9 +185,15 @@ class ContextOrchestrator:
         )
         print(
             "ContextOrchestrator#full_text_gate:",
+            f"scope={scope.value}",
             f"total_records={total_records}",
             f"estimated_full_text_tokens={estimated_full_text_tokens}",
             f"available_context_budget={context_budget}",
+            f"effective_input_budget={effective_input_budget}",
+            f"effective_output_budget={effective_output_budget}",
+            f"effective_context_budget={effective_context_budget}",
+            f"budget_policy={budget_policy}",
+            f"capability_used={capability_used}",
             f"triggered={should_trigger_full_text}",
         )
         if not should_trigger_full_text:
@@ -135,9 +205,15 @@ class ContextOrchestrator:
         if not context_text or truncated:
             print(
                 "ContextOrchestrator#full_text_gate:",
+                f"scope={scope.value}",
                 f"total_records={total_records}",
                 f"estimated_full_text_tokens={estimated_full_text_tokens}",
                 f"available_context_budget={context_budget}",
+                f"effective_input_budget={effective_input_budget}",
+                f"effective_output_budget={effective_output_budget}",
+                f"effective_context_budget={effective_context_budget}",
+                f"budget_policy={budget_policy}",
+                f"capability_used={capability_used}",
                 "triggered=False",
             )
             return None
@@ -155,6 +231,12 @@ class ContextOrchestrator:
                 "budget": context_budget,
                 "records": total_records,
                 "truncated": truncated,
+                "estimated_full_text_tokens": estimated_full_text_tokens,
+                "effective_input_budget": effective_input_budget,
+                "effective_output_budget": effective_output_budget,
+                "effective_context_budget": effective_context_budget,
+                "full_text_budget_policy": budget_policy,
+                "full_text_capability_used": capability_used,
             },
             standardized_question=question,
             answer_mode=answer_mode,
@@ -228,6 +310,7 @@ class ContextOrchestrator:
             bundle=bundle,
             question=standardized_question,
             answer_mode=answer_mode,
+            scope=scope,
         )
         if full_text_result is not None:
             return ContextBuildResult(
