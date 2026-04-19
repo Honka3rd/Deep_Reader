@@ -61,3 +61,21 @@ class AppDIConfig:
     # Neighbor chunk distance for global coverage dedup (coverage-oriented builder).
     # Introduced to reduce same-region evidence clustering and improve document-wide coverage.
     global_coverage_chunk_gap: int = 2
+    # Similarity threshold for semantic keyword -> global scope (without LLM fallback).
+    # Introduced to keep deterministic global classification when semantic confidence is strong.
+    question_scope_global_similarity_threshold: float = 0.78
+    # Lower bound of semantic gray zone that can trigger LLM fallback scope classification.
+    # Introduced so moderately ambiguous questions can still be classified as global.
+    question_scope_llm_gray_zone_min_similarity: float = 0.30
+    # Upper bound of semantic gray zone for LLM fallback (exclusive upper bound).
+    # Introduced to avoid LLM calls when semantic confidence is already clearly global.
+    question_scope_llm_gray_zone_max_similarity: float = 0.78
+    # Toggle to enable/disable LLM fallback scope classification in semantic gray zone.
+    # Introduced to allow cost/latency control without code changes.
+    question_scope_llm_fallback_enabled: bool = True
+    # Max characters from document summary passed to LLM fallback scope classifier.
+    # Introduced to bound token cost while preserving enough global context signal.
+    question_scope_llm_summary_char_limit: int = 800
+    # Similarity threshold for session-local anchor semantic matching in scope resolver.
+    # Introduced to improve local-reference detection beyond lexical string matching.
+    question_scope_local_anchor_similarity_threshold: float = 0.75

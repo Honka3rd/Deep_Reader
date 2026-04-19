@@ -289,8 +289,13 @@ class ContextOrchestrator:
             query=query,
             document_language=bundle.document_language,
         )
+        document_summary: str | None = None
+        if bundle.profile is not None:
+            document_summary = bundle.profile.summary
         scope_resolution: QuestionScopeResolution = self.question_scope_resolver.resolve(
-            standardized_question
+            question=standardized_question,
+            document_summary=document_summary,
+            session_active_chunk_index=session_active_chunk_index,
         )
         scope = scope_resolution.scope
         effective_top_k = (

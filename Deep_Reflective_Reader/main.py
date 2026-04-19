@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 
 from app.coordinator import Coordinator
 from api_schemas import (
@@ -37,7 +37,7 @@ Returns:
 # Ask Question
 # ---------------------------
 @app.post("/documents/ask", response_model=AskDocumentResponse)
-def ask_document(request: AskDocumentRequest):
+def ask_document(request: AskDocumentRequest, response: Response):
     """Execute `/documents/ask` request and return answer payload.
 
 Args:
@@ -50,17 +50,18 @@ Returns:
         if not session_id:
             session_id = str(uuid4())
 
-        answer = coordinator.ask(
+        ask_result = coordinator.ask(
             doc_name=request.doc_name,
             question=request.query,
             top_k=request.top_k,
             session_id=session_id,
         )
+        response.status_code = 201 if ask_result.is_low_value else 200
 
         return AskDocumentResponse(
             doc_name=request.doc_name,
             query=request.query,
-            answer=answer,
+            answer=ask_result.answer_text,
             session_id=session_id,
         )
 

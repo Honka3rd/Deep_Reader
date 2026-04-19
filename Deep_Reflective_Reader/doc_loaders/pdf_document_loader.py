@@ -21,11 +21,16 @@ Args:
         """Load persisted artifact and return parsed object/data.
 
 Args:
-    doc_name: Logical document name and artifact namespace (without extension).
+    doc_name: Logical document name; supports both ``name`` and ``name.pdf``.
 
 Returns:
-    Concatenated text extracted from all pages of ``<doc_name>.pdf``."""
-        file_path = self.base_dir / f"{doc_name}.pdf"
+    Concatenated text extracted from all PDF pages."""
+        normalized_name = (
+            doc_name
+            if doc_name.lower().endswith(".pdf")
+            else f"{doc_name}.pdf"
+        )
+        file_path = self.base_dir / normalized_name
 
         if not file_path.exists():
             raise FileNotFoundError(f"{file_path} not found")

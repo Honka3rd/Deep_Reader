@@ -1,6 +1,8 @@
 import json
 import os
 
+from language.language_code import LanguageCode
+from language.language_profile_registry import LanguageProfileRegistry
 from llm.llm_provider import LLMProvider
 from config.storage_config import StorageConfig
 
@@ -60,8 +62,9 @@ Returns:
                 payload = json.load(f)
 
             language = payload.get("document_language")
-            if isinstance(language, str) and language.strip():
-                return language.strip().lower()
+            normalized = DocumentLanguageDetector._normalize_language(language)
+            if normalized is not None:
+                return normalized
         except Exception as e:
             print(f"DocumentLanguageDetector#_load_from_profile failed: {e}")
 
@@ -88,12 +91,21 @@ Returns:
                 payload = json.load(f)
 
             language = payload.get("document_language")
-            if isinstance(language, str) and language.strip():
-                return language.strip().lower()
+            normalized = DocumentLanguageDetector._normalize_language(language)
+            if normalized is not None:
+                return normalized
         except Exception as e:
             print(f"DocumentLanguageDetector#_load_from_records failed: {e}")
 
         return None
+
+    @staticmethod
+    def _normalize_language(value: str | None) -> str | None:
+        """Normalize persisted/detected language value to supported code string."""
+        normalized = LanguageProfileRegistry.normalize_detector_output(value)
+        if normalized == LanguageCode.UNKNOWN:
+            return None
+        return normalized.value
 
     def _detect_with_llm(self, text: str) -> str:
         """Internal helper for detect with llm.
@@ -103,24 +115,22 @@ Args:
 
 Returns:
     Language code inferred from LLM output after normalization."""
+        supported_codes = ", ".join(
+            LanguageProfileRegistry.get_supported_language_codes()
+        )
         prompt = f"""
 Detect the primary language of the following document.
-Return only a short language code such as: en, zh, ja, fr, de.
+Return only one short language code from this list: {supported_codes}.
 
 Document:
 {text[:4000]}
 """
-        result = self.llm_provider.complete_text(prompt).strip().lower()
-
-        # 小防禦，避免回 "english" / "en." 這種
-        normalized = result.replace(".", "").split()[0]
-
-        mapping = {
-            "english": "en",
-            "chinese": "zh",
-            "japanese": "ja",
-            "french": "fr",
-            "german": "de",
-        }
-
-        return mapping.get(normalized, normalized)
+        result = self.llm_provider.complete_text(prompt).strip()
+        normalized = LanguageProfileRegistry.normalize_detector_output(result)
+        if normalized == LanguageCode.UNKNOWN:
+            print(
+                "Warn:DocumentLanguageDetector#_detect_with_llm: "
+                f"unknown detector output={result!r}, fallback_to_en"
+            )
+            return LanguageCode.EN.value
+        return normalized.value

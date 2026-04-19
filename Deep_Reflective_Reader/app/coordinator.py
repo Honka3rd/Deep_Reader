@@ -1,12 +1,23 @@
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from config.app_DI_config import AppDIConfig
 from config.container import ApplicationLookupContainer
+from language.language_code import LanguageCode
+from language.language_profile_registry import LanguageProfileRegistry
 from llm.openai_llm_provider import OpenAIModelName
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from question.qa_enums import AnswerLevel
+from question.standardized.standardized_question import StandardizedQuestion
 from session.reading_session import ReadingSession
 from session.session_manager import SessionUpdateResult
+
+
+@dataclass(frozen=True)
+class AskExecutionResult:
+    """Coordinator ask output with answer text and HTTP status hint."""
+    answer_text: str
+    is_low_value: bool
+
 
 class Coordinator:
     """Coordinate document loading, index readiness, and session-aware QA orchestration."""
@@ -137,7 +148,7 @@ class Coordinator:
         doc_name: str,
         top_k: int = 3,
         session_id: str | None = None,
-    ) -> str:
+    ) -> AskExecutionResult:
         """Execute one QA turn and optionally advance session reading state.
 
         Args:
@@ -147,7 +158,7 @@ class Coordinator:
             session_id: Optional session id for reading-context continuity.
 
         Returns:
-            Answer text generated for this turn.
+            Ask execution result with answer text and low-value marker.
         """
         session: ReadingSession | None = None
         session_active_chunk_index: int | None = None
@@ -166,8 +177,14 @@ class Coordinator:
             top_k=top_k,
             session_active_chunk_index=session_active_chunk_index,
         )
+        is_low_value = context_result.answer_mode.level == AnswerLevel.REJECT
         if context_result.answer_mode.level == AnswerLevel.REJECT:
-            answer_text = "Not found"
+            answer_language = self._resolve_answer_language(
+                context_result.standardized_question
+            )
+            answer_text = LanguageProfileRegistry.get_low_value_not_found_response(
+                answer_language
+            )
         else:
             prompt = self.prompt_assembler.build_answer_prompt(
                 context=context_result.context_text,
@@ -194,4 +211,16 @@ class Coordinator:
                 f"context_mode={context_result.prompt_mode}"
             )
 
-        return answer_text
+        return AskExecutionResult(
+            answer_text=answer_text,
+            is_low_value=is_low_value,
+        )
+
+    @staticmethod
+    def _resolve_answer_language(question: StandardizedQuestion) -> LanguageCode:
+        """Resolve language used for user-facing fallback answer text."""
+        if question.user_language != LanguageCode.UNKNOWN:
+            return question.user_language
+        if question.document_language != LanguageCode.UNKNOWN:
+            return question.document_language
+        return LanguageCode.EN

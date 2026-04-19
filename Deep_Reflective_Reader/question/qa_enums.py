@@ -14,6 +14,12 @@ class QuestionScope(StrEnum):
     GLOBAL = "global"
 
 
+class LocalSignalQuality(StrEnum):
+    """Quality tier for local-reference signals."""
+    STRONG = "strong"
+    WEAK = "weak"
+
+
 class PromptMode(StrEnum):
     """Prompt-level context mode passed to prompt assembler."""
     LOCAL_READING = "local_reading_mode"

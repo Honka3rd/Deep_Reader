@@ -15,6 +15,7 @@ from retrieval.faiss_index_store import FaissIndexStore
 from fingerprint_handler import FingerprintHandler
 from retrieval.node_provider import NodeProvider
 from embeddings.openai_embedder import OpenAIEmbedder
+from embeddings.embedding_similarity_service import EmbeddingSimilarityService
 from llm.openai_llm_provider import OpenAILLMProvider
 from prompts.prompt_assembler import PromptAssembler
 from question.question_scope_keywords_provider import QuestionScopeKeywordsProvider
@@ -46,6 +47,9 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         OpenAIEmbedder,
         api_key_provider=api_key_provider,
         model=config.embedding_model,
+    )
+    similarity_service = providers.Singleton(
+        EmbeddingSimilarityService,
     )
 
     prompt_assembler = providers.Singleton(PromptAssembler)
@@ -162,6 +166,14 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         QuestionScopeResolver,
         keywords_provider=question_scope_keywords_provider,
         embedder=embedder,
+        similarity_service=similarity_service,
+        llm_provider=llm_provider,
+        global_similarity_threshold=config.question_scope_global_similarity_threshold,
+        llm_gray_zone_min_similarity=config.question_scope_llm_gray_zone_min_similarity,
+        llm_gray_zone_max_similarity=config.question_scope_llm_gray_zone_max_similarity,
+        llm_fallback_enabled=config.question_scope_llm_fallback_enabled,
+        llm_summary_char_limit=config.question_scope_llm_summary_char_limit,
+        local_anchor_similarity_threshold=config.question_scope_local_anchor_similarity_threshold,
     )
 
     global_coverage_context_builder = providers.Singleton(
@@ -220,6 +232,24 @@ Returns:
                 "max_near_chunk_threshold": app_config.max_near_chunk_threshold,
                 "global_scope_min_top_k": app_config.global_scope_min_top_k,
                 "global_coverage_chunk_gap": app_config.global_coverage_chunk_gap,
+                "question_scope_global_similarity_threshold": (
+                    app_config.question_scope_global_similarity_threshold
+                ),
+                "question_scope_llm_gray_zone_min_similarity": (
+                    app_config.question_scope_llm_gray_zone_min_similarity
+                ),
+                "question_scope_llm_gray_zone_max_similarity": (
+                    app_config.question_scope_llm_gray_zone_max_similarity
+                ),
+                "question_scope_llm_fallback_enabled": (
+                    app_config.question_scope_llm_fallback_enabled
+                ),
+                "question_scope_llm_summary_char_limit": (
+                    app_config.question_scope_llm_summary_char_limit
+                ),
+                "question_scope_local_anchor_similarity_threshold": (
+                    app_config.question_scope_local_anchor_similarity_threshold
+                ),
             }
         )
         return container
