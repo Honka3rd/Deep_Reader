@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
 
+from config.storage_namespace_helper import StorageNamespaceHelper
 
-class StorageConfig:
+
+class FaissStorageConfig:
     """Resolve filesystem paths for per-document index artifacts."""
     base_dir: Path
     index_path: Path
@@ -10,6 +12,7 @@ class StorageConfig:
     meta_path: Path
     doc_name: str
     profile_path: Path
+    _NAMESPACE_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")
 
     def __init__(self, namespace: str = "default"):
         """Initialize object state and injected dependencies.
@@ -17,13 +20,59 @@ class StorageConfig:
 Args:
     namespace: Storage namespace, typically same as document name.
 """
-        self.base_dir = Path("data/faiss") / namespace
+        normalized_namespace = self.normalize_namespace(namespace)
+        base_root = Path("data/faiss")
+        self._migrate_legacy_namespace_dir(
+            base_root=base_root,
+            original_namespace=namespace,
+            normalized_namespace=normalized_namespace,
+        )
+
+        self.base_dir = base_root / normalized_namespace
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        self.doc_name = namespace
+        self.doc_name = normalized_namespace
         self.index_path = self.base_dir / "index.faiss"
         self.records_path = self.base_dir / "records.json"
         self.meta_path = self.base_dir / "meta.json"
         self.profile_path = self.base_dir / "profile.json"
+
+    @classmethod
+    def normalize_namespace(cls, namespace: str) -> str:
+        """Normalize storage namespace by dropping known file extensions."""
+        return StorageNamespaceHelper.normalize_namespace(
+            namespace,
+            known_extensions=cls._NAMESPACE_EXTENSIONS,
+            fallback_namespace="default",
+        )
+
+    @classmethod
+    def _migrate_legacy_namespace_dir(
+        cls,
+        *,
+        base_root: Path,
+        original_namespace: str,
+        normalized_namespace: str,
+    ) -> None:
+        """Migrate legacy folder with extension to normalized namespace folder."""
+        if original_namespace == normalized_namespace:
+            return
+
+        legacy_dir = base_root / original_namespace
+        normalized_dir = base_root / normalized_namespace
+        if not legacy_dir.exists():
+            return
+        if normalized_dir.exists():
+            print(
+                "FaissStorageConfig#namespace_migration: "
+                f"skip (legacy={legacy_dir}, normalized={normalized_dir})"
+            )
+            return
+
+        legacy_dir.rename(normalized_dir)
+        print(
+            "FaissStorageConfig#namespace_migration: "
+            f"moved {legacy_dir} -> {normalized_dir}"
+        )
 
     def get_raw_index_path(self) -> str:
         """Return raw index path.

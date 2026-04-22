@@ -4,7 +4,7 @@ import os
 from language.language_code import LanguageCode
 from language.language_profile_registry import LanguageProfileRegistry
 from llm.llm_provider import LLMProvider
-from config.storage_config import StorageConfig
+from config.faiss_storage_config import FaissStorageConfig
 
 class DocumentLanguageDetector:
     """Detect and cache primary language for a document."""
@@ -18,12 +18,12 @@ Args:
 """
         self.llm_provider = llm_provider
 
-    def detect(self, text: str, config: StorageConfig | None = None) -> str:
+    def detect(self, text: str, config: FaissStorageConfig | None = None) -> str:
         """Detect primary language for the given document text.
 
 Args:
     text: Input text content.
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
 
 Returns:
     Normalized language code (for example: ``en``, ``zh``, ``ja``)."""
@@ -42,11 +42,11 @@ Returns:
         return language
 
     @staticmethod
-    def _load_from_profile(config: StorageConfig | None) -> str | None:
+    def _load_from_profile(config: FaissStorageConfig | None) -> str | None:
         """Internal helper for load from profile.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
 
 Returns:
     Language code from profile when available; otherwise ``None``."""
@@ -71,11 +71,11 @@ Returns:
         return None
 
     @staticmethod
-    def _load_from_records(config: StorageConfig | None) -> str | None:
+    def _load_from_records(config: FaissStorageConfig | None) -> str | None:
         """Internal helper for load from records.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
 
 Returns:
     Language code from records when available; otherwise ``None``."""

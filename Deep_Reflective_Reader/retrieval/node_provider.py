@@ -5,7 +5,7 @@ from llama_index.core.schema import BaseNode
 from llama_index.core.node_parser import SentenceSplitter
 from language.document_language_detector import DocumentLanguageDetector
 from retrieval.parsed_document import ParsedDocument
-from config.storage_config import StorageConfig
+from config.faiss_storage_config import FaissStorageConfig
 
 class NodeProvider(object):
     """Parse raw document text into retrievable nodes with positional metadata."""
@@ -26,12 +26,12 @@ Args:
         self.parser = parser
         self.language_detector = detector
 
-    def parse(self, text: str, config: StorageConfig) -> ParsedDocument:
+    def parse(self, text: str, config: FaissStorageConfig) -> ParsedDocument:
         """Parse document text into nodes and attach positional metadata.
 
 Args:
     text: Input text content.
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
 
 Returns:
     Parsed document with chunk nodes and detected document language."""

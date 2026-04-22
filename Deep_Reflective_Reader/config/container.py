@@ -21,7 +21,7 @@ from prompts.prompt_assembler import PromptAssembler
 from question.question_scope_keywords_provider import QuestionScopeKeywordsProvider
 from question.question_scope_resolver import QuestionScopeResolver
 from question.standardized.question_standardizer import QuestionStandardizer
-from config.storage_config import StorageConfig
+from config.faiss_storage_config import FaissStorageConfig
 from llama_index.core.node_parser import SentenceSplitter
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
 from auth.api_key_provider import APIKeyProvider
@@ -110,7 +110,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     )
 
     storage_config_factory = providers.Factory(
-        StorageConfig,
+        FaissStorageConfig,
     )
 
     fingerprint_handler_factory = providers.Factory(

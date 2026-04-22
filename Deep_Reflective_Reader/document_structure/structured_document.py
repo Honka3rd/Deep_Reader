@@ -51,6 +51,8 @@ class StructuredDocument:
     language: str | None
     raw_text: str
     sections: list[StructuredSection] = field(default_factory=list)
+    structure_error_code: str | None = None
+    structure_error_message: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize this document into a JSON-friendly dictionary."""
@@ -61,6 +63,8 @@ class StructuredDocument:
             "language": self.language,
             "raw_text": self.raw_text,
             "sections": [section.to_dict() for section in self.sections],
+            "structure_error_code": self.structure_error_code,
+            "structure_error_message": self.structure_error_message,
         }
 
     @classmethod
@@ -81,6 +85,16 @@ class StructuredDocument:
                 StructuredSection.from_dict(section_data)
                 for section_data in section_payloads
             ],
+            structure_error_code=(
+                None
+                if data.get("structure_error_code") is None
+                else str(data.get("structure_error_code"))
+            ),
+            structure_error_message=(
+                None
+                if data.get("structure_error_message") is None
+                else str(data.get("structure_error_message"))
+            ),
         )
 
     def to_json(self, *, ensure_ascii: bool = False, indent: int | None = 2) -> str:

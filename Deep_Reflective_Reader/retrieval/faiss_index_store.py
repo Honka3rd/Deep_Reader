@@ -7,7 +7,7 @@ import faiss
 from embeddings.embedder import Embedder
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from retrieval.node_record import NodeRecord
-from config.storage_config import StorageConfig
+from config.faiss_storage_config import FaissStorageConfig
 from llm.llm_provider import LLMProvider
 from llm.llm_model_capabilities import LLMModelCapabilities
 from config.token_budget_resolver import EffectiveTokenBudgets, resolve_effective_token_budgets
@@ -78,13 +78,13 @@ Args:
     @staticmethod
     def save(
             bundle: FaissIndexBundle,
-            config: StorageConfig
+            config: FaissStorageConfig
     ) -> None:
         """Persist artifact/data to storage.
 
 Args:
     bundle: Active FaissIndexBundle used for lookup and metadata access.
-    config: StorageConfig describing filesystem artifact paths."""
+    config: FaissStorageConfig describing filesystem artifact paths."""
         faiss.write_index(bundle.faiss_index, config.get_raw_index_path())
 
         payload: dict = {
@@ -113,12 +113,12 @@ Args:
 
     def load(
         self,
-        config: StorageConfig
+        config: FaissStorageConfig
     ) -> FaissIndexBundle:
         """Load persisted artifact and return parsed object/data.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
 
 Returns:
     Reconstructed ``FaissIndexBundle`` loaded from persisted files."""
@@ -145,12 +145,12 @@ Returns:
 
     @staticmethod
     def clear(
-            config: StorageConfig
+            config: FaissStorageConfig
     ) -> None:
         """Remove persisted artifacts for clean rebuild.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths."""
+    config: FaissStorageConfig describing filesystem artifact paths."""
         index_path = config.get_raw_index_path()
         if os.path.exists(index_path):
             os.remove(index_path)
@@ -161,11 +161,11 @@ Args:
         print("FaissIndexStore#clear: index and records removed.")
 
     @staticmethod
-    def has_position_metadata(config: StorageConfig) -> bool:
+    def has_position_metadata(config: FaissStorageConfig) -> bool:
         """Check whether persisted records include required positional fields.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
 
 Returns:
     ``True`` when required positional fields exist in stored records."""

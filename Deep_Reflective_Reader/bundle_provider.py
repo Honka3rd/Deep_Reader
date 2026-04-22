@@ -4,19 +4,19 @@ from bundle_factory import BundleFactory
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from fingerprint_handler import FingerprintHandler
-from config.storage_config import StorageConfig
+from config.faiss_storage_config import FaissStorageConfig
 
 
 class BundleProvider:
     """Assemble runtime dependencies and return ready query bundles."""
-    storage_config_factory: Callable[[str], StorageConfig]
+    storage_config_factory: Callable[[str], FaissStorageConfig]
     fingerprint_handler_factory: Callable[[], FingerprintHandler]
     bundle_factory_provider: Callable[..., BundleFactory]
     loader_factory: DocumentLoaderFactory
 
     def __init__(
         self,
-        storage_config_factory: Callable[[str], StorageConfig],
+        storage_config_factory: Callable[[str], FaissStorageConfig],
         fingerprint_handler_factory: Callable[[], FingerprintHandler],
         bundle_factory_provider: Callable[..., BundleFactory],
         loader_factory: DocumentLoaderFactory,
@@ -30,9 +30,9 @@ class BundleProvider:
     def _build_runtime_objects(
         self,
         doc_name: str,
-    ) -> tuple[StorageConfig, FingerprintHandler, BundleFactory]:
+    ) -> tuple[FaissStorageConfig, FingerprintHandler, BundleFactory]:
         """Build per-request runtime objects for a specific document."""
-        config: StorageConfig = self.storage_config_factory(doc_name)
+        config: FaissStorageConfig = self.storage_config_factory(doc_name)
         fingerprint_handler: FingerprintHandler
         fingerprint_handler = self.fingerprint_handler_factory()
 

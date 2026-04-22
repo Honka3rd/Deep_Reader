@@ -6,7 +6,7 @@ from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
 from fingerprint_handler import FingerprintHandler
 from retrieval.node_provider import NodeProvider
-from config.storage_config import StorageConfig
+from config.faiss_storage_config import FaissStorageConfig
 from profile.document_profile import DocumentProfile
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile_store import DocumentProfileStore
@@ -82,11 +82,11 @@ Args:
         self.bundle_cache[doc_name] = bundle
         self._evict_if_needed()
 
-    def clear_artifacts(self, config: StorageConfig, doc_name: str) -> None:
+    def clear_artifacts(self, config: FaissStorageConfig, doc_name: str) -> None:
         """Remove persisted artifacts and cached bundle for a document.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
     doc_name: Logical document name and artifact namespace (without extension)."""
         self.store.clear(config)
         self.profile_store.clear(config)
@@ -95,14 +95,14 @@ Args:
 
     def ensure_profile_ready(
         self,
-        config: StorageConfig,
+        config: FaissStorageConfig,
         raw_text: str,
         document_language: str,
     ) -> DocumentProfile:
         """Ensure document profile exists and rebuild when missing/corrupted.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
     raw_text: Raw full document text before parsing/indexing.
     document_language: Primary document language code (e.g. en/zh).
 
@@ -130,11 +130,11 @@ Returns:
         self.profile_store.save(profile, config)
         return profile
 
-    def ensure_index_ready(self, config: StorageConfig, raw_text: str) -> FaissIndexBundle:
+    def ensure_index_ready(self, config: FaissStorageConfig, raw_text: str) -> FaissIndexBundle:
         """Ensure index artifacts are reusable; rebuild when needed.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
     raw_text: Raw full document text before parsing/indexing.
 
 Returns:
@@ -180,13 +180,13 @@ Returns:
 
     def get_or_load(
         self,
-        config: StorageConfig,
+        config: FaissStorageConfig,
         raw_text: str | None = None,
     ) -> FaissIndexBundle:
         """Return cached bundle or lazily load it from persisted artifacts.
 
 Args:
-    config: StorageConfig describing filesystem artifact paths.
+    config: FaissStorageConfig describing filesystem artifact paths.
     raw_text: Raw full document text before parsing/indexing.
 
 Returns:
