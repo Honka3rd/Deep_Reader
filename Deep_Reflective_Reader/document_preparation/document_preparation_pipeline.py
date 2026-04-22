@@ -7,6 +7,7 @@ from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from document_structure.structured_document_store import StructuredDocumentStore
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
+from document_preparation.preparation_mode import PreparationMode
 from document_preparation.prepared_document_result import PreparedDocumentResult
 from fingerprint_handler import FingerprintHandler
 from language.document_language_detector import DocumentLanguageDetector
@@ -52,13 +53,17 @@ class DocumentPreparationPipeline:
         self,
         doc_name: str,
         force_rebuild: bool = False,
+        mode: PreparationMode | str = PreparationMode.FREE_QA,
     ) -> PreparedDocumentAssets:
         """Prepare a document in fixed order and return asset readiness snapshot.
 
         Args:
             doc_name: Logical document name.
             force_rebuild: When ``True``, skip artifact reuse and rebuild.
+            mode: Preparation mode. ``base`` prepares only canonical/structured assets;
+                ``free_qa`` prepares full QA runtime assets.
         """
+        preparation_mode = PreparationMode.resolve(mode)
         assets = PreparedDocumentAssets(
             doc_name=doc_name,
             raw_text=None,
@@ -98,6 +103,9 @@ class DocumentPreparationPipeline:
             force_rebuild=force_rebuild,
         )
 
+        if preparation_mode == PreparationMode.BASE:
+            return assets
+
         # Step 4. Prepare FAISS artifacts.
         assets.faiss_ready, assets.faiss_namespace = self._prepare_faiss(
             doc_name=doc_name,
@@ -129,11 +137,14 @@ class DocumentPreparationPipeline:
         self,
         doc_name: str,
         force_rebuild: bool = False,
+        mode: PreparationMode | str = PreparationMode.FREE_QA,
     ) -> PreparedDocumentResult:
         """Prepare document artifacts, then load reusable runtime artifacts."""
+        preparation_mode = PreparationMode.resolve(mode)
         assets = self.prepare(
             doc_name=doc_name,
             force_rebuild=force_rebuild,
+            mode=preparation_mode,
         )
 
         structured_document = None
@@ -154,12 +165,13 @@ class DocumentPreparationPipeline:
                 )
 
         bundle = None
-        if assets.bundle_ready:
+        if preparation_mode == PreparationMode.FREE_QA and assets.bundle_ready:
             try:
                 if assets.raw_text is not None and assets.raw_text.strip():
                     bundle = self.bundle_provider.get_bundle_from_raw_text(
                         doc_name=doc_name,
                         raw_text=assets.raw_text,
+                        force_rebuild=force_rebuild,
                     )
                 else:
                     bundle = self.bundle_provider.get_bundle(doc_name)
@@ -358,7 +370,6 @@ class DocumentPreparationPipeline:
         force_rebuild: bool,
     ) -> bool:
         """Validate runtime bundle readiness through the existing bundle provider path."""
-        _ = force_rebuild
         if raw_text is None or not raw_text.strip():
             assets.errors.append("prepare_bundle_skipped:missing_raw_text")
             return False
@@ -367,6 +378,7 @@ class DocumentPreparationPipeline:
             bundle = self.bundle_provider.get_bundle_from_raw_text(
                 doc_name=doc_name,
                 raw_text=raw_text,
+                force_rebuild=force_rebuild,
             )
             return bundle is not None
         except Exception as error:

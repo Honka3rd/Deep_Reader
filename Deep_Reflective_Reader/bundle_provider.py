@@ -49,15 +49,19 @@ class BundleProvider:
         return self.get_bundle_from_raw_text(
             doc_name=doc_name,
             raw_text=raw_text,
+            force_rebuild=False,
         )
 
     def get_bundle_from_raw_text(
         self,
         doc_name: str,
         raw_text: str,
+        force_rebuild: bool = False,
     ) -> FaissIndexBundle:
         """Ensure index/profile readiness and return query-ready bundle from canonical raw text."""
         config, _, bundle_factory = self._build_runtime_objects(doc_name)
+        if force_rebuild:
+            bundle_factory.invalidate(doc_name)
         return bundle_factory.ensure_index_ready(
             config=config,
             raw_text=raw_text,

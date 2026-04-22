@@ -2,6 +2,7 @@ from dataclasses import dataclass, replace
 
 from config.app_DI_config import AppDIConfig
 from config.container import ApplicationLookupContainer
+from document_preparation.prepared_document_result import PreparedDocumentResult
 from language.language_code import LanguageCode
 from language.language_profile_registry import LanguageProfileRegistry
 from llm.openai_llm_provider import OpenAIModelName
@@ -118,6 +119,7 @@ class Coordinator:
 
         self.container = ApplicationLookupContainer.build(self.app_config)
         self.bundle_provider = self.container.bundle_provider()
+        self.document_preparation_pipeline = self.container.document_preparation_pipeline()
         self.session_manager = self.container.session_manager()
         self.context_orchestrator = self.container.context_orchestrator()
         self.prompt_assembler = self.container.prompt_assembler()
@@ -132,7 +134,14 @@ class Coordinator:
         Returns:
             Ready ``FaissIndexBundle`` for retrieval and answering.
         """
-        return self.bundle_provider.get_bundle(doc_name)
+        preparation_result = self.document_preparation_pipeline.prepare_and_load(doc_name)
+        if preparation_result.bundle is None:
+            error_detail = " | ".join(preparation_result.assets.errors)
+            raise RuntimeError(
+                "Coordinator#get_bundle: preparation succeeded but runtime bundle is unavailable "
+                f"for doc_name='{doc_name}'. errors={error_detail}"
+            )
+        return preparation_result.bundle
 
     def get_or_create_session(self, session_id: str, doc_name: str) -> ReadingSession:
         """Get existing session by id or create/reset it."""
@@ -170,7 +179,24 @@ class Coordinator:
                 f"active_chunk_index={session_active_chunk_index}"
             )
 
-        bundle = self.bundle_provider.get_bundle(doc_name)
+        preparation_result: PreparedDocumentResult
+        preparation_result = self.document_preparation_pipeline.prepare_and_load(doc_name)
+        print(
+            "Coordinator#prepare:",
+            f"doc_name={doc_name}",
+            f"structured_document_path={preparation_result.assets.structured_document_path}",
+            f"bundle_ready={preparation_result.assets.bundle_ready}",
+            f"faiss_ready={preparation_result.assets.faiss_ready}",
+            f"profile_ready={preparation_result.assets.profile_ready}",
+        )
+        bundle = preparation_result.bundle
+        if bundle is None:
+            error_detail = " | ".join(preparation_result.assets.errors)
+            raise RuntimeError(
+                "Coordinator#ask: preparation finished but runtime bundle is unavailable "
+                f"for doc_name='{doc_name}'. errors={error_detail}"
+            )
+
         context_result = self.context_orchestrator.build(
             query=question,
             bundle=bundle,
