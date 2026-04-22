@@ -46,7 +46,17 @@ class BundleProvider:
         """Ensure index/profile readiness and return query-ready bundle."""
         loader = self.loader_factory.get(doc_name)
         raw_text: str = loader.load(doc_name)
+        return self.get_bundle_from_raw_text(
+            doc_name=doc_name,
+            raw_text=raw_text,
+        )
 
+    def get_bundle_from_raw_text(
+        self,
+        doc_name: str,
+        raw_text: str,
+    ) -> FaissIndexBundle:
+        """Ensure index/profile readiness and return query-ready bundle from canonical raw text."""
         config, _, bundle_factory = self._build_runtime_objects(doc_name)
         return bundle_factory.ensure_index_ready(
             config=config,

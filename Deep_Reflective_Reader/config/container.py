@@ -7,6 +7,9 @@ from context.context_orchestrator import ContextOrchestrator
 from context.coverage_oriented_context_builder import CoverageOrientedContextBuilder
 from context.token_budget_manager import TokenBudgetManager
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
+from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
+from document_structure.structured_document_builder import StructuredDocumentBuilder
+from document_structure.structured_document_store import StructuredDocumentStore
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile_store import DocumentProfileStore
@@ -145,12 +148,35 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         DocumentLoaderFactory,
     )
 
+    structured_document_builder = providers.Singleton(
+        StructuredDocumentBuilder,
+    )
+
+    structured_document_store = providers.Singleton(
+        StructuredDocumentStore,
+    )
+
     bundle_provider = providers.Singleton(
         BundleProvider,
         storage_config_factory=storage_config_factory.provider,
         fingerprint_handler_factory=fingerprint_handler_factory.provider,
         bundle_factory_provider=bundle_factory_provider.provider,
         loader_factory=document_loader_factory,
+    )
+
+    document_preparation_pipeline = providers.Singleton(
+        DocumentPreparationPipeline,
+        loader_factory=document_loader_factory,
+        language_detector=document_language_detector,
+        structured_document_builder=structured_document_builder,
+        structured_document_store=structured_document_store,
+        node_provider=node_provider,
+        faiss_index_builder=faiss_index_builder,
+        faiss_index_store=faiss_index_store,
+        fingerprint_handler=fingerprint_handler_factory,
+        profile_builder=document_profile_builder,
+        profile_store=document_profile_store,
+        bundle_provider=bundle_provider,
     )
 
     session_manager = providers.Singleton(
