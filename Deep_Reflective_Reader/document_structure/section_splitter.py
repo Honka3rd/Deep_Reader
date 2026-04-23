@@ -608,6 +608,7 @@ class SectionSplitter:
         ordered_headings = sorted(headings, key=lambda item: item.char_start)
         sections: list[StructuredSection] = []
         container_map = container_title_by_start or {}
+        current_container_title: str | None = None
 
         first_heading_start = ordered_headings[0].char_start
         if first_heading_start > region_start:
@@ -622,6 +623,11 @@ class SectionSplitter:
             )
 
         for heading_idx, heading in enumerate(ordered_headings):
+            if heading.char_start in container_map:
+                # Carry the part/container context forward for following chapter sections
+                # until the next container boundary is encountered.
+                current_container_title = container_map[heading.char_start]
+
             char_start = heading.char_start
             if heading_idx + 1 < len(ordered_headings):
                 char_end = ordered_headings[heading_idx + 1].char_start
@@ -636,7 +642,7 @@ class SectionSplitter:
                     raw_text=raw_text,
                     char_start=char_start,
                     char_end=char_end,
-                    container_title=container_map.get(heading.char_start),
+                    container_title=current_container_title,
                 )
             )
 
