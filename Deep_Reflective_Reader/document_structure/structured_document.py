@@ -14,6 +14,7 @@ class StructuredSection:
     content: str
     char_start: int
     char_end: int
+    container_title: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize this section into a JSON-friendly dictionary."""
@@ -25,6 +26,7 @@ class StructuredSection:
             "content": self.content,
             "char_start": self.char_start,
             "char_end": self.char_end,
+            "container_title": self.container_title,
         }
 
     @classmethod
@@ -38,6 +40,11 @@ class StructuredSection:
             content=str(data["content"]),
             char_start=int(data["char_start"]),
             char_end=int(data["char_end"]),
+            container_title=(
+                None
+                if data.get("container_title") is None
+                else str(data.get("container_title"))
+            ),
         )
 
 

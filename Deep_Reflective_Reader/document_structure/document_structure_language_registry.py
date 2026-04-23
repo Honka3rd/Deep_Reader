@@ -33,6 +33,44 @@ class DocumentStructureLanguageRules:
     weak_heading_signals: tuple[str, ...]
 
 
+def _build_language_rules(
+    *,
+    numeric_aliases: tuple[str, ...],
+    numeric_non_chapter_aliases: tuple[str, ...],
+    chapter_aliases: tuple[str, ...],
+    single_aliases: tuple[str, ...],
+    non_chapter_number_pattern: str,
+    chapter_number_pattern: str,
+    extra_strong_patterns: tuple[Pattern[str], ...] = tuple(),
+) -> DocumentStructureLanguageRules:
+    """Build one language rule set using shared heading-pattern recipe."""
+    strong_patterns: list[Pattern[str]] = []
+    if numeric_non_chapter_aliases:
+        strong_patterns.append(
+            _compile_numeric_heading_pattern(
+                numeric_non_chapter_aliases,
+                non_chapter_number_pattern,
+            )
+        )
+    if chapter_aliases:
+        strong_patterns.append(
+            _compile_numeric_heading_pattern(
+                chapter_aliases,
+                chapter_number_pattern,
+            )
+        )
+    strong_patterns.extend(extra_strong_patterns)
+    if single_aliases:
+        strong_patterns.append(_compile_single_heading_pattern(single_aliases))
+
+    weak_aliases = numeric_aliases + single_aliases
+    return DocumentStructureLanguageRules(
+        strong_heading_patterns=tuple(strong_patterns),
+        weak_heading_aliases=weak_aliases,
+        weak_heading_signals=weak_aliases,
+    )
+
+
 class DocumentStructureLanguageRegistry:
     """Registry for document-structure heading rules keyed by LanguageCode."""
 
@@ -42,19 +80,216 @@ class DocumentStructureLanguageRegistry:
     _DEVANAGARI_NUMBER = r"[0-9०-९]+"
 
     _EN_ALIASES_NUMERIC = ("chapter", "part", "section", "book", "lesson", "unit")
+    _EN_ALIASES_NUMERIC_NON_CHAPTER = ("part", "section", "book", "lesson", "unit")
     _EN_ALIASES_SINGLE = ("prologue", "epilogue", "introduction", "appendix")
-    _EN_ALIASES_WEAK = _EN_ALIASES_NUMERIC + _EN_ALIASES_SINGLE
-    _EN_RULES = DocumentStructureLanguageRules(
-        strong_heading_patterns=(
-            _compile_numeric_heading_pattern(_EN_ALIASES_NUMERIC, _ROMAN_OR_DIGIT_NUMBER),
+    _EN_NUMBER_WORD_ONES = "one|two|three|four|five|six|seven|eight|nine"
+    _EN_NUMBER_WORD_BASE = (
+        "one|two|three|four|five|six|seven|eight|nine|ten|"
+        "eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+        "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety"
+    )
+    _EN_NUMBER_WORD_PATTERN = (
+        rf"(?:{_EN_NUMBER_WORD_BASE})(?:[-\s](?:{_EN_NUMBER_WORD_ONES}))?"
+    )
+    _EN_CHAPTER_NUMBER_PATTERN = (
+        rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_EN_NUMBER_WORD_PATTERN})"
+    )
+    _EN_RULES = _build_language_rules(
+        numeric_aliases=_EN_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_EN_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("chapter",),
+        single_aliases=_EN_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_EN_CHAPTER_NUMBER_PATTERN,
+        extra_strong_patterns=(
             re.compile(
                 r"^\s*appendix(?:\s+([a-z0-9]+|[ivxlcdm]+))?(?:[\s:：.\-–—].*)?\s*$",
                 re.IGNORECASE,
             ),
-            _compile_single_heading_pattern(("prologue", "epilogue", "introduction")),
         ),
-        weak_heading_aliases=_EN_ALIASES_WEAK,
-        weak_heading_signals=_EN_ALIASES_WEAK,
+    )
+
+    _FR_ALIASES_NUMERIC = ("chapitre", "partie", "section", "livre", "leçon", "unité")
+    _FR_ALIASES_NUMERIC_NON_CHAPTER = ("partie", "section", "livre", "leçon", "unité")
+    _FR_ALIASES_SINGLE = ("prologue", "épilogue", "introduction", "annexe")
+    _FR_NUMBER_WORD_ONES = "un|deux|trois|quatre|cinq|six|sept|huit|neuf"
+    _FR_NUMBER_WORD_BASE = (
+        "un|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|treize|quatorze|"
+        "quinze|seize|vingt|trente|quarante|cinquante|soixante|soixante-dix|"
+        "quatre-vingt|quatre-vingt-dix"
+    )
+    _FR_NUMBER_WORD_PATTERN = (
+        rf"(?:{_FR_NUMBER_WORD_BASE})(?:[-\s](?:et[-\s])?(?:{_FR_NUMBER_WORD_ONES}|"
+        r"dix|onze|douze|treize|quatorze|quinze|seize))?"
+    )
+    _FR_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_FR_NUMBER_WORD_PATTERN})"
+    _FR_RULES = _build_language_rules(
+        numeric_aliases=_FR_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_FR_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("chapitre",),
+        single_aliases=_FR_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_FR_CHAPTER_NUMBER_PATTERN,
+        extra_strong_patterns=(
+            re.compile(
+                r"^\s*annexe(?:\s+([a-z0-9]+|[ivxlcdm]+))?(?:[\s:：.\-–—].*)?\s*$",
+                re.IGNORECASE,
+            ),
+        ),
+    )
+
+    _DE_ALIASES_NUMERIC = ("kapitel", "teil", "abschnitt", "buch", "lektion", "einheit")
+    _DE_ALIASES_NUMERIC_NON_CHAPTER = ("teil", "abschnitt", "buch", "lektion", "einheit")
+    _DE_ALIASES_SINGLE = ("prolog", "epilog", "einleitung", "anhang")
+    _DE_NUMBER_WORD_ONES = "eins|zwei|drei|vier|fünf|sechs|sieben|acht|neun"
+    _DE_NUMBER_WORD_BASE = (
+        "eins|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf|dreizehn|"
+        "vierzehn|fünfzehn|sechzehn|siebzehn|achtzehn|neunzehn|zwanzig|dreißig|"
+        "vierzig|fünfzig|sechzig|siebzig|achtzig|neunzig"
+    )
+    _DE_NUMBER_WORD_PATTERN = (
+        rf"(?:{_DE_NUMBER_WORD_BASE})(?:[-\s](?:und\s+)?(?:{_DE_NUMBER_WORD_ONES}))?"
+    )
+    _DE_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_DE_NUMBER_WORD_PATTERN})"
+    _DE_RULES = _build_language_rules(
+        numeric_aliases=_DE_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_DE_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("kapitel",),
+        single_aliases=_DE_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_DE_CHAPTER_NUMBER_PATTERN,
+        extra_strong_patterns=(
+            re.compile(
+                r"^\s*anhang(?:\s+([a-z0-9]+|[ivxlcdm]+))?(?:[\s:：.\-–—].*)?\s*$",
+                re.IGNORECASE,
+            ),
+        ),
+    )
+
+    _ES_ALIASES_NUMERIC = ("capítulo", "parte", "sección", "libro", "lección", "unidad")
+    _ES_ALIASES_NUMERIC_NON_CHAPTER = ("parte", "sección", "libro", "lección", "unidad")
+    _ES_ALIASES_SINGLE = ("prólogo", "epílogo", "introducción", "apéndice")
+    _ES_NUMBER_WORD_ONES = "uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve"
+    _ES_NUMBER_WORD_BASE = (
+        "uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|"
+        "quince|dieciséis|diecisiete|dieciocho|diecinueve|veinte|treinta|cuarenta|"
+        "cincuenta|sesenta|setenta|ochenta|noventa"
+    )
+    _ES_NUMBER_WORD_PATTERN = (
+        rf"(?:{_ES_NUMBER_WORD_BASE})(?:\s+y\s+(?:{_ES_NUMBER_WORD_ONES}))?"
+    )
+    _ES_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_ES_NUMBER_WORD_PATTERN})"
+    _ES_RULES = _build_language_rules(
+        numeric_aliases=_ES_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_ES_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("capítulo",),
+        single_aliases=_ES_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_ES_CHAPTER_NUMBER_PATTERN,
+        extra_strong_patterns=(
+            re.compile(
+                r"^\s*apéndice(?:\s+([a-z0-9]+|[ivxlcdm]+))?(?:[\s:：.\-–—].*)?\s*$",
+                re.IGNORECASE,
+            ),
+        ),
+    )
+
+    _PT_ALIASES_NUMERIC = ("capítulo", "parte", "seção", "livro")
+    _PT_ALIASES_NUMERIC_NON_CHAPTER = ("parte", "seção", "livro")
+    _PT_ALIASES_SINGLE = ("prólogo", "epílogo", "introdução", "apêndice")
+    _PT_NUMBER_WORD_BASE = "um|dois|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte"
+    _PT_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_PT_NUMBER_WORD_BASE})"
+    _PT_RULES = _build_language_rules(
+        numeric_aliases=_PT_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_PT_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("capítulo",),
+        single_aliases=_PT_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_PT_CHAPTER_NUMBER_PATTERN,
+    )
+
+    _IT_ALIASES_NUMERIC = ("capitolo", "parte", "sezione", "libro")
+    _IT_ALIASES_NUMERIC_NON_CHAPTER = ("parte", "sezione", "libro")
+    _IT_ALIASES_SINGLE = ("prologo", "epilogo", "introduzione", "appendice")
+    _IT_NUMBER_WORD_BASE = "uno|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|undici|dodici|tredici|quattordici|quindici|sedici|diciassette|diciotto|diciannove|venti"
+    _IT_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_IT_NUMBER_WORD_BASE})"
+    _IT_RULES = _build_language_rules(
+        numeric_aliases=_IT_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_IT_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("capitolo",),
+        single_aliases=_IT_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_IT_CHAPTER_NUMBER_PATTERN,
+    )
+
+    _TR_ALIASES_NUMERIC = ("bölüm", "kısım", "kesit", "kitap")
+    _TR_ALIASES_NUMERIC_NON_CHAPTER = ("kısım", "kesit", "kitap")
+    _TR_ALIASES_SINGLE = ("önsöz", "sonsöz", "giriş", "ek")
+    _TR_NUMBER_WORD_BASE = "bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on|on bir|on iki"
+    _TR_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_TR_NUMBER_WORD_BASE})"
+    _TR_RULES = _build_language_rules(
+        numeric_aliases=_TR_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_TR_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("bölüm",),
+        single_aliases=_TR_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_TR_CHAPTER_NUMBER_PATTERN,
+    )
+
+    _NL_ALIASES_NUMERIC = ("hoofdstuk", "deel", "sectie", "boek")
+    _NL_ALIASES_NUMERIC_NON_CHAPTER = ("deel", "sectie", "boek")
+    _NL_ALIASES_SINGLE = ("proloog", "epiloog", "inleiding", "bijlage")
+    _NL_NUMBER_WORD_BASE = "een|twee|drie|vier|vijf|zes|zeven|acht|negen|tien|elf|twaalf"
+    _NL_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_NL_NUMBER_WORD_BASE})"
+    _NL_RULES = _build_language_rules(
+        numeric_aliases=_NL_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_NL_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("hoofdstuk",),
+        single_aliases=_NL_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_NL_CHAPTER_NUMBER_PATTERN,
+    )
+
+    _PL_ALIASES_NUMERIC = ("rozdział", "część", "sekcja", "księga")
+    _PL_ALIASES_NUMERIC_NON_CHAPTER = ("część", "sekcja", "księga")
+    _PL_ALIASES_SINGLE = ("prolog", "epilog", "wstęp", "aneks")
+    _PL_NUMBER_WORD_BASE = "jeden|dwa|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|dziesięć|jedenaście|dwanaście"
+    _PL_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_PL_NUMBER_WORD_BASE})"
+    _PL_RULES = _build_language_rules(
+        numeric_aliases=_PL_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_PL_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("rozdział",),
+        single_aliases=_PL_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_PL_CHAPTER_NUMBER_PATTERN,
+    )
+
+    _ID_ALIASES_NUMERIC = ("bab", "bagian", "seksi", "buku")
+    _ID_ALIASES_NUMERIC_NON_CHAPTER = ("bagian", "seksi", "buku")
+    _ID_ALIASES_SINGLE = ("prolog", "epilog", "pendahuluan", "lampiran")
+    _ID_NUMBER_WORD_BASE = "satu|dua|tiga|empat|lima|enam|tujuh|delapan|sembilan|sepuluh|sebelas|dua belas"
+    _ID_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_ID_NUMBER_WORD_BASE})"
+    _ID_RULES = _build_language_rules(
+        numeric_aliases=_ID_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_ID_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("bab",),
+        single_aliases=_ID_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_ID_CHAPTER_NUMBER_PATTERN,
+    )
+
+    _VI_ALIASES_NUMERIC = ("chương", "phần", "mục", "quyển")
+    _VI_ALIASES_NUMERIC_NON_CHAPTER = ("phần", "mục", "quyển")
+    _VI_ALIASES_SINGLE = ("lời mở đầu", "kết luận", "giới thiệu", "phụ lục")
+    _VI_NUMBER_WORD_BASE = "một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|mười một|mười hai"
+    _VI_CHAPTER_NUMBER_PATTERN = rf"(?:{_ROMAN_OR_DIGIT_NUMBER}|{_VI_NUMBER_WORD_BASE})"
+    _VI_RULES = _build_language_rules(
+        numeric_aliases=_VI_ALIASES_NUMERIC,
+        numeric_non_chapter_aliases=_VI_ALIASES_NUMERIC_NON_CHAPTER,
+        chapter_aliases=("chương",),
+        single_aliases=_VI_ALIASES_SINGLE,
+        non_chapter_number_pattern=_ROMAN_OR_DIGIT_NUMBER,
+        chapter_number_pattern=_VI_CHAPTER_NUMBER_PATTERN,
     )
 
     _ZH_NUMERIC_SECTION_ALIASES = ("章", "节", "節")
@@ -161,7 +396,214 @@ class DocumentStructureLanguageRegistry:
         weak_heading_signals=("บทที่", "ภาค", "ตอน", "บทนำ", "บทส่งท้าย", "ภาคผนวก"),
     )
 
-    _LATIN_FAMILY_RULES = _EN_RULES
+    _LATIN_FAMILY_LANGUAGES: tuple[LanguageCode, ...] = (
+        LanguageCode.FR,
+        LanguageCode.DE,
+        LanguageCode.ES,
+        LanguageCode.PT,
+        LanguageCode.IT,
+        LanguageCode.TR,
+        LanguageCode.NL,
+        LanguageCode.PL,
+        LanguageCode.ID,
+        LanguageCode.VI,
+    )
+
+    _TOC_MARKERS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = {
+        LanguageCode.EN: (
+            "contents",
+            "table of contents",
+        ),
+        LanguageCode.ZH: (
+            "目录",
+            "目錄",
+        ),
+    }
+    _FRONT_MATTER_MARKERS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = {
+        LanguageCode.EN: (
+            "preface",
+            "introduction",
+            "prologue",
+            "epilogue",
+            "appendix",
+        ),
+        LanguageCode.ZH: (
+            "前言",
+            "序言",
+            "序",
+            "引言",
+            "序章",
+            "终章",
+            "終章",
+            "附录",
+            "附錄",
+        ),
+    }
+    _BODY_START_HEADING_HINTS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = {
+        LanguageCode.EN: (
+            "part",
+            "chapter",
+            "section",
+            "book",
+            "lesson",
+            "unit",
+        ),
+        LanguageCode.ZH: (
+            "第",
+            "章",
+            "节",
+            "節",
+            "卷",
+            "序章",
+            "终章",
+            "終章",
+        ),
+        LanguageCode.JA: (
+            "第",
+            "章",
+            "節",
+            "部",
+            "編",
+            "巻",
+            "卷",
+        ),
+        LanguageCode.KO: (
+            "제",
+            "장",
+            "절",
+            "부",
+            "권",
+        ),
+        LanguageCode.FR: (
+            "partie",
+            "chapitre",
+            "section",
+            "livre",
+        ),
+        LanguageCode.DE: (
+            "teil",
+            "kapitel",
+            "abschnitt",
+            "buch",
+        ),
+        LanguageCode.ES: (
+            "parte",
+            "capítulo",
+            "sección",
+            "libro",
+        ),
+        LanguageCode.PT: (
+            "parte",
+            "capítulo",
+            "seção",
+            "livro",
+        ),
+        LanguageCode.IT: (
+            "parte",
+            "capitolo",
+            "sezione",
+            "libro",
+        ),
+        LanguageCode.RU: (
+            "часть",
+            "глава",
+            "раздел",
+            "книга",
+        ),
+        LanguageCode.AR: (
+            "الجزء",
+            "الفصل",
+            "القسم",
+            "الكتاب",
+        ),
+        LanguageCode.HI: (
+            "भाग",
+            "अध्याय",
+            "खंड",
+        ),
+        LanguageCode.TR: (
+            "bölüm",
+            "kısım",
+            "kitap",
+            "ünite",
+        ),
+        LanguageCode.NL: (
+            "deel",
+            "hoofdstuk",
+            "sectie",
+            "boek",
+        ),
+        LanguageCode.PL: (
+            "część",
+            "rozdział",
+            "sekcja",
+            "księga",
+        ),
+        LanguageCode.UK: (
+            "частина",
+            "глава",
+            "розділ",
+            "книга",
+        ),
+        LanguageCode.ID: (
+            "bagian",
+            "bab",
+        ),
+        LanguageCode.VI: (
+            "phần",
+            "chương",
+            "mục",
+            "quyển",
+        ),
+        LanguageCode.TH: (
+            "ภาค",
+            "บทที่",
+            "ตอน",
+            "เล่ม",
+        ),
+    }
+    _PART_HEADING_HINTS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = {
+        LanguageCode.EN: ("part",),
+        LanguageCode.ZH: ("卷",),
+        LanguageCode.JA: ("部", "編", "巻", "卷"),
+        LanguageCode.KO: ("부", "권"),
+        LanguageCode.FR: ("partie",),
+        LanguageCode.DE: ("teil",),
+        LanguageCode.ES: ("parte",),
+        LanguageCode.PT: ("parte",),
+        LanguageCode.IT: ("parte",),
+        LanguageCode.RU: ("часть",),
+        LanguageCode.AR: ("الجزء",),
+        LanguageCode.HI: ("भाग",),
+        LanguageCode.TR: ("kısım", "bölüm"),
+        LanguageCode.NL: ("deel",),
+        LanguageCode.PL: ("część",),
+        LanguageCode.UK: ("частина",),
+        LanguageCode.ID: ("bagian",),
+        LanguageCode.VI: ("phần",),
+        LanguageCode.TH: ("ภาค",),
+    }
+    _CHAPTER_HEADING_HINTS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = {
+        LanguageCode.EN: ("chapter",),
+        LanguageCode.ZH: ("第", "章", "节", "節"),
+        LanguageCode.JA: ("第", "章", "節"),
+        LanguageCode.KO: ("제", "장", "절"),
+        LanguageCode.FR: ("chapitre",),
+        LanguageCode.DE: ("kapitel",),
+        LanguageCode.ES: ("capítulo",),
+        LanguageCode.PT: ("capítulo",),
+        LanguageCode.IT: ("capitolo",),
+        LanguageCode.RU: ("глава",),
+        LanguageCode.AR: ("الفصل",),
+        LanguageCode.HI: ("अध्याय",),
+        LanguageCode.TR: ("bölüm",),
+        LanguageCode.NL: ("hoofdstuk",),
+        LanguageCode.PL: ("rozdział",),
+        LanguageCode.UK: ("глава",),
+        LanguageCode.ID: ("bab",),
+        LanguageCode.VI: ("chương",),
+        LanguageCode.TH: ("บทที่",),
+    }
     _EMPTY_RULES = DocumentStructureLanguageRules(
         strong_heading_patterns=tuple(),
         weak_heading_aliases=tuple(),
@@ -173,20 +615,20 @@ class DocumentStructureLanguageRegistry:
         LanguageCode.ZH: _ZH_RULES,
         LanguageCode.JA: _JA_RULES,
         LanguageCode.KO: _KO_RULES,
-        LanguageCode.FR: _LATIN_FAMILY_RULES,
-        LanguageCode.DE: _LATIN_FAMILY_RULES,
-        LanguageCode.ES: _LATIN_FAMILY_RULES,
-        LanguageCode.PT: _LATIN_FAMILY_RULES,
-        LanguageCode.IT: _LATIN_FAMILY_RULES,
+        LanguageCode.FR: _FR_RULES,
+        LanguageCode.DE: _DE_RULES,
+        LanguageCode.ES: _ES_RULES,
+        LanguageCode.PT: _PT_RULES,
+        LanguageCode.IT: _IT_RULES,
         LanguageCode.RU: _RU_RULES,
         LanguageCode.AR: _AR_RULES,
         LanguageCode.HI: _HI_RULES,
-        LanguageCode.TR: _LATIN_FAMILY_RULES,
-        LanguageCode.NL: _LATIN_FAMILY_RULES,
-        LanguageCode.PL: _LATIN_FAMILY_RULES,
+        LanguageCode.TR: _TR_RULES,
+        LanguageCode.NL: _NL_RULES,
+        LanguageCode.PL: _PL_RULES,
         LanguageCode.UK: _UK_RULES,
-        LanguageCode.ID: _LATIN_FAMILY_RULES,
-        LanguageCode.VI: _LATIN_FAMILY_RULES,
+        LanguageCode.ID: _ID_RULES,
+        LanguageCode.VI: _VI_RULES,
         LanguageCode.TH: _TH_RULES,
     }
 
@@ -217,3 +659,57 @@ class DocumentStructureLanguageRegistry:
     def get_weak_heading_aliases(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return weak heading aliases for one language."""
         return cls.get_rules(language).weak_heading_aliases
+
+    @classmethod
+    def get_toc_markers(cls, language: LanguageCode) -> tuple[str, ...]:
+        """Return TOC markers used for body-start detection."""
+        return cls._resolve_text_markers(
+            language=language,
+            marker_map=cls._TOC_MARKERS_BY_LANGUAGE,
+        )
+
+    @classmethod
+    def get_front_matter_markers(cls, language: LanguageCode) -> tuple[str, ...]:
+        """Return front-matter markers used for body-start detection."""
+        return cls._resolve_text_markers(
+            language=language,
+            marker_map=cls._FRONT_MATTER_MARKERS_BY_LANGUAGE,
+        )
+
+    @classmethod
+    def get_body_start_heading_hints(cls, language: LanguageCode) -> tuple[str, ...]:
+        """Return heading hints that help identify TOC heading lists and body restarts."""
+        return cls._resolve_text_markers(
+            language=language,
+            marker_map=cls._BODY_START_HEADING_HINTS_BY_LANGUAGE,
+        )
+
+    @classmethod
+    def get_part_heading_hints(cls, language: LanguageCode) -> tuple[str, ...]:
+        """Return language hints used to identify part-level headings."""
+        return cls._resolve_text_markers(
+            language=language,
+            marker_map=cls._PART_HEADING_HINTS_BY_LANGUAGE,
+        )
+
+    @classmethod
+    def get_chapter_heading_hints(cls, language: LanguageCode) -> tuple[str, ...]:
+        """Return language hints used to identify chapter-level headings."""
+        return cls._resolve_text_markers(
+            language=language,
+            marker_map=cls._CHAPTER_HEADING_HINTS_BY_LANGUAGE,
+        )
+
+    @classmethod
+    def _resolve_text_markers(
+        cls,
+        *,
+        language: LanguageCode,
+        marker_map: dict[LanguageCode, tuple[str, ...]],
+    ) -> tuple[str, ...]:
+        """Resolve language text-marker tuples with conservative fallback behavior."""
+        if language in marker_map:
+            return marker_map[language]
+        if language in cls._LATIN_FAMILY_LANGUAGES:
+            return marker_map.get(LanguageCode.EN, tuple())
+        return tuple()
