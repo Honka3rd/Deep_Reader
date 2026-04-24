@@ -23,6 +23,10 @@ from llm.openai_llm_provider import OpenAILLMProvider
 from prompts.prompt_assembler import PromptAssembler
 from question.question_scope_keywords_provider import QuestionScopeKeywordsProvider
 from question.question_scope_resolver import QuestionScopeResolver
+from section_tasks.chapter_quiz_service import ChapterQuizService
+from section_tasks.chapter_summary_service import ChapterSummaryService
+from section_tasks.section_task_context_builder import SectionTaskContextBuilder
+from section_tasks.section_task_prompt_builder import SectionTaskPromptBuilder
 from question.standardized.question_standardizer import QuestionStandardizer
 from config.faiss_storage_config import FaissStorageConfig
 from llama_index.core.node_parser import SentenceSplitter
@@ -221,6 +225,25 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         global_scope_min_top_k=config.global_scope_min_top_k,
         full_text_input_budget_utilization_ratio=config.full_text_input_budget_utilization_ratio,
         full_text_context_budget_utilization_ratio=config.full_text_context_budget_utilization_ratio,
+    )
+    section_task_context_builder = providers.Singleton(
+        SectionTaskContextBuilder,
+    )
+    section_task_prompt_builder = providers.Singleton(
+        SectionTaskPromptBuilder,
+    )
+
+    chapter_summary_service = providers.Singleton(
+        ChapterSummaryService,
+        llm_provider=llm_provider,
+        context_builder=section_task_context_builder,
+        prompt_builder=section_task_prompt_builder,
+    )
+    chapter_quiz_service = providers.Singleton(
+        ChapterQuizService,
+        llm_provider=llm_provider,
+        context_builder=section_task_context_builder,
+        prompt_builder=section_task_prompt_builder,
     )
 
     @classmethod
