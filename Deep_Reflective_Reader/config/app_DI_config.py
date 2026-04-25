@@ -82,6 +82,12 @@ class AppDIConfig:
     # Minimum section/chapter content length (characters) required before quiz generation.
     # Introduced to skip low-signal quiz requests on very short content.
     quiz_min_section_chars: int = 400
+    # Toggle for semantic topic-guidance matching in section-task prompts.
+    # Introduced so topic guidance can use embeddings when lexical match is weak.
+    section_task_topic_semantic_match_enabled: bool = True
+    # Similarity threshold for semantic topic-guidance rule selection.
+    # Introduced to keep topic guidance conservative and avoid noisy semantic matches.
+    section_task_topic_semantic_similarity_threshold: float = 0.78
     # Minimum content length per task unit before considering adjacent-merge fallback.
     # Introduced to avoid tiny fragmented units in section-task execution.
     task_unit_min_chars: int = 300

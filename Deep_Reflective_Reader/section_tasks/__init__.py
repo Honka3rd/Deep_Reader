@@ -9,6 +9,10 @@ from section_tasks.section_quiz_task_prompt_builder import (
 )
 from section_tasks.task_unit import TaskUnit
 from section_tasks.task_unit_resolver import TaskUnitResolver
+from section_tasks.topic_guidance_registry import (
+    TopicGuidanceRegistry,
+    TopicGuidanceRule,
+)
 from shared.abstract_result import AbstractResult
 from section_tasks.abstract_task_prompt_builder import AbstractTaskPromptBuilder
 from section_tasks.section_task_prompt_builder_factory import (
@@ -38,6 +42,8 @@ __all__ = [
     "QuizQuestion",
     "TaskUnit",
     "TaskUnitResolver",
+    "TopicGuidanceRegistry",
+    "TopicGuidanceRule",
     "SectionTaskContext",
     "SectionTaskContextBuilder",
     "SectionTaskContextReason",

@@ -38,6 +38,7 @@ from section_tasks.section_task_prompt_builder_factory import (
 from section_tasks.section_task_prompt_common import SectionTaskPromptCommon
 from section_tasks.summary_task_prompt_builder import SummaryTaskPromptBuilder
 from section_tasks.task_unit_resolver import TaskUnitResolver
+from section_tasks.topic_guidance_registry import TopicGuidanceRegistry
 from question.standardized.question_standardizer import QuestionStandardizer
 from config.faiss_storage_config import FaissStorageConfig
 from llama_index.core.node_parser import SentenceSplitter
@@ -240,8 +241,16 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     section_task_context_builder = providers.Singleton(
         SectionTaskContextBuilder,
     )
+    topic_guidance_registry = providers.Singleton(
+        TopicGuidanceRegistry,
+        embedder=embedder,
+        similarity_service=similarity_service,
+        semantic_match_enabled=config.section_task_topic_semantic_match_enabled,
+        semantic_similarity_threshold=config.section_task_topic_semantic_similarity_threshold,
+    )
     section_task_prompt_common = providers.Singleton(
         SectionTaskPromptCommon,
+        topic_guidance_registry=topic_guidance_registry,
     )
     summary_task_prompt_builder = providers.Singleton(
         SummaryTaskPromptBuilder,
@@ -261,24 +270,26 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         section_quiz_builder=section_quiz_task_prompt_builder,
         chapter_quiz_builder=chapter_quiz_task_prompt_builder,
     )
+    task_unit_resolver = providers.Singleton(
+        TaskUnitResolver,
+        task_unit_min_chars=config.task_unit_min_chars,
+        task_unit_max_chars=config.task_unit_max_chars,
+    )
 
     chapter_summary_service = providers.Singleton(
         ChapterSummaryService,
         llm_provider=llm_provider,
         context_builder=section_task_context_builder,
         prompt_builder_factory=section_task_prompt_builder_factory,
+        task_unit_resolver=task_unit_resolver,
     )
     chapter_quiz_service = providers.Singleton(
         ChapterQuizService,
         llm_provider=llm_provider,
         context_builder=section_task_context_builder,
         prompt_builder_factory=section_task_prompt_builder_factory,
+        task_unit_resolver=task_unit_resolver,
         quiz_min_section_chars=config.quiz_min_section_chars,
-    )
-    task_unit_resolver = providers.Singleton(
-        TaskUnitResolver,
-        task_unit_min_chars=config.task_unit_min_chars,
-        task_unit_max_chars=config.task_unit_max_chars,
     )
 
     @classmethod
@@ -335,6 +346,12 @@ Returns:
                     app_config.question_scope_local_anchor_similarity_threshold
                 ),
                 "quiz_min_section_chars": app_config.quiz_min_section_chars,
+                "section_task_topic_semantic_match_enabled": (
+                    app_config.section_task_topic_semantic_match_enabled
+                ),
+                "section_task_topic_semantic_similarity_threshold": (
+                    app_config.section_task_topic_semantic_similarity_threshold
+                ),
                 "task_unit_min_chars": app_config.task_unit_min_chars,
                 "task_unit_max_chars": app_config.task_unit_max_chars,
             }

@@ -1,7 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from document_structure.structured_document import StructuredDocument, StructuredSection
+from section_tasks.task_unit import TaskUnit
 
 
 class SectionTaskContextReason(StrEnum):
@@ -24,6 +25,7 @@ class SectionTaskContext:
     section_content: str
     valid: bool
     reason: SectionTaskContextReason | None
+    source_section_ids: list[str] = field(default_factory=list)
 
 
 class SectionTaskContextBuilder:
@@ -52,6 +54,61 @@ class SectionTaskContextBuilder:
         return self.build_from_section(
             section=target_section,
             document_title=document.title,
+        )
+
+    @staticmethod
+    def build_from_task_unit(
+        *,
+        task_unit: TaskUnit,
+        document_title: str | None = None,
+        section_index: int = 0,
+    ) -> SectionTaskContext:
+        """Build validated task context from one resolved task unit."""
+        resolved_unit_id = task_unit.unit_id.strip()
+        if not resolved_unit_id:
+            raise ValueError("task_unit.unit_id cannot be empty")
+
+        content = task_unit.content.strip()
+        if not content:
+            raise ValueError(
+                f"task_unit '{task_unit.unit_id}' has empty content and cannot build task context"
+            )
+
+        resolved_document_title = SectionTaskContextBuilder._normalize_optional_text(
+            document_title
+        )
+        resolved_section_title = SectionTaskContextBuilder._normalize_optional_text(
+            task_unit.title
+        )
+        resolved_container_title = SectionTaskContextBuilder._normalize_optional_text(
+            task_unit.container_title
+        )
+        has_unknown_document = resolved_document_title is None
+        has_untitled_section = resolved_section_title is None
+
+        valid = not (has_unknown_document or has_untitled_section)
+        reason: SectionTaskContextReason | None = None
+        if has_unknown_document:
+            reason = SectionTaskContextReason.UNKNOWN_DOCUMENT
+        elif has_untitled_section:
+            reason = SectionTaskContextReason.UNTITLED_SECTION
+
+        source_section_ids = [
+            source_id.strip()
+            for source_id in task_unit.source_section_ids
+            if source_id.strip()
+        ]
+
+        return SectionTaskContext(
+            document_title=resolved_document_title,
+            container_title=resolved_container_title,
+            section_title=resolved_section_title,
+            section_id=resolved_unit_id,
+            section_index=section_index,
+            section_content=content,
+            source_section_ids=source_section_ids,
+            valid=valid,
+            reason=reason,
         )
 
     @staticmethod
@@ -97,6 +154,7 @@ class SectionTaskContextBuilder:
             section_id=resolved_section_id,
             section_index=section.section_index,
             section_content=content,
+            source_section_ids=[resolved_section_id],
             valid=valid,
             reason=reason,
         )

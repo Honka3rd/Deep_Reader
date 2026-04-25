@@ -1,10 +1,14 @@
 from language.language_code import LanguageCode
 from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import SectionTaskContext
+from section_tasks.topic_guidance_registry import TopicGuidanceRegistry
 
 
 class SectionTaskPromptCommon:
     """Shared prompt helper for section-based task prompt builders."""
+
+    def __init__(self, topic_guidance_registry: TopicGuidanceRegistry):
+        self.topic_guidance_registry = topic_guidance_registry
 
     def build_header(self) -> str:
         """Return task-agnostic instruction header."""
@@ -73,22 +77,12 @@ class SectionTaskPromptCommon:
     def build_topic_instruction(self, document_profile: DocumentProfile | None) -> str:
         """Return light topic-aware instruction without overriding section evidence."""
         topic = self._extract_profile_topic(document_profile)
-        normalized = (topic or "").strip().lower()
-        if not normalized:
-            return "Topic Guidance: None"
-        if any(token in normalized for token in ("literary", "novel", "fiction", "literature")):
-            return "Topic Guidance: emphasize characters, relationships, and key events."
-        if any(token in normalized for token in ("financial", "report", "finance", "earnings")):
-            return "Topic Guidance: emphasize entities, periods, and concrete financial points."
-        if any(token in normalized for token in ("technical", "documentation", "manual", "api")):
-            return "Topic Guidance: emphasize definitions, procedures, and constraints."
-        if any(token in normalized for token in ("biography", "history", "historical")):
-            return "Topic Guidance: emphasize people, timeline, and turning points."
-        return f"Topic Guidance: align style with topic '{topic}'."
+        return self.topic_guidance_registry.resolve_instruction(topic)
 
     def build_context_block(self, context: SectionTaskContext) -> str:
         """Build section context block shared by different task prompts."""
         container_title_line = self._build_container_title_line(context)
+        source_section_ids_line = self._build_source_section_ids_line(context)
         return (
             "Section Context:\n"
             f"- Document Title: {self._display_document_title(context)}\n"
@@ -96,6 +90,7 @@ class SectionTaskPromptCommon:
             f"- Section ID: {context.section_id}\n"
             f"- Section Title: {self._display_section_title(context)}\n"
             f"- Section Index: {context.section_index}\n"
+            f"{source_section_ids_line}"
         )
 
     @staticmethod
@@ -151,6 +146,13 @@ class SectionTaskPromptCommon:
         if context.container_title is None:
             return ""
         return f"- Container Title: {context.container_title}\n"
+
+    @staticmethod
+    def _build_source_section_ids_line(context: SectionTaskContext) -> str:
+        if not context.source_section_ids:
+            return ""
+        joined = ", ".join(context.source_section_ids)
+        return f"- Source Section IDs: {joined}\n"
 
     @staticmethod
     def _display_document_title(context: SectionTaskContext) -> str:

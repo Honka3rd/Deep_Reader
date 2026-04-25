@@ -5,6 +5,8 @@ from language.language_code import LanguageCode, LanguageCodeResolver
 from llm.llm_provider import LLMProvider
 from profile.document_profile import DocumentProfile
 from section_tasks.quiz_question import QuizQuestion
+from section_tasks.task_unit import TaskUnit
+from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.section_task_context_builder import (
     SectionTaskContextBuilder,
 )
@@ -23,12 +25,14 @@ class ChapterQuizService:
         llm_provider: LLMProvider,
         context_builder: SectionTaskContextBuilder,
         prompt_builder_factory: SectionTaskPromptBuilderFactory,
+        task_unit_resolver: TaskUnitResolver,
         quiz_min_section_chars: int = 400,
     ):
         """Initialize service with injected dependencies."""
         self.llm_provider = llm_provider
         self.context_builder = context_builder
         self.prompt_builder_factory = prompt_builder_factory
+        self.task_unit_resolver = task_unit_resolver
         self.quiz_min_section_chars = max(1, int(quiz_min_section_chars))
 
     def generate_section_quiz(
@@ -38,9 +42,14 @@ class ChapterQuizService:
         document_profile: DocumentProfile | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Generate section-quiz for one section id from a structured document."""
-        task_context = self.context_builder.build_from_document(
+        task_unit_result = self._resolve_task_unit_for_section(
             document=document,
             section_id=section_id,
+        )
+        task_context = self.context_builder.build_from_task_unit(
+            task_unit=task_unit_result.task_unit,
+            document_title=document.title,
+            section_index=task_unit_result.unit_index,
         )
         if not task_context.valid:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
@@ -75,9 +84,18 @@ class ChapterQuizService:
         document_profile: DocumentProfile | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Generate quiz text from one structured chapter section."""
-        task_context = self.context_builder.build_from_section(
+        synthetic_document = self._build_synthetic_document_from_section(
             section=section,
             document_title=document_title,
+        )
+        task_unit_result = self._resolve_task_unit_for_section(
+            document=synthetic_document,
+            section_id=section.section_id,
+        )
+        task_context = self.context_builder.build_from_task_unit(
+            task_unit=task_unit_result.task_unit,
+            document_title=document_title,
+            section_index=task_unit_result.unit_index,
         )
         if not task_context.valid:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
@@ -112,6 +130,31 @@ class ChapterQuizService:
         if document_profile is None:
             return LanguageCode.UNKNOWN
         return LanguageCodeResolver.resolve(document_profile.document_language)
+
+    def _resolve_task_unit_for_section(
+        self,
+        *,
+        document: StructuredDocument,
+        section_id: str,
+    ) -> "_ResolvedTaskUnit":
+        normalized_section_id = section_id.strip()
+        if not normalized_section_id:
+            raise ValueError("section_id cannot be empty")
+
+        task_units = self.task_unit_resolver.resolve(document)
+        if not task_units:
+            raise ValueError(
+                f"no task units resolved for document '{document.document_id}'"
+            )
+
+        for unit_index, task_unit in enumerate(task_units):
+            if normalized_section_id in task_unit.source_section_ids:
+                return _ResolvedTaskUnit(task_unit=task_unit, unit_index=unit_index)
+
+        raise ValueError(
+            f"section_id '{normalized_section_id}' not found in resolved task units "
+            f"for document '{document.document_id}'"
+        )
 
     def _build_min_length_skip_reason(self, section_content: str) -> str | None:
         """Return skip reason when section content is shorter than configured threshold."""
@@ -173,3 +216,28 @@ class ChapterQuizService:
         if start_index == -1 or end_index == -1 or end_index <= start_index:
             raise ValueError("quiz_parse_failed: JSON array not found in LLM output")
         return text[start_index : end_index + 1]
+
+    @staticmethod
+    def _build_synthetic_document_from_section(
+        *,
+        section: StructuredSection,
+        document_title: str | None,
+    ) -> StructuredDocument:
+        resolved_title = (document_title or "").strip() or "Unknown Document"
+        content = section.content
+        return StructuredDocument(
+            document_id=f"synthetic-{section.section_id}",
+            title=resolved_title,
+            source_path=None,
+            language=None,
+            raw_text=content,
+            sections=[section],
+        )
+
+
+class _ResolvedTaskUnit:
+    """Internal holder for resolved task unit + position."""
+
+    def __init__(self, task_unit: TaskUnit, unit_index: int):
+        self.task_unit = task_unit
+        self.unit_index = unit_index
