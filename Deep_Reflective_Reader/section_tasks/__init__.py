@@ -3,7 +3,12 @@ from section_tasks.chapter_quiz_task_prompt_builder import (
 )
 from section_tasks.chapter_summary_service import ChapterSummaryService
 from section_tasks.chapter_quiz_service import ChapterQuizService
-from section_tasks.document_task_layout import DocumentTaskLayout
+from section_tasks.document_task_layout import (
+    DocumentTaskLayout,
+    DocumentTaskLayoutSectionDTO,
+    SectionTaskMode,
+    TaskUnitDTO,
+)
 from section_tasks.quiz_question import QuizQuestion
 from section_tasks.section_quiz_task_prompt_builder import (
     SectionQuizTaskPromptBuilder,
@@ -33,6 +38,9 @@ __all__ = [
     "ChapterSummaryService",
     "ChapterQuizService",
     "DocumentTaskLayout",
+    "DocumentTaskLayoutSectionDTO",
+    "SectionTaskMode",
+    "TaskUnitDTO",
     "AbstractResult",
     "AbstractTaskPromptBuilder",
     "SectionTaskPromptBuilderFactory",

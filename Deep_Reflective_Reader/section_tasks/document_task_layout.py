@@ -1,30 +1,74 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
-from document_structure.structured_document import StructuredDocument
-from section_tasks.task_unit import TaskUnit
+
+class SectionTaskMode(str, Enum):
+    """Section-to-task-unit relationship mode for section-first UI rendering."""
+
+    DIRECT = "direct"
+    SPLIT = "split"
+    MERGED = "merged"
+
+
+@dataclass(frozen=True)
+class TaskUnitDTO:
+    """Frontend-safe task-unit metadata without large content payload."""
+
+    unit_id: str
+    title: str | None
+    container_title: str | None
+    source_section_ids: list[str]
+    is_fallback_generated: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize task-unit metadata into JSON-friendly dictionary."""
+        return {
+            "unit_id": self.unit_id,
+            "title": self.title,
+            "container_title": self.container_title,
+            "source_section_ids": list(self.source_section_ids),
+            "is_fallback_generated": self.is_fallback_generated,
+        }
+
+
+@dataclass(frozen=True)
+class DocumentTaskLayoutSectionDTO:
+    """Section-first layout node with embedded task-unit metadata."""
+
+    section_id: str
+    title: str | None
+    container_title: str | None
+    task_mode: SectionTaskMode
+    task_units: list[TaskUnitDTO]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize section layout node into JSON-friendly dictionary."""
+        return {
+            "section_id": self.section_id,
+            "title": self.title,
+            "container_title": self.container_title,
+            "task_mode": self.task_mode.value,
+            "task_units": [task_unit.to_dict() for task_unit in self.task_units],
+        }
 
 
 @dataclass(frozen=True)
 class DocumentTaskLayout:
-    """View model that exposes structured view + task-unit view + mappings."""
+    """Frontend-consumable layout that keeps structured-first and task-unit metadata."""
 
-    structured_document: StructuredDocument
-    task_units: list[TaskUnit]
-    section_to_task_unit_ids: dict[str, list[str]]
-    task_unit_to_section_ids: dict[str, list[str]]
+    document_id: str
+    title: str
+    language: str | None
+    sections: list[DocumentTaskLayoutSectionDTO]
+    task_units: list[TaskUnitDTO] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize layout into JSON-friendly dictionary."""
         return {
-            "structured_document": self.structured_document.to_dict(),
-            "task_units": [unit.to_dict() for unit in self.task_units],
-            "section_to_task_unit_ids": {
-                section_id: list(unit_ids)
-                for section_id, unit_ids in self.section_to_task_unit_ids.items()
-            },
-            "task_unit_to_section_ids": {
-                unit_id: list(section_ids)
-                for unit_id, section_ids in self.task_unit_to_section_ids.items()
-            },
+            "document_id": self.document_id,
+            "title": self.title,
+            "language": self.language,
+            "sections": [section.to_dict() for section in self.sections],
+            "task_units": [task_unit.to_dict() for task_unit in self.task_units],
         }

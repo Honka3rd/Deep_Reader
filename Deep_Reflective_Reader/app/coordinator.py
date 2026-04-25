@@ -13,7 +13,12 @@ from profile.document_profile import DocumentProfile
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from question.qa_enums import AnswerLevel
 from question.standardized.standardized_question import StandardizedQuestion
-from section_tasks.document_task_layout import DocumentTaskLayout
+from section_tasks.document_task_layout import (
+    DocumentTaskLayout,
+    DocumentTaskLayoutSectionDTO,
+    SectionTaskMode,
+    TaskUnitDTO,
+)
 from section_tasks.quiz_question import QuizQuestion
 from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit import TaskUnit
@@ -452,7 +457,7 @@ class Coordinator:
         return structured_document, document_profile, list(preparation_result.assets.errors)
 
     def get_document_task_layout(self, doc_name: str) -> DocumentTaskLayout:
-        """Return dual-view layout: structured sections, task units, and mappings."""
+        """Return section-first document layout with embedded task-unit metadata."""
         preparation_result = self.document_preparation_pipeline.prepare_and_load(
             doc_name=doc_name,
             mode=PreparationMode.BASE,
@@ -464,30 +469,85 @@ class Coordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
 
-        task_units = self.task_unit_resolver.resolve(structured_document)
+        resolved_task_units = self.task_unit_resolver.resolve(structured_document)
+        task_unit_dtos: list[TaskUnitDTO] = [
+            TaskUnitDTO(
+                unit_id=task_unit.unit_id,
+                title=task_unit.title,
+                container_title=task_unit.container_title,
+                source_section_ids=list(task_unit.source_section_ids),
+                is_fallback_generated=task_unit.is_fallback_generated,
+            )
+            for task_unit in resolved_task_units
+        ]
+        task_unit_by_id: dict[str, TaskUnitDTO] = {
+            task_unit.unit_id: task_unit for task_unit in task_unit_dtos
+        }
 
-        section_to_task_unit_ids: dict[str, list[str]] = {
+        section_to_unit_ids: dict[str, list[str]] = {
             section.section_id: [] for section in structured_document.sections
         }
-        task_unit_to_section_ids: dict[str, list[str]] = {}
-
-        for task_unit in task_units:
-            section_ids: list[str] = []
-            for section_id in task_unit.source_section_ids:
-                normalized_section_id = section_id.strip()
+        for task_unit in task_unit_dtos:
+            for source_section_id in task_unit.source_section_ids:
+                normalized_section_id = source_section_id.strip()
                 if not normalized_section_id:
                     continue
-                section_ids.append(normalized_section_id)
-                section_to_task_unit_ids.setdefault(normalized_section_id, [])
-                section_to_task_unit_ids[normalized_section_id].append(task_unit.unit_id)
-            task_unit_to_section_ids[task_unit.unit_id] = section_ids
+                section_to_unit_ids.setdefault(normalized_section_id, [])
+                section_to_unit_ids[normalized_section_id].append(task_unit.unit_id)
+
+        section_layouts: list[DocumentTaskLayoutSectionDTO] = []
+        for section in structured_document.sections:
+            unit_ids = section_to_unit_ids.get(section.section_id, [])
+            section_units = [
+                task_unit_by_id[unit_id]
+                for unit_id in unit_ids
+                if unit_id in task_unit_by_id
+            ]
+            section_mode = self._resolve_section_task_mode(
+                section_id=section.section_id,
+                section_task_units=section_units,
+            )
+            section_layouts.append(
+                DocumentTaskLayoutSectionDTO(
+                    section_id=section.section_id,
+                    title=section.title,
+                    container_title=section.container_title,
+                    task_mode=section_mode,
+                    task_units=section_units,
+                )
+            )
 
         return DocumentTaskLayout(
-            structured_document=structured_document,
-            task_units=task_units,
-            section_to_task_unit_ids=section_to_task_unit_ids,
-            task_unit_to_section_ids=task_unit_to_section_ids,
+            document_id=structured_document.document_id,
+            title=structured_document.title,
+            language=structured_document.language,
+            sections=section_layouts,
+            task_units=task_unit_dtos,
         )
+
+    @staticmethod
+    def _resolve_section_task_mode(
+        *,
+        section_id: str,
+        section_task_units: list[TaskUnitDTO],
+    ) -> SectionTaskMode:
+        """Infer section task mode from section-to-unit relationship."""
+        if not section_task_units:
+            return SectionTaskMode.DIRECT
+
+        for task_unit in section_task_units:
+            source_count = len(task_unit.source_section_ids)
+            if source_count > 1:
+                return SectionTaskMode.MERGED
+
+        if len(section_task_units) > 1:
+            return SectionTaskMode.SPLIT
+
+        only_unit = section_task_units[0]
+        if len(only_unit.source_section_ids) == 1 and only_unit.source_section_ids[0] == section_id:
+            return SectionTaskMode.DIRECT
+
+        return SectionTaskMode.MERGED
 
     def _load_existing_document_profile(self, doc_name: str) -> DocumentProfile | None:
         """Load existing profile artifact when available; return None otherwise."""
