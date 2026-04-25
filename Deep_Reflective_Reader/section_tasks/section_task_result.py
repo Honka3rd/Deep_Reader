@@ -1,14 +1,18 @@
 from dataclasses import dataclass
-from typing import Self
+from typing import Generic, Self, TypeVar
 
 from shared.abstract_result import AbstractResult
 
+
+PayloadT = TypeVar("PayloadT")
+
+
 @dataclass(frozen=True)
-class SectionTaskResult(AbstractResult[str]):
+class SectionTaskResult(AbstractResult[PayloadT], Generic[PayloadT]):
     """Unified service result DTO for section task outputs."""
 
     @classmethod
-    def ok(cls, payload: str) -> Self:
+    def ok(cls, payload: PayloadT) -> Self:
         """Build success result with LLM-generated payload."""
         return cls(success=True, payload=payload, reason="")
 

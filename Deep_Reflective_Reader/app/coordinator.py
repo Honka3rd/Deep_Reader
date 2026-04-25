@@ -13,6 +13,7 @@ from profile.document_profile import DocumentProfile
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from question.qa_enums import AnswerLevel
 from question.standardized.standardized_question import StandardizedQuestion
+from section_tasks.quiz_question import QuizQuestion
 from section_tasks.section_task_result import SectionTaskResult
 from session.reading_session import ReadingSession
 from session.session_manager import SessionUpdateResult
@@ -308,7 +309,9 @@ class Coordinator:
         except Exception as error:
             return SectionTaskResult.from_llm_error(error)
 
-    def generate_section_quiz(self, doc_name: str, section_id: str) -> SectionTaskResult:
+    def generate_section_quiz(
+        self, doc_name: str, section_id: str
+    ) -> SectionTaskResult[list[QuizQuestion]]:
         """Run section-quiz task from prepared structured document."""
         structured_document, document_profile, preparation_errors = (
             self._prepare_section_task_inputs(doc_name)

@@ -1,6 +1,7 @@
 from section_tasks.chapter_summary_service import ChapterSummaryService
 from section_tasks.chapter_quiz_service import ChapterQuizService
 from section_tasks.quiz_task_prompt_builder import QuizTaskPromptBuilder
+from section_tasks.quiz_question import QuizQuestion
 from shared.abstract_result import AbstractResult
 from section_tasks.section_task_prompt_builder import SectionTaskPromptBuilder
 from section_tasks.section_task_prompt_builder_factory import (
@@ -26,6 +27,7 @@ __all__ = [
     "SectionTaskType",
     "SummaryTaskPromptBuilder",
     "QuizTaskPromptBuilder",
+    "QuizQuestion",
     "SectionTaskContext",
     "SectionTaskContextBuilder",
     "SectionTaskContextReason",

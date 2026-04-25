@@ -45,6 +45,24 @@ class SectionTaskResponse(BaseModel):
     reason: str | None
 
 
+class QuizQuestionResponse(BaseModel):
+    """Structured quiz question response DTO."""
+
+    question_id: str
+    question_text: str
+    answer_text: str
+
+
+class SectionQuizResponse(BaseModel):
+    """Response payload for section-quiz endpoint."""
+
+    doc_name: str
+    section_id: str
+    success: bool
+    questions: list[QuizQuestionResponse] | None
+    reason: str | None
+
+
 class SummarizeChapterRequest(BaseModel):
     """Request payload for chapter-summary endpoint."""
 

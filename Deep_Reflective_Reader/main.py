@@ -8,6 +8,8 @@ from api_schemas import (
     PrepareDocumentRequest,
     AskDocumentRequest,
     AskDocumentResponse,
+    QuizQuestionResponse,
+    SectionQuizResponse,
     SectionTaskRequest,
     SectionTaskResponse,
     SummarizeChapterRequest,
@@ -128,7 +130,7 @@ def summarize_document_section(request: SectionTaskRequest, response: Response):
         raise HTTPException(status_code=500, detail=str(error))
 
 
-@app.post("/documents/section-quiz", response_model=SectionTaskResponse)
+@app.post("/documents/section-quiz", response_model=SectionQuizResponse)
 def generate_document_section_quiz(request: SectionTaskRequest, response: Response):
     """Run quiz task for one structured section."""
     try:
@@ -137,19 +139,27 @@ def generate_document_section_quiz(request: SectionTaskRequest, response: Respon
             section_id=request.section_id,
         )
         if result.success:
-            return SectionTaskResponse(
+            questions = [
+                QuizQuestionResponse(
+                    question_id=question.question_id,
+                    question_text=question.question_text,
+                    answer_text=question.answer_text,
+                )
+                for question in (result.payload or [])
+            ]
+            return SectionQuizResponse(
                 doc_name=request.doc_name,
                 section_id=request.section_id,
                 success=True,
-                result=result.payload,
+                questions=questions,
                 reason=None,
             )
         response.status_code = _resolve_section_task_failure_status(result.reason)
-        return SectionTaskResponse(
+        return SectionQuizResponse(
             doc_name=request.doc_name,
             section_id=request.section_id,
             success=False,
-            result=None,
+            questions=None,
             reason=result.reason,
         )
     except HTTPException:
