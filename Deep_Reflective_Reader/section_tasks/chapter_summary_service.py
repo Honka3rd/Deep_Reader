@@ -36,15 +36,31 @@ class ChapterSummaryService:
         section_id: str,
         document_profile: DocumentProfile | None = None,
     ) -> SectionTaskResult:
-        """Summarize a section by id from one structured document."""
+        """Adapter: summarize by section id via task-unit resolution."""
         task_unit_result = self._resolve_task_unit_for_section(
             document=document,
             section_id=section_id,
         )
-        task_context = self.context_builder.build_from_task_unit(
+        return self.summarize_task_unit(
             task_unit=task_unit_result.task_unit,
             document_title=document.title,
-            section_index=task_unit_result.unit_index,
+            document_profile=document_profile,
+            task_unit_index=task_unit_result.unit_index,
+        )
+
+    def summarize_task_unit(
+        self,
+        task_unit: TaskUnit,
+        document_title: str | None = None,
+        document_profile: DocumentProfile | None = None,
+        *,
+        task_unit_index: int = 0,
+    ) -> SectionTaskResult:
+        """Canonical summary execution path based on TaskUnit."""
+        task_context = self.context_builder.build_from_task_unit(
+            task_unit=task_unit,
+            document_title=document_title,
+            section_index=task_unit_index,
         )
         if not task_context.valid:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
@@ -75,7 +91,7 @@ class ChapterSummaryService:
         document_title: str | None = None,
         document_profile: DocumentProfile | None = None,
     ) -> SectionTaskResult:
-        """Summarize one structured section directly from section metadata + content."""
+        """Adapter: summarize by chapter section via task-unit resolution."""
         synthetic_document = self._build_synthetic_document_from_section(
             section=section,
             document_title=document_title,
@@ -84,33 +100,12 @@ class ChapterSummaryService:
             document=synthetic_document,
             section_id=section.section_id,
         )
-        task_context = self.context_builder.build_from_task_unit(
+        return self.summarize_task_unit(
             task_unit=task_unit_result.task_unit,
             document_title=document_title,
-            section_index=task_unit_result.unit_index,
-        )
-        if not task_context.valid:
-            reason = task_context.reason.value if task_context.reason else "invalid section task context"
-            return SectionTaskResult.fail(reason)
-        prompt_builder = self.prompt_builder_factory.get_builder(
-            SectionTaskType.SUMMARY
-        )
-        if prompt_builder is None:
-            return SectionTaskResult.fail(
-                "summary prompt builder is unavailable"
-            )
-        language_code = self._resolve_language_code(document_profile)
-        prompt = prompt_builder.build(
-            context=task_context,
             document_profile=document_profile,
-            language_code=language_code,
+            task_unit_index=task_unit_result.unit_index,
         )
-        try:
-            return SectionTaskResult.ok(
-                self.llm_provider.complete_text(prompt).strip()
-            )
-        except Exception as error:
-            return SectionTaskResult.from_llm_error(error)
 
     @staticmethod
     def _resolve_language_code(

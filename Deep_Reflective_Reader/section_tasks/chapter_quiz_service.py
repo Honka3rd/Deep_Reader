@@ -41,15 +41,33 @@ class ChapterQuizService:
         section_id: str,
         document_profile: DocumentProfile | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
-        """Generate section-quiz for one section id from a structured document."""
+        """Adapter: generate section quiz by section id via task-unit resolution."""
         task_unit_result = self._resolve_task_unit_for_section(
             document=document,
             section_id=section_id,
         )
-        task_context = self.context_builder.build_from_task_unit(
+        return self.generate_task_unit_quiz(
             task_unit=task_unit_result.task_unit,
             document_title=document.title,
-            section_index=task_unit_result.unit_index,
+            document_profile=document_profile,
+            task_type=SectionTaskType.SECTION_QUIZ,
+            task_unit_index=task_unit_result.unit_index,
+        )
+
+    def generate_task_unit_quiz(
+        self,
+        task_unit: TaskUnit,
+        document_title: str | None = None,
+        document_profile: DocumentProfile | None = None,
+        *,
+        task_type: SectionTaskType = SectionTaskType.SECTION_QUIZ,
+        task_unit_index: int = 0,
+    ) -> SectionTaskResult[list[QuizQuestion]]:
+        """Canonical quiz execution path based on TaskUnit."""
+        task_context = self.context_builder.build_from_task_unit(
+            task_unit=task_unit,
+            document_title=document_title,
+            section_index=task_unit_index,
         )
         if not task_context.valid:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
@@ -57,12 +75,10 @@ class ChapterQuizService:
         skipped_reason = self._build_min_length_skip_reason(task_context.section_content)
         if skipped_reason is not None:
             return SectionTaskResult.fail(skipped_reason)
-        prompt_builder = self.prompt_builder_factory.get_builder(
-            SectionTaskType.SECTION_QUIZ
-        )
+        prompt_builder = self.prompt_builder_factory.get_builder(task_type)
         if prompt_builder is None:
             return SectionTaskResult.fail(
-                "section quiz prompt builder is unavailable"
+                f"{task_type.value} prompt builder is unavailable"
             )
         language_code = self._resolve_language_code(document_profile)
         prompt = prompt_builder.build(
@@ -83,7 +99,7 @@ class ChapterQuizService:
         document_title: str | None = None,
         document_profile: DocumentProfile | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
-        """Generate quiz text from one structured chapter section."""
+        """Adapter: generate chapter quiz by section metadata via task-unit resolution."""
         synthetic_document = self._build_synthetic_document_from_section(
             section=section,
             document_title=document_title,
@@ -92,36 +108,13 @@ class ChapterQuizService:
             document=synthetic_document,
             section_id=section.section_id,
         )
-        task_context = self.context_builder.build_from_task_unit(
+        return self.generate_task_unit_quiz(
             task_unit=task_unit_result.task_unit,
             document_title=document_title,
-            section_index=task_unit_result.unit_index,
-        )
-        if not task_context.valid:
-            reason = task_context.reason.value if task_context.reason else "invalid section task context"
-            return SectionTaskResult.fail(reason)
-        skipped_reason = self._build_min_length_skip_reason(task_context.section_content)
-        if skipped_reason is not None:
-            return SectionTaskResult.fail(skipped_reason)
-        prompt_builder = self.prompt_builder_factory.get_builder(
-            SectionTaskType.CHAPTER_QUIZ
-        )
-        if prompt_builder is None:
-            return SectionTaskResult.fail(
-                "chapter quiz prompt builder is unavailable"
-            )
-        language_code = self._resolve_language_code(document_profile)
-        prompt = prompt_builder.build(
-            context=task_context,
             document_profile=document_profile,
-            language_code=language_code,
+            task_type=SectionTaskType.CHAPTER_QUIZ,
+            task_unit_index=task_unit_result.unit_index,
         )
-        try:
-            raw_response = self.llm_provider.complete_text(prompt).strip()
-            quiz_questions = self._parse_and_validate_quiz_questions(raw_response)
-            return SectionTaskResult.ok(quiz_questions)
-        except Exception as error:
-            return SectionTaskResult.from_llm_error(error)
 
     @staticmethod
     def _resolve_language_code(
