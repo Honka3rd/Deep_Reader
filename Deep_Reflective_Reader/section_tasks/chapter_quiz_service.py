@@ -15,7 +15,7 @@ from section_tasks.section_task_result import SectionTaskResult
 
 
 class ChapterQuizService:
-    """Generate chapter-level reading-comprehension quiz from structured section data."""
+    """Generate section/chapter quiz from structured section data."""
 
     def __init__(
         self,
@@ -28,13 +28,13 @@ class ChapterQuizService:
         self.context_builder = context_builder
         self.prompt_builder_factory = prompt_builder_factory
 
-    def generate_quiz(
+    def generate_section_quiz(
         self,
         document: StructuredDocument,
         section_id: str,
         document_profile: DocumentProfile | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
-        """Generate quiz for one section id from a structured document."""
+        """Generate section-quiz for one section id from a structured document."""
         task_context = self.context_builder.build_from_document(
             document=document,
             section_id=section_id,
@@ -43,11 +43,11 @@ class ChapterQuizService:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
             return SectionTaskResult.fail(reason)
         prompt_builder = self.prompt_builder_factory.get_builder(
-            SectionTaskType.QUIZ
+            SectionTaskType.SECTION_QUIZ
         )
         if prompt_builder is None:
             return SectionTaskResult.fail(
-                "quiz prompt builder is unavailable"
+                "section quiz prompt builder is unavailable"
             )
         prompt = prompt_builder.build(
             context=task_context,
@@ -75,11 +75,11 @@ class ChapterQuizService:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
             return SectionTaskResult.fail(reason)
         prompt_builder = self.prompt_builder_factory.get_builder(
-            SectionTaskType.QUIZ
+            SectionTaskType.CHAPTER_QUIZ
         )
         if prompt_builder is None:
             return SectionTaskResult.fail(
-                "quiz prompt builder is unavailable"
+                "chapter quiz prompt builder is unavailable"
             )
         prompt = prompt_builder.build(
             context=task_context,

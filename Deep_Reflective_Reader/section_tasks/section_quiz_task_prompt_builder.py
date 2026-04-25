@@ -1,11 +1,11 @@
 from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import SectionTaskContext
-from section_tasks.section_task_prompt_builder import SectionTaskPromptBuilder
+from section_tasks.abstract_task_prompt_builder import AbstractTaskPromptBuilder
 from section_tasks.section_task_prompt_common import SectionTaskPromptCommon
 
 
-class QuizTaskPromptBuilder(SectionTaskPromptBuilder):
-    """Prompt builder dedicated to chapter quiz task."""
+class SectionQuizTaskPromptBuilder(AbstractTaskPromptBuilder):
+    """Prompt builder dedicated to section-level quiz task."""
 
     def __init__(self, common: SectionTaskPromptCommon):
         self.common = common
@@ -16,10 +16,14 @@ class QuizTaskPromptBuilder(SectionTaskPromptBuilder):
         context: SectionTaskContext,
         document_profile: DocumentProfile | None = None,
     ) -> str:
-        """Build one quiz prompt from section context."""
+        """Build section-quiz prompt from section context."""
         return (
             f"{self.common.build_header()}\n"
-            "Task Type: quiz\n"
+            "Task Type: section_quiz\n"
+            "Task Scope:\n"
+            "- This is a SECTION quiz, not a full chapter quiz.\n"
+            "- Focus on this specific section/segment only.\n"
+            "- Do not ask broad chapter-level questions.\n\n"
             "Task:\n"
             "- Create exactly 4 short-answer reading-comprehension questions.\n"
             "- Use only this section.\n"

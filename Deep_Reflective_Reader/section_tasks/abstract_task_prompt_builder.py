@@ -4,7 +4,7 @@ from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import SectionTaskContext
 
 
-class SectionTaskPromptBuilder(ABC):
+class AbstractTaskPromptBuilder(ABC):
     """Abstract base class for task-specific section prompt builders."""
 
     @abstractmethod

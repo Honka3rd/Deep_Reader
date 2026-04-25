@@ -1,10 +1,10 @@
 from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import SectionTaskContext
-from section_tasks.section_task_prompt_builder import SectionTaskPromptBuilder
+from section_tasks.abstract_task_prompt_builder import AbstractTaskPromptBuilder
 from section_tasks.section_task_prompt_common import SectionTaskPromptCommon
 
 
-class SummaryTaskPromptBuilder(SectionTaskPromptBuilder):
+class SummaryTaskPromptBuilder(AbstractTaskPromptBuilder):
     """Prompt builder dedicated to chapter summary task."""
 
     def __init__(self, common: SectionTaskPromptCommon):

@@ -322,9 +322,50 @@ class Coordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
         try:
-            return self.chapter_quiz_service.generate_quiz(
+            return self.chapter_quiz_service.generate_section_quiz(
                 document=structured_document,
                 section_id=section_id,
+                document_profile=document_profile,
+            )
+        except ValueError as error:
+            return SectionTaskResult.fail(str(error))
+        except Exception as error:
+            return SectionTaskResult.from_llm_error(error)
+
+    def generate_chapter_quiz(
+        self,
+        doc_name: str,
+        chapter_title: str,
+    ) -> SectionTaskResult[list[QuizQuestion]]:
+        """Run chapter-quiz task by exact chapter title match."""
+        normalized_chapter_title = chapter_title.strip()
+        if not normalized_chapter_title:
+            return SectionTaskResult.fail("chapter_title cannot be empty")
+
+        structured_document, document_profile, preparation_errors = (
+            self._prepare_section_task_inputs(doc_name)
+        )
+        if structured_document is None:
+            detail = " | ".join(preparation_errors)
+            return SectionTaskResult.fail(
+                f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
+            )
+
+        target_section = None
+        for section in structured_document.sections:
+            if ((section.title or "").strip()) == normalized_chapter_title:
+                target_section = section
+                break
+
+        if target_section is None:
+            return SectionTaskResult.fail(
+                f"chapter_title '{normalized_chapter_title}' not found in document '{doc_name}'"
+            )
+
+        try:
+            return self.chapter_quiz_service.generate_chapter_quiz(
+                section=target_section,
+                document_title=structured_document.title,
                 document_profile=document_profile,
             )
         except ValueError as error:

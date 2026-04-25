@@ -23,9 +23,14 @@ from llm.openai_llm_provider import OpenAILLMProvider
 from prompts.prompt_assembler import PromptAssembler
 from question.question_scope_keywords_provider import QuestionScopeKeywordsProvider
 from question.question_scope_resolver import QuestionScopeResolver
+from section_tasks.chapter_quiz_task_prompt_builder import (
+    ChapterQuizTaskPromptBuilder,
+)
 from section_tasks.chapter_quiz_service import ChapterQuizService
 from section_tasks.chapter_summary_service import ChapterSummaryService
-from section_tasks.quiz_task_prompt_builder import QuizTaskPromptBuilder
+from section_tasks.section_quiz_task_prompt_builder import (
+    SectionQuizTaskPromptBuilder,
+)
 from section_tasks.section_task_context_builder import SectionTaskContextBuilder
 from section_tasks.section_task_prompt_builder_factory import (
     SectionTaskPromptBuilderFactory,
@@ -241,14 +246,19 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         SummaryTaskPromptBuilder,
         common=section_task_prompt_common,
     )
-    quiz_task_prompt_builder = providers.Singleton(
-        QuizTaskPromptBuilder,
+    section_quiz_task_prompt_builder = providers.Singleton(
+        SectionQuizTaskPromptBuilder,
+        common=section_task_prompt_common,
+    )
+    chapter_quiz_task_prompt_builder = providers.Singleton(
+        ChapterQuizTaskPromptBuilder,
         common=section_task_prompt_common,
     )
     section_task_prompt_builder_factory = providers.Singleton(
         SectionTaskPromptBuilderFactory,
         summary_builder=summary_task_prompt_builder,
-        quiz_builder=quiz_task_prompt_builder,
+        section_quiz_builder=section_quiz_task_prompt_builder,
+        chapter_quiz_builder=chapter_quiz_task_prompt_builder,
     )
 
     chapter_summary_service = providers.Singleton(

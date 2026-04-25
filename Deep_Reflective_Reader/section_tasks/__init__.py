@@ -1,9 +1,14 @@
+from section_tasks.chapter_quiz_task_prompt_builder import (
+    ChapterQuizTaskPromptBuilder,
+)
 from section_tasks.chapter_summary_service import ChapterSummaryService
 from section_tasks.chapter_quiz_service import ChapterQuizService
-from section_tasks.quiz_task_prompt_builder import QuizTaskPromptBuilder
 from section_tasks.quiz_question import QuizQuestion
+from section_tasks.section_quiz_task_prompt_builder import (
+    SectionQuizTaskPromptBuilder,
+)
 from shared.abstract_result import AbstractResult
-from section_tasks.section_task_prompt_builder import SectionTaskPromptBuilder
+from section_tasks.abstract_task_prompt_builder import AbstractTaskPromptBuilder
 from section_tasks.section_task_prompt_builder_factory import (
     SectionTaskPromptBuilderFactory,
     SectionTaskType,
@@ -21,12 +26,13 @@ __all__ = [
     "ChapterSummaryService",
     "ChapterQuizService",
     "AbstractResult",
-    "SectionTaskPromptBuilder",
+    "AbstractTaskPromptBuilder",
     "SectionTaskPromptBuilderFactory",
     "SectionTaskPromptCommon",
     "SectionTaskType",
     "SummaryTaskPromptBuilder",
-    "QuizTaskPromptBuilder",
+    "SectionQuizTaskPromptBuilder",
+    "ChapterQuizTaskPromptBuilder",
     "QuizQuestion",
     "SectionTaskContext",
     "SectionTaskContextBuilder",
