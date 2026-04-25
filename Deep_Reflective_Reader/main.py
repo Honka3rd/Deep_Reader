@@ -1,4 +1,5 @@
 from uuid import uuid4
+import re
 
 from fastapi import FastAPI, HTTPException, Response
 
@@ -7,6 +8,10 @@ from api_schemas import (
     PrepareDocumentRequest,
     AskDocumentRequest,
     AskDocumentResponse,
+    SectionTaskRequest,
+    SectionTaskResponse,
+    SummarizeChapterRequest,
+    SummarizeChapterResponse,
     StatusResponse,
 )
 
@@ -18,6 +23,22 @@ app = FastAPI(
 
 # ⭐ 這裡很關鍵：Coordinator 是全域 singleton
 coordinator = Coordinator()
+
+
+def _resolve_section_task_failure_status(reason: str) -> int:
+    """Convert section-task failure reason into HTTP status code."""
+    normalized_reason = reason.strip() or "section task failed"
+    lowered = normalized_reason.lower()
+
+    status_match = re.search(r"status=(\d{3})", normalized_reason)
+    if status_match is not None:
+        status_code = int(status_match.group(1))
+        if 400 <= status_code <= 599:
+            return status_code
+
+    if "not found" in lowered:
+        return 404
+    return 400
 
 # ---------------------------
 # Health Check
@@ -73,3 +94,103 @@ Returns:
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/documents/section-summary", response_model=SectionTaskResponse)
+def summarize_document_section(request: SectionTaskRequest, response: Response):
+    """Run summary task for one structured section."""
+    try:
+        result = coordinator.summarize_section(
+            doc_name=request.doc_name,
+            section_id=request.section_id,
+        )
+        if result.success:
+            return SectionTaskResponse(
+                doc_name=request.doc_name,
+                section_id=request.section_id,
+                success=True,
+                result=result.payload,
+                reason=None,
+            )
+        response.status_code = _resolve_section_task_failure_status(result.reason)
+        return SectionTaskResponse(
+            doc_name=request.doc_name,
+            section_id=request.section_id,
+            success=False,
+            result=None,
+            reason=result.reason,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/documents/section-quiz", response_model=SectionTaskResponse)
+def generate_document_section_quiz(request: SectionTaskRequest, response: Response):
+    """Run quiz task for one structured section."""
+    try:
+        result = coordinator.generate_section_quiz(
+            doc_name=request.doc_name,
+            section_id=request.section_id,
+        )
+        if result.success:
+            return SectionTaskResponse(
+                doc_name=request.doc_name,
+                section_id=request.section_id,
+                success=True,
+                result=result.payload,
+                reason=None,
+            )
+        response.status_code = _resolve_section_task_failure_status(result.reason)
+        return SectionTaskResponse(
+            doc_name=request.doc_name,
+            section_id=request.section_id,
+            success=False,
+            result=None,
+            reason=result.reason,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/documents/summarize-chapter", response_model=SummarizeChapterResponse)
+def summarize_document_chapter(
+    request: SummarizeChapterRequest,
+    response: Response,
+):
+    """Run summary task for one chapter resolved by exact title."""
+    try:
+        result = coordinator.summarize_chapter(
+            doc_name=request.doc_name,
+            chapter_title=request.chapter_title,
+        )
+        if result.success:
+            return SummarizeChapterResponse(
+                doc_name=request.doc_name,
+                chapter_title=request.chapter_title,
+                success=True,
+                result=result.payload,
+                reason=None,
+            )
+
+        response.status_code = _resolve_section_task_failure_status(result.reason)
+        return SummarizeChapterResponse(
+            doc_name=request.doc_name,
+            chapter_title=request.chapter_title,
+            success=False,
+            result=None,
+            reason=result.reason,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))

@@ -26,3 +26,37 @@ class StatusResponse(BaseModel):
     """Response payload for API health/status endpoint."""
     status: str
     message: str
+
+
+class SectionTaskRequest(BaseModel):
+    """Request payload for section-summary / section-quiz endpoints."""
+
+    doc_name: str = Field(..., description="Document name")
+    section_id: str = Field(..., description="Target structured section id")
+
+
+class SectionTaskResponse(BaseModel):
+    """Response payload for section task endpoints."""
+
+    doc_name: str
+    section_id: str
+    success: bool
+    result: str | None
+    reason: str | None
+
+
+class SummarizeChapterRequest(BaseModel):
+    """Request payload for chapter-summary endpoint."""
+
+    doc_name: str = Field(..., description="Document name")
+    chapter_title: str = Field(..., description="Exact chapter title")
+
+
+class SummarizeChapterResponse(BaseModel):
+    """Response payload for chapter-summary endpoint."""
+
+    doc_name: str
+    chapter_title: str
+    success: bool
+    result: str | None
+    reason: str | None

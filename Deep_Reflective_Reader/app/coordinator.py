@@ -1,14 +1,19 @@
 from dataclasses import dataclass, replace
 
 from config.app_DI_config import AppDIConfig
+from config.faiss_storage_config import FaissStorageConfig
 from config.container import ApplicationLookupContainer
 from document_preparation.prepared_document_result import PreparedDocumentResult
+from document_preparation.preparation_mode import PreparationMode
+from document_structure.structured_document import StructuredDocument
 from language.language_code import LanguageCode
 from language.language_profile_registry import LanguageProfileRegistry
 from llm.openai_llm_provider import OpenAIModelName
+from profile.document_profile import DocumentProfile
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from question.qa_enums import AnswerLevel
 from question.standardized.standardized_question import StandardizedQuestion
+from section_tasks.section_task_result import SectionTaskResult
 from session.reading_session import ReadingSession
 from session.session_manager import SessionUpdateResult
 
@@ -120,10 +125,13 @@ class Coordinator:
         self.container = ApplicationLookupContainer.build(self.app_config)
         self.bundle_provider = self.container.bundle_provider()
         self.document_preparation_pipeline = self.container.document_preparation_pipeline()
+        self.document_profile_store = self.container.document_profile_store()
         self.session_manager = self.container.session_manager()
         self.context_orchestrator = self.container.context_orchestrator()
         self.prompt_assembler = self.container.prompt_assembler()
         self.llm_provider = self.container.llm_provider()
+        self.chapter_summary_service = self.container.chapter_summary_service()
+        self.chapter_quiz_service = self.container.chapter_quiz_service()
 
     def get_bundle(self, doc_name: str) -> FaissIndexBundle:
         """Ensure index/profile readiness and return query-ready bundle.
@@ -241,6 +249,115 @@ class Coordinator:
             answer_text=answer_text,
             is_low_value=is_low_value,
         )
+
+    def summarize_section(self, doc_name: str, section_id: str) -> SectionTaskResult:
+        """Run section-summary task from prepared structured document."""
+        structured_document, document_profile, preparation_errors = (
+            self._prepare_section_task_inputs(doc_name)
+        )
+        if structured_document is None:
+            detail = " | ".join(preparation_errors)
+            return SectionTaskResult.fail(
+                f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
+            )
+        try:
+            return self.chapter_summary_service.summarize_section(
+                document=structured_document,
+                section_id=section_id,
+                document_profile=document_profile,
+            )
+        except ValueError as error:
+            return SectionTaskResult.fail(str(error))
+        except Exception as error:
+            return SectionTaskResult.from_llm_error(error)
+
+    def summarize_chapter(self, doc_name: str, chapter_title: str) -> SectionTaskResult:
+        """Run chapter-summary task by exact chapter title match."""
+        normalized_chapter_title = chapter_title.strip()
+        if not normalized_chapter_title:
+            return SectionTaskResult.fail("chapter_title cannot be empty")
+
+        structured_document, document_profile, preparation_errors = (
+            self._prepare_section_task_inputs(doc_name)
+        )
+        if structured_document is None:
+            detail = " | ".join(preparation_errors)
+            return SectionTaskResult.fail(
+                f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
+            )
+
+        target_section = None
+        for section in structured_document.sections:
+            if ((section.title or "").strip()) == normalized_chapter_title:
+                target_section = section
+                break
+
+        if target_section is None:
+            return SectionTaskResult.fail(
+                f"chapter_title '{normalized_chapter_title}' not found in document '{doc_name}'"
+            )
+
+        try:
+            return self.chapter_summary_service.summarize_chapter(
+                section=target_section,
+                document_title=structured_document.title,
+                document_profile=document_profile,
+            )
+        except ValueError as error:
+            return SectionTaskResult.fail(str(error))
+        except Exception as error:
+            return SectionTaskResult.from_llm_error(error)
+
+    def generate_section_quiz(self, doc_name: str, section_id: str) -> SectionTaskResult:
+        """Run section-quiz task from prepared structured document."""
+        structured_document, document_profile, preparation_errors = (
+            self._prepare_section_task_inputs(doc_name)
+        )
+        if structured_document is None:
+            detail = " | ".join(preparation_errors)
+            return SectionTaskResult.fail(
+                f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
+            )
+        try:
+            return self.chapter_quiz_service.generate_quiz(
+                document=structured_document,
+                section_id=section_id,
+                document_profile=document_profile,
+            )
+        except ValueError as error:
+            return SectionTaskResult.fail(str(error))
+        except Exception as error:
+            return SectionTaskResult.from_llm_error(error)
+
+    def _prepare_section_task_inputs(
+        self,
+        doc_name: str,
+    ) -> tuple[StructuredDocument | None, DocumentProfile | None, list[str]]:
+        """Prepare base structured artifact and optionally load existing profile."""
+        preparation_result = self.document_preparation_pipeline.prepare_and_load(
+            doc_name=doc_name,
+            mode=PreparationMode.BASE,
+        )
+        structured_document = preparation_result.structured_document
+        if structured_document is None:
+            return None, None, list(preparation_result.assets.errors)
+        document_profile = self._load_existing_document_profile(doc_name)
+        return structured_document, document_profile, list(preparation_result.assets.errors)
+
+    def _load_existing_document_profile(self, doc_name: str) -> DocumentProfile | None:
+        """Load existing profile artifact when available; return None otherwise."""
+        config = FaissStorageConfig(namespace=doc_name)
+        if not self.document_profile_store.exists(config):
+            return None
+        try:
+            return self.document_profile_store.load(config)
+        except Exception as error:
+            print(
+                "Coordinator#section_task_profile_load_failed:",
+                f"doc_name={doc_name}",
+                f"error={error}",
+            )
+            return None
 
     @staticmethod
     def _resolve_answer_language(question: StandardizedQuestion) -> LanguageCode:
