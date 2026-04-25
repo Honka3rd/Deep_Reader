@@ -3,7 +3,7 @@ import re
 
 from fastapi import FastAPI, HTTPException, Response
 
-from app.coordinator import Coordinator
+from app.qa_coordinator import QACoordinator
 from api_schemas import (
     PrepareDocumentRequest,
     AskDocumentRequest,
@@ -23,8 +23,9 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# ⭐ 這裡很關鍵：Coordinator 是全域 singleton
-coordinator = Coordinator()
+# ⭐ QA coordinator 是自由問答主線 singleton
+qa_coordinator = QACoordinator()
+section_task_coordinator = qa_coordinator.container.section_task_coordinator()
 
 
 def _resolve_section_task_failure_status(reason: str) -> int:
@@ -73,7 +74,7 @@ Returns:
         if not session_id:
             session_id = str(uuid4())
 
-        ask_result = coordinator.ask(
+        ask_result = qa_coordinator.ask(
             doc_name=request.doc_name,
             question=request.query,
             top_k=request.top_k,
@@ -102,7 +103,7 @@ Returns:
 def summarize_document_section(request: SectionTaskRequest, response: Response):
     """Run summary task for one structured section."""
     try:
-        result = coordinator.summarize_section(
+        result = section_task_coordinator.summarize_section(
             doc_name=request.doc_name,
             section_id=request.section_id,
         )
@@ -134,7 +135,7 @@ def summarize_document_section(request: SectionTaskRequest, response: Response):
 def generate_document_section_quiz(request: SectionTaskRequest, response: Response):
     """Run quiz task for one structured section."""
     try:
-        result = coordinator.generate_section_quiz(
+        result = section_task_coordinator.generate_section_quiz(
             doc_name=request.doc_name,
             section_id=request.section_id,
         )
@@ -177,7 +178,7 @@ def summarize_document_chapter(
 ):
     """Run summary task for one chapter resolved by exact title."""
     try:
-        result = coordinator.summarize_chapter(
+        result = section_task_coordinator.summarize_chapter(
             doc_name=request.doc_name,
             chapter_title=request.chapter_title,
         )

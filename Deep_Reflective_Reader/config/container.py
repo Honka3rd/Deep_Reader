@@ -39,6 +39,7 @@ from section_tasks.section_task_prompt_common import SectionTaskPromptCommon
 from section_tasks.summary_task_prompt_builder import SummaryTaskPromptBuilder
 from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.topic_guidance_registry import TopicGuidanceRegistry
+from app.section_task_coordinator import SectionTaskCoordinator
 from question.standardized.question_standardizer import QuestionStandardizer
 from config.faiss_storage_config import FaissStorageConfig
 from llama_index.core.node_parser import SentenceSplitter
@@ -290,6 +291,14 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         prompt_builder_factory=section_task_prompt_builder_factory,
         task_unit_resolver=task_unit_resolver,
         quiz_min_section_chars=config.quiz_min_section_chars,
+    )
+    section_task_coordinator = providers.Singleton(
+        SectionTaskCoordinator,
+        document_preparation_pipeline=document_preparation_pipeline,
+        document_profile_store=document_profile_store,
+        chapter_summary_service=chapter_summary_service,
+        chapter_quiz_service=chapter_quiz_service,
+        task_unit_resolver=task_unit_resolver,
     )
 
     @classmethod
