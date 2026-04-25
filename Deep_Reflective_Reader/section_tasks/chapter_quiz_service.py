@@ -23,11 +23,13 @@ class ChapterQuizService:
         llm_provider: LLMProvider,
         context_builder: SectionTaskContextBuilder,
         prompt_builder_factory: SectionTaskPromptBuilderFactory,
+        quiz_min_section_chars: int = 400,
     ):
         """Initialize service with injected dependencies."""
         self.llm_provider = llm_provider
         self.context_builder = context_builder
         self.prompt_builder_factory = prompt_builder_factory
+        self.quiz_min_section_chars = max(1, int(quiz_min_section_chars))
 
     def generate_section_quiz(
         self,
@@ -43,6 +45,9 @@ class ChapterQuizService:
         if not task_context.valid:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
             return SectionTaskResult.fail(reason)
+        skipped_reason = self._build_min_length_skip_reason(task_context.section_content)
+        if skipped_reason is not None:
+            return SectionTaskResult.fail(skipped_reason)
         prompt_builder = self.prompt_builder_factory.get_builder(
             SectionTaskType.SECTION_QUIZ
         )
@@ -77,6 +82,9 @@ class ChapterQuizService:
         if not task_context.valid:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
             return SectionTaskResult.fail(reason)
+        skipped_reason = self._build_min_length_skip_reason(task_context.section_content)
+        if skipped_reason is not None:
+            return SectionTaskResult.fail(skipped_reason)
         prompt_builder = self.prompt_builder_factory.get_builder(
             SectionTaskType.CHAPTER_QUIZ
         )
@@ -104,6 +112,16 @@ class ChapterQuizService:
         if document_profile is None:
             return LanguageCode.UNKNOWN
         return LanguageCodeResolver.resolve(document_profile.document_language)
+
+    def _build_min_length_skip_reason(self, section_content: str) -> str | None:
+        """Return skip reason when section content is shorter than configured threshold."""
+        current_chars = len(section_content.strip())
+        if current_chars >= self.quiz_min_section_chars:
+            return None
+        return (
+            "quiz_generation_skipped: section content too short "
+            f"(current={current_chars}, required>={self.quiz_min_section_chars})"
+        )
 
     @staticmethod
     def _parse_and_validate_quiz_questions(raw_response: str) -> list[QuizQuestion]:

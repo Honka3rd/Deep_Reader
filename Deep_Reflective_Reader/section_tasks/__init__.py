@@ -7,6 +7,8 @@ from section_tasks.quiz_question import QuizQuestion
 from section_tasks.section_quiz_task_prompt_builder import (
     SectionQuizTaskPromptBuilder,
 )
+from section_tasks.task_unit import TaskUnit
+from section_tasks.task_unit_resolver import TaskUnitResolver
 from shared.abstract_result import AbstractResult
 from section_tasks.abstract_task_prompt_builder import AbstractTaskPromptBuilder
 from section_tasks.section_task_prompt_builder_factory import (
@@ -34,6 +36,8 @@ __all__ = [
     "SectionQuizTaskPromptBuilder",
     "ChapterQuizTaskPromptBuilder",
     "QuizQuestion",
+    "TaskUnit",
+    "TaskUnitResolver",
     "SectionTaskContext",
     "SectionTaskContextBuilder",
     "SectionTaskContextReason",

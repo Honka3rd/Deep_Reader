@@ -37,6 +37,7 @@ from section_tasks.section_task_prompt_builder_factory import (
 )
 from section_tasks.section_task_prompt_common import SectionTaskPromptCommon
 from section_tasks.summary_task_prompt_builder import SummaryTaskPromptBuilder
+from section_tasks.task_unit_resolver import TaskUnitResolver
 from question.standardized.question_standardizer import QuestionStandardizer
 from config.faiss_storage_config import FaissStorageConfig
 from llama_index.core.node_parser import SentenceSplitter
@@ -272,6 +273,12 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         llm_provider=llm_provider,
         context_builder=section_task_context_builder,
         prompt_builder_factory=section_task_prompt_builder_factory,
+        quiz_min_section_chars=config.quiz_min_section_chars,
+    )
+    task_unit_resolver = providers.Singleton(
+        TaskUnitResolver,
+        task_unit_min_chars=config.task_unit_min_chars,
+        task_unit_max_chars=config.task_unit_max_chars,
     )
 
     @classmethod
@@ -327,6 +334,9 @@ Returns:
                 "question_scope_local_anchor_similarity_threshold": (
                     app_config.question_scope_local_anchor_similarity_threshold
                 ),
+                "quiz_min_section_chars": app_config.quiz_min_section_chars,
+                "task_unit_min_chars": app_config.task_unit_min_chars,
+                "task_unit_max_chars": app_config.task_unit_max_chars,
             }
         )
         return container

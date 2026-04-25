@@ -79,3 +79,12 @@ class AppDIConfig:
     # Similarity threshold for session-local anchor semantic matching in scope resolver.
     # Introduced to improve local-reference detection beyond lexical string matching.
     question_scope_local_anchor_similarity_threshold: float = 0.75
+    # Minimum section/chapter content length (characters) required before quiz generation.
+    # Introduced to skip low-signal quiz requests on very short content.
+    quiz_min_section_chars: int = 400
+    # Minimum content length per task unit before considering adjacent-merge fallback.
+    # Introduced to avoid tiny fragmented units in section-task execution.
+    task_unit_min_chars: int = 300
+    # Maximum preferred content length per task unit for fallback splitting.
+    # Introduced to prevent single giant units from degrading task quality.
+    task_unit_max_chars: int = 1600
