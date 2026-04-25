@@ -15,6 +15,7 @@ from question.qa_enums import AnswerLevel
 from question.standardized.standardized_question import StandardizedQuestion
 from section_tasks.quiz_question import QuizQuestion
 from section_tasks.section_task_result import SectionTaskResult
+from section_tasks.task_unit import TaskUnit
 from session.reading_session import ReadingSession
 from session.session_manager import SessionUpdateResult
 
@@ -24,6 +25,13 @@ class AskExecutionResult:
     """Coordinator ask output with answer text and HTTP status hint."""
     answer_text: str
     is_low_value: bool
+
+
+@dataclass(frozen=True)
+class ResolvedTaskUnit:
+    """Resolved task unit plus stable unit index inside current document."""
+    task_unit: TaskUnit
+    task_unit_index: int
 
 
 class Coordinator:
@@ -133,6 +141,7 @@ class Coordinator:
         self.llm_provider = self.container.llm_provider()
         self.chapter_summary_service = self.container.chapter_summary_service()
         self.chapter_quiz_service = self.container.chapter_quiz_service()
+        self.task_unit_resolver = self.container.task_unit_resolver()
 
     def get_bundle(self, doc_name: str) -> FaissIndexBundle:
         """Ensure index/profile readiness and return query-ready bundle.
@@ -252,7 +261,7 @@ class Coordinator:
         )
 
     def summarize_section(self, doc_name: str, section_id: str) -> SectionTaskResult:
-        """Run section-summary task from prepared structured document."""
+        """Run section-summary task by coordinator-level task-unit resolution."""
         structured_document, document_profile, preparation_errors = (
             self._prepare_section_task_inputs(doc_name)
         )
@@ -262,10 +271,15 @@ class Coordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
         try:
-            return self.chapter_summary_service.summarize_section(
+            resolved_task_unit = self._resolve_task_unit_for_section_id(
                 document=structured_document,
                 section_id=section_id,
+            )
+            return self.chapter_summary_service.summarize_task_unit(
+                task_unit=resolved_task_unit.task_unit,
+                document_title=structured_document.title,
                 document_profile=document_profile,
+                task_unit_index=resolved_task_unit.task_unit_index,
             )
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
@@ -273,7 +287,7 @@ class Coordinator:
             return SectionTaskResult.from_llm_error(error)
 
     def summarize_chapter(self, doc_name: str, chapter_title: str) -> SectionTaskResult:
-        """Run chapter-summary task by exact chapter title match."""
+        """Run chapter-summary task by chapter-title -> task-unit resolution."""
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             return SectionTaskResult.fail("chapter_title cannot be empty")
@@ -287,22 +301,16 @@ class Coordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
 
-        target_section = None
-        for section in structured_document.sections:
-            if ((section.title or "").strip()) == normalized_chapter_title:
-                target_section = section
-                break
-
-        if target_section is None:
-            return SectionTaskResult.fail(
-                f"chapter_title '{normalized_chapter_title}' not found in document '{doc_name}'"
-            )
-
         try:
-            return self.chapter_summary_service.summarize_chapter(
-                section=target_section,
+            resolved_task_unit = self._resolve_task_unit_for_chapter_title(
+                document=structured_document,
+                chapter_title=normalized_chapter_title,
+            )
+            return self.chapter_summary_service.summarize_task_unit(
+                task_unit=resolved_task_unit.task_unit,
                 document_title=structured_document.title,
                 document_profile=document_profile,
+                task_unit_index=resolved_task_unit.task_unit_index,
             )
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
@@ -312,7 +320,7 @@ class Coordinator:
     def generate_section_quiz(
         self, doc_name: str, section_id: str
     ) -> SectionTaskResult[list[QuizQuestion]]:
-        """Run section-quiz task from prepared structured document."""
+        """Run section-quiz task by coordinator-level task-unit resolution."""
         structured_document, document_profile, preparation_errors = (
             self._prepare_section_task_inputs(doc_name)
         )
@@ -322,10 +330,15 @@ class Coordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
         try:
-            return self.chapter_quiz_service.generate_section_quiz(
+            resolved_task_unit = self._resolve_task_unit_for_section_id(
                 document=structured_document,
                 section_id=section_id,
+            )
+            return self.chapter_quiz_service.generate_task_unit_quiz(
+                task_unit=resolved_task_unit.task_unit,
+                document_title=structured_document.title,
                 document_profile=document_profile,
+                task_unit_index=resolved_task_unit.task_unit_index,
             )
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
@@ -337,7 +350,7 @@ class Coordinator:
         doc_name: str,
         chapter_title: str,
     ) -> SectionTaskResult[list[QuizQuestion]]:
-        """Run chapter-quiz task by exact chapter title match."""
+        """Run chapter-quiz task by chapter-title -> task-unit resolution."""
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             return SectionTaskResult.fail("chapter_title cannot be empty")
@@ -351,27 +364,76 @@ class Coordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
 
-        target_section = None
-        for section in structured_document.sections:
-            if ((section.title or "").strip()) == normalized_chapter_title:
-                target_section = section
-                break
-
-        if target_section is None:
-            return SectionTaskResult.fail(
-                f"chapter_title '{normalized_chapter_title}' not found in document '{doc_name}'"
-            )
-
         try:
-            return self.chapter_quiz_service.generate_chapter_quiz(
-                section=target_section,
+            resolved_task_unit = self._resolve_task_unit_for_chapter_title(
+                document=structured_document,
+                chapter_title=normalized_chapter_title,
+            )
+            return self.chapter_quiz_service.generate_task_unit_quiz(
+                task_unit=resolved_task_unit.task_unit,
                 document_title=structured_document.title,
                 document_profile=document_profile,
+                task_type="chapter_quiz",
+                task_unit_index=resolved_task_unit.task_unit_index,
             )
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
         except Exception as error:
             return SectionTaskResult.from_llm_error(error)
+
+    def _resolve_task_unit_for_section_id(
+        self,
+        *,
+        document: StructuredDocument,
+        section_id: str,
+    ) -> ResolvedTaskUnit:
+        """Resolve first task unit whose source section ids contain target section id."""
+        normalized_section_id = section_id.strip()
+        if not normalized_section_id:
+            raise ValueError("section_id cannot be empty")
+
+        task_units = self.task_unit_resolver.resolve(document)
+        if not task_units:
+            raise ValueError(
+                f"no task units resolved for document '{document.document_id}'"
+            )
+
+        for unit_index, task_unit in enumerate(task_units):
+            if normalized_section_id in task_unit.source_section_ids:
+                return ResolvedTaskUnit(
+                    task_unit=task_unit,
+                    task_unit_index=unit_index,
+                )
+        raise ValueError(
+            f"section_id '{normalized_section_id}' not found in resolved task units "
+            f"for document '{document.document_id}'"
+        )
+
+    def _resolve_task_unit_for_chapter_title(
+        self,
+        *,
+        document: StructuredDocument,
+        chapter_title: str,
+    ) -> ResolvedTaskUnit:
+        """Resolve task unit by first exact chapter-title hit in source sections."""
+        normalized_chapter_title = chapter_title.strip()
+        if not normalized_chapter_title:
+            raise ValueError("chapter_title cannot be empty")
+
+        target_section_id: str | None = None
+        for section in document.sections:
+            if ((section.title or "").strip()) == normalized_chapter_title:
+                target_section_id = section.section_id
+                break
+        if target_section_id is None:
+            raise ValueError(
+                f"chapter_title '{normalized_chapter_title}' not found in document '{document.title}'"
+            )
+
+        return self._resolve_task_unit_for_section_id(
+            document=document,
+            section_id=target_section_id,
+        )
 
     def _prepare_section_task_inputs(
         self,
