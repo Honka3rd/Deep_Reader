@@ -25,8 +25,13 @@ from question.question_scope_keywords_provider import QuestionScopeKeywordsProvi
 from question.question_scope_resolver import QuestionScopeResolver
 from section_tasks.chapter_quiz_service import ChapterQuizService
 from section_tasks.chapter_summary_service import ChapterSummaryService
+from section_tasks.quiz_task_prompt_builder import QuizTaskPromptBuilder
 from section_tasks.section_task_context_builder import SectionTaskContextBuilder
-from section_tasks.section_task_prompt_builder import SectionTaskPromptBuilder
+from section_tasks.section_task_prompt_builder_factory import (
+    SectionTaskPromptBuilderFactory,
+)
+from section_tasks.section_task_prompt_common import SectionTaskPromptCommon
+from section_tasks.summary_task_prompt_builder import SummaryTaskPromptBuilder
 from question.standardized.question_standardizer import QuestionStandardizer
 from config.faiss_storage_config import FaissStorageConfig
 from llama_index.core.node_parser import SentenceSplitter
@@ -229,21 +234,34 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     section_task_context_builder = providers.Singleton(
         SectionTaskContextBuilder,
     )
-    section_task_prompt_builder = providers.Singleton(
-        SectionTaskPromptBuilder,
+    section_task_prompt_common = providers.Singleton(
+        SectionTaskPromptCommon,
+    )
+    summary_task_prompt_builder = providers.Singleton(
+        SummaryTaskPromptBuilder,
+        common=section_task_prompt_common,
+    )
+    quiz_task_prompt_builder = providers.Singleton(
+        QuizTaskPromptBuilder,
+        common=section_task_prompt_common,
+    )
+    section_task_prompt_builder_factory = providers.Singleton(
+        SectionTaskPromptBuilderFactory,
+        summary_builder=summary_task_prompt_builder,
+        quiz_builder=quiz_task_prompt_builder,
     )
 
     chapter_summary_service = providers.Singleton(
         ChapterSummaryService,
         llm_provider=llm_provider,
         context_builder=section_task_context_builder,
-        prompt_builder=section_task_prompt_builder,
+        prompt_builder_factory=section_task_prompt_builder_factory,
     )
     chapter_quiz_service = providers.Singleton(
         ChapterQuizService,
         llm_provider=llm_provider,
         context_builder=section_task_context_builder,
-        prompt_builder=section_task_prompt_builder,
+        prompt_builder_factory=section_task_prompt_builder_factory,
     )
 
     @classmethod

@@ -4,8 +4,8 @@ from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import (
     SectionTaskContextBuilder,
 )
-from section_tasks.section_task_prompt_builder import (
-    SectionTaskPromptBuilder,
+from section_tasks.section_task_prompt_builder_factory import (
+    SectionTaskPromptBuilderFactory,
     SectionTaskType,
 )
 from section_tasks.section_task_result import SectionTaskResult
@@ -18,12 +18,12 @@ class ChapterSummaryService:
         self,
         llm_provider: LLMProvider,
         context_builder: SectionTaskContextBuilder,
-        prompt_builder: SectionTaskPromptBuilder,
+        prompt_builder_factory: SectionTaskPromptBuilderFactory,
     ):
         """Initialize service with injected dependencies."""
         self.llm_provider = llm_provider
         self.context_builder = context_builder
-        self.prompt_builder = prompt_builder
+        self.prompt_builder_factory = prompt_builder_factory
 
     def summarize_section(
         self,
@@ -39,8 +39,14 @@ class ChapterSummaryService:
         if not task_context.valid:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
             return SectionTaskResult.fail(reason)
-        prompt = self.prompt_builder.build(
-            task_type=SectionTaskType.SUMMARY,
+        prompt_builder = self.prompt_builder_factory.get_builder(
+            SectionTaskType.SUMMARY
+        )
+        if prompt_builder is None:
+            return SectionTaskResult.fail(
+                "summary prompt builder is unavailable"
+            )
+        prompt = prompt_builder.build(
             context=task_context,
             document_profile=document_profile,
         )
@@ -65,8 +71,14 @@ class ChapterSummaryService:
         if not task_context.valid:
             reason = task_context.reason.value if task_context.reason else "invalid section task context"
             return SectionTaskResult.fail(reason)
-        prompt = self.prompt_builder.build(
-            task_type=SectionTaskType.SUMMARY,
+        prompt_builder = self.prompt_builder_factory.get_builder(
+            SectionTaskType.SUMMARY
+        )
+        if prompt_builder is None:
+            return SectionTaskResult.fail(
+                "summary prompt builder is unavailable"
+            )
+        prompt = prompt_builder.build(
             context=task_context,
             document_profile=document_profile,
         )
