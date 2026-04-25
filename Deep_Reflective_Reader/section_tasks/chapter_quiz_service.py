@@ -1,6 +1,7 @@
 import json
 
 from document_structure.structured_document import StructuredDocument, StructuredSection
+from language.language_code import LanguageCode, LanguageCodeResolver
 from llm.llm_provider import LLMProvider
 from profile.document_profile import DocumentProfile
 from section_tasks.quiz_question import QuizQuestion
@@ -49,9 +50,11 @@ class ChapterQuizService:
             return SectionTaskResult.fail(
                 "section quiz prompt builder is unavailable"
             )
+        language_code = self._resolve_language_code(document_profile)
         prompt = prompt_builder.build(
             context=task_context,
             document_profile=document_profile,
+            language_code=language_code,
         )
         try:
             raw_response = self.llm_provider.complete_text(prompt).strip()
@@ -81,9 +84,11 @@ class ChapterQuizService:
             return SectionTaskResult.fail(
                 "chapter quiz prompt builder is unavailable"
             )
+        language_code = self._resolve_language_code(document_profile)
         prompt = prompt_builder.build(
             context=task_context,
             document_profile=document_profile,
+            language_code=language_code,
         )
         try:
             raw_response = self.llm_provider.complete_text(prompt).strip()
@@ -91,6 +96,14 @@ class ChapterQuizService:
             return SectionTaskResult.ok(quiz_questions)
         except Exception as error:
             return SectionTaskResult.from_llm_error(error)
+
+    @staticmethod
+    def _resolve_language_code(
+        document_profile: DocumentProfile | None,
+    ) -> LanguageCode:
+        if document_profile is None:
+            return LanguageCode.UNKNOWN
+        return LanguageCodeResolver.resolve(document_profile.document_language)
 
     @staticmethod
     def _parse_and_validate_quiz_questions(raw_response: str) -> list[QuizQuestion]:

@@ -1,3 +1,4 @@
+from language.language_code import LanguageCode
 from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import SectionTaskContext
 from section_tasks.abstract_task_prompt_builder import AbstractTaskPromptBuilder
@@ -15,6 +16,7 @@ class SectionQuizTaskPromptBuilder(AbstractTaskPromptBuilder):
         *,
         context: SectionTaskContext,
         document_profile: DocumentProfile | None = None,
+        language_code: LanguageCode | None = None,
     ) -> str:
         """Build section-quiz prompt from section context."""
         return (
@@ -33,7 +35,7 @@ class SectionQuizTaskPromptBuilder(AbstractTaskPromptBuilder):
             "  question_id, question_text, answer_text\n"
             "- question_id format: q1, q2, q3, q4.\n"
             "- answer_text must be concise and verifiable from section content.\n"
-            f"{self.common.build_language_instruction(document_profile)}\n"
+            f"{self.common.build_language_instruction(language_code, document_profile)}\n"
             f"{self.common.build_topic_instruction(document_profile)}\n\n"
             f"{self.common.build_profile_block(document_profile)}\n"
             f"{self.common.build_context_block(context)}\n"

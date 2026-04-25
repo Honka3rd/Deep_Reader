@@ -1,3 +1,4 @@
+from language.language_code import LanguageCode
 from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import SectionTaskContext
 from section_tasks.abstract_task_prompt_builder import AbstractTaskPromptBuilder
@@ -15,6 +16,7 @@ class SummaryTaskPromptBuilder(AbstractTaskPromptBuilder):
         *,
         context: SectionTaskContext,
         document_profile: DocumentProfile | None = None,
+        language_code: LanguageCode | None = None,
     ) -> str:
         """Build one summary prompt from section context."""
         return (
@@ -24,7 +26,7 @@ class SummaryTaskPromptBuilder(AbstractTaskPromptBuilder):
             "- Summarize only this section.\n"
             "- Keep output to 1-3 short paragraphs.\n"
             "- Do not include facts outside this section.\n"
-            f"{self.common.build_language_instruction(document_profile)}\n"
+            f"{self.common.build_language_instruction(language_code, document_profile)}\n"
             f"{self.common.build_topic_instruction(document_profile)}\n\n"
             f"{self.common.build_profile_block(document_profile)}\n"
             f"{self.common.build_context_block(context)}\n"

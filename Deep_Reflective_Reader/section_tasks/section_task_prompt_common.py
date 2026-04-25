@@ -1,3 +1,4 @@
+from language.language_code import LanguageCode
 from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import SectionTaskContext
 
@@ -29,14 +30,44 @@ class SectionTaskPromptCommon:
             f"- Summary: {summary or 'none'}"
         )
 
-    def build_language_instruction(self, document_profile: DocumentProfile | None) -> str:
-        """Return output language instruction based on profile language signal."""
-        language = self._extract_profile_language(document_profile)
-        normalized = (language or "").strip().lower()
-        if normalized.startswith("zh"):
-            return "Output Language: Chinese"
-        if normalized.startswith("en"):
-            return "Output Language: English"
+    def build_language_instruction(
+        self,
+        language_code: LanguageCode | None,
+        document_profile: DocumentProfile | None = None,
+    ) -> str:
+        """Return output language instruction from canonical language code."""
+        if language_code is None or language_code == LanguageCode.UNKNOWN:
+            return "Output Language: Follow the section content language"
+
+        if language_code == LanguageCode.ZH:
+            return (
+                "Output Language: "
+                f"{self._resolve_chinese_output_label(document_profile)}"
+            )
+
+        label_by_language_code: dict[LanguageCode, str] = {
+            LanguageCode.EN: "English",
+            LanguageCode.JA: "Japanese",
+            LanguageCode.FR: "French",
+            LanguageCode.DE: "German",
+            LanguageCode.ES: "Spanish",
+            LanguageCode.PT: "Portuguese",
+            LanguageCode.IT: "Italian",
+            LanguageCode.RU: "Russian",
+            LanguageCode.KO: "Korean",
+            LanguageCode.AR: "Arabic",
+            LanguageCode.HI: "Hindi",
+            LanguageCode.TR: "Turkish",
+            LanguageCode.NL: "Dutch",
+            LanguageCode.PL: "Polish",
+            LanguageCode.UK: "Ukrainian",
+            LanguageCode.ID: "Indonesian",
+            LanguageCode.VI: "Vietnamese",
+            LanguageCode.TH: "Thai",
+        }
+        label = label_by_language_code.get(language_code)
+        if label:
+            return f"Output Language: {label}"
         return "Output Language: Follow the section content language"
 
     def build_topic_instruction(self, document_profile: DocumentProfile | None) -> str:
@@ -93,6 +124,27 @@ class SectionTaskPromptCommon:
         if text_value:
             return text_value
         return None
+
+    @staticmethod
+    def _resolve_chinese_output_label(
+        document_profile: DocumentProfile | None,
+    ) -> str:
+        if document_profile is None:
+            return "Chinese"
+        raw_language = str(document_profile.document_language).strip().lower()
+        if not raw_language:
+            return "Chinese"
+        if any(
+            token in raw_language
+            for token in ("zh-tw", "zh-hant", "traditional", "zh-hk", "zh-mo")
+        ):
+            return "Traditional Chinese"
+        if any(
+            token in raw_language
+            for token in ("zh-cn", "zh-hans", "simplified")
+        ):
+            return "Simplified Chinese"
+        return "Chinese"
 
     @staticmethod
     def _build_container_title_line(context: SectionTaskContext) -> str:

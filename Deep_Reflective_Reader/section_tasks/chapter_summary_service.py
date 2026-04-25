@@ -1,4 +1,5 @@
 from document_structure.structured_document import StructuredDocument, StructuredSection
+from language.language_code import LanguageCode, LanguageCodeResolver
 from llm.llm_provider import LLMProvider
 from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import (
@@ -46,9 +47,11 @@ class ChapterSummaryService:
             return SectionTaskResult.fail(
                 "summary prompt builder is unavailable"
             )
+        language_code = self._resolve_language_code(document_profile)
         prompt = prompt_builder.build(
             context=task_context,
             document_profile=document_profile,
+            language_code=language_code,
         )
         try:
             return SectionTaskResult.ok(
@@ -78,9 +81,11 @@ class ChapterSummaryService:
             return SectionTaskResult.fail(
                 "summary prompt builder is unavailable"
             )
+        language_code = self._resolve_language_code(document_profile)
         prompt = prompt_builder.build(
             context=task_context,
             document_profile=document_profile,
+            language_code=language_code,
         )
         try:
             return SectionTaskResult.ok(
@@ -88,3 +93,11 @@ class ChapterSummaryService:
             )
         except Exception as error:
             return SectionTaskResult.from_llm_error(error)
+
+    @staticmethod
+    def _resolve_language_code(
+        document_profile: DocumentProfile | None,
+    ) -> LanguageCode:
+        if document_profile is None:
+            return LanguageCode.UNKNOWN
+        return LanguageCodeResolver.resolve(document_profile.document_language)
