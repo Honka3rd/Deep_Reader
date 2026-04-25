@@ -9,7 +9,6 @@ class SectionTaskContextReason(StrEnum):
 
     UNKNOWN_DOCUMENT = "Unknown Document"
     UNTITLED_SECTION = "Untitled Section"
-    NO_CONTAINER_TITLE = "None"
 
 
 
@@ -17,9 +16,9 @@ class SectionTaskContextReason(StrEnum):
 class SectionTaskContext:
     """Normalized chapter-task context shared by section-based task services."""
 
-    document_title: str
-    container_title: str
-    section_title: str
+    document_title: str | None
+    container_title: str | None
+    section_title: str | None
     section_id: str
     section_index: int
     section_content: str
@@ -62,41 +61,42 @@ class SectionTaskContextBuilder:
         document_title: str | None = None,
     ) -> SectionTaskContext:
         """Build validated task context directly from one structured section."""
+        resolved_section_id = section.section_id.strip()
+        if not resolved_section_id:
+            raise ValueError("section.section_id cannot be empty")
+
         content = section.content.strip()
         if not content:
             raise ValueError(
                 f"section '{section.section_id}' has empty content and cannot build task context"
             )
 
-        resolved_document_title = (document_title or "").strip()
-        resolved_section_title = (section.title or "").strip()
-        resolved_container_title = (section.container_title or "").strip()
-        has_unknown_document = not resolved_document_title
-        has_untitled_section = not resolved_section_title
-        has_no_container_title = not resolved_container_title
+        resolved_document_title = SectionTaskContextBuilder._normalize_optional_text(
+            document_title
+        )
+        resolved_section_title = SectionTaskContextBuilder._normalize_optional_text(
+            section.title
+        )
+        resolved_container_title = SectionTaskContextBuilder._normalize_optional_text(
+            section.container_title
+        )
+        has_unknown_document = resolved_document_title is None
+        has_untitled_section = resolved_section_title is None
 
-        valid = not (has_unknown_document or has_untitled_section or has_no_container_title)
+        valid = not (has_unknown_document or has_untitled_section)
         reason: SectionTaskContextReason | None = None
         if has_unknown_document:
             reason = SectionTaskContextReason.UNKNOWN_DOCUMENT
         elif has_untitled_section:
             reason = SectionTaskContextReason.UNTITLED_SECTION
-        elif has_no_container_title:
-            reason = SectionTaskContextReason.NO_CONTAINER_TITLE
 
         return SectionTaskContext(
-            document_title=(
-                resolved_document_title
-            ),
-            container_title=(
-                resolved_container_title
-            ),
-            section_title=(
-                resolved_section_title
-            ),
-            section_id=section.section_id,
+            document_title=resolved_document_title,
+            container_title=resolved_container_title,
+            section_title=resolved_section_title,
+            section_id=resolved_section_id,
             section_index=section.section_index,
-            section_content=section.content,
+            section_content=content,
             valid=valid,
             reason=reason,
         )
@@ -112,3 +112,11 @@ class SectionTaskContextBuilder:
             if section.section_id == section_id:
                 return section
         return None
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        """Normalize optional text to either None or non-empty string."""
+        normalized = (value or "").strip()
+        if not normalized:
+            return None
+        return normalized

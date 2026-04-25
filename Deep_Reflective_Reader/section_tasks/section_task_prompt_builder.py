@@ -1,5 +1,6 @@
 from enum import StrEnum
 
+from profile.document_profile import DocumentProfile
 from section_tasks.section_task_context_builder import SectionTaskContext
 
 
@@ -18,7 +19,7 @@ class SectionTaskPromptBuilder:
         *,
         task_type: SectionTaskType | str,
         context: SectionTaskContext,
-        document_profile: object | None = None,
+        document_profile: DocumentProfile | None = None,
     ) -> str:
         """Build one task prompt from normalized task context and optional profile."""
         resolved_task_type = self._resolve_task_type(task_type)
@@ -26,6 +27,7 @@ class SectionTaskPromptBuilder:
         profile_block = self._build_profile_block(document_profile)
         language_instruction = self._build_language_instruction(document_profile)
         topic_instruction = self._build_topic_instruction(document_profile)
+        container_title_line = self._build_container_title_line(context)
 
         return (
             "You are working on one section-based reading task.\n"
@@ -37,13 +39,12 @@ class SectionTaskPromptBuilder:
             f"{topic_instruction}\n\n"
             f"{profile_block}\n"
             "Section Context:\n"
-            f"- Document Title: {context.document_title}\n"
-            f"- Container Title: {context.container_title}\n"
+            f"- Document Title: {self._display_document_title(context)}\n"
+            f"{container_title_line}"
             f"- Section ID: {context.section_id}\n"
-            f"- Section Title: {context.section_title}\n"
+            f"- Section Title: {self._display_section_title(context)}\n"
             f"- Section Index: {context.section_index}\n"
-            f"- Context Valid: {context.valid}\n"
-            f"- Context Reason: {context.reason}\n\n"
+            "\n"
             "Section Content:\n"
             f"{context.section_content}\n"
         )
@@ -80,25 +81,11 @@ class SectionTaskPromptBuilder:
             "- Output in plain text with Q1/A1, Q2/A2 format."
         )
 
-    def _build_profile_block(self, document_profile: object | None) -> str:
-        """Return compact profile background block with compatibility extraction."""
-        topic = self._extract_profile_value(
-            document_profile,
-            "topic",
-            "document_topic",
-        )
-        language = self._extract_profile_value(
-            document_profile,
-            "document_language",
-            "language",
-            "language_code",
-        )
-        summary = self._extract_profile_value(
-            document_profile,
-            "summary",
-            "document_summary",
-            "profile_summary",
-        )
+    def _build_profile_block(self, document_profile: DocumentProfile | None) -> str:
+        """Return compact profile background block."""
+        topic = self._extract_profile_topic(document_profile)
+        language = self._extract_profile_language(document_profile)
+        summary = self._extract_profile_summary(document_profile)
 
         if topic is None and language is None and summary is None:
             return "Document Profile: None"
@@ -110,14 +97,9 @@ class SectionTaskPromptBuilder:
             f"- Summary: {summary or 'none'}"
         )
 
-    def _build_language_instruction(self, document_profile: object | None) -> str:
+    def _build_language_instruction(self, document_profile: DocumentProfile | None) -> str:
         """Return output language instruction based on profile language signal."""
-        language = self._extract_profile_value(
-            document_profile,
-            "document_language",
-            "language",
-            "language_code",
-        )
+        language = self._extract_profile_language(document_profile)
         normalized = (language or "").strip().lower()
         if normalized.startswith("zh"):
             return "Output Language: Chinese"
@@ -125,13 +107,9 @@ class SectionTaskPromptBuilder:
             return "Output Language: English"
         return "Output Language: Follow the section content language"
 
-    def _build_topic_instruction(self, document_profile: object | None) -> str:
+    def _build_topic_instruction(self, document_profile: DocumentProfile | None) -> str:
         """Return light topic-aware instruction without overriding section evidence."""
-        topic = self._extract_profile_value(
-            document_profile,
-            "topic",
-            "document_topic",
-        )
+        topic = self._extract_profile_topic(document_profile)
         normalized = (topic or "").strip().lower()
         if not normalized:
             return "Topic Guidance: None"
@@ -146,19 +124,48 @@ class SectionTaskPromptBuilder:
         return f"Topic Guidance: align style with topic '{topic}'."
 
     @staticmethod
-    def _extract_profile_value(document_profile: object | None, *keys: str) -> str | None:
-        """Extract one profile field with basic dict/object compatibility."""
+    def _extract_profile_topic(document_profile: DocumentProfile | None) -> str | None:
+        """Extract normalized topic from document profile."""
         if document_profile is None:
             return None
-        for key in keys:
-            value: object | None = None
-            if isinstance(document_profile, dict):
-                value = document_profile.get(key)
-            else:
-                value = getattr(document_profile, key, None)
-            if value is None:
-                continue
-            text_value = str(value).strip()
-            if text_value:
-                return text_value
+        text_value = str(document_profile.topic).strip()
+        if text_value:
+            return text_value
         return None
+
+    @staticmethod
+    def _extract_profile_language(document_profile: DocumentProfile | None) -> str | None:
+        """Extract normalized language from document profile."""
+        if document_profile is None:
+            return None
+        text_value = str(document_profile.document_language).strip()
+        if text_value:
+            return text_value
+        return None
+
+    @staticmethod
+    def _extract_profile_summary(document_profile: DocumentProfile | None) -> str | None:
+        """Extract normalized summary from document profile."""
+        if document_profile is None:
+            return None
+        text_value = str(document_profile.summary).strip()
+        if text_value:
+            return text_value
+        return None
+
+    @staticmethod
+    def _build_container_title_line(context: SectionTaskContext) -> str:
+        """Build optional container-title line from normalized context."""
+        if context.container_title is None:
+            return ""
+        return f"- Container Title: {context.container_title}\n"
+
+    @staticmethod
+    def _display_document_title(context: SectionTaskContext) -> str:
+        """Build display-safe document title."""
+        return context.document_title or "Unknown Document"
+
+    @staticmethod
+    def _display_section_title(context: SectionTaskContext) -> str:
+        """Build display-safe section title."""
+        return context.section_title or "Untitled Section"

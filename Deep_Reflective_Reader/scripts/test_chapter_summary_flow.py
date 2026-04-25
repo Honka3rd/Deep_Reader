@@ -85,11 +85,17 @@ def run(doc_name: str, section_id: str | None, title_prefix: str) -> str:
             f"{error}. section_samples=[{_format_error_context(document)}]"
         ) from error
 
-    summary = chapter_summary_service.summarize_section(
+    summary_result = chapter_summary_service.summarize_section(
         document=document,
         section_id=target_section.section_id,
     )
-    if not summary.strip():
+    if not summary_result.success:
+        raise RuntimeError(
+            "chapter summary generation failed: "
+            f"reason={summary_result.reason}"
+        )
+    summary = (summary_result.payload or "").strip()
+    if not summary:
         raise RuntimeError(
             f"empty summary generated for section_id='{target_section.section_id}'"
         )
