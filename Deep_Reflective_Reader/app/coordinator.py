@@ -13,6 +13,7 @@ from profile.document_profile import DocumentProfile
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from question.qa_enums import AnswerLevel
 from question.standardized.standardized_question import StandardizedQuestion
+from section_tasks.document_task_layout import DocumentTaskLayout
 from section_tasks.quiz_question import QuizQuestion
 from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit import TaskUnit
@@ -449,6 +450,44 @@ class Coordinator:
             return None, None, list(preparation_result.assets.errors)
         document_profile = self._load_existing_document_profile(doc_name)
         return structured_document, document_profile, list(preparation_result.assets.errors)
+
+    def get_document_task_layout(self, doc_name: str) -> DocumentTaskLayout:
+        """Return dual-view layout: structured sections, task units, and mappings."""
+        preparation_result = self.document_preparation_pipeline.prepare_and_load(
+            doc_name=doc_name,
+            mode=PreparationMode.BASE,
+        )
+        structured_document = preparation_result.structured_document
+        if structured_document is None:
+            detail = " | ".join(preparation_result.assets.errors)
+            raise ValueError(
+                f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
+            )
+
+        task_units = self.task_unit_resolver.resolve(structured_document)
+
+        section_to_task_unit_ids: dict[str, list[str]] = {
+            section.section_id: [] for section in structured_document.sections
+        }
+        task_unit_to_section_ids: dict[str, list[str]] = {}
+
+        for task_unit in task_units:
+            section_ids: list[str] = []
+            for section_id in task_unit.source_section_ids:
+                normalized_section_id = section_id.strip()
+                if not normalized_section_id:
+                    continue
+                section_ids.append(normalized_section_id)
+                section_to_task_unit_ids.setdefault(normalized_section_id, [])
+                section_to_task_unit_ids[normalized_section_id].append(task_unit.unit_id)
+            task_unit_to_section_ids[task_unit.unit_id] = section_ids
+
+        return DocumentTaskLayout(
+            structured_document=structured_document,
+            task_units=task_units,
+            section_to_task_unit_ids=section_to_task_unit_ids,
+            task_unit_to_section_ids=task_unit_to_section_ids,
+        )
 
     def _load_existing_document_profile(self, doc_name: str) -> DocumentProfile | None:
         """Load existing profile artifact when available; return None otherwise."""

@@ -124,18 +124,7 @@ class TaskUnitResolver:
         sections: list[StructuredSection],
     ) -> list[TaskUnit]:
         """Merge adjacent short sections into larger units for task stability."""
-        pending_units = [
-            TaskUnit(
-                unit_id=f"task-unit-{index}",
-                title=self._normalize_optional_text(section.title),
-                container_title=self._normalize_optional_text(section.container_title),
-                content=section.content.strip(),
-                source_section_ids=[section.section_id],
-                is_fallback_generated=False,
-            )
-            for index, section in enumerate(sections)
-            if section.content.strip()
-        ]
+        pending_units = self._expand_sections_to_base_units(sections)
         if not pending_units:
             return []
 
@@ -199,6 +188,127 @@ class TaskUnitResolver:
             )
             for index, unit in enumerate(resolved_units)
         ]
+
+    def _expand_sections_to_base_units(
+        self,
+        sections: list[StructuredSection],
+    ) -> list[TaskUnit]:
+        """Expand sections into base units, splitting only inside huge sections."""
+        base_units: list[TaskUnit] = []
+        for section_index, section in enumerate(sections):
+            content = section.content.strip()
+            if not content:
+                continue
+            if len(content) > self.task_unit_max_chars:
+                base_units.extend(
+                    self._split_huge_section_to_base_units(
+                        section=section,
+                        section_index=section_index,
+                    )
+                )
+                continue
+            base_units.append(
+                TaskUnit(
+                    unit_id=f"task-unit-{section_index}",
+                    title=self._normalize_optional_text(section.title),
+                    container_title=self._normalize_optional_text(section.container_title),
+                    content=content,
+                    source_section_ids=[section.section_id],
+                    is_fallback_generated=False,
+                )
+            )
+        return base_units
+
+    def _split_huge_section_to_base_units(
+        self,
+        *,
+        section: StructuredSection,
+        section_index: int,
+    ) -> list[TaskUnit]:
+        """Split one huge section into multiple section-internal units only."""
+        text = section.content.strip()
+        if not text:
+            return []
+
+        chunks = self._split_text_by_paragraphs(text)
+        if len(chunks) <= 1:
+            chunks = self._split_text_by_fixed_window(text)
+        chunks = self._stabilize_trailing_short_chunk(chunks)
+
+        base_title = self._normalize_optional_text(section.title)
+        container_title = self._normalize_optional_text(section.container_title)
+        if len(chunks) == 1:
+            return [
+                TaskUnit(
+                    unit_id=f"task-unit-{section_index}-0",
+                    title=base_title,
+                    container_title=container_title,
+                    content=chunks[0],
+                    source_section_ids=[section.section_id],
+                    is_fallback_generated=True,
+                )
+            ]
+
+        units: list[TaskUnit] = []
+        for chunk_index, chunk in enumerate(chunks):
+            if base_title:
+                resolved_title = f"{base_title} (Part {chunk_index + 1})"
+            else:
+                resolved_title = f"Task Unit {chunk_index + 1}"
+            units.append(
+                TaskUnit(
+                    unit_id=f"task-unit-{section_index}-{chunk_index}",
+                    title=resolved_title,
+                    container_title=container_title,
+                    content=chunk,
+                    source_section_ids=[section.section_id],
+                    is_fallback_generated=True,
+                )
+            )
+        return units
+
+    def _stabilize_trailing_short_chunk(self, chunks: list[str]) -> list[str]:
+        """Avoid too-short trailing chunk so it won't bleed into neighbor sections."""
+        normalized_chunks = [chunk.strip() for chunk in chunks if chunk.strip()]
+        if len(normalized_chunks) <= 1:
+            return normalized_chunks
+
+        while (
+            len(normalized_chunks) > 1
+            and len(normalized_chunks[-1]) < self.task_unit_min_chars
+        ):
+            left = normalized_chunks[-2]
+            right = normalized_chunks[-1]
+            merged = f"{left}\n\n{right}".strip()
+
+            if len(merged) <= self.task_unit_max_chars:
+                normalized_chunks[-2] = merged
+                normalized_chunks.pop()
+                continue
+
+            split_at = len(merged) // 2
+            split_at = max(self.task_unit_min_chars, split_at)
+            split_at = min(
+                len(merged) - self.task_unit_min_chars,
+                split_at,
+            )
+            if split_at <= 0 or split_at >= len(merged):
+                normalized_chunks[-2] = merged
+                normalized_chunks.pop()
+                continue
+
+            rebalanced_left = merged[:split_at].strip()
+            rebalanced_right = merged[split_at:].strip()
+            if not rebalanced_left or not rebalanced_right:
+                normalized_chunks[-2] = merged
+                normalized_chunks.pop()
+                continue
+            normalized_chunks[-2] = rebalanced_left
+            normalized_chunks[-1] = rebalanced_right
+            if len(normalized_chunks[-1]) >= self.task_unit_min_chars:
+                break
+
+        return normalized_chunks
 
     @staticmethod
     def _merge_two_units(left: TaskUnit, right: TaskUnit) -> TaskUnit:
