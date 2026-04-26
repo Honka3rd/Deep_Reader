@@ -1,5 +1,9 @@
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
 from document_structure.section_splitter import CommonSectionSplitter
+from document_structure.section_splitter_selector import (
+    SectionSplitterMode,
+    SectionSplitterSelector,
+)
 from document_structure.structured_document import StructuredDocument, StructuredSection
 from language.language_code import LanguageCode
 
@@ -10,9 +14,11 @@ class StructuredDocumentBuilder:
     def __init__(
         self,
         section_splitter: AbstractSectionSplitter | None = None,
+        section_splitter_selector: SectionSplitterSelector | None = None,
     ):
         """Initialize builder with injected splitter dependency."""
         self.section_splitter = section_splitter or CommonSectionSplitter()
+        self.section_splitter_selector = section_splitter_selector
 
     def build(
         self,
@@ -21,13 +27,22 @@ class StructuredDocumentBuilder:
         raw_text: str,
         language: LanguageCode,
         source_path: str | None = None,
+        parser_mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
     ) -> StructuredDocument:
         """Build a structured document with fallback on split errors."""
         try:
-            sections = self.section_splitter.split(
-                raw_text=raw_text,
-                language=language,
-            )
+            resolved_mode = SectionSplitterMode.resolve(parser_mode)
+            if self.section_splitter_selector is not None:
+                sections = self.section_splitter_selector.split(
+                    raw_text=raw_text,
+                    language=language,
+                    mode=resolved_mode,
+                )
+            else:
+                sections = self.section_splitter.split(
+                    raw_text=raw_text,
+                    language=language,
+                )
             if not sections:
                 return self._build_fallback_document(
                     document_id=document_id,

@@ -8,6 +8,9 @@ from context.coverage_oriented_context_builder import CoverageOrientedContextBui
 from context.token_budget_manager import TokenBudgetManager
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
+from document_structure.llm_section_splitter import LLMSectionSplitter
+from document_structure.section_splitter import CommonSectionSplitter
+from document_structure.section_splitter_selector import SectionSplitterSelector
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from document_structure.structured_document_store import StructuredDocumentStore
 from language.document_language_detector import DocumentLanguageDetector
@@ -165,8 +168,24 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         DocumentLoaderFactory,
     )
 
+    common_section_splitter = providers.Singleton(
+        CommonSectionSplitter,
+    )
+    llm_section_splitter = providers.Singleton(
+        LLMSectionSplitter,
+        llm_provider=llm_provider,
+        common_splitter=common_section_splitter,
+    )
+    section_splitter_selector = providers.Singleton(
+        SectionSplitterSelector,
+        common_splitter=common_section_splitter,
+        llm_splitter=llm_section_splitter,
+    )
+
     structured_document_builder = providers.Singleton(
         StructuredDocumentBuilder,
+        section_splitter=common_section_splitter,
+        section_splitter_selector=section_splitter_selector,
     )
 
     structured_document_store = providers.Singleton(

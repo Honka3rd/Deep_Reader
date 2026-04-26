@@ -3,7 +3,32 @@ from pydantic import BaseModel, Field
 
 class PrepareDocumentRequest(BaseModel):
     """Request payload for document preparation operations."""
+
     doc_name: str = Field(..., description="Document name")
+    mode: str = Field("base", description="Preparation mode: base | free_qa")
+    force_rebuild: bool = Field(
+        False,
+        description="When true, force artifact rebuild for selected mode.",
+    )
+    structured_parser_mode: str = Field(
+        "common",
+        description="Structured parser mode: common | llm_enhanced",
+    )
+
+
+class PrepareDocumentResponse(BaseModel):
+    """Response payload for document preparation operations."""
+
+    doc_name: str
+    mode: str
+    structured_parser_mode: str
+    success: bool
+    structured_document_ready: bool
+    structured_document_path: str | None
+    faiss_ready: bool
+    profile_ready: bool
+    bundle_ready: bool
+    errors: list[str]
 
 
 class AskDocumentRequest(BaseModel):

@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Response
 from app.qa_coordinator import QACoordinator
 from api_schemas import (
     PrepareDocumentRequest,
+    PrepareDocumentResponse,
     AskDocumentRequest,
     AskDocumentResponse,
     QuizQuestionResponse,
@@ -56,6 +57,46 @@ Returns:
         status="ok",
         message="Deep Reader API is running",
     )
+
+
+@app.post("/documents/prepare", response_model=PrepareDocumentResponse)
+def prepare_document(request: PrepareDocumentRequest, response: Response):
+    """Prepare document artifacts through REST for deterministic parser-mode testing."""
+    try:
+        assets = qa_coordinator.document_preparation_pipeline.prepare(
+            doc_name=request.doc_name,
+            force_rebuild=request.force_rebuild,
+            mode=request.mode,
+            structured_parser_mode=request.structured_parser_mode,
+        )
+
+        success = (
+            assets.structured_document_ready
+            and (
+                request.mode.strip().lower() == "base"
+                or (assets.faiss_ready and assets.profile_ready and assets.bundle_ready)
+            )
+        )
+        if not success:
+            response.status_code = 400
+
+        return PrepareDocumentResponse(
+            doc_name=request.doc_name,
+            mode=request.mode,
+            structured_parser_mode=request.structured_parser_mode,
+            success=success,
+            structured_document_ready=assets.structured_document_ready,
+            structured_document_path=assets.structured_document_path,
+            faiss_ready=assets.faiss_ready,
+            profile_ready=assets.profile_ready,
+            bundle_ready=assets.bundle_ready,
+            errors=list(assets.errors),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
 
 # ---------------------------
 # Ask Question

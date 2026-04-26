@@ -6,6 +6,7 @@ from config.structured_document_storage_config import StructuredDocumentStorageC
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from document_structure.structured_document_store import StructuredDocumentStore
+from document_structure.section_splitter_selector import SectionSplitterMode
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
 from document_preparation.preparation_mode import PreparationMode
 from document_preparation.prepared_document_result import PreparedDocumentResult
@@ -54,6 +55,7 @@ class DocumentPreparationPipeline:
         doc_name: str,
         force_rebuild: bool = False,
         mode: PreparationMode | str = PreparationMode.FREE_QA,
+        structured_parser_mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
     ) -> PreparedDocumentAssets:
         """Prepare a document in fixed order and return asset readiness snapshot.
 
@@ -62,8 +64,10 @@ class DocumentPreparationPipeline:
             force_rebuild: When ``True``, skip artifact reuse and rebuild.
             mode: Preparation mode. ``base`` prepares only canonical/structured assets;
                 ``free_qa`` prepares full QA runtime assets.
+            structured_parser_mode: Structured parser mode used by structured build step.
         """
         preparation_mode = PreparationMode.resolve(mode)
+        parser_mode = SectionSplitterMode.resolve(structured_parser_mode)
         assets = PreparedDocumentAssets(
             doc_name=doc_name,
             raw_text=None,
@@ -101,6 +105,7 @@ class DocumentPreparationPipeline:
             language=assets.language,
             assets=assets,
             force_rebuild=force_rebuild,
+            parser_mode=parser_mode,
         )
 
         if preparation_mode == PreparationMode.BASE:
@@ -138,6 +143,7 @@ class DocumentPreparationPipeline:
         doc_name: str,
         force_rebuild: bool = False,
         mode: PreparationMode | str = PreparationMode.FREE_QA,
+        structured_parser_mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
     ) -> PreparedDocumentResult:
         """Prepare document artifacts, then load reusable runtime artifacts."""
         preparation_mode = PreparationMode.resolve(mode)
@@ -145,6 +151,7 @@ class DocumentPreparationPipeline:
             doc_name=doc_name,
             force_rebuild=force_rebuild,
             mode=preparation_mode,
+            structured_parser_mode=structured_parser_mode,
         )
 
         structured_document = None
@@ -237,6 +244,7 @@ class DocumentPreparationPipeline:
         language: str | None,
         assets: PreparedDocumentAssets,
         force_rebuild: bool,
+        parser_mode: SectionSplitterMode,
     ) -> tuple[bool, str | None]:
         """Build and persist structured document artifact."""
         if raw_text is None or not raw_text.strip():
@@ -256,7 +264,8 @@ class DocumentPreparationPipeline:
         storage_config = StructuredDocumentStorageConfig(namespace=doc_name)
         structured_document_path = storage_config.get_raw_document_path()
         try:
-            if storage_config.exists() and not force_rebuild:
+            should_rebuild = force_rebuild or parser_mode == SectionSplitterMode.LLM_ENHANCED
+            if storage_config.exists() and not should_rebuild:
                 try:
                     self.structured_document_store.load(storage_config)
                     return True, structured_document_path
@@ -270,6 +279,7 @@ class DocumentPreparationPipeline:
                 title=doc_name,
                 raw_text=raw_text,
                 language=language_code,
+                parser_mode=parser_mode,
             )
             self.structured_document_store.save(
                 document=structured_document,

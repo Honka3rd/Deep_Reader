@@ -12,6 +12,21 @@ class SectionSplitterMode(StrEnum):
     COMMON = "common"
     LLM_ENHANCED = "llm_enhanced"
 
+    @classmethod
+    def resolve(cls, value: "SectionSplitterMode | str | None") -> "SectionSplitterMode":
+        """Resolve parser mode from enum/string input with safe default."""
+        if isinstance(value, cls):
+            return value
+        if value is None:
+            return cls.COMMON
+
+        normalized = str(value).strip().lower().replace("-", "_")
+        if not normalized:
+            return cls.COMMON
+        if normalized in ("llm_enhanced", "enhanced", "llm"):
+            return cls.LLM_ENHANCED
+        return cls.COMMON
+
 
 class SectionSplitterSelector:
     """Resolve splitter implementation by configured parser mode."""
@@ -28,10 +43,11 @@ class SectionSplitterSelector:
 
     def get_splitter(
         self,
-        mode: SectionSplitterMode = SectionSplitterMode.COMMON,
+        mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
     ) -> AbstractSectionSplitter:
         """Return splitter implementation for target mode."""
-        if mode == SectionSplitterMode.LLM_ENHANCED:
+        resolved_mode = SectionSplitterMode.resolve(mode)
+        if resolved_mode == SectionSplitterMode.LLM_ENHANCED:
             return self.llm_splitter
         return self.common_splitter
 
@@ -40,7 +56,7 @@ class SectionSplitterSelector:
         *,
         raw_text: str,
         language: LanguageCode,
-        mode: SectionSplitterMode = SectionSplitterMode.COMMON,
+        mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
     ):
         """Convenience method: split by selected mode."""
         splitter = self.get_splitter(mode=mode)

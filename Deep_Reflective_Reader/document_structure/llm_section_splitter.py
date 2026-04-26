@@ -35,12 +35,19 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         language: LanguageCode = LanguageCode.UNKNOWN,
     ) -> list[StructuredSection]:
         """Split by LLM-generated plan, with safe fallback to common splitter."""
-        plan = self.build_split_plan(raw_text=raw_text, language=language)
-        return self.apply_split_plan(
-            raw_text=raw_text,
-            language=language,
-            split_plan=plan,
-        )
+        try:
+            plan = self.build_split_plan(raw_text=raw_text, language=language)
+            return self.apply_split_plan(
+                raw_text=raw_text,
+                language=language,
+                split_plan=plan,
+            )
+        except Exception as error:
+            print(
+                "LLMSectionSplitter#split_fallback_common:",
+                f"reason={error}",
+            )
+            return self.common_splitter.split(raw_text=raw_text, language=language)
 
     def build_split_plan(
         self,
@@ -83,16 +90,23 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         split_plan: SectionSplitPlan,
     ) -> list[StructuredSection]:
         """Apply LLM split plan locally; fallback to common splitter when unresolved."""
+        def fallback_common(reason: str) -> list[StructuredSection]:
+            print(
+                "LLMSectionSplitter#apply_fallback_common:",
+                f"reason={reason}",
+            )
+            return self.common_splitter.split(raw_text=raw_text, language=language)
+
         if language == LanguageCode.UNKNOWN:
             raise ValueError("bad_request: unsupported document structure language 'unknown'")
         if not raw_text:
             return [self.common_splitter._single_fallback_section(raw_text)]
         if not split_plan.instructions:
-            return self.common_splitter.split(raw_text=raw_text, language=language)
+            return fallback_common("empty_split_instructions")
 
         line_infos = self.common_splitter._build_line_infos(raw_text)
         if not line_infos:
-            return self.common_splitter.split(raw_text=raw_text, language=language)
+            return fallback_common("empty_line_infos")
 
         boundary_items: list[tuple[int, str, str | None]] = []
         for instruction in split_plan.instructions:
@@ -112,20 +126,30 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             )
 
         if not boundary_items:
-            return self.common_splitter.split(raw_text=raw_text, language=language)
+            return fallback_common("no_resolved_boundaries")
 
         ordered_boundaries: list[tuple[int, str, str | None]] = []
         seen_starts: set[int] = set()
         for start, title, container_title in sorted(boundary_items, key=lambda item: item[0]):
+            if start < 0 or start >= len(raw_text):
+                continue
             if start in seen_starts:
                 continue
             seen_starts.add(start)
             ordered_boundaries.append((start, title, container_title))
 
-        return self._build_sections_from_boundaries(
+        if len(ordered_boundaries) < 2:
+            return fallback_common("resolved_boundaries_too_few")
+        if not self._is_strictly_increasing_boundaries(ordered_boundaries):
+            return fallback_common("boundaries_not_strictly_increasing")
+
+        sections = self._build_sections_from_boundaries(
             raw_text=raw_text,
             boundaries=ordered_boundaries,
         )
+        if not self._is_sections_output_reasonable(raw_text=raw_text, sections=sections):
+            return fallback_common("abnormal_section_output")
+        return sections
 
     def _build_split_plan_prompt(self, *, raw_text: str, language: LanguageCode) -> str:
         """Build strict JSON-only prompt for boundary planning."""
@@ -292,6 +316,50 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         if not sections:
             return [self.common_splitter._single_fallback_section(raw_text)]
         return sections
+
+    @staticmethod
+    def _is_strictly_increasing_boundaries(
+        boundaries: list[tuple[int, str, str | None]],
+    ) -> bool:
+        """Validate boundaries are strictly increasing by start offset."""
+        if not boundaries:
+            return False
+        previous = boundaries[0][0]
+        for current, _, _ in boundaries[1:]:
+            if current <= previous:
+                return False
+            previous = current
+        return True
+
+    @staticmethod
+    def _is_sections_output_reasonable(
+        *,
+        raw_text: str,
+        sections: list[StructuredSection],
+    ) -> bool:
+        """Validate section output shape before accepting enhanced parse result."""
+        if len(sections) < 2:
+            return False
+
+        text_length = len(raw_text)
+        last_end = 0
+        non_empty_sections = 0
+        for section in sections:
+            if section.char_start < 0 or section.char_end > text_length:
+                return False
+            if section.char_end <= section.char_start:
+                return False
+            if section.char_start < last_end:
+                return False
+            last_end = section.char_end
+            if section.content.strip():
+                non_empty_sections += 1
+
+        if non_empty_sections < 2:
+            return False
+        if sections[-1].char_end != text_length:
+            return False
+        return True
 
     @classmethod
     def _normalize_line(cls, value: str) -> str:
