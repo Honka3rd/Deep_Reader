@@ -413,6 +413,7 @@ class DocumentStructureLanguageRegistry:
             LanguageCode.EN: (
                 "contents",
                 "table of contents",
+                "contents page",
             ),
             LanguageCode.ZH: (
                 "目录",
@@ -420,11 +421,14 @@ class DocumentStructureLanguageRegistry:
                 "章节目录",
                 "章節目錄",
                 "篇目",
+                "总目录",
+                "總目錄",
             ),
             LanguageCode.JA: (
                 "目次",
                 "目錄",
                 "もくじ",
+                "総目次",
             ),
             LanguageCode.KO: (
                 "목차",
@@ -497,11 +501,14 @@ class DocumentStructureLanguageRegistry:
                     "foreword",
                     "introduction",
                     "prologue",
+                    "author's note",
+                    "authors note",
                 ),
                 LanguageCode.ZH: (
                     "前言",
                     "序",
                     "序言",
+                    "序文",
                     "导言",
                     "導言",
                     "引言",
@@ -609,6 +616,7 @@ class DocumentStructureLanguageRegistry:
                 LanguageCode.EN: (
                     "appendix",
                     "appendices",
+                    "appendix a",
                 ),
                 LanguageCode.ZH: (
                     "附录",
@@ -693,6 +701,7 @@ class DocumentStructureLanguageRegistry:
                 LanguageCode.EN: (
                     "afterword",
                     "epilogue",
+                    "postscript",
                 ),
                 LanguageCode.ZH: (
                     "后记",

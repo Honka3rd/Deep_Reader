@@ -23,6 +23,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
     _SENTENCE_END_PUNCTUATION_PATTERN = re.compile(r"[。！？!?;；,.，:]$")
     _WHITESPACE_COLLAPSE_PATTERN = re.compile(r"\s+")
     _BODY_PROSE_TERMINAL_PATTERN = re.compile(r"[.!?。！？]$")
+    _MARKER_PREFIX_SUFFIX_PUNCTUATION = frozenset((":", "：", "-", "–", "—", "(", "（", "[", "【"))
     _TOC_SCAN_LINES = 180
     _TOC_MIN_HEADING_COUNT = 3
     _MAIN_BODY_EARLY_REGION_RATIO = 0.35
@@ -320,22 +321,170 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 break
             normalized_line = self._normalize_heading_title(info.stripped)
             if any(
-                self._line_matches_marker(normalized_line, marker)
+                self._line_matches_marker(
+                    normalized_line=normalized_line,
+                    raw_line=info.stripped,
+                    normalized_marker=marker,
+                )
                 for marker in normalized_markers
             ):
                 return idx
         return None
 
-    @staticmethod
-    def _line_matches_marker(normalized_line: str, normalized_marker: str) -> bool:
-        """Match marker against one normalized line with conservative short-token policy."""
+    @classmethod
+    def _line_matches_marker(
+        cls,
+        *,
+        normalized_line: str,
+        raw_line: str,
+        normalized_marker: str,
+    ) -> bool:
+        """Match one marker against one line with marker-type-aware policy."""
         if not normalized_line or not normalized_marker:
             return False
+
+        # Tier 1: exact normalized line match is always accepted.
         if normalized_line == normalized_marker:
             return True
-        if len(normalized_marker) <= 2:
-            return normalized_line.startswith(normalized_marker)
-        return normalized_marker in normalized_line
+
+        # Tier 2: only heading-like lines can use tolerant/prefix matching.
+        if not cls._is_heading_like_marker_line(raw_line):
+            return False
+
+        if cls._is_short_cjk_marker(normalized_marker):
+            return cls._matches_short_cjk_marker(
+                normalized_line=normalized_line,
+                normalized_marker=normalized_marker,
+            )
+
+        if " " in normalized_marker:
+            return cls._matches_heading_like_prefix(
+                normalized_line=normalized_line,
+                normalized_marker=normalized_marker,
+            )
+
+        if cls._looks_latin_word(normalized_marker):
+            return cls._matches_latin_word_marker(
+                normalized_line=normalized_line,
+                normalized_marker=normalized_marker,
+            )
+
+        return cls._matches_heading_like_prefix(
+            normalized_line=normalized_line,
+            normalized_marker=normalized_marker,
+        )
+
+    @classmethod
+    def _is_heading_like_marker_line(cls, raw_line: str) -> bool:
+        """Return whether line shape looks like heading instead of body prose."""
+        stripped = raw_line.strip()
+        if not stripped:
+            return False
+        if cls._looks_like_body_prose(stripped):
+            return False
+
+        if cls._CJK_PATTERN.search(stripped):
+            return len(stripped) <= 32
+
+        token_count = len(cls._LATIN_TOKEN_PATTERN.findall(stripped))
+        if token_count == 0:
+            return False
+        return token_count <= 12 and len(stripped) <= 90
+
+    @classmethod
+    def _matches_heading_like_prefix(
+        cls,
+        *,
+        normalized_line: str,
+        normalized_marker: str,
+    ) -> bool:
+        """Match marker at heading prefix with conservative suffix tolerance."""
+        if not normalized_line.startswith(normalized_marker):
+            return False
+        suffix = normalized_line[len(normalized_marker):].strip()
+        if not suffix:
+            return True
+
+        first_char = suffix[0]
+        if first_char in cls._MARKER_PREFIX_SUFFIX_PUNCTUATION:
+            return True
+
+        suffix_token_count = len(cls._LATIN_TOKEN_PATTERN.findall(suffix))
+        if cls._CJK_PATTERN.search(suffix):
+            return len(suffix) <= 8
+        return cls._is_label_like_suffix_tokens(
+            suffix=suffix,
+            token_count=suffix_token_count,
+        )
+
+    @classmethod
+    def _matches_short_cjk_marker(
+        cls,
+        *,
+        normalized_line: str,
+        normalized_marker: str,
+    ) -> bool:
+        """Use stricter matching for short CJK markers (e.g. '序')."""
+        if normalized_line == normalized_marker:
+            return True
+        if not normalized_line.startswith(normalized_marker):
+            return False
+
+        suffix = normalized_line[len(normalized_marker):].strip()
+        if not suffix:
+            return True
+        if suffix[0] in cls._MARKER_PREFIX_SUFFIX_PUNCTUATION:
+            return True
+
+        # Allow tiny heading variants like "序章", "序言", but avoid long sentence matches.
+        return len(suffix) <= 2
+
+    @classmethod
+    def _matches_latin_word_marker(
+        cls,
+        *,
+        normalized_line: str,
+        normalized_marker: str,
+    ) -> bool:
+        """Match one Latin single-word marker as heading token/prefix, not body substring."""
+        if normalized_line == normalized_marker:
+            return True
+        if not normalized_line.startswith(normalized_marker):
+            return False
+
+        suffix = normalized_line[len(normalized_marker):].strip()
+        if not suffix:
+            return True
+        if suffix[0] in cls._MARKER_PREFIX_SUFFIX_PUNCTUATION:
+            return True
+        suffix_token_count = len(cls._LATIN_TOKEN_PATTERN.findall(suffix))
+        return cls._is_label_like_suffix_tokens(
+            suffix=suffix,
+            token_count=suffix_token_count,
+        )
+
+    @classmethod
+    def _is_short_cjk_marker(cls, normalized_marker: str) -> bool:
+        """Return whether marker is a short CJK marker needing strict policy."""
+        return bool(cls._CJK_PATTERN.search(normalized_marker)) and len(normalized_marker) <= 2
+
+    @staticmethod
+    def _looks_latin_word(normalized_marker: str) -> bool:
+        """Return whether marker is a Latin single-word style token."""
+        return bool(re.fullmatch(r"[a-z0-9]+", normalized_marker))
+
+    @staticmethod
+    def _is_label_like_suffix_tokens(*, suffix: str, token_count: int) -> bool:
+        """Allow short heading suffix labels like 'A', 'II', '2', but block prose-like suffixes."""
+        if token_count <= 0 or token_count > 3 or len(suffix) > 20:
+            return False
+        suffix_tokens = re.findall(r"[a-z0-9]+", suffix)
+        if len(suffix_tokens) != token_count:
+            return False
+        return all(
+            re.fullmatch(r"(?:[a-z]|[ivxlcdm]+|\d+)", token) is not None
+            for token in suffix_tokens
+        )
 
     @staticmethod
     def _is_strong_heading(

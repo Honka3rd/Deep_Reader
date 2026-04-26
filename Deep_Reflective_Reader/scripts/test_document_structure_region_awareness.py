@@ -111,12 +111,67 @@ def test_chapter_plus_afterword_zh(splitter: CommonSectionSplitter) -> None:
     )
 
 
+def test_marker_true_hits(splitter: CommonSectionSplitter) -> None:
+    """Validate expected markers can be recognized as heading markers."""
+    cases = [
+        ("Contents", "contents", True),
+        ("Table of Contents", "table of contents", True),
+        ("目录", "目录", True),
+        ("前言", "前言", True),
+        ("後記", "後記", True),
+        ("Appendix A", "appendix", True),
+        ("Preface:", "preface", True),
+        ("後記：", "後記", True),
+        ("目录（修订版）", "目录", True),
+    ]
+    for line, marker, expected in cases:
+        matched = splitter._line_matches_marker(
+            normalized_line=splitter._normalize_heading_title(line),
+            raw_line=line,
+            normalized_marker=splitter._normalize_heading_title(marker),
+        )
+        _assert(
+            matched == expected,
+            f"marker true-hit mismatch: line={line!r}, marker={marker!r}, got={matched}",
+        )
+
+
+def test_marker_false_hits_in_body(splitter: CommonSectionSplitter) -> None:
+    """Validate prose lines mentioning marker words are not treated as marker headings."""
+    cases = [
+        (
+            "In this chapter we discuss appendix methods and follow-up analysis in detail.",
+            "appendix",
+        ),
+        (
+            "这一句正文提到后记和附录的概念，但它不是标题。",
+            "后记",
+        ),
+        (
+            "這一句正文只是提到序這個字，不應該觸發前言標記。",
+            "序",
+        ),
+    ]
+    for line, marker in cases:
+        matched = splitter._line_matches_marker(
+            normalized_line=splitter._normalize_heading_title(line),
+            raw_line=line,
+            normalized_marker=splitter._normalize_heading_title(marker),
+        )
+        _assert(
+            matched is False,
+            f"marker false-hit mismatch: line={line!r}, marker={marker!r}, got={matched}",
+        )
+
+
 def main() -> None:
     splitter = CommonSectionSplitter()
     test_toc_plus_chapter_one(splitter)
     test_preface_plus_chapter_one(splitter)
     test_chapter_plus_appendix(splitter)
     test_chapter_plus_afterword_zh(splitter)
+    test_marker_true_hits(splitter)
+    test_marker_false_hits_in_body(splitter)
 
     sample = splitter.split(
         raw_text=(
