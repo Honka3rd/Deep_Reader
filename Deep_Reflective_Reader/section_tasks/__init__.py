@@ -41,6 +41,9 @@ from section_tasks.topic_guidance_registry import (
 )
 from shared.abstract_result import AbstractResult
 from section_tasks.abstract_task_prompt_builder import AbstractTaskPromptBuilder
+from section_tasks.embedding_semantic_boundary_scorer import (
+    EmbeddingSemanticBoundaryScorer,
+)
 from section_tasks.section_task_prompt_builder_factory import (
     SectionTaskPromptBuilderFactory,
     SectionTaskType,
@@ -65,6 +68,7 @@ __all__ = [
     "AbstractResult",
     "AbstractTaskUnitSplitResolver",
     "AbstractTaskPromptBuilder",
+    "EmbeddingSemanticBoundaryScorer",
     "SectionTaskPromptBuilderFactory",
     "SectionTaskPromptCommon",
     "SectionTaskType",

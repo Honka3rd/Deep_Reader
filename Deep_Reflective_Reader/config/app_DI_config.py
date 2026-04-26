@@ -97,6 +97,18 @@ class AppDIConfig:
     # Split strategy for oversized single-section internal task-unit segmentation.
     # Introduced to switch between low-cost semantic-safe and progressive split policies.
     task_unit_split_mode: str = "semantic_safe"
+    # Character window size for boundary-side semantic snippets in task-unit split scoring.
+    # Introduced to balance local semantic continuity signal and token/embedding overhead.
+    task_unit_semantic_boundary_window_chars: int = 220
+    # Character window size for wider context semantic snippets around candidate boundary.
+    # Introduced to estimate semantic shift across boundary more robustly than punctuation only.
+    task_unit_semantic_context_window_chars: int = 700
+    # Weight multiplier for embedding-based semantic boundary score added to heuristic score.
+    # Introduced to tune semantic influence without overriding deterministic structural rules.
+    task_unit_semantic_score_weight: float = 1.0
+    # Maximum cached snippet embeddings in boundary scorer.
+    # Introduced to reduce repeated embedding calls while bounding in-memory cache size.
+    task_unit_semantic_embedding_cache_size: int = 256
     # Minimum reasonable section count; below this structure is likely too coarse.
     # Introduced as a strong signal for recommending enhanced parser.
     enhanced_parse_min_section_count: int = 3

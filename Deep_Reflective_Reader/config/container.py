@@ -43,6 +43,9 @@ from section_tasks.section_task_prompt_builder_factory import (
 )
 from section_tasks.section_task_prompt_common import SectionTaskPromptCommon
 from section_tasks.summary_task_prompt_builder import SummaryTaskPromptBuilder
+from section_tasks.embedding_semantic_boundary_scorer import (
+    EmbeddingSemanticBoundaryScorer,
+)
 from section_tasks.heuristic_task_unit_split_resolver import (
     HeuristicTaskUnitSplitResolver,
 )
@@ -301,13 +304,24 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         section_quiz_builder=section_quiz_task_prompt_builder,
         chapter_quiz_builder=chapter_quiz_task_prompt_builder,
     )
+    embedding_semantic_boundary_scorer = providers.Singleton(
+        EmbeddingSemanticBoundaryScorer,
+        embedder_factory=embedder.provider,
+        similarity_service=similarity_service,
+        boundary_window_chars=config.task_unit_semantic_boundary_window_chars,
+        context_window_chars=config.task_unit_semantic_context_window_chars,
+        score_weight=config.task_unit_semantic_score_weight,
+        embedding_cache_size=config.task_unit_semantic_embedding_cache_size,
+    )
     semantic_safe_task_unit_split_resolver = providers.Singleton(
         HeuristicTaskUnitSplitResolver,
         split_mode=TaskUnitSplitMode.SEMANTIC_SAFE,
+        semantic_boundary_scorer=embedding_semantic_boundary_scorer,
     )
     progressive_task_unit_split_resolver = providers.Singleton(
         HeuristicTaskUnitSplitResolver,
         split_mode=TaskUnitSplitMode.PROGRESSIVE,
+        semantic_boundary_scorer=embedding_semantic_boundary_scorer,
     )
     llm_task_unit_split_resolver = providers.Singleton(
         LLMTaskUnitSplitResolver,
@@ -432,6 +446,16 @@ Returns:
                 "task_unit_min_chars": app_config.task_unit_min_chars,
                 "task_unit_max_chars": app_config.task_unit_max_chars,
                 "task_unit_split_mode": app_config.task_unit_split_mode,
+                "task_unit_semantic_boundary_window_chars": (
+                    app_config.task_unit_semantic_boundary_window_chars
+                ),
+                "task_unit_semantic_context_window_chars": (
+                    app_config.task_unit_semantic_context_window_chars
+                ),
+                "task_unit_semantic_score_weight": app_config.task_unit_semantic_score_weight,
+                "task_unit_semantic_embedding_cache_size": (
+                    app_config.task_unit_semantic_embedding_cache_size
+                ),
                 "enhanced_parse_min_section_count": app_config.enhanced_parse_min_section_count,
                 "enhanced_parse_max_section_count": app_config.enhanced_parse_max_section_count,
                 "enhanced_parse_min_title_coverage": app_config.enhanced_parse_min_title_coverage,
