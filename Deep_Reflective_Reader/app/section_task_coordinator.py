@@ -26,6 +26,7 @@ from section_tasks.reparse_document_structure_result import ReparseDocumentStruc
 from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit import TaskUnit
 from section_tasks.task_unit_resolver import TaskUnitResolver
+from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,14 @@ class ResolvedTaskUnit:
 
     task_unit: TaskUnit
     task_unit_index: int
+
+
+@dataclass(frozen=True)
+class TaskUnitResolveOptions:
+    """Request-time resolve options for task-unit split behavior."""
+
+    split_mode: TaskUnitSplitMode
+    semantic_top_k_candidates: int | None
 
 
 class SectionTaskCoordinator:
@@ -47,6 +56,7 @@ class SectionTaskCoordinator:
         chapter_quiz_service: ChapterQuizService,
         task_unit_resolver: TaskUnitResolver,
         enhanced_parse_trigger_evaluator: EnhancedParseTriggerEvaluator,
+        semantic_top_k_candidates_max: int = 20,
     ):
         self.document_preparation_pipeline = document_preparation_pipeline
         self.document_profile_store = document_profile_store
@@ -54,9 +64,20 @@ class SectionTaskCoordinator:
         self.chapter_quiz_service = chapter_quiz_service
         self.task_unit_resolver = task_unit_resolver
         self.enhanced_parse_trigger_evaluator = enhanced_parse_trigger_evaluator
+        self.semantic_top_k_candidates_max = max(1, int(semantic_top_k_candidates_max))
 
-    def summarize_section(self, doc_name: str, section_id: str) -> SectionTaskResult:
+    def summarize_section(
+        self,
+        doc_name: str,
+        section_id: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
+    ) -> SectionTaskResult:
         """Run section-summary task by coordinator-level task-unit resolution."""
+        resolve_options = self._resolve_task_unit_request_options(
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
+        )
         structured_document, document_profile, preparation_errors = (
             self._prepare_section_task_inputs(doc_name)
         )
@@ -69,6 +90,7 @@ class SectionTaskCoordinator:
             resolved_task_unit = self._resolve_task_unit_for_section_id(
                 document=structured_document,
                 section_id=section_id,
+                resolve_options=resolve_options,
             )
             return self.chapter_summary_service.summarize_task_unit(
                 task_unit=resolved_task_unit.task_unit,
@@ -81,11 +103,21 @@ class SectionTaskCoordinator:
         except Exception as error:
             return SectionTaskResult.from_llm_error(error)
 
-    def summarize_chapter(self, doc_name: str, chapter_title: str) -> SectionTaskResult:
+    def summarize_chapter(
+        self,
+        doc_name: str,
+        chapter_title: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
+    ) -> SectionTaskResult:
         """Run chapter-summary task by chapter-title -> task-unit resolution."""
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             return SectionTaskResult.fail("chapter_title cannot be empty")
+        resolve_options = self._resolve_task_unit_request_options(
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
+        )
 
         structured_document, document_profile, preparation_errors = (
             self._prepare_section_task_inputs(doc_name)
@@ -100,6 +132,7 @@ class SectionTaskCoordinator:
             resolved_task_unit = self._resolve_task_unit_for_chapter_title(
                 document=structured_document,
                 chapter_title=normalized_chapter_title,
+                resolve_options=resolve_options,
             )
             return self.chapter_summary_service.summarize_task_unit(
                 task_unit=resolved_task_unit.task_unit,
@@ -116,8 +149,14 @@ class SectionTaskCoordinator:
         self,
         doc_name: str,
         section_id: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Run section-quiz task by coordinator-level task-unit resolution."""
+        resolve_options = self._resolve_task_unit_request_options(
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
+        )
         structured_document, document_profile, preparation_errors = (
             self._prepare_section_task_inputs(doc_name)
         )
@@ -130,6 +169,7 @@ class SectionTaskCoordinator:
             resolved_task_unit = self._resolve_task_unit_for_section_id(
                 document=structured_document,
                 section_id=section_id,
+                resolve_options=resolve_options,
             )
             return self.chapter_quiz_service.generate_task_unit_quiz(
                 task_unit=resolved_task_unit.task_unit,
@@ -146,11 +186,17 @@ class SectionTaskCoordinator:
         self,
         doc_name: str,
         chapter_title: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Run chapter-quiz task by chapter-title -> task-unit resolution."""
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             return SectionTaskResult.fail("chapter_title cannot be empty")
+        resolve_options = self._resolve_task_unit_request_options(
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
+        )
 
         structured_document, document_profile, preparation_errors = (
             self._prepare_section_task_inputs(doc_name)
@@ -165,6 +211,7 @@ class SectionTaskCoordinator:
             resolved_task_unit = self._resolve_task_unit_for_chapter_title(
                 document=structured_document,
                 chapter_title=normalized_chapter_title,
+                resolve_options=resolve_options,
             )
             return self.chapter_quiz_service.generate_task_unit_quiz(
                 task_unit=resolved_task_unit.task_unit,
@@ -178,8 +225,17 @@ class SectionTaskCoordinator:
         except Exception as error:
             return SectionTaskResult.from_llm_error(error)
 
-    def get_document_task_layout(self, doc_name: str) -> DocumentTaskLayout:
+    def get_document_task_layout(
+        self,
+        doc_name: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
+    ) -> DocumentTaskLayout:
         """Return section-first document layout with embedded task-unit metadata."""
+        resolve_options = self._resolve_task_unit_request_options(
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
+        )
         preparation_result = self.document_preparation_pipeline.prepare_and_load(
             doc_name=doc_name,
             mode=PreparationMode.BASE,
@@ -191,7 +247,11 @@ class SectionTaskCoordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
 
-        resolved_task_units = self.task_unit_resolver.resolve(structured_document)
+        resolved_task_units = self.task_unit_resolver.resolve_with_options(
+            document=structured_document,
+            split_mode=resolve_options.split_mode,
+            semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
+        )
         task_unit_dtos: list[TaskUnitDTO] = [
             TaskUnitDTO(
                 unit_id=task_unit.unit_id,
@@ -376,13 +436,18 @@ class SectionTaskCoordinator:
         *,
         document: StructuredDocument,
         section_id: str,
+        resolve_options: TaskUnitResolveOptions,
     ) -> ResolvedTaskUnit:
         """Resolve first task unit whose source section ids contain target section id."""
         normalized_section_id = section_id.strip()
         if not normalized_section_id:
             raise ValueError("section_id cannot be empty")
 
-        task_units = self.task_unit_resolver.resolve(document)
+        task_units = self.task_unit_resolver.resolve_with_options(
+            document=document,
+            split_mode=resolve_options.split_mode,
+            semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
+        )
         if not task_units:
             raise ValueError(
                 f"no task units resolved for document '{document.document_id}'"
@@ -404,6 +469,7 @@ class SectionTaskCoordinator:
         *,
         document: StructuredDocument,
         chapter_title: str,
+        resolve_options: TaskUnitResolveOptions,
     ) -> ResolvedTaskUnit:
         """Resolve task unit by first exact chapter-title hit in source sections."""
         normalized_chapter_title = chapter_title.strip()
@@ -423,6 +489,41 @@ class SectionTaskCoordinator:
         return self._resolve_task_unit_for_section_id(
             document=document,
             section_id=target_section_id,
+            resolve_options=resolve_options,
+        )
+
+    def _resolve_task_unit_request_options(
+        self,
+        *,
+        task_unit_split_mode: TaskUnitSplitMode | str | None,
+        semantic_top_k_candidates: int | None,
+    ) -> TaskUnitResolveOptions:
+        """Resolve/validate request-time task-unit split options."""
+        if task_unit_split_mode is None:
+            resolved_mode = self.task_unit_resolver.split_mode
+        else:
+            resolved_mode = TaskUnitSplitMode.resolve_strict(task_unit_split_mode)
+
+        normalized_top_k: int | None = None
+        if semantic_top_k_candidates is not None:
+            candidate = int(semantic_top_k_candidates)
+            if candidate <= 0 or candidate > self.semantic_top_k_candidates_max:
+                raise ValueError(
+                    "semantic_top_k_candidates must be a positive integer in "
+                    f"[1, {self.semantic_top_k_candidates_max}]"
+                )
+            if resolved_mode == TaskUnitSplitMode.SEMANTIC_SAFE:
+                normalized_top_k = candidate
+            else:
+                print(
+                    "SectionTaskCoordinator#semantic_top_k_ignored:",
+                    f"mode={resolved_mode.value}",
+                    f"semantic_top_k_candidates={candidate}",
+                )
+
+        return TaskUnitResolveOptions(
+            split_mode=resolved_mode,
+            semantic_top_k_candidates=normalized_top_k,
         )
 
     def _prepare_section_task_inputs(

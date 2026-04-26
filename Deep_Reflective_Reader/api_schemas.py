@@ -58,6 +58,20 @@ class SectionTaskRequest(BaseModel):
 
     doc_name: str = Field(..., description="Document name")
     section_id: str = Field(..., description="Target structured section id")
+    task_unit_split_mode: str | None = Field(
+        None,
+        description=(
+            "Task-unit split mode: semantic_safe | progressive | llm_enhanced. "
+            "This controls task-unit resolution only, not structured parser mode."
+        ),
+    )
+    semantic_top_k_candidates: int | None = Field(
+        None,
+        description=(
+            "Optional semantic rerank top-k for semantic_safe split mode. "
+            "Larger values may improve semantic cut precision but can be slower."
+        ),
+    )
 
 
 class SectionTaskResponse(BaseModel):
@@ -93,6 +107,20 @@ class SummarizeChapterRequest(BaseModel):
 
     doc_name: str = Field(..., description="Document name")
     chapter_title: str = Field(..., description="Exact chapter title")
+    task_unit_split_mode: str | None = Field(
+        None,
+        description=(
+            "Task-unit split mode: semantic_safe | progressive | llm_enhanced. "
+            "This controls task-unit resolution only, not structured parser mode."
+        ),
+    )
+    semantic_top_k_candidates: int | None = Field(
+        None,
+        description=(
+            "Optional semantic rerank top-k for semantic_safe split mode. "
+            "Larger values may improve semantic cut precision but can be slower."
+        ),
+    )
 
 
 class SummarizeChapterResponse(BaseModel):
@@ -109,6 +137,20 @@ class GetDocumentTaskLayoutRequest(BaseModel):
     """Request payload for document task-layout endpoint."""
 
     doc_name: str = Field(..., description="Document name")
+    task_unit_split_mode: str | None = Field(
+        None,
+        description=(
+            "Task-unit split mode: semantic_safe | progressive | llm_enhanced. "
+            "This controls task-unit resolution only, not structured parser mode."
+        ),
+    )
+    semantic_top_k_candidates: int | None = Field(
+        None,
+        description=(
+            "Optional semantic rerank top-k for semantic_safe split mode. "
+            "Larger values may improve semantic cut precision but can be slower."
+        ),
+    )
 
 
 class TaskUnitMetadataResponse(BaseModel):

@@ -52,6 +52,7 @@ class LLMTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         section_index: int,
         task_unit_min_chars: int,
         task_unit_max_chars: int,
+        semantic_top_k_candidates: int | None = None,
     ) -> list[TaskUnit]:
         """Run LLM split plan + local apply flow; fallback to heuristic resolver safely."""
         try:
@@ -88,6 +89,7 @@ class LLMTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
             section_index=section_index,
             task_unit_min_chars=task_unit_min_chars,
             task_unit_max_chars=task_unit_max_chars,
+            semantic_top_k_candidates=semantic_top_k_candidates,
         )
 
     def build_split_plan(

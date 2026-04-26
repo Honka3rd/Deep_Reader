@@ -106,6 +106,9 @@ class AppDIConfig:
     # Maximum top-ranked heuristic boundary candidates reranked with semantic scoring per window.
     # Introduced to avoid scoring every boundary candidate and cap semantic rerank overhead.
     task_unit_semantic_top_k_candidates: int = 3
+    # Maximum allowed request-time override value for semantic top-k rerank candidates.
+    # Introduced to prevent API callers from setting extreme values that could hurt latency.
+    task_unit_semantic_top_k_candidates_max: int = 20
     # Maximum semantic scoring attempts per split window.
     # Introduced to guarantee bounded semantic scorer calls under dense candidate windows.
     task_unit_semantic_max_scoring_per_window: int = 3

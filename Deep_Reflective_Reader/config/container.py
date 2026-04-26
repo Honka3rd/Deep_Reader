@@ -390,6 +390,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         chapter_quiz_service=chapter_quiz_service,
         task_unit_resolver=task_unit_resolver,
         enhanced_parse_trigger_evaluator=enhanced_parse_trigger_evaluator,
+        semantic_top_k_candidates_max=config.task_unit_semantic_top_k_candidates_max,
     )
 
     @classmethod
@@ -463,6 +464,9 @@ Returns:
                 ),
                 "task_unit_semantic_top_k_candidates": (
                     app_config.task_unit_semantic_top_k_candidates
+                ),
+                "task_unit_semantic_top_k_candidates_max": (
+                    app_config.task_unit_semantic_top_k_candidates_max
                 ),
                 "task_unit_semantic_max_scoring_per_window": (
                     app_config.task_unit_semantic_max_scoring_per_window

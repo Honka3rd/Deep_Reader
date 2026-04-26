@@ -175,6 +175,8 @@ def summarize_document_section(request: SectionTaskRequest, response: Response):
         result = section_task_coordinator.summarize_section(
             doc_name=request.doc_name,
             section_id=request.section_id,
+            task_unit_split_mode=request.task_unit_split_mode,
+            semantic_top_k_candidates=request.semantic_top_k_candidates,
         )
         if result.success:
             return SectionTaskResponse(
@@ -207,6 +209,8 @@ def generate_document_section_quiz(request: SectionTaskRequest, response: Respon
         result = section_task_coordinator.generate_section_quiz(
             doc_name=request.doc_name,
             section_id=request.section_id,
+            task_unit_split_mode=request.task_unit_split_mode,
+            semantic_top_k_candidates=request.semantic_top_k_candidates,
         )
         if result.success:
             questions = [
@@ -250,6 +254,8 @@ def summarize_document_chapter(
         result = section_task_coordinator.summarize_chapter(
             doc_name=request.doc_name,
             chapter_title=request.chapter_title,
+            task_unit_split_mode=request.task_unit_split_mode,
+            semantic_top_k_candidates=request.semantic_top_k_candidates,
         )
         if result.success:
             return SummarizeChapterResponse(
@@ -282,6 +288,8 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
     try:
         layout = section_task_coordinator.get_document_task_layout(
             doc_name=request.doc_name,
+            task_unit_split_mode=request.task_unit_split_mode,
+            semantic_top_k_candidates=request.semantic_top_k_candidates,
         )
         task_units = [
             TaskUnitMetadataResponse(

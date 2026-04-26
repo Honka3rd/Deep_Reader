@@ -75,6 +75,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         section_index: int,
         task_unit_min_chars: int,
         task_unit_max_chars: int,
+        semantic_top_k_candidates: int | None = None,
     ) -> list[TaskUnit]:
         """Split one oversized section with selected heuristic mode."""
         text = section.content.strip()
@@ -83,18 +84,23 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
 
         min_chars = max(1, int(task_unit_min_chars))
         max_chars = max(min_chars, int(task_unit_max_chars))
+        resolved_semantic_top_k_candidates = self._resolve_semantic_top_k_candidates(
+            semantic_top_k_candidates
+        )
         semantic_context = self._build_semantic_context()
         chunks = self._split_text(
             text=text,
             min_chars=min_chars,
             max_chars=max_chars,
             semantic_context=semantic_context,
+            semantic_top_k_candidates=resolved_semantic_top_k_candidates,
         )
         chunks = self._stabilize_trailing_short_chunk(
             chunks=chunks,
             min_chars=min_chars,
             max_chars=max_chars,
             semantic_context=semantic_context,
+            semantic_top_k_candidates=resolved_semantic_top_k_candidates,
         )
         if not chunks:
             return []
@@ -143,6 +149,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         min_chars: int,
         max_chars: int,
         semantic_context: _SemanticRerankContext | None = None,
+        semantic_top_k_candidates: int,
     ) -> list[str]:
         """Route to target heuristic split mode."""
         if self.split_mode == TaskUnitSplitMode.PROGRESSIVE:
@@ -151,12 +158,14 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                 min_chars=min_chars,
                 max_chars=max_chars,
                 semantic_context=semantic_context,
+                semantic_top_k_candidates=semantic_top_k_candidates,
             )
         return self._split_text_semantic_safe(
             text=text,
             min_chars=min_chars,
             max_chars=max_chars,
             semantic_context=semantic_context,
+            semantic_top_k_candidates=semantic_top_k_candidates,
         )
 
     def _split_text_semantic_safe(
@@ -166,6 +175,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         min_chars: int,
         max_chars: int,
         semantic_context: _SemanticRerankContext | None = None,
+        semantic_top_k_candidates: int,
     ) -> list[str]:
         """Split with paragraph-first strategy and semantic boundary search."""
         paragraphs = [
@@ -179,6 +189,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                 min_chars=min_chars,
                 max_chars=max_chars,
                 semantic_context=semantic_context,
+                semantic_top_k_candidates=semantic_top_k_candidates,
             )
 
         chunks: list[str] = []
@@ -203,6 +214,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                     min_chars=min_chars,
                     max_chars=max_chars,
                     semantic_context=semantic_context,
+                    semantic_top_k_candidates=semantic_top_k_candidates,
                 )
             )
 
@@ -217,6 +229,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         min_chars: int,
         max_chars: int,
         semantic_context: _SemanticRerankContext | None = None,
+        semantic_top_k_candidates: int,
     ) -> list[str]:
         """Split by target windows but search semantic-safe cut points near boundary."""
         if not text.strip():
@@ -247,6 +260,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                 upper_bound=max_cut,
                 ideal_cut=ideal_cut,
                 semantic_context=semantic_context,
+                semantic_top_k_candidates=semantic_top_k_candidates,
             )
             if cut <= cursor:
                 cut = min(text_length, cursor + max_chars)
@@ -266,6 +280,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         upper_bound: int,
         ideal_cut: int,
         semantic_context: _SemanticRerankContext | None = None,
+        semantic_top_k_candidates: int,
     ) -> int:
         """Pick best cut in boundary window, preferring semantic boundaries."""
         safe_lower = max(1, int(lower_bound))
@@ -293,6 +308,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
             candidate_indices=candidate_indices,
             heuristic_scores=heuristic_scores,
             semantic_context=semantic_context,
+            semantic_top_k_candidates=semantic_top_k_candidates,
         )
 
         best_index = candidate_indices[0]
@@ -323,6 +339,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         candidate_indices: list[int],
         heuristic_scores: dict[int, float],
         semantic_context: _SemanticRerankContext | None,
+        semantic_top_k_candidates: int,
     ) -> dict[int, float]:
         """Rerank only top heuristic candidates with bounded semantic scoring budget."""
         scorer = self.semantic_boundary_scorer
@@ -340,7 +357,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         )
         rerank_cap = min(
             len(ranked_by_heuristic),
-            self.semantic_top_k_candidates,
+            semantic_top_k_candidates,
             self.semantic_max_scoring_per_window,
             semantic_context.remaining_section_budget,
         )
@@ -427,6 +444,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         min_chars: int,
         max_chars: int,
         semantic_context: _SemanticRerankContext | None = None,
+        semantic_top_k_candidates: int,
     ) -> list[str]:
         """Avoid too-short tail chunks that can degrade downstream task quality."""
         normalized_chunks = [chunk.strip() for chunk in chunks if chunk.strip()]
@@ -451,6 +469,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                 upper_bound=max(len(merged) - min_chars, min_chars + 1),
                 ideal_cut=len(merged) // 2,
                 semantic_context=semantic_context,
+                semantic_top_k_candidates=semantic_top_k_candidates,
             )
             if rebalance <= 0 or rebalance >= len(merged):
                 normalized_chunks[-2] = merged
@@ -477,3 +496,12 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         if not normalized:
             return None
         return normalized
+
+    def _resolve_semantic_top_k_candidates(
+        self,
+        semantic_top_k_candidates: int | None,
+    ) -> int:
+        """Resolve per-request semantic top-k override with safe fallback."""
+        if semantic_top_k_candidates is None:
+            return self.semantic_top_k_candidates
+        return max(1, int(semantic_top_k_candidates))

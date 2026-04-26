@@ -14,6 +14,7 @@ from section_tasks.document_task_layout import DocumentTaskLayout
 from section_tasks.quiz_question import QuizQuestion
 from section_tasks.reparse_document_structure_result import ReparseDocumentStructureResult
 from section_tasks.section_task_result import SectionTaskResult
+from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from session.reading_session import ReadingSession
 from session.session_manager import SessionUpdateResult
 
@@ -247,45 +248,78 @@ class QACoordinator:
             is_low_value=is_low_value,
         )
 
-    def summarize_section(self, doc_name: str, section_id: str) -> SectionTaskResult:
+    def summarize_section(
+        self,
+        doc_name: str,
+        section_id: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
+    ) -> SectionTaskResult:
         """Compatibility wrapper: delegate section-summary to SectionTaskCoordinator."""
         return self.section_task_coordinator.summarize_section(
             doc_name=doc_name,
             section_id=section_id,
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
         )
 
-    def summarize_chapter(self, doc_name: str, chapter_title: str) -> SectionTaskResult:
+    def summarize_chapter(
+        self,
+        doc_name: str,
+        chapter_title: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
+    ) -> SectionTaskResult:
         """Compatibility wrapper: delegate chapter-summary to SectionTaskCoordinator."""
         return self.section_task_coordinator.summarize_chapter(
             doc_name=doc_name,
             chapter_title=chapter_title,
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
         )
 
     def generate_section_quiz(
         self,
         doc_name: str,
         section_id: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Compatibility wrapper: delegate section-quiz to SectionTaskCoordinator."""
         return self.section_task_coordinator.generate_section_quiz(
             doc_name=doc_name,
             section_id=section_id,
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
         )
 
     def generate_chapter_quiz(
         self,
         doc_name: str,
         chapter_title: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Compatibility wrapper: delegate chapter-quiz to SectionTaskCoordinator."""
         return self.section_task_coordinator.generate_chapter_quiz(
             doc_name=doc_name,
             chapter_title=chapter_title,
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
         )
 
-    def get_document_task_layout(self, doc_name: str) -> DocumentTaskLayout:
+    def get_document_task_layout(
+        self,
+        doc_name: str,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
+    ) -> DocumentTaskLayout:
         """Compatibility wrapper: delegate layout projection to SectionTaskCoordinator."""
-        return self.section_task_coordinator.get_document_task_layout(doc_name=doc_name)
+        return self.section_task_coordinator.get_document_task_layout(
+            doc_name=doc_name,
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
+        )
 
     def reparse_document_structure(
         self,

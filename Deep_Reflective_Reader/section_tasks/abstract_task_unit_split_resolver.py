@@ -15,6 +15,7 @@ class AbstractTaskUnitSplitResolver(ABC):
         section_index: int,
         task_unit_min_chars: int,
         task_unit_max_chars: int,
+        semantic_top_k_candidates: int | None = None,
     ) -> list[TaskUnit]:
         """Split one section into section-internal task units."""
         raise NotImplementedError
