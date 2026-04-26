@@ -24,6 +24,36 @@ class CommonSectionSplitter(AbstractSectionSplitter):
     _WHITESPACE_COLLAPSE_PATTERN = re.compile(r"\s+")
     _BODY_PROSE_TERMINAL_PATTERN = re.compile(r"[.!?。！？]$")
     _MARKER_PREFIX_SUFFIX_PUNCTUATION = frozenset((":", "：", "-", "–", "—", "(", "（", "[", "【"))
+    _REGION_LATIN_SUFFIX_ALLOWED_TOKENS = frozenset(
+        (
+            "revised",
+            "updated",
+            "edition",
+            "ed",
+            "version",
+            "supplement",
+            "supplementary",
+            "notes",
+            "note",
+            "index",
+            "annex",
+            "appendix",
+            "appendices",
+            "appendice",
+            "附录",
+            "附錄",
+        )
+    )
+    _REGION_CJK_SUFFIX_ALLOWED_TERMS = (
+        "修订版",
+        "修訂版",
+        "增订版",
+        "增訂版",
+        "新版",
+        "附",
+        "其一",
+        "其二",
+    )
     _TOC_SCAN_LINES = 180
     _TOC_MIN_HEADING_COUNT = 3
     _MAIN_BODY_EARLY_REGION_RATIO = 0.35
@@ -285,9 +315,9 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 and not self._contains_heading_hint(normalized_title, body_start_heading_hints)
             ):
                 continue
-            if self._contains_heading_hint(normalized_title, normalized_front_markers):
+            if self._contains_region_heading_hint(normalized_title, normalized_front_markers):
                 continue
-            if self._contains_heading_hint(normalized_title, normalized_toc_markers):
+            if self._contains_region_heading_hint(normalized_title, normalized_toc_markers):
                 continue
             if self._has_prose_after(
                 line_infos=line_infos,
@@ -542,6 +572,24 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         return False
 
     @classmethod
+    def _contains_region_heading_hint(
+        cls,
+        normalized_heading: str,
+        hints: tuple[str, ...],
+    ) -> bool:
+        """Region-sensitive hint matcher; stricter than generic heading-hint matcher."""
+        for hint in hints:
+            normalized_hint = cls._normalize_heading_title(hint)
+            if not normalized_hint:
+                continue
+            if cls._matches_region_heading_hint(
+                normalized_heading=normalized_heading,
+                normalized_hint=normalized_hint,
+            ):
+                return True
+        return False
+
+    @classmethod
     def _matches_heading_hint(
         cls,
         *,
@@ -655,6 +703,60 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             suffix=suffix,
             token_count=token_count,
         )
+
+    @classmethod
+    def _matches_region_heading_hint(
+        cls,
+        *,
+        normalized_heading: str,
+        normalized_hint: str,
+    ) -> bool:
+        """Match region hints with extra semantic-suffix safeguards."""
+        if not cls._matches_heading_hint(
+            normalized_heading=normalized_heading,
+            normalized_hint=normalized_hint,
+        ):
+            return False
+        if normalized_heading == normalized_hint:
+            return True
+        if not normalized_heading.startswith(normalized_hint):
+            return False
+
+        suffix = normalized_heading[len(normalized_hint):].strip()
+        if not suffix:
+            return True
+        if suffix[0] in cls._MARKER_PREFIX_SUFFIX_PUNCTUATION:
+            return True
+
+        if cls._CJK_PATTERN.search(suffix):
+            return cls._is_region_like_cjk_suffix(suffix)
+
+        suffix_tokens = cls._LATIN_TOKEN_PATTERN.findall(suffix.lower())
+        if not suffix_tokens:
+            return False
+        if cls._is_label_like_suffix_tokens(
+            suffix=suffix,
+            token_count=len(suffix_tokens),
+        ):
+            return True
+        return cls._is_region_like_latin_suffix_tokens(suffix_tokens)
+
+    @classmethod
+    def _is_region_like_cjk_suffix(cls, suffix: str) -> bool:
+        """Return whether CJK suffix still looks like region-label metadata."""
+        compact = suffix.strip()
+        if len(compact) <= 2:
+            return True
+        if len(compact) > 8:
+            return False
+        return any(term in compact for term in cls._REGION_CJK_SUFFIX_ALLOWED_TERMS)
+
+    @classmethod
+    def _is_region_like_latin_suffix_tokens(cls, suffix_tokens: list[str]) -> bool:
+        """Allow only label-like/edition-like suffix tokens for region headings."""
+        if len(suffix_tokens) > 4:
+            return False
+        return all(token in cls._REGION_LATIN_SUFFIX_ALLOWED_TOKENS for token in suffix_tokens)
 
     @classmethod
     def _is_short_cjk_heading_hint(cls, normalized_hint: str) -> bool:
@@ -822,7 +924,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             self.language_registry.get_back_matter_markers(language),
         )
         for markers in marker_groups:
-            if self._contains_heading_hint(normalized_title, markers):
+            if self._contains_region_heading_hint(normalized_title, markers):
                 return True
         return False
 
@@ -858,9 +960,9 @@ class CommonSectionSplitter(AbstractSectionSplitter):
 
             normalized_title = self._normalize_heading_title(heading.title)
             normalized_next = self._normalize_heading_title(next_heading.title)
-            if not self._contains_heading_hint(normalized_title, part_hints):
+            if not self._contains_level_hint(normalized_title, part_hints):
                 continue
-            if not self._contains_heading_hint(normalized_next, chapter_hints):
+            if not self._contains_level_hint(normalized_next, chapter_hints):
                 continue
 
             current_line_idx = index_by_start.get(heading.char_start)
@@ -1161,25 +1263,25 @@ class CommonSectionSplitter(AbstractSectionSplitter):
 
             if (
                 position_ratio <= self._FRONT_MATTER_EARLY_REGION_RATIO
-                and self._contains_heading_hint(normalized_title, toc_markers)
+                and self._contains_region_heading_hint(normalized_title, toc_markers)
             ):
                 role_by_start[heading.char_start] = self._SECTION_ROLE_TOC
                 continue
             if (
                 position_ratio <= self._FRONT_MATTER_EARLY_REGION_RATIO
-                and self._contains_heading_hint(normalized_title, front_markers)
+                and self._contains_region_heading_hint(normalized_title, front_markers)
             ):
                 role_by_start[heading.char_start] = self._SECTION_ROLE_FRONT_MATTER
                 continue
             if (
                 position_ratio >= self._BACK_REGION_RATIO
-                and self._contains_heading_hint(normalized_title, appendix_markers)
+                and self._contains_region_heading_hint(normalized_title, appendix_markers)
             ):
                 role_by_start[heading.char_start] = self._SECTION_ROLE_APPENDIX
                 continue
             if (
                 position_ratio >= self._BACK_REGION_RATIO
-                and self._contains_heading_hint(normalized_title, back_markers)
+                and self._contains_region_heading_hint(normalized_title, back_markers)
             ):
                 role_by_start[heading.char_start] = self._SECTION_ROLE_BACK_MATTER
                 continue

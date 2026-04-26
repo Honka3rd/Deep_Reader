@@ -233,6 +233,47 @@ def test_heading_hint_false_hits_in_body(splitter: CommonSectionSplitter) -> Non
         )
 
 
+def test_region_heading_hint_true_hits(splitter: CommonSectionSplitter) -> None:
+    """Validate special-region matcher still recognizes true region headings."""
+    cases = [
+        ("Preface", ("preface",)),
+        ("Preface:", ("preface",)),
+        ("Appendix A", ("appendix",)),
+        ("Afterword", ("afterword",)),
+        ("後記", ("後記",)),
+        ("目录（修订版）", ("目录",)),
+    ]
+    for heading, hints in cases:
+        matched = splitter._contains_region_heading_hint(
+            splitter._normalize_heading_title(heading),
+            hints,
+        )
+        _assert(
+            matched is True,
+            f"region-heading true-hit mismatch: heading={heading!r}, hints={hints!r}",
+        )
+
+
+def test_region_heading_hint_false_topic_titles(splitter: CommonSectionSplitter) -> None:
+    """Validate topic-like headings are not absorbed into special regions."""
+    cases = [
+        ("Introduction to symbolic logic", ("introduction",)),
+        ("Appendix methods in statistics", ("appendix",)),
+        ("Afterword memory and media", ("afterword",)),
+        ("序列模型的基本原理", ("序",)),
+        ("後記憶時代的媒體研究", ("後記",)),
+    ]
+    for heading, hints in cases:
+        matched = splitter._contains_region_heading_hint(
+            splitter._normalize_heading_title(heading),
+            hints,
+        )
+        _assert(
+            matched is False,
+            f"region-heading false-hit mismatch: heading={heading!r}, hints={hints!r}, got={matched}",
+        )
+
+
 def main() -> None:
     splitter = CommonSectionSplitter()
     test_toc_plus_chapter_one(splitter)
@@ -244,6 +285,8 @@ def main() -> None:
     test_marker_false_hits_in_body(splitter)
     test_heading_hint_true_hits(splitter)
     test_heading_hint_false_hits_in_body(splitter)
+    test_region_heading_hint_true_hits(splitter)
+    test_region_heading_hint_false_topic_titles(splitter)
 
     sample = splitter.split(
         raw_text=(

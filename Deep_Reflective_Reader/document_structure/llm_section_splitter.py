@@ -27,6 +27,8 @@ class LLMSectionSplitter(AbstractSectionSplitter):
     _PREVIEW_PROMPT_OVERHEAD_TOKENS = 1_200
     _PREVIEW_TOKEN_UTILIZATION_RATIO = 0.65
     _PREVIEW_CHARS_PER_TOKEN = 4
+    _PREVIEW_HEAD_RATIO = 0.65
+    _PREVIEW_OMITTED_SEPARATOR = "\n\n[... middle omitted ...]\n\n"
 
     def __init__(
         self,
@@ -151,7 +153,13 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             ordered_boundaries.append((start, title, level, section_role, container_title))
 
         if len(ordered_boundaries) < 2:
-            return fallback_common("resolved_boundaries_too_few")
+            ordered_boundaries = self._augment_boundaries_with_common_split(
+                raw_text=raw_text,
+                language=language,
+                resolved_boundaries=ordered_boundaries,
+            )
+        if len(ordered_boundaries) < 2:
+            return fallback_common("resolved_boundaries_too_few_after_augmentation")
         if not self._is_strictly_increasing_boundaries(ordered_boundaries):
             return fallback_common("boundaries_not_strictly_increasing")
 
@@ -166,7 +174,7 @@ class LLMSectionSplitter(AbstractSectionSplitter):
     def _build_split_plan_prompt(self, *, raw_text: str, language: LanguageCode) -> str:
         """Build strict JSON-only prompt for region-aware structure planning."""
         preview_budget_chars = self._compute_preview_char_budget(raw_text_length=len(raw_text))
-        preview = raw_text[:preview_budget_chars]
+        preview = self._build_preview_text(raw_text=raw_text, preview_budget_chars=preview_budget_chars)
         return (
             "You are a high-cost fallback document structure restorer. "
             "Return ONLY JSON object with this schema:\n"
@@ -195,7 +203,7 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             "8) If heading text appears in both TOC and body, use anchor_occurrence to target the intended one.\n"
             "9) Output valid JSON only, no markdown or extra commentary.\n\n"
             f"Document language code: {language.value}\n"
-            "Raw text preview:\n"
+            "Raw text preview (head+tail when truncated):\n"
             f"{preview}"
         )
 
@@ -236,6 +244,74 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             self._MAX_PREVIEW_CHARS_HARD_CAP,
         )
         return max(1, preview_chars)
+
+    @classmethod
+    def _build_preview_text(
+        cls,
+        *,
+        raw_text: str,
+        preview_budget_chars: int,
+    ) -> str:
+        """Build preview using head+tail slices to improve rear-region visibility."""
+        if preview_budget_chars <= 0:
+            return ""
+        if len(raw_text) <= preview_budget_chars:
+            return raw_text
+
+        separator = cls._PREVIEW_OMITTED_SEPARATOR
+        if preview_budget_chars <= len(separator) + 20:
+            return raw_text[:preview_budget_chars]
+
+        content_budget = preview_budget_chars - len(separator)
+        head_chars = max(20, int(content_budget * cls._PREVIEW_HEAD_RATIO))
+        tail_chars = max(20, content_budget - head_chars)
+        if head_chars + tail_chars > content_budget:
+            tail_chars = max(20, content_budget - head_chars)
+        return f"{raw_text[:head_chars]}{separator}{raw_text[-tail_chars:]}"
+
+    def _augment_boundaries_with_common_split(
+        self,
+        *,
+        raw_text: str,
+        language: LanguageCode,
+        resolved_boundaries: list[tuple[int, str, int, SectionRole | None, str | None]],
+    ) -> list[tuple[int, str, int, SectionRole | None, str | None]]:
+        """Augment partial LLM boundaries with conservative common-split boundaries."""
+        try:
+            common_sections = self.common_splitter.split(raw_text=raw_text, language=language)
+        except Exception as error:
+            print(
+                "LLMSectionSplitter#boundary_augmentation_skipped:",
+                f"reason=common_split_failed error={error}",
+            )
+            return resolved_boundaries
+
+        merged_by_start: dict[int, tuple[int, str, int, SectionRole | None, str | None]] = {
+            item[0]: item for item in resolved_boundaries
+        }
+        for section in common_sections:
+            title = (section.title or "").strip()
+            if not title:
+                continue
+            start = int(section.char_start)
+            if start < 0 or start >= len(raw_text):
+                continue
+            if start in merged_by_start:
+                continue
+            merged_by_start[start] = (
+                start,
+                title,
+                max(1, int(section.level)),
+                SectionRole.resolve(section.section_role),
+                self._normalize_optional_text(section.container_title),
+            )
+
+        augmented = sorted(merged_by_start.values(), key=lambda item: item[0])
+        print(
+            "LLMSectionSplitter#boundary_augmentation:",
+            f"resolved={len(resolved_boundaries)} augmented={len(augmented)}",
+        )
+        return augmented
 
     def _parse_split_plan_response(self, response_text: str) -> SectionSplitPlan:
         """Parse LLM response to SectionSplitPlan with tolerant JSON extraction."""

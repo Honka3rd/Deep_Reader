@@ -144,6 +144,21 @@ def main() -> None:
         large_budget > 16_000,
         f"large capability preview budget should exceed old fixed cap: {large_budget}",
     )
+    preview_probe_payload = (
+        "HEAD_TOC_MARKER\n"
+        + ("x" * 60_000)
+        + "\nTAIL_APPENDIX_MARKER\n"
+    )
+    preview_text = large_cap_splitter._build_preview_text(
+        raw_text=preview_probe_payload,
+        preview_budget_chars=2_000,
+    )
+    _assert("HEAD_TOC_MARKER" in preview_text, "head marker should be preserved in preview")
+    _assert("TAIL_APPENDIX_MARKER" in preview_text, "tail marker should be preserved in preview")
+    _assert(
+        "[... middle omitted ...]" in preview_text,
+        "truncated preview should include explicit omission separator",
+    )
 
     splitter = LLMSectionSplitter(
         llm_provider=_FakeLLMProvider(plan_payload),
@@ -167,13 +182,58 @@ def main() -> None:
     _assert(chapter_levels.get("Chapter 1") == 2, "chapter1 level should be preserved from plan")
     _assert(chapter_levels.get("Chapter 2") == 2, "chapter2 level should be preserved from plan")
 
+    partial_plan_payload = {
+        "parser_mode": "llm_enhanced",
+        "sections": [
+            {
+                "title": "Chapter 1",
+                "level": 3,
+                "section_role": "main_body",
+                "container_title": "Injected Container",
+                "start_anchor_text": "Chapter 1",
+                "anchor_match_mode": "exact",
+                "anchor_occurrence": 2,
+            },
+            {
+                "title": "Broken Anchor",
+                "level": 1,
+                "section_role": "appendix",
+                "container_title": None,
+                "start_anchor_text": "__anchor_not_found__",
+                "anchor_match_mode": "exact",
+                "anchor_occurrence": 1,
+            },
+        ],
+    }
+    partial_splitter = LLMSectionSplitter(
+        llm_provider=_FakeLLMProvider(partial_plan_payload),
+        common_splitter=CommonSectionSplitter(),
+    )
+    partial_sections = partial_splitter.split(raw_text=raw_text, language=LanguageCode.EN)
+    _assert(
+        len(partial_sections) >= 2,
+        "partial plan should still produce usable sections via local augmentation",
+    )
+    chapter1_candidates = [section for section in partial_sections if section.title == "Chapter 1"]
+    _assert(chapter1_candidates, "partial plan result should keep valid chapter boundary")
+    _assert(
+        chapter1_candidates[0].level == 3,
+        "valid plan boundary should survive partial-plan acceptance (not full fallback)",
+    )
+    _assert(
+        chapter1_candidates[0].container_title == "Injected Container",
+        "valid plan metadata should be retained under partial-plan acceptance",
+    )
+
     print(
         json.dumps(
             {
                 "status": "ok",
                 "preview_budget_small_cap": small_budget,
                 "preview_budget_large_cap": large_budget,
+                "preview_contains_tail_marker": "TAIL_APPENDIX_MARKER" in preview_text,
                 "section_count": len(sections),
+                "partial_plan_section_count": len(partial_sections),
                 "sections": [
                     {
                         "section_id": section.section_id,
