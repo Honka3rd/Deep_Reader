@@ -8,6 +8,9 @@ from context.coverage_oriented_context_builder import CoverageOrientedContextBui
 from context.token_budget_manager import TokenBudgetManager
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
+from document_structure.enhanced_parse_trigger_evaluator import (
+    EnhancedParseTriggerEvaluator,
+)
 from document_structure.llm_section_splitter import LLMSectionSplitter
 from document_structure.section_splitter import CommonSectionSplitter
 from document_structure.section_splitter_selector import SectionSplitterSelector
@@ -311,6 +314,22 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         task_unit_resolver=task_unit_resolver,
         quiz_min_section_chars=config.quiz_min_section_chars,
     )
+    enhanced_parse_trigger_evaluator = providers.Singleton(
+        EnhancedParseTriggerEvaluator,
+        min_section_count=config.enhanced_parse_min_section_count,
+        max_section_count=config.enhanced_parse_max_section_count,
+        min_title_coverage=config.enhanced_parse_min_title_coverage,
+        min_sections_for_ratio_signal=config.enhanced_parse_min_sections_for_ratio_signal,
+        min_units_for_ratio_signal=config.enhanced_parse_min_units_for_ratio_signal,
+        max_affected_section_ratio=config.enhanced_parse_max_affected_section_ratio,
+        max_fallback_task_unit_ratio=config.enhanced_parse_max_fallback_task_unit_ratio,
+        min_avg_chars_per_section=config.enhanced_parse_min_avg_chars_per_section,
+        max_avg_chars_per_section=config.enhanced_parse_max_avg_chars_per_section,
+        min_raw_chars_for_structure_density_signal=(
+            config.enhanced_parse_min_raw_chars_for_structure_density_signal
+        ),
+        recommend_score_threshold=config.enhanced_parse_recommend_score_threshold,
+    )
     section_task_coordinator = providers.Singleton(
         SectionTaskCoordinator,
         document_preparation_pipeline=document_preparation_pipeline,
@@ -318,6 +337,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         chapter_summary_service=chapter_summary_service,
         chapter_quiz_service=chapter_quiz_service,
         task_unit_resolver=task_unit_resolver,
+        enhanced_parse_trigger_evaluator=enhanced_parse_trigger_evaluator,
     )
 
     @classmethod
@@ -382,6 +402,33 @@ Returns:
                 ),
                 "task_unit_min_chars": app_config.task_unit_min_chars,
                 "task_unit_max_chars": app_config.task_unit_max_chars,
+                "enhanced_parse_min_section_count": app_config.enhanced_parse_min_section_count,
+                "enhanced_parse_max_section_count": app_config.enhanced_parse_max_section_count,
+                "enhanced_parse_min_title_coverage": app_config.enhanced_parse_min_title_coverage,
+                "enhanced_parse_min_sections_for_ratio_signal": (
+                    app_config.enhanced_parse_min_sections_for_ratio_signal
+                ),
+                "enhanced_parse_min_units_for_ratio_signal": (
+                    app_config.enhanced_parse_min_units_for_ratio_signal
+                ),
+                "enhanced_parse_max_affected_section_ratio": (
+                    app_config.enhanced_parse_max_affected_section_ratio
+                ),
+                "enhanced_parse_max_fallback_task_unit_ratio": (
+                    app_config.enhanced_parse_max_fallback_task_unit_ratio
+                ),
+                "enhanced_parse_min_avg_chars_per_section": (
+                    app_config.enhanced_parse_min_avg_chars_per_section
+                ),
+                "enhanced_parse_max_avg_chars_per_section": (
+                    app_config.enhanced_parse_max_avg_chars_per_section
+                ),
+                "enhanced_parse_min_raw_chars_for_structure_density_signal": (
+                    app_config.enhanced_parse_min_raw_chars_for_structure_density_signal
+                ),
+                "enhanced_parse_recommend_score_threshold": (
+                    app_config.enhanced_parse_recommend_score_threshold
+                ),
             }
         )
         return container

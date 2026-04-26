@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from config.faiss_storage_config import FaissStorageConfig
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
 from document_preparation.preparation_mode import PreparationMode
+from document_structure.enhanced_parse_trigger_evaluator import (
+    EnhancedParseTriggerDecision,
+    EnhancedParseTriggerEvaluator,
+)
 from document_structure.structured_document import StructuredDocument
 from profile.document_profile import DocumentProfile
 from profile.document_profile_store import DocumentProfileStore
@@ -11,6 +15,7 @@ from section_tasks.chapter_summary_service import ChapterSummaryService
 from section_tasks.document_task_layout import (
     DocumentTaskLayout,
     DocumentTaskLayoutSectionDTO,
+    EnhancedParseRecommendationDTO,
     SectionTaskMode,
     TaskUnitDTO,
 )
@@ -38,12 +43,14 @@ class SectionTaskCoordinator:
         chapter_summary_service: ChapterSummaryService,
         chapter_quiz_service: ChapterQuizService,
         task_unit_resolver: TaskUnitResolver,
+        enhanced_parse_trigger_evaluator: EnhancedParseTriggerEvaluator,
     ):
         self.document_preparation_pipeline = document_preparation_pipeline
         self.document_profile_store = document_profile_store
         self.chapter_summary_service = chapter_summary_service
         self.chapter_quiz_service = chapter_quiz_service
         self.task_unit_resolver = task_unit_resolver
+        self.enhanced_parse_trigger_evaluator = enhanced_parse_trigger_evaluator
 
     def summarize_section(self, doc_name: str, section_id: str) -> SectionTaskResult:
         """Run section-summary task by coordinator-level task-unit resolution."""
@@ -229,12 +236,77 @@ class SectionTaskCoordinator:
                 )
             )
 
+        trigger_decision = self._evaluate_enhanced_parse_trigger(
+            structured_document=structured_document,
+            section_layouts=section_layouts,
+            task_unit_dtos=task_unit_dtos,
+        )
+        self._log_enhanced_parse_trigger_decision(
+            doc_name=doc_name,
+            decision=trigger_decision,
+        )
+
         return DocumentTaskLayout(
             document_id=structured_document.document_id,
             title=structured_document.title,
             language=structured_document.language,
             sections=section_layouts,
             task_units=task_unit_dtos,
+            enhanced_parse_recommendation=EnhancedParseRecommendationDTO(
+                should_recommend=trigger_decision.should_recommend,
+                score=trigger_decision.score,
+                reasons=list(trigger_decision.reasons),
+                metrics=dict(trigger_decision.metrics),
+            ),
+        )
+
+    def _evaluate_enhanced_parse_trigger(
+        self,
+        *,
+        structured_document: StructuredDocument,
+        section_layouts: list[DocumentTaskLayoutSectionDTO],
+        task_unit_dtos: list[TaskUnitDTO],
+    ) -> EnhancedParseTriggerDecision:
+        """Evaluate whether enhanced parser should be recommended."""
+        total_sections = len(section_layouts)
+        affected_sections = sum(
+            1
+            for section in section_layouts
+            if section.task_mode in {SectionTaskMode.SPLIT, SectionTaskMode.MERGED}
+        )
+        affected_section_ratio = (
+            affected_sections / total_sections if total_sections > 0 else 0.0
+        )
+
+        total_task_units = len(task_unit_dtos)
+        fallback_task_units = sum(
+            1 for task_unit in task_unit_dtos if task_unit.is_fallback_generated
+        )
+        fallback_task_unit_ratio = (
+            fallback_task_units / total_task_units if total_task_units > 0 else 0.0
+        )
+
+        return self.enhanced_parse_trigger_evaluator.evaluate(
+            structured_document=structured_document,
+            affected_section_ratio=affected_section_ratio,
+            fallback_task_unit_ratio=fallback_task_unit_ratio,
+            total_task_units=total_task_units,
+        )
+
+    @staticmethod
+    def _log_enhanced_parse_trigger_decision(
+        *,
+        doc_name: str,
+        decision: EnhancedParseTriggerDecision,
+    ) -> None:
+        """Print deterministic recommendation decision for inspection/debug."""
+        print(
+            "SectionTaskCoordinator#enhanced_parse_trigger:",
+            f"doc_name={doc_name}",
+            f"should_recommend={decision.should_recommend}",
+            f"score={decision.score}",
+            f"reasons={decision.reasons}",
+            f"metrics={decision.metrics}",
         )
 
     def _resolve_task_unit_for_section_id(

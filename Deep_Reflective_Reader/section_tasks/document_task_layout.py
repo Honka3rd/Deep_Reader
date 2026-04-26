@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+MetricValue = int | float
+
 
 class SectionTaskMode(str, Enum):
     """Section-to-task-unit relationship mode for section-first UI rendering."""
@@ -54,6 +56,25 @@ class DocumentTaskLayoutSectionDTO:
 
 
 @dataclass(frozen=True)
+class EnhancedParseRecommendationDTO:
+    """Frontend-safe enhanced parser recommendation payload."""
+
+    should_recommend: bool
+    score: int
+    reasons: list[str]
+    metrics: dict[str, MetricValue]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize recommendation payload into JSON-friendly dictionary."""
+        return {
+            "should_recommend": self.should_recommend,
+            "score": self.score,
+            "reasons": list(self.reasons),
+            "metrics": dict(self.metrics),
+        }
+
+
+@dataclass(frozen=True)
 class DocumentTaskLayout:
     """Frontend-consumable layout that keeps structured-first and task-unit metadata."""
 
@@ -62,6 +83,7 @@ class DocumentTaskLayout:
     language: str | None
     sections: list[DocumentTaskLayoutSectionDTO]
     task_units: list[TaskUnitDTO] = field(default_factory=list)
+    enhanced_parse_recommendation: EnhancedParseRecommendationDTO | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize layout into JSON-friendly dictionary."""
@@ -71,4 +93,9 @@ class DocumentTaskLayout:
             "language": self.language,
             "sections": [section.to_dict() for section in self.sections],
             "task_units": [task_unit.to_dict() for task_unit in self.task_units],
+            "enhanced_parse_recommendation": (
+                None
+                if self.enhanced_parse_recommendation is None
+                else self.enhanced_parse_recommendation.to_dict()
+            ),
         }

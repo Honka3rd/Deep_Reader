@@ -3,6 +3,10 @@ from document_structure.document_structure_language_registry import (
     DocumentStructureLanguageRegistry,
     DocumentStructureLanguageRules,
 )
+from document_structure.enhanced_parse_trigger_evaluator import (
+    EnhancedParseTriggerDecision,
+    EnhancedParseTriggerEvaluator,
+)
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
 from document_structure.section_split_plan import (
     AnchorMatchMode,
@@ -29,6 +33,8 @@ __all__ = [
     "StructuredSection",
     "DocumentStructureLanguageRegistry",
     "DocumentStructureLanguageRules",
+    "EnhancedParseTriggerDecision",
+    "EnhancedParseTriggerEvaluator",
     "AbstractSectionSplitter",
     "CommonSectionSplitter",
     "LLMSectionSplitter",

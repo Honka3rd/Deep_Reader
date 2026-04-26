@@ -94,3 +94,36 @@ class AppDIConfig:
     # Maximum preferred content length per task unit for fallback splitting.
     # Introduced to prevent single giant units from degrading task quality.
     task_unit_max_chars: int = 1600
+    # Minimum reasonable section count; below this structure is likely too coarse.
+    # Introduced as a strong signal for recommending enhanced parser.
+    enhanced_parse_min_section_count: int = 3
+    # Maximum reasonable section count; above this structure is likely too fragmented.
+    # Introduced as a strong signal for recommending enhanced parser.
+    enhanced_parse_max_section_count: int = 220
+    # Minimum expected title coverage ratio in common parse output.
+    # Introduced to detect low-structure readability (too many untitled sections).
+    enhanced_parse_min_title_coverage: float = 0.55
+    # Minimum sections required before ratio-type weak signals are considered.
+    # Introduced to avoid noisy recommendation on very small documents.
+    enhanced_parse_min_sections_for_ratio_signal: int = 8
+    # Minimum task units required before fallback-unit ratio weak signal is considered.
+    # Introduced to avoid unstable trigger decisions on tiny layouts.
+    enhanced_parse_min_units_for_ratio_signal: int = 8
+    # Upper bound for affected section ratio (split/merged) before weak signal is added.
+    # Introduced to capture excessive task-time fallback intervention.
+    enhanced_parse_max_affected_section_ratio: float = 0.55
+    # Upper bound for fallback-generated task unit ratio before weak signal is added.
+    # Introduced to capture heavy resolver fallback usage.
+    enhanced_parse_max_fallback_task_unit_ratio: float = 0.55
+    # Minimum average chars per section for long-enough documents.
+    # Introduced to detect over-fragmented section structures with length normalization.
+    enhanced_parse_min_avg_chars_per_section: int = 180
+    # Maximum average chars per section for long-enough documents.
+    # Introduced to detect over-coarse section structures with length normalization.
+    enhanced_parse_max_avg_chars_per_section: int = 8000
+    # Minimum raw-text length before avg-chars-per-section structure-density signal applies.
+    # Introduced to avoid noisy abnormality triggers on tiny documents.
+    enhanced_parse_min_raw_chars_for_structure_density_signal: int = 2000
+    # Score threshold for recommending enhanced parser.
+    # Introduced to combine strong/weak signals into one deterministic decision.
+    enhanced_parse_recommend_score_threshold: int = 4

@@ -6,6 +6,7 @@ from section_tasks.chapter_quiz_service import ChapterQuizService
 from section_tasks.document_task_layout import (
     DocumentTaskLayout,
     DocumentTaskLayoutSectionDTO,
+    EnhancedParseRecommendationDTO,
     SectionTaskMode,
     TaskUnitDTO,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "ChapterQuizService",
     "DocumentTaskLayout",
     "DocumentTaskLayoutSectionDTO",
+    "EnhancedParseRecommendationDTO",
     "SectionTaskMode",
     "TaskUnitDTO",
     "AbstractResult",
