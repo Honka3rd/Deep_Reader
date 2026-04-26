@@ -94,6 +94,9 @@ class AppDIConfig:
     # Maximum preferred content length per task unit for fallback splitting.
     # Introduced to prevent single giant units from degrading task quality.
     task_unit_max_chars: int = 1600
+    # Split strategy for oversized single-section internal task-unit segmentation.
+    # Introduced to switch between low-cost semantic-safe and progressive split policies.
+    task_unit_split_mode: str = "semantic_safe"
     # Minimum reasonable section count; below this structure is likely too coarse.
     # Introduced as a strong signal for recommending enhanced parser.
     enhanced_parse_min_section_count: int = 3

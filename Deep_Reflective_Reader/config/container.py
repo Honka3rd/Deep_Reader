@@ -43,6 +43,14 @@ from section_tasks.section_task_prompt_builder_factory import (
 )
 from section_tasks.section_task_prompt_common import SectionTaskPromptCommon
 from section_tasks.summary_task_prompt_builder import SummaryTaskPromptBuilder
+from section_tasks.heuristic_task_unit_split_resolver import (
+    HeuristicTaskUnitSplitResolver,
+)
+from section_tasks.llm_task_unit_split_resolver import LLMTaskUnitSplitResolver
+from section_tasks.task_unit_split_mode import TaskUnitSplitMode
+from section_tasks.task_unit_split_resolver_selector import (
+    TaskUnitSplitResolverSelector,
+)
 from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.topic_guidance_registry import TopicGuidanceRegistry
 from app.section_task_coordinator import SectionTaskCoordinator
@@ -293,10 +301,31 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         section_quiz_builder=section_quiz_task_prompt_builder,
         chapter_quiz_builder=chapter_quiz_task_prompt_builder,
     )
+    semantic_safe_task_unit_split_resolver = providers.Singleton(
+        HeuristicTaskUnitSplitResolver,
+        split_mode=TaskUnitSplitMode.SEMANTIC_SAFE,
+    )
+    progressive_task_unit_split_resolver = providers.Singleton(
+        HeuristicTaskUnitSplitResolver,
+        split_mode=TaskUnitSplitMode.PROGRESSIVE,
+    )
+    llm_task_unit_split_resolver = providers.Singleton(
+        LLMTaskUnitSplitResolver,
+        llm_provider=llm_provider,
+        heuristic_fallback_resolver=semantic_safe_task_unit_split_resolver,
+    )
+    task_unit_split_resolver_selector = providers.Singleton(
+        TaskUnitSplitResolverSelector,
+        semantic_safe_resolver=semantic_safe_task_unit_split_resolver,
+        progressive_resolver=progressive_task_unit_split_resolver,
+        llm_resolver=llm_task_unit_split_resolver,
+    )
     task_unit_resolver = providers.Singleton(
         TaskUnitResolver,
         task_unit_min_chars=config.task_unit_min_chars,
         task_unit_max_chars=config.task_unit_max_chars,
+        split_resolver_selector=task_unit_split_resolver_selector,
+        split_mode=config.task_unit_split_mode,
     )
 
     chapter_summary_service = providers.Singleton(
@@ -402,6 +431,7 @@ Returns:
                 ),
                 "task_unit_min_chars": app_config.task_unit_min_chars,
                 "task_unit_max_chars": app_config.task_unit_max_chars,
+                "task_unit_split_mode": app_config.task_unit_split_mode,
                 "enhanced_parse_min_section_count": app_config.enhanced_parse_min_section_count,
                 "enhanced_parse_max_section_count": app_config.enhanced_parse_max_section_count,
                 "enhanced_parse_min_title_coverage": app_config.enhanced_parse_min_title_coverage,

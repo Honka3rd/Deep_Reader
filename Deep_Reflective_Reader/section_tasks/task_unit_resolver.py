@@ -1,21 +1,26 @@
-import re
-
 from document_structure.structured_document import StructuredDocument, StructuredSection
+from section_tasks.abstract_task_unit_split_resolver import AbstractTaskUnitSplitResolver
+from section_tasks.task_unit_split_mode import TaskUnitSplitMode
+from section_tasks.task_unit_split_resolver_selector import TaskUnitSplitResolverSelector
 from section_tasks.task_unit import TaskUnit
 
 
 class TaskUnitResolver:
     """Resolve task-time units from structured sections with minimal fallbacks."""
 
-    _PARAGRAPH_SPLIT_PATTERN = re.compile(r"\n\s*\n+")
-
     def __init__(
         self,
         task_unit_min_chars: int = 300,
         task_unit_max_chars: int = 1600,
+        split_resolver_selector: TaskUnitSplitResolverSelector | None = None,
+        split_mode: TaskUnitSplitMode | str = TaskUnitSplitMode.SEMANTIC_SAFE,
     ):
         self.task_unit_min_chars = max(1, int(task_unit_min_chars))
         self.task_unit_max_chars = max(self.task_unit_min_chars, int(task_unit_max_chars))
+        self.split_resolver_selector = (
+            split_resolver_selector or TaskUnitSplitResolverSelector()
+        )
+        self.split_mode = TaskUnitSplitMode.resolve(split_mode)
 
     def resolve(self, document: StructuredDocument) -> list[TaskUnit]:
         """Resolve usable task units from one structured document."""
@@ -36,88 +41,24 @@ class TaskUnitResolver:
         return len(section.content.strip()) > self.task_unit_max_chars
 
     def _split_single_huge_section(self, section: StructuredSection) -> list[TaskUnit]:
-        """Split single huge section by paragraphs, then fixed-size windows."""
-        text = section.content.strip()
-        if not text:
+        """Split one huge section through selected single-section split resolver."""
+        split_units = self._split_huge_section_with_resolver(
+            section=section,
+            section_index=0,
+        )
+        if not split_units:
             return []
-
-        chunks = self._split_text_by_paragraphs(text)
-        if len(chunks) <= 1:
-            chunks = self._split_text_by_fixed_window(text)
-
-        if len(chunks) == 1:
-            return [
-                TaskUnit(
-                    unit_id="task-unit-0",
-                    title=self._normalize_optional_text(section.title),
-                    container_title=self._normalize_optional_text(section.container_title),
-                    content=chunks[0],
-                    source_section_ids=[section.section_id],
-                    is_fallback_generated=True,
-                )
-            ]
-
-        base_title = self._normalize_optional_text(section.title)
-        container_title = self._normalize_optional_text(section.container_title)
-        units: list[TaskUnit] = []
-        for index, chunk in enumerate(chunks):
-            if base_title:
-                resolved_title = f"{base_title} (Part {index + 1})"
-            else:
-                resolved_title = f"Task Unit {index + 1}"
-            units.append(
-                TaskUnit(
-                    unit_id=f"task-unit-{index}",
-                    title=resolved_title,
-                    container_title=container_title,
-                    content=chunk,
-                    source_section_ids=[section.section_id],
-                    is_fallback_generated=True,
-                )
+        return [
+            TaskUnit(
+                unit_id=f"task-unit-{index}",
+                title=unit.title,
+                container_title=unit.container_title,
+                content=unit.content,
+                source_section_ids=unit.source_section_ids,
+                is_fallback_generated=unit.is_fallback_generated,
             )
-        return units
-
-    def _split_text_by_paragraphs(self, text: str) -> list[str]:
-        """Split text into bounded chunks using paragraph boundaries first."""
-        paragraphs = [
-            paragraph.strip()
-            for paragraph in self._PARAGRAPH_SPLIT_PATTERN.split(text)
-            if paragraph.strip()
+            for index, unit in enumerate(split_units)
         ]
-        if not paragraphs:
-            return []
-
-        chunks: list[str] = []
-        buffer = ""
-        for paragraph in paragraphs:
-            candidate = paragraph if not buffer else f"{buffer}\n\n{paragraph}"
-            if len(candidate) <= self.task_unit_max_chars:
-                buffer = candidate
-                continue
-
-            if buffer:
-                chunks.append(buffer)
-            if len(paragraph) <= self.task_unit_max_chars:
-                buffer = paragraph
-                continue
-
-            chunks.extend(self._split_text_by_fixed_window(paragraph))
-            buffer = ""
-
-        if buffer:
-            chunks.append(buffer)
-        return chunks
-
-    def _split_text_by_fixed_window(self, text: str) -> list[str]:
-        """Split text with fixed character windows when paragraph split is insufficient."""
-        if not text:
-            return []
-        chunks: list[str] = []
-        for start in range(0, len(text), self.task_unit_max_chars):
-            chunk = text[start : start + self.task_unit_max_chars].strip()
-            if chunk:
-                chunks.append(chunk)
-        return chunks
 
     def _merge_short_adjacent_sections(
         self,
@@ -201,7 +142,7 @@ class TaskUnitResolver:
                 continue
             if len(content) > self.task_unit_max_chars:
                 base_units.extend(
-                    self._split_huge_section_to_base_units(
+                    self._split_huge_section_with_resolver(
                         section=section,
                         section_index=section_index,
                     )
@@ -219,96 +160,22 @@ class TaskUnitResolver:
             )
         return base_units
 
-    def _split_huge_section_to_base_units(
+    def _split_huge_section_with_resolver(
         self,
         *,
         section: StructuredSection,
         section_index: int,
     ) -> list[TaskUnit]:
-        """Split one huge section into multiple section-internal units only."""
-        text = section.content.strip()
-        if not text:
-            return []
-
-        chunks = self._split_text_by_paragraphs(text)
-        if len(chunks) <= 1:
-            chunks = self._split_text_by_fixed_window(text)
-        chunks = self._stabilize_trailing_short_chunk(chunks)
-
-        base_title = self._normalize_optional_text(section.title)
-        container_title = self._normalize_optional_text(section.container_title)
-        if len(chunks) == 1:
-            return [
-                TaskUnit(
-                    unit_id=f"task-unit-{section_index}-0",
-                    title=base_title,
-                    container_title=container_title,
-                    content=chunks[0],
-                    source_section_ids=[section.section_id],
-                    is_fallback_generated=True,
-                )
-            ]
-
-        units: list[TaskUnit] = []
-        for chunk_index, chunk in enumerate(chunks):
-            if base_title:
-                resolved_title = f"{base_title} (Part {chunk_index + 1})"
-            else:
-                resolved_title = f"Task Unit {chunk_index + 1}"
-            units.append(
-                TaskUnit(
-                    unit_id=f"task-unit-{section_index}-{chunk_index}",
-                    title=resolved_title,
-                    container_title=container_title,
-                    content=chunk,
-                    source_section_ids=[section.section_id],
-                    is_fallback_generated=True,
-                )
-            )
-        return units
-
-    def _stabilize_trailing_short_chunk(self, chunks: list[str]) -> list[str]:
-        """Avoid too-short trailing chunk so it won't bleed into neighbor sections."""
-        normalized_chunks = [chunk.strip() for chunk in chunks if chunk.strip()]
-        if len(normalized_chunks) <= 1:
-            return normalized_chunks
-
-        while (
-            len(normalized_chunks) > 1
-            and len(normalized_chunks[-1]) < self.task_unit_min_chars
-        ):
-            left = normalized_chunks[-2]
-            right = normalized_chunks[-1]
-            merged = f"{left}\n\n{right}".strip()
-
-            if len(merged) <= self.task_unit_max_chars:
-                normalized_chunks[-2] = merged
-                normalized_chunks.pop()
-                continue
-
-            split_at = len(merged) // 2
-            split_at = max(self.task_unit_min_chars, split_at)
-            split_at = min(
-                len(merged) - self.task_unit_min_chars,
-                split_at,
-            )
-            if split_at <= 0 or split_at >= len(merged):
-                normalized_chunks[-2] = merged
-                normalized_chunks.pop()
-                continue
-
-            rebalanced_left = merged[:split_at].strip()
-            rebalanced_right = merged[split_at:].strip()
-            if not rebalanced_left or not rebalanced_right:
-                normalized_chunks[-2] = merged
-                normalized_chunks.pop()
-                continue
-            normalized_chunks[-2] = rebalanced_left
-            normalized_chunks[-1] = rebalanced_right
-            if len(normalized_chunks[-1]) >= self.task_unit_min_chars:
-                break
-
-        return normalized_chunks
+        """Delegate section-internal split to selected split resolver."""
+        resolver: AbstractTaskUnitSplitResolver = self.split_resolver_selector.get_resolver(
+            self.split_mode
+        )
+        return resolver.split_section(
+            section=section,
+            section_index=section_index,
+            task_unit_min_chars=self.task_unit_min_chars,
+            task_unit_max_chars=self.task_unit_max_chars,
+        )
 
     @staticmethod
     def _merge_two_units(left: TaskUnit, right: TaskUnit) -> TaskUnit:
