@@ -28,6 +28,7 @@ from section_tasks.task_unit import TaskUnit
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from section_tasks.task_unit_split_plan import (
     TaskUnitBoundaryMatchMode,
+    TaskUnitSplitParserMode,
     TaskUnitSplitBoundaryInstruction,
     TaskUnitSplitPlan,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "ReparseDocumentStructureResult",
     "TaskUnitSplitMode",
     "TaskUnitBoundaryMatchMode",
+    "TaskUnitSplitParserMode",
     "TaskUnitSplitBoundaryInstruction",
     "TaskUnitSplitPlan",
     "HeuristicTaskUnitSplitResolver",
