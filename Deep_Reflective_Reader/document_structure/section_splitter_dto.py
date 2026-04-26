@@ -17,6 +17,7 @@ class HeadingCandidate:
 
     title: str
     char_start: int
+    level: int = 1
 
 
 @dataclass(frozen=True)

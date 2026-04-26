@@ -8,6 +8,7 @@ from document_structure.section_split_plan import (
     SectionSplitPlan,
     SplitBoundaryInstruction,
 )
+from document_structure.section_role import SectionRole
 from document_structure.section_splitter import CommonSectionSplitter
 from document_structure.section_splitter_dto import LineInfo
 from document_structure.structured_document import StructuredSection
@@ -20,6 +21,12 @@ class LLMSectionSplitter(AbstractSectionSplitter):
 
     _JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
     _WHITESPACE_COLLAPSE_PATTERN = re.compile(r"\s+")
+    _DEFAULT_PREVIEW_CHARS = 16_000
+    _MIN_PREVIEW_CHARS = 2_000
+    _MAX_PREVIEW_CHARS_HARD_CAP = 400_000
+    _PREVIEW_PROMPT_OVERHEAD_TOKENS = 1_200
+    _PREVIEW_TOKEN_UTILIZATION_RATIO = 0.65
+    _PREVIEW_CHARS_PER_TOKEN = 4
 
     def __init__(
         self,
@@ -74,7 +81,7 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         prompt = self._build_split_plan_prompt(raw_text=raw_text, language=language)
         llm_response = self.llm_provider.complete_text(prompt)
         plan = self._parse_split_plan_response(llm_response)
-        if plan.instructions:
+        if plan.sections:
             return plan
         return SectionSplitPlan(
             parser_mode=SectionParserMode.LLM_ENHANCED,
@@ -101,15 +108,15 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             raise ValueError("bad_request: unsupported document structure language 'unknown'")
         if not raw_text:
             return [self.common_splitter._single_fallback_section(raw_text)]
-        if not split_plan.instructions:
+        if not split_plan.sections:
             return fallback_common("empty_split_instructions")
 
         line_infos = self.common_splitter._build_line_infos(raw_text)
         if not line_infos:
             return fallback_common("empty_line_infos")
 
-        boundary_items: list[tuple[int, str, str | None]] = []
-        for instruction in split_plan.instructions:
+        boundary_items: list[tuple[int, str, int, SectionRole | None, str | None]] = []
+        for instruction in split_plan.sections:
             anchor_start = self._resolve_anchor_start(
                 line_infos=line_infos,
                 instruction=instruction,
@@ -121,6 +128,8 @@ class LLMSectionSplitter(AbstractSectionSplitter):
                 (
                     anchor_start,
                     resolved_title,
+                    max(1, int(instruction.level)),
+                    instruction.section_role,
                     self._normalize_optional_text(instruction.container_title),
                 )
             )
@@ -128,15 +137,18 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         if not boundary_items:
             return fallback_common("no_resolved_boundaries")
 
-        ordered_boundaries: list[tuple[int, str, str | None]] = []
+        ordered_boundaries: list[tuple[int, str, int, SectionRole | None, str | None]] = []
         seen_starts: set[int] = set()
-        for start, title, container_title in sorted(boundary_items, key=lambda item: item[0]):
+        for start, title, level, section_role, container_title in sorted(
+            boundary_items,
+            key=lambda item: item[0],
+        ):
             if start < 0 or start >= len(raw_text):
                 continue
             if start in seen_starts:
                 continue
             seen_starts.add(start)
-            ordered_boundaries.append((start, title, container_title))
+            ordered_boundaries.append((start, title, level, section_role, container_title))
 
         if len(ordered_boundaries) < 2:
             return fallback_common("resolved_boundaries_too_few")
@@ -152,17 +164,19 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         return sections
 
     def _build_split_plan_prompt(self, *, raw_text: str, language: LanguageCode) -> str:
-        """Build strict JSON-only prompt for boundary planning."""
-        preview = raw_text[:16_000]
+        """Build strict JSON-only prompt for region-aware structure planning."""
+        preview_budget_chars = self._compute_preview_char_budget(raw_text_length=len(raw_text))
+        preview = raw_text[:preview_budget_chars]
         return (
-            "You are a document structure planner. "
+            "You are a high-cost fallback document structure restorer. "
             "Return ONLY JSON object with this schema:\n"
             "{\n"
             '  "parser_mode": "llm_enhanced",\n'
-            '  "instructions": [\n'
+            '  "sections": [\n'
             "    {\n"
             '      "title": string|null,\n'
             '      "level": integer,\n'
+            '      "section_role": "toc"|"front_matter"|"main_body"|"appendix"|"back_matter",\n'
             '      "container_title": string|null,\n'
             '      "start_anchor_text": string,\n'
             '      "anchor_match_mode": "exact"|"contains"|"regex",\n'
@@ -171,14 +185,57 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             "  ]\n"
             "}\n\n"
             "Rules:\n"
-            "1) Do not rewrite content.\n"
-            "2) Do not return char offsets.\n"
-            "3) Choose stable anchors likely to exist verbatim in raw text.\n"
-            "4) Keep instructions concise and high-confidence.\n\n"
+            "1) Do not rewrite content and do not output section content text blocks.\n"
+            "2) Do not return char offsets. Use executable start anchors only.\n"
+            "3) Detect document regions first: toc, front_matter, main_body, appendix, back_matter.\n"
+            "4) TOC headings must not be misclassified as main_body.\n"
+            "5) front_matter/back_matter/appendix must stay out of main_body role.\n"
+            "6) Keep section count conservative; avoid over-segmentation.\n"
+            "7) Use stable anchors likely to appear verbatim in raw text.\n"
+            "8) If heading text appears in both TOC and body, use anchor_occurrence to target the intended one.\n"
+            "9) Output valid JSON only, no markdown or extra commentary.\n\n"
             f"Document language code: {language.value}\n"
             "Raw text preview:\n"
             f"{preview}"
         )
+
+    def _compute_preview_char_budget(self, *, raw_text_length: int) -> int:
+        """Compute preview-char budget from model capability with conservative headroom."""
+        fallback_budget = min(raw_text_length, self._DEFAULT_PREVIEW_CHARS)
+        if raw_text_length <= 0:
+            return 0
+        if self.llm_provider is None:
+            return max(1, fallback_budget)
+
+        try:
+            capability = self.llm_provider.get_model_capabilities()
+        except Exception as error:
+            print(
+                "LLMSectionSplitter#preview_budget_fallback:",
+                f"reason=capability_unavailable error={error}",
+            )
+            return max(1, fallback_budget)
+
+        available_prompt_tokens = (
+            int(capability.max_input_tokens) - self._PREVIEW_PROMPT_OVERHEAD_TOKENS
+        )
+        if available_prompt_tokens <= 0:
+            return max(1, fallback_budget)
+
+        preview_tokens = int(
+            available_prompt_tokens * self._PREVIEW_TOKEN_UTILIZATION_RATIO
+        )
+        if preview_tokens <= 0:
+            return max(1, fallback_budget)
+
+        preview_chars = preview_tokens * self._PREVIEW_CHARS_PER_TOKEN
+        preview_chars = max(self._MIN_PREVIEW_CHARS, preview_chars)
+        preview_chars = min(
+            raw_text_length,
+            preview_chars,
+            self._MAX_PREVIEW_CHARS_HARD_CAP,
+        )
+        return max(1, preview_chars)
 
     def _parse_split_plan_response(self, response_text: str) -> SectionSplitPlan:
         """Parse LLM response to SectionSplitPlan with tolerant JSON extraction."""
@@ -272,14 +329,13 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         self,
         *,
         raw_text: str,
-        boundaries: list[tuple[int, str, str | None]],
+        boundaries: list[tuple[int, str, int, SectionRole | None, str | None]],
     ) -> list[StructuredSection]:
         """Build contiguous sections from resolved boundary starts."""
         if not boundaries:
             return [self.common_splitter._single_fallback_section(raw_text)]
 
         sections: list[StructuredSection] = []
-        current_container_title: str | None = None
         first_start = boundaries[0][0]
         if first_start > 0:
             sections.append(
@@ -292,9 +348,7 @@ class LLMSectionSplitter(AbstractSectionSplitter):
                 )
             )
 
-        for idx, (char_start, title, container_title) in enumerate(boundaries):
-            if container_title is not None:
-                current_container_title = container_title
+        for idx, (char_start, title, level, section_role, container_title) in enumerate(boundaries):
             if idx + 1 < len(boundaries):
                 char_end = boundaries[idx + 1][0]
             else:
@@ -302,6 +356,7 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             if char_end <= char_start:
                 continue
 
+            resolved_role = section_role or SectionRole.MAIN_BODY
             sections.append(
                 self.common_splitter._build_section(
                     section_index=len(sections),
@@ -309,7 +364,9 @@ class LLMSectionSplitter(AbstractSectionSplitter):
                     raw_text=raw_text,
                     char_start=char_start,
                     char_end=char_end,
-                    container_title=current_container_title,
+                    container_title=container_title,
+                    section_role=resolved_role,
+                    level=max(1, int(level)),
                 )
             )
 
@@ -319,13 +376,13 @@ class LLMSectionSplitter(AbstractSectionSplitter):
 
     @staticmethod
     def _is_strictly_increasing_boundaries(
-        boundaries: list[tuple[int, str, str | None]],
+        boundaries: list[tuple[int, str, int, SectionRole | None, str | None]],
     ) -> bool:
         """Validate boundaries are strictly increasing by start offset."""
         if not boundaries:
             return False
         previous = boundaries[0][0]
-        for current, _, _ in boundaries[1:]:
+        for current, _, _, _, _ in boundaries[1:]:
             if current <= previous:
                 return False
             previous = current

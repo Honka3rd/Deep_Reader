@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from document_structure.section_role import SectionRole
+
 
 class AnchorMatchMode(StrEnum):
     """Anchor matching strategy for local boundary resolution."""
@@ -44,6 +46,7 @@ class SplitBoundaryInstruction:
 
     title: str | None
     level: int
+    section_role: SectionRole | None
     container_title: str | None
     start_anchor_text: str
     anchor_match_mode: AnchorMatchMode = AnchorMatchMode.EXACT
@@ -54,6 +57,9 @@ class SplitBoundaryInstruction:
         return {
             "title": self.title,
             "level": self.level,
+            "section_role": (
+                None if self.section_role is None else self.section_role.value
+            ),
             "container_title": self.container_title,
             "start_anchor_text": self.start_anchor_text,
             "anchor_match_mode": self.anchor_match_mode.value,
@@ -76,6 +82,7 @@ class SplitBoundaryInstruction:
         return cls(
             title=None if data.get("title") is None else str(data.get("title")),
             level=max(1, int(data.get("level", 1))),
+            section_role=SectionRole.resolve(data.get("section_role")),
             container_title=(
                 None
                 if data.get("container_title") is None
@@ -95,11 +102,18 @@ class SectionSplitPlan:
     instructions: list[SplitBoundaryInstruction] = field(default_factory=list)
     metadata: dict[str, str] = field(default_factory=dict)
 
+    @property
+    def sections(self) -> list[SplitBoundaryInstruction]:
+        """Region-aware alias name for prompt/API schema."""
+        return self.instructions
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize split plan into dictionary payload."""
+        section_payloads = [item.to_dict() for item in self.instructions]
         return {
             "parser_mode": self.parser_mode.value,
-            "instructions": [item.to_dict() for item in self.instructions],
+            "sections": section_payloads,
+            "instructions": section_payloads,
             "metadata": dict(self.metadata),
         }
 
@@ -110,7 +124,9 @@ class SectionSplitPlan:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SectionSplitPlan":
         """Deserialize split plan from dictionary payload."""
-        instruction_payloads = data.get("instructions", [])
+        instruction_payloads = data.get("sections")
+        if instruction_payloads is None:
+            instruction_payloads = data.get("instructions", [])
         instructions: list[SplitBoundaryInstruction] = []
         for item in instruction_payloads:
             if not isinstance(item, dict):

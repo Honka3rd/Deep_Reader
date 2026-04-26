@@ -529,14 +529,137 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         normalized_heading: str,
         hints: tuple[str, ...],
     ) -> bool:
-        """Check whether normalized heading text contains one body-start heading hint."""
+        """Check whether heading text matches one hint with heading-aware policy."""
         for hint in hints:
             normalized_hint = cls._normalize_heading_title(hint)
             if not normalized_hint:
                 continue
-            if normalized_hint in normalized_heading:
+            if cls._matches_heading_hint(
+                normalized_heading=normalized_heading,
+                normalized_hint=normalized_hint,
+            ):
                 return True
         return False
+
+    @classmethod
+    def _matches_heading_hint(
+        cls,
+        *,
+        normalized_heading: str,
+        normalized_hint: str,
+    ) -> bool:
+        """Match one heading hint with exact/prefix/token-aware safeguards."""
+        if not normalized_heading or not normalized_hint:
+            return False
+        if cls._matches_exact_heading_hint(
+            normalized_heading=normalized_heading,
+            normalized_hint=normalized_hint,
+        ):
+            return True
+
+        if cls._is_short_cjk_heading_hint(normalized_hint):
+            return cls._matches_short_cjk_heading_hint(
+                normalized_heading=normalized_heading,
+                normalized_hint=normalized_hint,
+            )
+
+        if " " in normalized_hint:
+            return cls._matches_heading_hint_prefix(
+                normalized_heading=normalized_heading,
+                normalized_hint=normalized_hint,
+            )
+
+        if cls._looks_latin_word(normalized_hint):
+            return cls._matches_latin_word_heading_hint(
+                normalized_heading=normalized_heading,
+                normalized_hint=normalized_hint,
+            )
+
+        return cls._matches_heading_hint_prefix(
+            normalized_heading=normalized_heading,
+            normalized_hint=normalized_hint,
+        )
+
+    @staticmethod
+    def _matches_exact_heading_hint(
+        *,
+        normalized_heading: str,
+        normalized_hint: str,
+    ) -> bool:
+        """Return True when heading and hint are exactly equal after normalization."""
+        return normalized_heading == normalized_hint
+
+    @classmethod
+    def _matches_heading_hint_prefix(
+        cls,
+        *,
+        normalized_heading: str,
+        normalized_hint: str,
+    ) -> bool:
+        """Allow heading-prefix hint matching with conservative suffix checks."""
+        if not normalized_heading.startswith(normalized_hint):
+            return False
+        suffix = normalized_heading[len(normalized_hint):].strip()
+        if not suffix:
+            return True
+
+        first_char = suffix[0]
+        if first_char in cls._MARKER_PREFIX_SUFFIX_PUNCTUATION:
+            return True
+        if cls._CJK_PATTERN.search(suffix):
+            return len(suffix) <= 8
+
+        token_count = len(cls._LATIN_TOKEN_PATTERN.findall(suffix))
+        return cls._is_label_like_suffix_tokens(
+            suffix=suffix,
+            token_count=token_count,
+        )
+
+    @classmethod
+    def _matches_short_cjk_heading_hint(
+        cls,
+        *,
+        normalized_heading: str,
+        normalized_hint: str,
+    ) -> bool:
+        """Use strict policy for short CJK hints to avoid substring pollution."""
+        if normalized_heading == normalized_hint:
+            return True
+        if not normalized_heading.startswith(normalized_hint):
+            return False
+
+        suffix = normalized_heading[len(normalized_hint):].strip()
+        if not suffix:
+            return True
+        if suffix[0] in cls._MARKER_PREFIX_SUFFIX_PUNCTUATION:
+            return True
+        return len(suffix) <= 2
+
+    @classmethod
+    def _matches_latin_word_heading_hint(
+        cls,
+        *,
+        normalized_heading: str,
+        normalized_hint: str,
+    ) -> bool:
+        """Allow Latin single-word hint only as heading prefix/token boundary."""
+        if not normalized_heading.startswith(normalized_hint):
+            return False
+        suffix = normalized_heading[len(normalized_hint):].strip()
+        if not suffix:
+            return True
+        if suffix[0] in cls._MARKER_PREFIX_SUFFIX_PUNCTUATION:
+            return True
+        token_count = len(cls._LATIN_TOKEN_PATTERN.findall(suffix))
+        return cls._is_label_like_suffix_tokens(
+            suffix=suffix,
+            token_count=token_count,
+        )
+
+    @classmethod
+    def _is_short_cjk_heading_hint(cls, normalized_hint: str) -> bool:
+        """Return whether this hint is a short CJK token (e.g. '序')."""
+        return bool(cls._CJK_PATTERN.search(normalized_hint)) and len(normalized_hint) <= 2
 
     def _has_prose_after(
         self,
@@ -614,6 +737,8 @@ class CommonSectionSplitter(AbstractSectionSplitter):
     ) -> list[HeadingCandidate]:
         """Detect strong headings from language-registry regex patterns."""
         patterns = self.language_registry.get_strong_heading_patterns(language)
+        part_hints = self.language_registry.get_part_heading_hints(language)
+        chapter_hints = self.language_registry.get_chapter_heading_hints(language)
         candidates: list[HeadingCandidate] = []
         for info in line_infos:
             if not info.stripped:
@@ -626,9 +751,62 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                     HeadingCandidate(
                         title=info.stripped,
                         char_start=info.char_start,
+                        level=self._infer_heading_level(
+                            heading_text=info.stripped,
+                            part_hints=part_hints,
+                            chapter_hints=chapter_hints,
+                        ),
                     )
                 )
         return candidates
+
+    def _infer_heading_level(
+        self,
+        *,
+        heading_text: str,
+        part_hints: tuple[str, ...],
+        chapter_hints: tuple[str, ...],
+    ) -> int:
+        """Infer heading level with canonical policy: Part=1, Chapter=2."""
+        normalized_title = self._normalize_heading_title(heading_text)
+        is_part_heading = bool(part_hints) and self._contains_level_hint(
+            normalized_title,
+            part_hints,
+        )
+        is_chapter_heading = bool(chapter_hints) and self._contains_level_hint(
+            normalized_title,
+            chapter_hints,
+        )
+
+        if is_chapter_heading:
+            return 2
+        if is_part_heading:
+            return 1
+        return 1
+
+    @classmethod
+    def _contains_level_hint(
+        cls,
+        normalized_heading: str,
+        hints: tuple[str, ...],
+    ) -> bool:
+        """Match level hints with heading-prefix semantics (Part/Chapter hierarchy use only)."""
+        for hint in hints:
+            normalized_hint = cls._normalize_heading_title(hint)
+            if not normalized_hint:
+                continue
+            if normalized_heading == normalized_hint:
+                return True
+            if normalized_heading.startswith(normalized_hint):
+                suffix = normalized_heading[len(normalized_hint):]
+                if not suffix:
+                    return True
+                # Accept common heading continuations like space + number/word.
+                if suffix[:1].isspace():
+                    return True
+                if suffix[0] in cls._MARKER_PREFIX_SUFFIX_PUNCTUATION:
+                    return True
+        return False
 
     def _is_region_marker_heading(self, stripped_text: str, language: LanguageCode) -> bool:
         """Treat standalone region markers as strong headings to improve region awareness."""
@@ -818,6 +996,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 HeadingCandidate(
                     title=info.stripped,
                     char_start=info.char_start,
+                    level=1,
                 )
             )
         return candidates
@@ -874,6 +1053,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         raw_text: str,
         char_start: int,
         char_end: int,
+        level: int = 1,
         container_title: str | None = None,
         section_role: SectionRole | None = None,
     ) -> StructuredSection:
@@ -882,7 +1062,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             section_id=f"section-{section_index}",
             section_index=section_index,
             title=title,
-            level=1,
+            level=max(1, int(level)),
             content=raw_text[char_start:char_end],
             char_start=char_start,
             char_end=char_end,
@@ -942,6 +1122,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                     raw_text=raw_text,
                     char_start=char_start,
                     char_end=char_end,
+                    level=heading.level,
                     container_title=current_container_title,
                     section_role=current_section_role,
                 )

@@ -41,9 +41,11 @@ def test_toc_plus_chapter_one(splitter: CommonSectionSplitter) -> None:
     )
     sections = splitter.split(raw_text=raw_text, language=LanguageCode.EN)
     _assert(bool(sections), "toc+chapter case should produce sections")
+    main_body_sections = [section for section in sections if section.section_role == "main_body"]
+    _assert(main_body_sections, "toc+chapter case should still contain main body sections")
     _assert(
-        (sections[0].title or "").lower().startswith("chapter"),
-        "toc should not become first main section title",
+        (main_body_sections[0].title or "").lower().startswith("chapter"),
+        "first main-body section should still start from chapter heading",
     )
 
 
@@ -111,6 +113,25 @@ def test_chapter_plus_afterword_zh(splitter: CommonSectionSplitter) -> None:
     )
 
 
+def test_part_chapter_level_policy(splitter: CommonSectionSplitter) -> None:
+    """Validate common splitter preserves canonical hierarchy level policy."""
+    raw_text = (
+        "Part I\n"
+        "This part-level introduction paragraph is long enough to be treated as meaningful prose.\n\n"
+        "Chapter One\n"
+        "This chapter-level body paragraph is also long enough for regular prose detection.\n"
+    )
+    sections = splitter.split(raw_text=raw_text, language=LanguageCode.EN)
+    _assert(bool(sections), "part/chapter level case should produce sections")
+
+    part_sections = [section for section in sections if (section.title or "").lower().startswith("part")]
+    chapter_sections = [section for section in sections if (section.title or "").lower().startswith("chapter")]
+    _assert(part_sections, "part heading should be preserved when it has meaningful content")
+    _assert(chapter_sections, "chapter heading should be parsed")
+    _assert(part_sections[0].level == 1, "part section level should be 1")
+    _assert(chapter_sections[0].level == 2, "chapter section level should be 2")
+
+
 def test_marker_true_hits(splitter: CommonSectionSplitter) -> None:
     """Validate expected markers can be recognized as heading markers."""
     cases = [
@@ -164,14 +185,65 @@ def test_marker_false_hits_in_body(splitter: CommonSectionSplitter) -> None:
         )
 
 
+def test_heading_hint_true_hits(splitter: CommonSectionSplitter) -> None:
+    """Validate heading-hint matcher keeps expected heading-like tolerance."""
+    cases = [
+        ("Contents", ("contents",)),
+        ("Table of Contents", ("table of contents",)),
+        ("Preface", ("preface",)),
+        ("Preface:", ("preface",)),
+        ("Appendix A", ("appendix",)),
+        ("Afterword", ("afterword",)),
+        ("後記", ("後記",)),
+        ("後記：", ("後記",)),
+        ("序", ("序",)),
+        ("目录（修订版）", ("目录",)),
+    ]
+    for heading, hints in cases:
+        matched = splitter._contains_heading_hint(
+            splitter._normalize_heading_title(heading),
+            hints,
+        )
+        _assert(
+            matched is True,
+            f"heading-hint true-hit mismatch: heading={heading!r}, hints={hints!r}",
+        )
+
+
+def test_heading_hint_false_hits_in_body(splitter: CommonSectionSplitter) -> None:
+    """Validate heading-hint matcher rejects body-style substring interference."""
+    cases = [
+        ("An introduction to symbolic logic", ("introduction",)),
+        ("Discussion of appendix methods", ("appendix",)),
+        ("This chapter mentions the afterword controversy", ("afterword",)),
+        ("這一章討論附錄中的統計方法", ("附錄",)),
+        ("這一節只是提到後記這個概念", ("後記",)),
+        ("序列模型的基本原理", ("序",)),
+        ("後記憶時代的媒體研究", ("後記",)),
+        ("附錄方法在正文中的應用", ("附錄",)),
+    ]
+    for heading, hints in cases:
+        matched = splitter._contains_heading_hint(
+            splitter._normalize_heading_title(heading),
+            hints,
+        )
+        _assert(
+            matched is False,
+            f"heading-hint false-hit mismatch: heading={heading!r}, hints={hints!r}, got={matched}",
+        )
+
+
 def main() -> None:
     splitter = CommonSectionSplitter()
     test_toc_plus_chapter_one(splitter)
     test_preface_plus_chapter_one(splitter)
     test_chapter_plus_appendix(splitter)
     test_chapter_plus_afterword_zh(splitter)
+    test_part_chapter_level_policy(splitter)
     test_marker_true_hits(splitter)
     test_marker_false_hits_in_body(splitter)
+    test_heading_hint_true_hits(splitter)
+    test_heading_hint_false_hits_in_body(splitter)
 
     sample = splitter.split(
         raw_text=(
