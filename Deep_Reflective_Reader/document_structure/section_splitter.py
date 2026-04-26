@@ -1,41 +1,20 @@
 import re
-from dataclasses import dataclass
 
+from document_structure.abstract_section_splitter import AbstractSectionSplitter
 from document_structure.document_structure_language_registry import (
     DocumentStructureLanguageRegistry,
+)
+from document_structure.section_splitter_dto import (
+    HeadingCandidate,
+    HeadingPrecedenceResult,
+    LineInfo,
 )
 from document_structure.structured_document import StructuredSection
 from language.language_code import LanguageCode
 
 
-@dataclass(frozen=True)
-class _LineInfo:
-    """Line text plus absolute char range in original raw text."""
-
-    line: str
-    stripped: str
-    char_start: int
-    char_end: int
-
-
-@dataclass(frozen=True)
-class _HeadingCandidate:
-    """Internal heading candidate with absolute start offset."""
-
-    title: str
-    char_start: int
-
-
-@dataclass(frozen=True)
-class _HeadingPrecedenceResult:
-    """Post-processed heading list plus optional section container metadata."""
-
-    headings: list[_HeadingCandidate]
-    container_title_by_start: dict[int, str]
-
-
-class SectionSplitter:
-    """Heuristic splitter from raw text to flat structured sections."""
+class CommonSectionSplitter(AbstractSectionSplitter):
+    """Heuristic/common splitter from raw text to flat structured sections."""
 
     _NON_TEXT_DECORATION_PATTERN = re.compile(r"^[-_=~*#\s]+$")
     _CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
@@ -114,7 +93,7 @@ class SectionSplitter:
         self,
         *,
         raw_text: str,
-        line_infos: list[_LineInfo],
+        line_infos: list[LineInfo],
         language: LanguageCode,
     ) -> int:
         """Find conservative main-body start offset to avoid TOC/front-matter pollution."""
@@ -197,7 +176,7 @@ class SectionSplitter:
     def _find_marker_index(
         self,
         *,
-        line_infos: list[_LineInfo],
+        line_infos: list[LineInfo],
         early_char_limit: int,
         markers: tuple[str, ...],
     ) -> int | None:
@@ -231,7 +210,7 @@ class SectionSplitter:
 
     def _collect_heading_titles(
         self,
-        line_infos: list[_LineInfo],
+        line_infos: list[LineInfo],
         strong_patterns: tuple[re.Pattern[str], ...],
         body_start_heading_hints: tuple[str, ...],
     ) -> list[str]:
@@ -276,7 +255,7 @@ class SectionSplitter:
     def _has_prose_after(
         self,
         *,
-        line_infos: list[_LineInfo],
+        line_infos: list[LineInfo],
         heading_index: int,
         strong_patterns: tuple[re.Pattern[str], ...],
     ) -> bool:
@@ -310,16 +289,16 @@ class SectionSplitter:
             )
 
     @staticmethod
-    def _build_line_infos(raw_text: str) -> list[_LineInfo]:
+    def _build_line_infos(raw_text: str) -> list[LineInfo]:
         """Build line records with absolute char offsets."""
-        line_infos: list[_LineInfo] = []
+        line_infos: list[LineInfo] = []
         cursor = 0
         for line in raw_text.splitlines(keepends=True):
             start = cursor
             end = cursor + len(line)
             cursor = end
             line_infos.append(
-                _LineInfo(
+                LineInfo(
                     line=line,
                     stripped=line.strip(),
                     char_start=start,
@@ -329,7 +308,7 @@ class SectionSplitter:
 
         if not line_infos:
             line_infos.append(
-                _LineInfo(
+                LineInfo(
                     line=raw_text,
                     stripped=raw_text.strip(),
                     char_start=0,
@@ -340,18 +319,18 @@ class SectionSplitter:
 
     def _detect_strong_headings(
         self,
-        line_infos: list[_LineInfo],
+        line_infos: list[LineInfo],
         language: LanguageCode,
-    ) -> list[_HeadingCandidate]:
+    ) -> list[HeadingCandidate]:
         """Detect strong headings from language-registry regex patterns."""
         patterns = self.language_registry.get_strong_heading_patterns(language)
-        candidates: list[_HeadingCandidate] = []
+        candidates: list[HeadingCandidate] = []
         for info in line_infos:
             if not info.stripped:
                 continue
             if any(pattern.match(info.stripped) for pattern in patterns):
                 candidates.append(
-                    _HeadingCandidate(
+                    HeadingCandidate(
                         title=info.stripped,
                         char_start=info.char_start,
                     )
@@ -361,25 +340,25 @@ class SectionSplitter:
     def _apply_heading_precedence(
         self,
         *,
-        headings: list[_HeadingCandidate],
-        line_infos: list[_LineInfo],
+        headings: list[HeadingCandidate],
+        line_infos: list[LineInfo],
         language: LanguageCode,
-    ) -> _HeadingPrecedenceResult:
+    ) -> HeadingPrecedenceResult:
         """Drop low-value part boundaries and preserve part context for following chapter."""
         if len(headings) < 2:
-            return _HeadingPrecedenceResult(headings=headings, container_title_by_start={})
+            return HeadingPrecedenceResult(headings=headings, container_title_by_start={})
 
         part_hints = self.language_registry.get_part_heading_hints(language)
         chapter_hints = self.language_registry.get_chapter_heading_hints(language)
         if not part_hints or not chapter_hints:
-            return _HeadingPrecedenceResult(headings=headings, container_title_by_start={})
+            return HeadingPrecedenceResult(headings=headings, container_title_by_start={})
 
         ordered = sorted(headings, key=lambda item: item.char_start)
         index_by_start = {
             info.char_start: idx
             for idx, info in enumerate(line_infos)
         }
-        filtered: list[_HeadingCandidate] = []
+        filtered: list[HeadingCandidate] = []
         skipped_indices: set[int] = set()
         container_title_by_start: dict[int, str] = {}
 
@@ -415,7 +394,7 @@ class SectionSplitter:
             if idx in skipped_indices:
                 continue
             filtered.append(heading)
-        return _HeadingPrecedenceResult(
+        return HeadingPrecedenceResult(
             headings=filtered,
             container_title_by_start=container_title_by_start,
         )
@@ -424,8 +403,8 @@ class SectionSplitter:
         self,
         *,
         region_start: int,
-        headings: list[_HeadingCandidate],
-        line_infos: list[_LineInfo],
+        headings: list[HeadingCandidate],
+        line_infos: list[LineInfo],
     ) -> int:
         """Avoid generating an empty pre-heading section after precedence filtering."""
         if not headings:
@@ -454,7 +433,7 @@ class SectionSplitter:
     def _has_meaningful_content_between_lines(
         self,
         *,
-        line_infos: list[_LineInfo],
+        line_infos: list[LineInfo],
         start_line_idx: int,
         end_line_idx: int,
     ) -> bool:
@@ -480,15 +459,15 @@ class SectionSplitter:
 
     def _detect_weak_headings(
         self,
-        line_infos: list[_LineInfo],
+        line_infos: list[LineInfo],
         language: LanguageCode,
-    ) -> list[_HeadingCandidate]:
+    ) -> list[HeadingCandidate]:
         """Detect standalone short-line headings as weak candidates."""
         patterns = self.language_registry.get_strong_heading_patterns(language)
         weak_aliases = self.language_registry.get_weak_heading_aliases(language)
         weak_signals = self.language_registry.get_weak_heading_signals(language)
         weak_tokens = tuple(dict.fromkeys((*weak_aliases, *weak_signals)))
-        candidates: list[_HeadingCandidate] = []
+        candidates: list[HeadingCandidate] = []
         for idx, info in enumerate(line_infos):
             if not info.stripped:
                 continue
@@ -525,7 +504,7 @@ class SectionSplitter:
                     continue
 
             candidates.append(
-                _HeadingCandidate(
+                HeadingCandidate(
                     title=info.stripped,
                     char_start=info.char_start,
                 )
@@ -599,7 +578,7 @@ class SectionSplitter:
     def _build_sections_from_headings(
         self,
         raw_text: str,
-        headings: list[_HeadingCandidate],
+        headings: list[HeadingCandidate],
         *,
         region_start: int = 0,
         container_title_by_start: dict[int, str] | None = None,

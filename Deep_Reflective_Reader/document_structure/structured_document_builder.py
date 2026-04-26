@@ -1,4 +1,5 @@
-from document_structure.section_splitter import SectionSplitter
+from document_structure.abstract_section_splitter import AbstractSectionSplitter
+from document_structure.section_splitter import CommonSectionSplitter
 from document_structure.structured_document import StructuredDocument, StructuredSection
 from language.language_code import LanguageCode
 
@@ -8,10 +9,10 @@ class StructuredDocumentBuilder:
 
     def __init__(
         self,
-        section_splitter: SectionSplitter | None = None,
+        section_splitter: AbstractSectionSplitter | None = None,
     ):
         """Initialize builder with injected splitter dependency."""
-        self.section_splitter = section_splitter or SectionSplitter()
+        self.section_splitter = section_splitter or CommonSectionSplitter()
 
     def build(
         self,
