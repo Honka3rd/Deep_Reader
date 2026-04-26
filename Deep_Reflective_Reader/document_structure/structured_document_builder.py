@@ -4,6 +4,7 @@ from document_structure.section_splitter_selector import (
     SectionSplitterMode,
     SectionSplitterSelector,
 )
+from document_structure.section_role import SectionRole
 from document_structure.structured_document import StructuredDocument, StructuredSection
 from language.language_code import LanguageCode
 
@@ -113,6 +114,7 @@ class StructuredDocumentBuilder:
             content=raw_text,
             char_start=0,
             char_end=len(raw_text),
+            section_role=SectionRole.MAIN_BODY,
         )
         return StructuredDocument(
             document_id=document_id,

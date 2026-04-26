@@ -9,6 +9,7 @@ from document_structure.section_splitter_dto import (
     HeadingPrecedenceResult,
     LineInfo,
 )
+from document_structure.section_role import SectionRole
 from document_structure.structured_document import StructuredSection
 from language.language_code import LanguageCode
 
@@ -24,6 +25,14 @@ class CommonSectionSplitter(AbstractSectionSplitter):
     _BODY_PROSE_TERMINAL_PATTERN = re.compile(r"[.!?。！？]$")
     _TOC_SCAN_LINES = 180
     _TOC_MIN_HEADING_COUNT = 3
+    _MAIN_BODY_EARLY_REGION_RATIO = 0.35
+    _FRONT_MATTER_EARLY_REGION_RATIO = 0.45
+    _BACK_REGION_RATIO = 0.60
+    _SECTION_ROLE_TOC = SectionRole.TOC
+    _SECTION_ROLE_FRONT_MATTER = SectionRole.FRONT_MATTER
+    _SECTION_ROLE_MAIN_BODY = SectionRole.MAIN_BODY
+    _SECTION_ROLE_APPENDIX = SectionRole.APPENDIX
+    _SECTION_ROLE_BACK_MATTER = SectionRole.BACK_MATTER
 
     def __init__(
         self,
@@ -44,7 +53,12 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         """
         self._validate_language(language)
         if not raw_text:
-            return [self._single_fallback_section(raw_text)]
+            return [
+                self._single_fallback_section(
+                    raw_text,
+                    section_role=self._SECTION_ROLE_MAIN_BODY,
+                )
+            ]
 
         lines = self._build_line_infos(raw_text)
         main_body_start = self._find_main_body_start(
@@ -54,7 +68,12 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         )
         body_lines = [info for info in lines if info.char_start >= main_body_start]
         if not body_lines:
-            return [self._single_fallback_section(raw_text)]
+            return [
+                self._single_fallback_section(
+                    raw_text,
+                    section_role=self._SECTION_ROLE_MAIN_BODY,
+                )
+            ]
 
         strong_headings = self._detect_strong_headings(body_lines, language)
         if strong_headings:
@@ -65,29 +84,53 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             )
             strong_headings = precedence_result.headings
             if not strong_headings:
-                return [self._single_fallback_section(raw_text, char_start=main_body_start)]
+                return [
+                    self._single_fallback_section(
+                        raw_text,
+                        char_start=main_body_start,
+                        section_role=self._SECTION_ROLE_MAIN_BODY,
+                    )
+                ]
 
             region_start = self._adjust_region_start_after_precedence(
                 region_start=main_body_start,
                 headings=strong_headings,
                 line_infos=body_lines,
             )
+            section_role_by_start = self._build_section_role_by_start(
+                headings=strong_headings,
+                language=language,
+                raw_text_length=len(raw_text),
+            )
             return self._build_sections_from_headings(
                 raw_text,
                 strong_headings,
                 region_start=region_start,
                 container_title_by_start=precedence_result.container_title_by_start,
+                section_role_by_start=section_role_by_start,
             )
 
         weak_headings = self._detect_weak_headings(body_lines, language)
         if len(weak_headings) >= 2:
+            section_role_by_start = self._build_section_role_by_start(
+                headings=weak_headings,
+                language=language,
+                raw_text_length=len(raw_text),
+            )
             return self._build_sections_from_headings(
                 raw_text,
                 weak_headings,
                 region_start=main_body_start,
+                section_role_by_start=section_role_by_start,
             )
 
-        return [self._single_fallback_section(raw_text, char_start=main_body_start)]
+        return [
+            self._single_fallback_section(
+                raw_text,
+                char_start=main_body_start,
+                section_role=self._SECTION_ROLE_MAIN_BODY,
+            )
+        ]
 
     def _find_main_body_start(
         self,
@@ -108,24 +151,59 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         body_start_heading_hints = self.language_registry.get_body_start_heading_hints(language)
 
         # Focus search near the beginning to avoid trimming legitimate middle sections.
-        early_char_limit = max(1500, int(len(raw_text) * 0.35))
-        contents_index = self._find_marker_index(
+        early_char_limit = max(
+            1500,
+            int(len(raw_text) * self._MAIN_BODY_EARLY_REGION_RATIO),
+        )
+        toc_marker_index = self._find_marker_index(
             line_infos=line_infos,
             early_char_limit=early_char_limit,
             markers=toc_markers,
         )
-        if contents_index is None:
-            # Fallback: some texts label front matter but omit explicit TOC marker.
-            contents_index = self._find_marker_index(
+        if toc_marker_index is not None:
+            toc_body_start = self._find_body_start_after_toc(
                 line_infos=line_infos,
-                early_char_limit=early_char_limit,
-                markers=front_matter_markers,
+                toc_marker_index=toc_marker_index,
+                strong_patterns=strong_patterns,
+                body_start_heading_hints=body_start_heading_hints,
             )
-        if contents_index is None:
-            return 0
+            if toc_body_start is not None:
+                return toc_body_start
 
-        toc_window_end = min(len(line_infos), contents_index + 1 + self._TOC_SCAN_LINES)
-        for idx in range(contents_index + 1, toc_window_end):
+        front_marker_index = self._find_marker_index(
+            line_infos=line_infos,
+            early_char_limit=max(
+                early_char_limit,
+                int(len(raw_text) * self._FRONT_MATTER_EARLY_REGION_RATIO),
+            ),
+            markers=front_matter_markers,
+        )
+        if front_marker_index is not None:
+            front_body_start = self._find_body_start_after_front_matter(
+                line_infos=line_infos,
+                front_marker_index=front_marker_index,
+                strong_patterns=strong_patterns,
+                body_start_heading_hints=body_start_heading_hints,
+                front_matter_markers=front_matter_markers,
+                toc_markers=toc_markers,
+            )
+            if front_body_start is not None:
+                return front_body_start
+
+        # Conservative fallback: keep original text untouched if body start is uncertain.
+        return 0
+
+    def _find_body_start_after_toc(
+        self,
+        *,
+        line_infos: list[LineInfo],
+        toc_marker_index: int,
+        strong_patterns: tuple[re.Pattern[str], ...],
+        body_start_heading_hints: tuple[str, ...],
+    ) -> int | None:
+        """Find main-body start by matching TOC heading list and duplicated body headings."""
+        toc_window_end = min(len(line_infos), toc_marker_index + 1 + self._TOC_SCAN_LINES)
+        for idx in range(toc_marker_index + 1, toc_window_end):
             stripped = line_infos[idx].stripped
             if not stripped:
                 continue
@@ -134,16 +212,16 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 break
 
         toc_heading_titles = self._collect_heading_titles(
-            line_infos[contents_index + 1:toc_window_end],
+            line_infos[toc_marker_index + 1:toc_window_end],
             strong_patterns,
             body_start_heading_hints,
         )
         if len(toc_heading_titles) < self._TOC_MIN_HEADING_COUNT:
-            return 0
+            return None
 
         toc_heading_set = set(toc_heading_titles)
         seen_heading_titles: set[str] = set()
-        for idx in range(contents_index + 1, len(line_infos)):
+        for idx in range(toc_marker_index + 1, len(line_infos)):
             stripped = line_infos[idx].stripped
             if not stripped:
                 continue
@@ -169,9 +247,54 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 strong_patterns=strong_patterns,
             ):
                 return line_infos[idx].char_start
+        return None
 
-        # Conservative fallback: keep original text untouched if body start is uncertain.
-        return 0
+    def _find_body_start_after_front_matter(
+        self,
+        *,
+        line_infos: list[LineInfo],
+        front_marker_index: int,
+        strong_patterns: tuple[re.Pattern[str], ...],
+        body_start_heading_hints: tuple[str, ...],
+        front_matter_markers: tuple[str, ...],
+        toc_markers: tuple[str, ...],
+    ) -> int | None:
+        """Find first likely real body heading after front-matter area."""
+        normalized_front_markers = tuple(
+            self._normalize_heading_title(marker)
+            for marker in front_matter_markers
+            if marker.strip()
+        )
+        normalized_toc_markers = tuple(
+            self._normalize_heading_title(marker)
+            for marker in toc_markers
+            if marker.strip()
+        )
+        scan_end = min(len(line_infos), front_marker_index + 1 + (self._TOC_SCAN_LINES * 2))
+        for idx in range(front_marker_index + 1, scan_end):
+            stripped = line_infos[idx].stripped
+            if not stripped:
+                continue
+            if not self._is_strong_heading(stripped, strong_patterns):
+                continue
+
+            normalized_title = self._normalize_heading_title(stripped)
+            if (
+                body_start_heading_hints
+                and not self._contains_heading_hint(normalized_title, body_start_heading_hints)
+            ):
+                continue
+            if self._contains_heading_hint(normalized_title, normalized_front_markers):
+                continue
+            if self._contains_heading_hint(normalized_title, normalized_toc_markers):
+                continue
+            if self._has_prose_after(
+                line_infos=line_infos,
+                heading_index=idx,
+                strong_patterns=strong_patterns,
+            ):
+                return line_infos[idx].char_start
+        return None
 
     def _find_marker_index(
         self,
@@ -184,11 +307,11 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         if not markers:
             return None
 
-        normalized_markers = {
+        normalized_markers = tuple(
             self._normalize_heading_title(marker)
             for marker in markers
             if marker.strip()
-        }
+        )
         if not normalized_markers:
             return None
 
@@ -196,9 +319,23 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             if info.char_start > early_char_limit:
                 break
             normalized_line = self._normalize_heading_title(info.stripped)
-            if normalized_line in normalized_markers:
+            if any(
+                self._line_matches_marker(normalized_line, marker)
+                for marker in normalized_markers
+            ):
                 return idx
         return None
+
+    @staticmethod
+    def _line_matches_marker(normalized_line: str, normalized_marker: str) -> bool:
+        """Match marker against one normalized line with conservative short-token policy."""
+        if not normalized_line or not normalized_marker:
+            return False
+        if normalized_line == normalized_marker:
+            return True
+        if len(normalized_marker) <= 2:
+            return normalized_line.startswith(normalized_marker)
+        return normalized_marker in normalized_line
 
     @staticmethod
     def _is_strong_heading(
@@ -273,12 +410,16 @@ class CommonSectionSplitter(AbstractSectionSplitter):
     @classmethod
     def _looks_like_body_prose(cls, stripped: str) -> bool:
         """Heuristic prose-line detector used to anchor body start after TOC."""
+        if cls._CJK_PATTERN.search(stripped):
+            if len(stripped) < 25:
+                return False
+            if not cls._BODY_PROSE_TERMINAL_PATTERN.search(stripped):
+                return False
+            return len(stripped) >= 25
         if len(stripped) < 60:
             return False
         if not cls._BODY_PROSE_TERMINAL_PATTERN.search(stripped):
             return False
-        if cls._CJK_PATTERN.search(stripped):
-            return len(stripped) >= 25
         return len(cls._LATIN_TOKEN_PATTERN.findall(stripped)) >= 10
 
     def _validate_language(self, language: LanguageCode) -> None:
@@ -328,7 +469,10 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         for info in line_infos:
             if not info.stripped:
                 continue
-            if any(pattern.match(info.stripped) for pattern in patterns):
+            if (
+                any(pattern.match(info.stripped) for pattern in patterns)
+                or self._is_region_marker_heading(info.stripped, language)
+            ):
                 candidates.append(
                     HeadingCandidate(
                         title=info.stripped,
@@ -336,6 +480,24 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                     )
                 )
         return candidates
+
+    def _is_region_marker_heading(self, stripped_text: str, language: LanguageCode) -> bool:
+        """Treat standalone region markers as strong headings to improve region awareness."""
+        if len(stripped_text) > 60:
+            return False
+        if self._SENTENCE_END_PUNCTUATION_PATTERN.search(stripped_text):
+            return False
+        normalized_title = self._normalize_heading_title(stripped_text)
+        marker_groups = (
+            self.language_registry.get_toc_markers(language),
+            self.language_registry.get_front_matter_markers(language),
+            self.language_registry.get_appendix_markers(language),
+            self.language_registry.get_back_matter_markers(language),
+        )
+        for markers in marker_groups:
+            if self._contains_heading_hint(normalized_title, markers):
+                return True
+        return False
 
     def _apply_heading_precedence(
         self,
@@ -540,6 +702,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         *,
         char_start: int = 0,
         char_end: int | None = None,
+        section_role: SectionRole | None = None,
     ) -> StructuredSection:
         """Build fallback section when no headings are detected."""
         final_end = len(raw_text) if char_end is None else char_end
@@ -551,6 +714,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             content=raw_text[char_start:final_end],
             char_start=char_start,
             char_end=final_end,
+            section_role=section_role,
         )
 
     @staticmethod
@@ -562,6 +726,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         char_start: int,
         char_end: int,
         container_title: str | None = None,
+        section_role: SectionRole | None = None,
     ) -> StructuredSection:
         """Build one structured section from text slice offsets."""
         return StructuredSection(
@@ -573,6 +738,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             char_start=char_start,
             char_end=char_end,
             container_title=container_title,
+            section_role=section_role,
         )
 
     def _build_sections_from_headings(
@@ -582,12 +748,15 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         *,
         region_start: int = 0,
         container_title_by_start: dict[int, str] | None = None,
+        section_role_by_start: dict[int, SectionRole] | None = None,
     ) -> list[StructuredSection]:
         """Build contiguous sections from heading boundary starts."""
         ordered_headings = sorted(headings, key=lambda item: item.char_start)
         sections: list[StructuredSection] = []
         container_map = container_title_by_start or {}
+        section_role_map = section_role_by_start or {}
         current_container_title: str | None = None
+        current_section_role = self._SECTION_ROLE_MAIN_BODY
 
         first_heading_start = ordered_headings[0].char_start
         if first_heading_start > region_start:
@@ -598,6 +767,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                     raw_text=raw_text,
                     char_start=region_start,
                     char_end=first_heading_start,
+                    section_role=current_section_role,
                 )
             )
 
@@ -606,6 +776,8 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 # Carry the part/container context forward for following chapter sections
                 # until the next container boundary is encountered.
                 current_container_title = container_map[heading.char_start]
+            if heading.char_start in section_role_map:
+                current_section_role = section_role_map[heading.char_start]
 
             char_start = heading.char_start
             if heading_idx + 1 < len(ordered_headings):
@@ -622,9 +794,64 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                     char_start=char_start,
                     char_end=char_end,
                     container_title=current_container_title,
+                    section_role=current_section_role,
                 )
             )
 
         if not sections:
-            return [self._single_fallback_section(raw_text, char_start=region_start)]
+            return [
+                self._single_fallback_section(
+                    raw_text,
+                    char_start=region_start,
+                    section_role=self._SECTION_ROLE_MAIN_BODY,
+                )
+            ]
         return sections
+
+    def _build_section_role_by_start(
+        self,
+        *,
+        headings: list[HeadingCandidate],
+        language: LanguageCode,
+        raw_text_length: int,
+    ) -> dict[int, SectionRole]:
+        """Classify heading boundaries into region roles for downstream task consumption."""
+        if raw_text_length <= 0:
+            return {}
+
+        toc_markers = self.language_registry.get_toc_markers(language)
+        front_markers = self.language_registry.get_front_matter_markers(language)
+        appendix_markers = self.language_registry.get_appendix_markers(language)
+        back_markers = self.language_registry.get_back_matter_markers(language)
+        role_by_start: dict[int, SectionRole] = {}
+
+        for heading in sorted(headings, key=lambda item: item.char_start):
+            position_ratio = heading.char_start / raw_text_length
+            normalized_title = self._normalize_heading_title(heading.title)
+
+            if (
+                position_ratio <= self._FRONT_MATTER_EARLY_REGION_RATIO
+                and self._contains_heading_hint(normalized_title, toc_markers)
+            ):
+                role_by_start[heading.char_start] = self._SECTION_ROLE_TOC
+                continue
+            if (
+                position_ratio <= self._FRONT_MATTER_EARLY_REGION_RATIO
+                and self._contains_heading_hint(normalized_title, front_markers)
+            ):
+                role_by_start[heading.char_start] = self._SECTION_ROLE_FRONT_MATTER
+                continue
+            if (
+                position_ratio >= self._BACK_REGION_RATIO
+                and self._contains_heading_hint(normalized_title, appendix_markers)
+            ):
+                role_by_start[heading.char_start] = self._SECTION_ROLE_APPENDIX
+                continue
+            if (
+                position_ratio >= self._BACK_REGION_RATIO
+                and self._contains_heading_hint(normalized_title, back_markers)
+            ):
+                role_by_start[heading.char_start] = self._SECTION_ROLE_BACK_MATTER
+                continue
+            role_by_start[heading.char_start] = self._SECTION_ROLE_MAIN_BODY
+        return role_by_start

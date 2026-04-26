@@ -5,6 +5,18 @@ from typing import Pattern
 from language.language_code import LanguageCode
 
 
+def _ensure_all_language_entries(
+    marker_map: dict[LanguageCode, tuple[str, ...]],
+) -> dict[LanguageCode, tuple[str, ...]]:
+    """Ensure every non-UNKNOWN LanguageCode has one explicit marker entry."""
+    resolved: dict[LanguageCode, tuple[str, ...]] = {}
+    for language in LanguageCode:
+        if language == LanguageCode.UNKNOWN:
+            continue
+        resolved[language] = marker_map.get(language, tuple())
+    return resolved
+
+
 def _compile_numeric_heading_pattern(
     aliases: tuple[str, ...],
     number_pattern: str,
@@ -396,49 +408,373 @@ class DocumentStructureLanguageRegistry:
         weak_heading_signals=("บทที่", "ภาค", "ตอน", "บทนำ", "บทส่งท้าย", "ภาคผนวก"),
     )
 
-    _LATIN_FAMILY_LANGUAGES: tuple[LanguageCode, ...] = (
-        LanguageCode.FR,
-        LanguageCode.DE,
-        LanguageCode.ES,
-        LanguageCode.PT,
-        LanguageCode.IT,
-        LanguageCode.TR,
-        LanguageCode.NL,
-        LanguageCode.PL,
-        LanguageCode.ID,
-        LanguageCode.VI,
+    _TOC_MARKERS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = _ensure_all_language_entries(
+        {
+            LanguageCode.EN: (
+                "contents",
+                "table of contents",
+            ),
+            LanguageCode.ZH: (
+                "目录",
+                "目錄",
+                "章节目录",
+                "章節目錄",
+                "篇目",
+            ),
+            LanguageCode.JA: (
+                "目次",
+                "目錄",
+                "もくじ",
+            ),
+            LanguageCode.KO: (
+                "목차",
+            ),
+            LanguageCode.FR: (
+                "sommaire",
+                "table des matières",
+            ),
+            LanguageCode.DE: (
+                "inhalt",
+                "inhaltsverzeichnis",
+            ),
+            LanguageCode.ES: (
+                "contenido",
+                "índice",
+                "tabla de contenido",
+                "tabla de contenidos",
+            ),
+            LanguageCode.PT: (
+                "conteúdo",
+                "sumário",
+                "índice",
+            ),
+            LanguageCode.IT: (
+                "indice",
+                "sommario",
+            ),
+            LanguageCode.RU: (
+                "содержание",
+                "оглавление",
+            ),
+            LanguageCode.AR: (
+                "الفهرس",
+                "جدول المحتويات",
+                "المحتويات",
+            ),
+            LanguageCode.HI: (
+                "विषय सूची",
+                "अनुक्रमणिका",
+            ),
+            LanguageCode.TR: (
+                "içindekiler",
+            ),
+            LanguageCode.NL: (
+                "inhoudsopgave",
+                "inhoud",
+            ),
+            LanguageCode.PL: (
+                "spis treści",
+            ),
+            LanguageCode.UK: (
+                "зміст",
+            ),
+            LanguageCode.ID: (
+                "daftar isi",
+            ),
+            LanguageCode.VI: (
+                "mục lục",
+            ),
+            LanguageCode.TH: (
+                "สารบัญ",
+            ),
+        }
     )
-
-    _TOC_MARKERS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = {
-        LanguageCode.EN: (
-            "contents",
-            "table of contents",
-        ),
-        LanguageCode.ZH: (
-            "目录",
-            "目錄",
-        ),
-    }
-    _FRONT_MATTER_MARKERS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = {
-        LanguageCode.EN: (
-            "preface",
-            "introduction",
-            "prologue",
-            "epilogue",
-            "appendix",
-        ),
-        LanguageCode.ZH: (
-            "前言",
-            "序言",
-            "序",
-            "引言",
-            "序章",
-            "终章",
-            "終章",
-            "附录",
-            "附錄",
-        ),
-    }
+    _FRONT_MATTER_MARKERS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = (
+        _ensure_all_language_entries(
+            {
+                LanguageCode.EN: (
+                    "preface",
+                    "foreword",
+                    "introduction",
+                    "prologue",
+                ),
+                LanguageCode.ZH: (
+                    "前言",
+                    "序",
+                    "序言",
+                    "导言",
+                    "導言",
+                    "引言",
+                    "序章",
+                ),
+                LanguageCode.JA: (
+                    "まえがき",
+                    "序文",
+                    "序",
+                    "はじめに",
+                    "プロローグ",
+                    "序章",
+                ),
+                LanguageCode.KO: (
+                    "머리말",
+                    "서문",
+                    "서론",
+                    "프롤로그",
+                ),
+                LanguageCode.FR: (
+                    "préface",
+                    "avant-propos",
+                    "introduction",
+                    "prologue",
+                ),
+                LanguageCode.DE: (
+                    "vorwort",
+                    "einleitung",
+                    "prolog",
+                ),
+                LanguageCode.ES: (
+                    "prólogo",
+                    "prefacio",
+                    "introducción",
+                ),
+                LanguageCode.PT: (
+                    "prefácio",
+                    "prólogo",
+                    "introdução",
+                ),
+                LanguageCode.IT: (
+                    "prefazione",
+                    "prologo",
+                    "introduzione",
+                ),
+                LanguageCode.RU: (
+                    "предисловие",
+                    "введение",
+                    "пролог",
+                ),
+                LanguageCode.AR: (
+                    "مقدمة",
+                    "تمهيد",
+                    "مدخل",
+                    "استهلال",
+                ),
+                LanguageCode.HI: (
+                    "प्रस्तावना",
+                    "भूमिका",
+                    "परिचय",
+                    "प्राक्कथन",
+                ),
+                LanguageCode.TR: (
+                    "önsöz",
+                    "giriş",
+                    "prolog",
+                ),
+                LanguageCode.NL: (
+                    "voorwoord",
+                    "inleiding",
+                    "proloog",
+                ),
+                LanguageCode.PL: (
+                    "przedmowa",
+                    "wstęp",
+                    "prolog",
+                ),
+                LanguageCode.UK: (
+                    "передмова",
+                    "вступ",
+                    "пролог",
+                ),
+                LanguageCode.ID: (
+                    "kata pengantar",
+                    "pendahuluan",
+                    "prolog",
+                ),
+                LanguageCode.VI: (
+                    "lời nói đầu",
+                    "lời tựa",
+                    "giới thiệu",
+                    "mở đầu",
+                ),
+                LanguageCode.TH: (
+                    "คำนำ",
+                    "บทนำ",
+                    "เกริ่นนำ",
+                ),
+            }
+        )
+    )
+    _APPENDIX_MARKERS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = (
+        _ensure_all_language_entries(
+            {
+                LanguageCode.EN: (
+                    "appendix",
+                    "appendices",
+                ),
+                LanguageCode.ZH: (
+                    "附录",
+                    "附錄",
+                ),
+                LanguageCode.JA: (
+                    "付録",
+                    "附録",
+                    "補遺",
+                ),
+                LanguageCode.KO: (
+                    "부록",
+                    "별첨",
+                ),
+                LanguageCode.FR: (
+                    "annexe",
+                    "annexes",
+                ),
+                LanguageCode.DE: (
+                    "anhang",
+                    "anhänge",
+                ),
+                LanguageCode.ES: (
+                    "apéndice",
+                    "anexo",
+                    "anexos",
+                ),
+                LanguageCode.PT: (
+                    "apêndice",
+                    "anexo",
+                    "anexos",
+                ),
+                LanguageCode.IT: (
+                    "appendice",
+                    "appendici",
+                    "allegato",
+                ),
+                LanguageCode.RU: (
+                    "приложение",
+                    "приложения",
+                ),
+                LanguageCode.AR: (
+                    "ملحق",
+                    "ملاحق",
+                ),
+                LanguageCode.HI: (
+                    "परिशिष्ट",
+                    "परिशिष्टें",
+                ),
+                LanguageCode.TR: (
+                    "ek",
+                    "ekler",
+                ),
+                LanguageCode.NL: (
+                    "bijlage",
+                    "bijlagen",
+                ),
+                LanguageCode.PL: (
+                    "aneks",
+                    "załącznik",
+                    "załączniki",
+                ),
+                LanguageCode.UK: (
+                    "додаток",
+                    "додатки",
+                ),
+                LanguageCode.ID: (
+                    "lampiran",
+                ),
+                LanguageCode.VI: (
+                    "phụ lục",
+                ),
+                LanguageCode.TH: (
+                    "ภาคผนวก",
+                ),
+            }
+        )
+    )
+    _BACK_MATTER_MARKERS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = (
+        _ensure_all_language_entries(
+            {
+                LanguageCode.EN: (
+                    "afterword",
+                    "epilogue",
+                ),
+                LanguageCode.ZH: (
+                    "后记",
+                    "後記",
+                    "跋",
+                    "终章",
+                    "終章",
+                ),
+                LanguageCode.JA: (
+                    "あとがき",
+                    "後書き",
+                    "エピローグ",
+                ),
+                LanguageCode.KO: (
+                    "후기",
+                    "맺음말",
+                    "에필로그",
+                ),
+                LanguageCode.FR: (
+                    "postface",
+                    "épilogue",
+                ),
+                LanguageCode.DE: (
+                    "nachwort",
+                    "epilog",
+                ),
+                LanguageCode.ES: (
+                    "epílogo",
+                    "posfacio",
+                ),
+                LanguageCode.PT: (
+                    "epílogo",
+                    "posfácio",
+                ),
+                LanguageCode.IT: (
+                    "epilogo",
+                    "postfazione",
+                ),
+                LanguageCode.RU: (
+                    "послесловие",
+                    "эпилог",
+                ),
+                LanguageCode.AR: (
+                    "خاتمة",
+                    "كلمة ختامية",
+                ),
+                LanguageCode.HI: (
+                    "उपसंहार",
+                    "पश्चलेख",
+                ),
+                LanguageCode.TR: (
+                    "sonsöz",
+                    "epilog",
+                ),
+                LanguageCode.NL: (
+                    "nawoord",
+                    "epiloog",
+                ),
+                LanguageCode.PL: (
+                    "posłowie",
+                    "epilog",
+                ),
+                LanguageCode.UK: (
+                    "післямова",
+                    "епілог",
+                ),
+                LanguageCode.ID: (
+                    "epilog",
+                    "penutup",
+                ),
+                LanguageCode.VI: (
+                    "lời bạt",
+                    "hậu ký",
+                    "kết từ",
+                ),
+                LanguageCode.TH: (
+                    "บทส่งท้าย",
+                    "ปัจฉิมลิขิต",
+                ),
+            }
+        )
+    )
     _BODY_START_HEADING_HINTS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = {
         LanguageCode.EN: (
             "part",
@@ -677,6 +1013,22 @@ class DocumentStructureLanguageRegistry:
         )
 
     @classmethod
+    def get_appendix_markers(cls, language: LanguageCode) -> tuple[str, ...]:
+        """Return appendix markers used for region-aware section-role classification."""
+        return cls._resolve_text_markers(
+            language=language,
+            marker_map=cls._APPENDIX_MARKERS_BY_LANGUAGE,
+        )
+
+    @classmethod
+    def get_back_matter_markers(cls, language: LanguageCode) -> tuple[str, ...]:
+        """Return back-matter markers used for region-aware section-role classification."""
+        return cls._resolve_text_markers(
+            language=language,
+            marker_map=cls._BACK_MATTER_MARKERS_BY_LANGUAGE,
+        )
+
+    @classmethod
     def get_body_start_heading_hints(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return heading hints that help identify TOC heading lists and body restarts."""
         return cls._resolve_text_markers(
@@ -708,8 +1060,4 @@ class DocumentStructureLanguageRegistry:
         marker_map: dict[LanguageCode, tuple[str, ...]],
     ) -> tuple[str, ...]:
         """Resolve language text-marker tuples with conservative fallback behavior."""
-        if language in marker_map:
-            return marker_map[language]
-        if language in cls._LATIN_FAMILY_LANGUAGES:
-            return marker_map.get(LanguageCode.EN, tuple())
-        return tuple()
+        return marker_map.get(language, tuple())

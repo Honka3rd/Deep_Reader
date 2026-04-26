@@ -20,6 +20,7 @@ from document_structure.section_splitter_dto import (
     HeadingPrecedenceResult,
     LineInfo,
 )
+from document_structure.section_role import SectionRole
 from document_structure.llm_section_splitter import LLMSectionSplitter
 from document_structure.section_splitter_selector import (
     SectionSplitterMode,
@@ -47,6 +48,7 @@ __all__ = [
     "LineInfo",
     "HeadingCandidate",
     "HeadingPrecedenceResult",
+    "SectionRole",
     "StructuredDocumentBuilder",
     "StructuredDocumentStore",
 ]
