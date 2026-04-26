@@ -311,17 +311,26 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         boundary_window_chars=config.task_unit_semantic_boundary_window_chars,
         context_window_chars=config.task_unit_semantic_context_window_chars,
         score_weight=config.task_unit_semantic_score_weight,
+        embedding_batch_size=config.task_unit_semantic_embedding_batch_size,
         embedding_cache_size=config.task_unit_semantic_embedding_cache_size,
     )
     semantic_safe_task_unit_split_resolver = providers.Singleton(
         HeuristicTaskUnitSplitResolver,
         split_mode=TaskUnitSplitMode.SEMANTIC_SAFE,
         semantic_boundary_scorer=embedding_semantic_boundary_scorer,
+        semantic_top_k_candidates=config.task_unit_semantic_top_k_candidates,
+        semantic_max_scoring_per_window=config.task_unit_semantic_max_scoring_per_window,
+        semantic_max_scoring_per_section=config.task_unit_semantic_max_scoring_per_section,
+        semantic_scoring_debug_log=config.task_unit_semantic_scoring_debug_log,
     )
     progressive_task_unit_split_resolver = providers.Singleton(
         HeuristicTaskUnitSplitResolver,
         split_mode=TaskUnitSplitMode.PROGRESSIVE,
         semantic_boundary_scorer=embedding_semantic_boundary_scorer,
+        semantic_top_k_candidates=config.task_unit_semantic_top_k_candidates,
+        semantic_max_scoring_per_window=config.task_unit_semantic_max_scoring_per_window,
+        semantic_max_scoring_per_section=config.task_unit_semantic_max_scoring_per_section,
+        semantic_scoring_debug_log=config.task_unit_semantic_scoring_debug_log,
     )
     llm_task_unit_split_resolver = providers.Singleton(
         LLMTaskUnitSplitResolver,
@@ -452,7 +461,22 @@ Returns:
                 "task_unit_semantic_context_window_chars": (
                     app_config.task_unit_semantic_context_window_chars
                 ),
+                "task_unit_semantic_top_k_candidates": (
+                    app_config.task_unit_semantic_top_k_candidates
+                ),
+                "task_unit_semantic_max_scoring_per_window": (
+                    app_config.task_unit_semantic_max_scoring_per_window
+                ),
+                "task_unit_semantic_max_scoring_per_section": (
+                    app_config.task_unit_semantic_max_scoring_per_section
+                ),
                 "task_unit_semantic_score_weight": app_config.task_unit_semantic_score_weight,
+                "task_unit_semantic_scoring_debug_log": (
+                    app_config.task_unit_semantic_scoring_debug_log
+                ),
+                "task_unit_semantic_embedding_batch_size": (
+                    app_config.task_unit_semantic_embedding_batch_size
+                ),
                 "task_unit_semantic_embedding_cache_size": (
                     app_config.task_unit_semantic_embedding_cache_size
                 ),

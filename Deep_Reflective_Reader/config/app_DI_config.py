@@ -103,9 +103,24 @@ class AppDIConfig:
     # Character window size for wider context semantic snippets around candidate boundary.
     # Introduced to estimate semantic shift across boundary more robustly than punctuation only.
     task_unit_semantic_context_window_chars: int = 700
+    # Maximum top-ranked heuristic boundary candidates reranked with semantic scoring per window.
+    # Introduced to avoid scoring every boundary candidate and cap semantic rerank overhead.
+    task_unit_semantic_top_k_candidates: int = 3
+    # Maximum semantic scoring attempts per split window.
+    # Introduced to guarantee bounded semantic scorer calls under dense candidate windows.
+    task_unit_semantic_max_scoring_per_window: int = 3
+    # Maximum semantic scoring attempts per section split run.
+    # Introduced to keep task-unit split latency bounded on very long sections.
+    task_unit_semantic_max_scoring_per_section: int = 12
     # Weight multiplier for embedding-based semantic boundary score added to heuristic score.
     # Introduced to tune semantic influence without overriding deterministic structural rules.
     task_unit_semantic_score_weight: float = 1.0
+    # Toggle compact semantic-scoring stats logs in heuristic split resolver.
+    # Introduced for observability of rerank participation and budget fallbacks.
+    task_unit_semantic_scoring_debug_log: bool = True
+    # Batch size for semantic scorer embedding prefill.
+    # Introduced to reduce per-snippet network round trips when warming semantic cache.
+    task_unit_semantic_embedding_batch_size: int = 24
     # Maximum cached snippet embeddings in boundary scorer.
     # Introduced to reduce repeated embedding calls while bounding in-memory cache size.
     task_unit_semantic_embedding_cache_size: int = 256

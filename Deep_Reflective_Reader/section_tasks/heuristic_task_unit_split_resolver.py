@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from typing import Protocol
 
 from document_structure.structured_document import StructuredSection
@@ -19,6 +20,25 @@ class SemanticBoundaryScorer(Protocol):
         """Return semantic preference score for one candidate split boundary."""
         raise NotImplementedError
 
+    def score_boundaries(
+        self,
+        *,
+        text: str,
+        boundary_indices: list[int],
+    ) -> dict[int, float]:
+        """Return semantic scores for multiple boundaries (optional batch path)."""
+        raise NotImplementedError
+
+
+@dataclass
+class _SemanticRerankContext:
+    """Per-section semantic rerank runtime state."""
+
+    remaining_section_budget: int
+    semantic_windows_reranked: int = 0
+    semantic_candidates_scored: int = 0
+    budget_fallback_hit_count: int = 0
+
 
 class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
     """Low-cost section split resolver with semantic-safe/progressive modes."""
@@ -31,10 +51,22 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         self,
         split_mode: TaskUnitSplitMode | str = TaskUnitSplitMode.SEMANTIC_SAFE,
         semantic_boundary_scorer: SemanticBoundaryScorer | None = None,
+        semantic_top_k_candidates: int = 3,
+        semantic_max_scoring_per_window: int = 3,
+        semantic_max_scoring_per_section: int = 12,
+        semantic_scoring_debug_log: bool = True,
     ):
         self.split_mode = TaskUnitSplitMode.resolve(split_mode)
         # Extension hook: can rank candidate boundaries by semantic cohesion.
         self.semantic_boundary_scorer = semantic_boundary_scorer
+        self.semantic_top_k_candidates = max(1, int(semantic_top_k_candidates))
+        self.semantic_max_scoring_per_window = max(
+            1, int(semantic_max_scoring_per_window)
+        )
+        self.semantic_max_scoring_per_section = max(
+            1, int(semantic_max_scoring_per_section)
+        )
+        self.semantic_scoring_debug_log = bool(semantic_scoring_debug_log)
 
     def split_section(
         self,
@@ -51,18 +83,26 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
 
         min_chars = max(1, int(task_unit_min_chars))
         max_chars = max(min_chars, int(task_unit_max_chars))
+        semantic_context = self._build_semantic_context()
         chunks = self._split_text(
             text=text,
             min_chars=min_chars,
             max_chars=max_chars,
+            semantic_context=semantic_context,
         )
         chunks = self._stabilize_trailing_short_chunk(
             chunks=chunks,
             min_chars=min_chars,
             max_chars=max_chars,
+            semantic_context=semantic_context,
         )
         if not chunks:
             return []
+
+        self._log_semantic_context(
+            section_id=section.section_id,
+            semantic_context=semantic_context,
+        )
 
         base_title = self._normalize_optional_text(section.title)
         container_title = self._normalize_optional_text(section.container_title)
@@ -96,18 +136,27 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
             )
         return units
 
-    def _split_text(self, *, text: str, min_chars: int, max_chars: int) -> list[str]:
+    def _split_text(
+        self,
+        *,
+        text: str,
+        min_chars: int,
+        max_chars: int,
+        semantic_context: _SemanticRerankContext | None = None,
+    ) -> list[str]:
         """Route to target heuristic split mode."""
         if self.split_mode == TaskUnitSplitMode.PROGRESSIVE:
             return self._split_text_progressive(
                 text=text,
                 min_chars=min_chars,
                 max_chars=max_chars,
+                semantic_context=semantic_context,
             )
         return self._split_text_semantic_safe(
             text=text,
             min_chars=min_chars,
             max_chars=max_chars,
+            semantic_context=semantic_context,
         )
 
     def _split_text_semantic_safe(
@@ -116,6 +165,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         text: str,
         min_chars: int,
         max_chars: int,
+        semantic_context: _SemanticRerankContext | None = None,
     ) -> list[str]:
         """Split with paragraph-first strategy and semantic boundary search."""
         paragraphs = [
@@ -128,6 +178,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                 text=text,
                 min_chars=min_chars,
                 max_chars=max_chars,
+                semantic_context=semantic_context,
             )
 
         chunks: list[str] = []
@@ -151,6 +202,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                     text=paragraph,
                     min_chars=min_chars,
                     max_chars=max_chars,
+                    semantic_context=semantic_context,
                 )
             )
 
@@ -164,6 +216,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         text: str,
         min_chars: int,
         max_chars: int,
+        semantic_context: _SemanticRerankContext | None = None,
     ) -> list[str]:
         """Split by target windows but search semantic-safe cut points near boundary."""
         if not text.strip():
@@ -193,6 +246,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                 lower_bound=lower_bound,
                 upper_bound=max_cut,
                 ideal_cut=ideal_cut,
+                semantic_context=semantic_context,
             )
             if cut <= cursor:
                 cut = min(text_length, cursor + max_chars)
@@ -211,6 +265,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         lower_bound: int,
         upper_bound: int,
         ideal_cut: int,
+        semantic_context: _SemanticRerankContext | None = None,
     ) -> int:
         """Pick best cut in boundary window, preferring semantic boundaries."""
         safe_lower = max(1, int(lower_bound))
@@ -225,21 +280,32 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         if not candidate_indices:
             return min(max(ideal_cut, safe_lower), safe_upper)
 
-        best_index = candidate_indices[0]
-        best_score = float("-inf")
-        for index in candidate_indices:
-            score = self._score_cut_candidate(
+        heuristic_scores = {
+            index: self._score_cut_candidate_base(
                 text=text,
                 index=index,
                 ideal_cut=ideal_cut,
             )
+            for index in candidate_indices
+        }
+        semantic_scores = self._score_semantic_top_candidates(
+            text=text,
+            candidate_indices=candidate_indices,
+            heuristic_scores=heuristic_scores,
+            semantic_context=semantic_context,
+        )
+
+        best_index = candidate_indices[0]
+        best_score = float("-inf")
+        for index in candidate_indices:
+            score = heuristic_scores[index] + semantic_scores.get(index, 0.0)
             if score > best_score:
                 best_score = score
                 best_index = index
         return best_index
 
-    def _score_cut_candidate(self, *, text: str, index: int, ideal_cut: int) -> float:
-        """Score one candidate boundary by structure + optional semantic signal."""
+    def _score_cut_candidate_base(self, *, text: str, index: int, ideal_cut: int) -> float:
+        """Score one candidate boundary by structural heuristic signal only."""
         score = -abs(index - ideal_cut) / 8.0
         if index >= 2 and text[index - 2:index] == "\n\n":
             score += 4.0
@@ -248,19 +314,98 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
             score += 2.0
         elif prev_char in self._SECONDARY_BOUNDARY_CHARS:
             score += 0.5
+        return score
 
-        if self.semantic_boundary_scorer is not None:
-            try:
-                score += float(
-                    self.semantic_boundary_scorer.score_boundary(
+    def _score_semantic_top_candidates(
+        self,
+        *,
+        text: str,
+        candidate_indices: list[int],
+        heuristic_scores: dict[int, float],
+        semantic_context: _SemanticRerankContext | None,
+    ) -> dict[int, float]:
+        """Rerank only top heuristic candidates with bounded semantic scoring budget."""
+        scorer = self.semantic_boundary_scorer
+        if scorer is None or semantic_context is None:
+            return {}
+
+        if semantic_context.remaining_section_budget <= 0:
+            semantic_context.budget_fallback_hit_count += 1
+            return {}
+
+        ranked_by_heuristic = sorted(
+            candidate_indices,
+            key=lambda index: heuristic_scores[index],
+            reverse=True,
+        )
+        rerank_cap = min(
+            len(ranked_by_heuristic),
+            self.semantic_top_k_candidates,
+            self.semantic_max_scoring_per_window,
+            semantic_context.remaining_section_budget,
+        )
+        if rerank_cap <= 0:
+            semantic_context.budget_fallback_hit_count += 1
+            return {}
+
+        rerank_indices = ranked_by_heuristic[:rerank_cap]
+        semantic_context.remaining_section_budget -= rerank_cap
+        semantic_context.semantic_windows_reranked += 1
+
+        try:
+            if hasattr(scorer, "score_boundaries"):
+                scored = scorer.score_boundaries(
+                    text=text,
+                    boundary_indices=rerank_indices,
+                )
+            else:
+                scored = {
+                    index: scorer.score_boundary(
                         text=text,
                         boundary_index=index,
                     )
-                )
-            except Exception:
-                # Keep split deterministic even if optional scorer is unstable.
-                pass
-        return score
+                    for index in rerank_indices
+                }
+            semantic_context.semantic_candidates_scored += len(scored)
+            return {
+                index: float(value)
+                for index, value in scored.items()
+                if index in rerank_indices
+            }
+        except Exception:
+            # Keep split deterministic even if optional scorer is unstable.
+            return {}
+
+    def _build_semantic_context(self) -> _SemanticRerankContext | None:
+        """Build per-section semantic rerank budget state when scorer is enabled."""
+        if self.semantic_boundary_scorer is None:
+            return None
+        return _SemanticRerankContext(
+            remaining_section_budget=self.semantic_max_scoring_per_section,
+        )
+
+    def _log_semantic_context(
+        self,
+        *,
+        section_id: str,
+        semantic_context: _SemanticRerankContext | None,
+    ) -> None:
+        """Print compact semantic rerank stats for observability."""
+        if (
+            not self.semantic_scoring_debug_log
+            or semantic_context is None
+        ):
+            return
+
+        print(
+            "HeuristicTaskUnitSplitResolver#semantic_rerank:",
+            f"mode={self.split_mode.value}",
+            f"section_id={section_id}",
+            f"semantic_windows={semantic_context.semantic_windows_reranked}",
+            f"semantic_candidates_scored={semantic_context.semantic_candidates_scored}",
+            f"remaining_section_budget={semantic_context.remaining_section_budget}",
+            f"budget_fallback_hit_count={semantic_context.budget_fallback_hit_count}",
+        )
 
     def _is_boundary_candidate(self, *, text: str, index: int) -> bool:
         """Return True when index is likely safe split boundary."""
@@ -281,6 +426,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         chunks: list[str],
         min_chars: int,
         max_chars: int,
+        semantic_context: _SemanticRerankContext | None = None,
     ) -> list[str]:
         """Avoid too-short tail chunks that can degrade downstream task quality."""
         normalized_chunks = [chunk.strip() for chunk in chunks if chunk.strip()]
@@ -304,6 +450,7 @@ class HeuristicTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
                 lower_bound=min_chars,
                 upper_bound=max(len(merged) - min_chars, min_chars + 1),
                 ideal_cut=len(merged) // 2,
+                semantic_context=semantic_context,
             )
             if rebalance <= 0 or rebalance >= len(merged):
                 normalized_chunks[-2] = merged
