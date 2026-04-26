@@ -11,6 +11,9 @@ from section_tasks.document_task_layout import (
     TaskUnitDTO,
 )
 from section_tasks.quiz_question import QuizQuestion
+from section_tasks.reparse_document_structure_result import (
+    ReparseDocumentStructureResult,
+)
 from section_tasks.section_quiz_task_prompt_builder import (
     SectionQuizTaskPromptBuilder,
 )
@@ -52,6 +55,7 @@ __all__ = [
     "SectionQuizTaskPromptBuilder",
     "ChapterQuizTaskPromptBuilder",
     "QuizQuestion",
+    "ReparseDocumentStructureResult",
     "TaskUnit",
     "TaskUnitResolver",
     "TopicGuidanceRegistry",

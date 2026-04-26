@@ -281,14 +281,45 @@ class DocumentPreparationPipeline:
                 language=language_code,
                 parser_mode=parser_mode,
             )
-            self.structured_document_store.save(
+            if (
+                parser_mode == SectionSplitterMode.LLM_ENHANCED
+                and structured_document.structure_error_code is not None
+            ):
+                assets.errors.append(
+                    "prepare_structured_document_llm_enhanced_rejected:"
+                    f"{structured_document.structure_error_code}"
+                )
+                return False, None
+
+            self._save_structured_document_atomically(
                 document=structured_document,
-                target=storage_config,
+                storage_config=storage_config,
             )
             return True, structured_document_path
         except Exception as error:
             assets.errors.append(f"prepare_structured_document_failed:{error}")
             return False, None
+
+    def _save_structured_document_atomically(
+        self,
+        *,
+        document,
+        storage_config: StructuredDocumentStorageConfig,
+    ) -> None:
+        """Atomically replace structured artifact to prevent half-written corruption."""
+        target_path = Path(storage_config.get_raw_document_path())
+        temp_path = target_path.with_suffix(f"{target_path.suffix}.tmp")
+        try:
+            self.structured_document_store.save(document=document, target=str(temp_path))
+            # Read-back validation before replacing primary artifact path.
+            self.structured_document_store.load(str(temp_path))
+            temp_path.replace(target_path)
+        finally:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
 
     def _prepare_faiss(
         self,

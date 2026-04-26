@@ -9,12 +9,19 @@ from api_schemas import (
     PrepareDocumentResponse,
     AskDocumentRequest,
     AskDocumentResponse,
+    DocumentTaskLayoutResponse,
+    EnhancedParseRecommendationResponse,
+    GetDocumentTaskLayoutRequest,
     QuizQuestionResponse,
+    ReparseDocumentStructureRequest,
+    ReparseDocumentStructureResponse,
+    SectionTaskLayoutResponse,
     SectionQuizResponse,
     SectionTaskRequest,
     SectionTaskResponse,
     SummarizeChapterRequest,
     SummarizeChapterResponse,
+    TaskUnitMetadataResponse,
     StatusResponse,
 )
 
@@ -43,6 +50,27 @@ def _resolve_section_task_failure_status(reason: str) -> int:
     if "not found" in lowered:
         return 404
     return 400
+
+
+def _resolve_reparse_failure_status(error: str) -> int:
+    """Convert reparse failure reason into HTTP status code."""
+    normalized_error = error.strip() or "reparse failed"
+    lowered = normalized_error.lower()
+
+    status_match = re.search(r"status=(\d{3})", normalized_error)
+    if status_match is not None:
+        status_code = int(status_match.group(1))
+        if 400 <= status_code <= 599:
+            return status_code
+
+    if (
+        "bad_request" in lowered
+        or "cannot be empty" in lowered
+        or "unsupported" in lowered
+        or "unknown parser_mode" in lowered
+    ):
+        return 400
+    return 500
 
 # ---------------------------
 # Health Check
@@ -239,6 +267,114 @@ def summarize_document_chapter(
             success=False,
             result=None,
             reason=result.reason,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/documents/task-layout", response_model=DocumentTaskLayoutResponse)
+def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
+    """Read current effective document-task layout snapshot."""
+    try:
+        layout = section_task_coordinator.get_document_task_layout(
+            doc_name=request.doc_name,
+        )
+        task_units = [
+            TaskUnitMetadataResponse(
+                unit_id=task_unit.unit_id,
+                title=task_unit.title,
+                container_title=task_unit.container_title,
+                source_section_ids=list(task_unit.source_section_ids),
+                is_fallback_generated=task_unit.is_fallback_generated,
+            )
+            for task_unit in layout.task_units
+        ]
+        sections = [
+            SectionTaskLayoutResponse(
+                section_id=section.section_id,
+                title=section.title,
+                container_title=section.container_title,
+                task_mode=section.task_mode.value,
+                task_units=[
+                    TaskUnitMetadataResponse(
+                        unit_id=task_unit.unit_id,
+                        title=task_unit.title,
+                        container_title=task_unit.container_title,
+                        source_section_ids=list(task_unit.source_section_ids),
+                        is_fallback_generated=task_unit.is_fallback_generated,
+                    )
+                    for task_unit in section.task_units
+                ],
+            )
+            for section in layout.sections
+        ]
+        recommendation = None
+        if layout.enhanced_parse_recommendation is not None:
+            recommendation = EnhancedParseRecommendationResponse(
+                should_recommend=layout.enhanced_parse_recommendation.should_recommend,
+                score=layout.enhanced_parse_recommendation.score,
+                reasons=list(layout.enhanced_parse_recommendation.reasons),
+                metrics=dict(layout.enhanced_parse_recommendation.metrics),
+            )
+
+        return DocumentTaskLayoutResponse(
+            document_id=layout.document_id,
+            title=layout.title,
+            language=layout.language,
+            sections=sections,
+            task_units=task_units,
+            enhanced_parse_recommendation=recommendation,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/documents/reparse-structure", response_model=ReparseDocumentStructureResponse)
+def reparse_document_structure(
+    request: ReparseDocumentStructureRequest,
+    response: Response,
+):
+    """Run explicit structure reparse action and replace single active source on success."""
+    normalized_parser_mode = request.parser_mode.strip().lower().replace("-", "_")
+    if normalized_parser_mode not in {"common", "llm_enhanced"}:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "unknown parser_mode. supported values: common, llm_enhanced"
+            ),
+        )
+
+    try:
+        result = section_task_coordinator.reparse_document_structure(
+            doc_name=request.doc_name,
+            parser_mode=normalized_parser_mode,
+        )
+        if result.success:
+            return ReparseDocumentStructureResponse(
+                success=True,
+                doc_name=result.doc_name,
+                parser_mode=result.parser_mode,
+                structured_document_path=result.structured_document_path,
+                error=None,
+                section_count=result.section_count,
+            )
+
+        response.status_code = _resolve_reparse_failure_status(result.error or "")
+        return ReparseDocumentStructureResponse(
+            success=False,
+            doc_name=result.doc_name,
+            parser_mode=result.parser_mode,
+            structured_document_path=result.structured_document_path,
+            error=result.error,
+            section_count=result.section_count,
         )
     except HTTPException:
         raise

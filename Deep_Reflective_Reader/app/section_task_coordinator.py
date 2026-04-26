@@ -7,6 +7,8 @@ from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
     EnhancedParseTriggerEvaluator,
 )
+from document_structure.section_split_plan import SectionParserMode
+from document_structure.section_splitter_selector import SectionSplitterMode
 from document_structure.structured_document import StructuredDocument
 from profile.document_profile import DocumentProfile
 from profile.document_profile_store import DocumentProfileStore
@@ -20,6 +22,7 @@ from section_tasks.document_task_layout import (
     TaskUnitDTO,
 )
 from section_tasks.quiz_question import QuizQuestion
+from section_tasks.reparse_document_structure_result import ReparseDocumentStructureResult
 from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit import TaskUnit
 from section_tasks.task_unit_resolver import TaskUnitResolver
@@ -258,6 +261,65 @@ class SectionTaskCoordinator:
                 reasons=list(trigger_decision.reasons),
                 metrics=dict(trigger_decision.metrics),
             ),
+        )
+
+    def reparse_document_structure(
+        self,
+        doc_name: str,
+        parser_mode: SectionParserMode | str,
+    ) -> ReparseDocumentStructureResult:
+        """Explicitly reparse one document structure with selected parser mode."""
+        normalized_doc_name = doc_name.strip()
+        if not normalized_doc_name:
+            return ReparseDocumentStructureResult.fail(
+                doc_name=doc_name,
+                parser_mode="common",
+                error="doc_name cannot be empty",
+            )
+
+        resolved_splitter_mode = SectionSplitterMode.resolve(str(parser_mode))
+        resolved_parser_mode = SectionParserMode.resolve(resolved_splitter_mode.value)
+        print(
+            "SectionTaskCoordinator#reparse_document_structure:",
+            f"doc_name={normalized_doc_name}",
+            f"parser_mode={resolved_parser_mode.value}",
+        )
+
+        preparation_result = self.document_preparation_pipeline.prepare_and_load(
+            doc_name=normalized_doc_name,
+            force_rebuild=True,
+            mode=PreparationMode.BASE,
+            structured_parser_mode=resolved_splitter_mode,
+        )
+
+        assets = preparation_result.assets
+        if (
+            assets.structured_document_ready
+            and assets.structured_document_path is not None
+            and preparation_result.structured_document is not None
+        ):
+            section_count = len(preparation_result.structured_document.sections)
+            return ReparseDocumentStructureResult.ok(
+                doc_name=normalized_doc_name,
+                parser_mode=resolved_parser_mode.value,
+                structured_document_path=assets.structured_document_path,
+                section_count=section_count,
+            )
+
+        error_detail = " | ".join(assets.errors).strip() or (
+            "reparse_document_structure_failed:structured_document_unavailable"
+        )
+        print(
+            "SectionTaskCoordinator#reparse_document_structure_failed:",
+            f"doc_name={normalized_doc_name}",
+            f"parser_mode={resolved_parser_mode.value}",
+            f"error={error_detail}",
+        )
+        return ReparseDocumentStructureResult.fail(
+            doc_name=normalized_doc_name,
+            parser_mode=resolved_parser_mode.value,
+            structured_document_path=assets.structured_document_path,
+            error=error_detail,
         )
 
     def _evaluate_enhanced_parse_trigger(

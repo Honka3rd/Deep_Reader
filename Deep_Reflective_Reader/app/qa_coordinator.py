@@ -7,10 +7,12 @@ from language.language_code import LanguageCode
 from language.language_profile_registry import LanguageProfileRegistry
 from llm.openai_llm_provider import OpenAIModelName
 from retrieval.faiss_index_bundle import FaissIndexBundle
+from document_structure.section_split_plan import SectionParserMode
 from question.qa_enums import AnswerLevel
 from question.standardized.standardized_question import StandardizedQuestion
 from section_tasks.document_task_layout import DocumentTaskLayout
 from section_tasks.quiz_question import QuizQuestion
+from section_tasks.reparse_document_structure_result import ReparseDocumentStructureResult
 from section_tasks.section_task_result import SectionTaskResult
 from session.reading_session import ReadingSession
 from session.session_manager import SessionUpdateResult
@@ -284,6 +286,17 @@ class QACoordinator:
     def get_document_task_layout(self, doc_name: str) -> DocumentTaskLayout:
         """Compatibility wrapper: delegate layout projection to SectionTaskCoordinator."""
         return self.section_task_coordinator.get_document_task_layout(doc_name=doc_name)
+
+    def reparse_document_structure(
+        self,
+        doc_name: str,
+        parser_mode: SectionParserMode | str,
+    ) -> ReparseDocumentStructureResult:
+        """Compatibility wrapper: delegate explicit structure reparse action."""
+        return self.section_task_coordinator.reparse_document_structure(
+            doc_name=doc_name,
+            parser_mode=parser_mode,
+        )
 
     @staticmethod
     def _resolve_answer_language(question: StandardizedQuestion) -> LanguageCode:

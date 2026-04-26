@@ -103,3 +103,70 @@ class SummarizeChapterResponse(BaseModel):
     success: bool
     result: str | None
     reason: str | None
+
+
+class GetDocumentTaskLayoutRequest(BaseModel):
+    """Request payload for document task-layout endpoint."""
+
+    doc_name: str = Field(..., description="Document name")
+
+
+class TaskUnitMetadataResponse(BaseModel):
+    """Task-unit metadata payload for frontend layout rendering."""
+
+    unit_id: str
+    title: str | None
+    container_title: str | None
+    source_section_ids: list[str]
+    is_fallback_generated: bool
+
+
+class SectionTaskLayoutResponse(BaseModel):
+    """Section layout response node with embedded task-unit metadata."""
+
+    section_id: str
+    title: str | None
+    container_title: str | None
+    task_mode: str
+    task_units: list[TaskUnitMetadataResponse]
+
+
+class EnhancedParseRecommendationResponse(BaseModel):
+    """Enhanced parser recommendation payload for layout consumers."""
+
+    should_recommend: bool
+    score: int
+    reasons: list[str]
+    metrics: dict[str, float | int]
+
+
+class DocumentTaskLayoutResponse(BaseModel):
+    """Response payload for reading current effective task-layout snapshot."""
+
+    document_id: str
+    title: str
+    language: str | None
+    sections: list[SectionTaskLayoutResponse]
+    task_units: list[TaskUnitMetadataResponse]
+    enhanced_parse_recommendation: EnhancedParseRecommendationResponse | None
+
+
+class ReparseDocumentStructureRequest(BaseModel):
+    """Request payload for explicit structure reparse action."""
+
+    doc_name: str = Field(..., description="Document name")
+    parser_mode: str = Field(
+        ...,
+        description="Parser mode: common | llm_enhanced",
+    )
+
+
+class ReparseDocumentStructureResponse(BaseModel):
+    """Response payload for structure reparse action."""
+
+    success: bool
+    doc_name: str
+    parser_mode: str
+    structured_document_path: str | None
+    error: str | None
+    section_count: int | None
