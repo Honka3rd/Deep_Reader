@@ -41,6 +41,7 @@ class DocumentTaskLayoutSectionDTO:
     section_id: str
     title: str | None
     container_title: str | None
+    section_role: str | None
     task_mode: SectionTaskMode
     task_units: list[TaskUnitDTO]
 
@@ -50,6 +51,7 @@ class DocumentTaskLayoutSectionDTO:
             "section_id": self.section_id,
             "title": self.title,
             "container_title": self.container_title,
+            "section_role": self.section_role,
             "task_mode": self.task_mode.value,
             "task_units": [task_unit.to_dict() for task_unit in self.task_units],
         }

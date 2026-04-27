@@ -4,6 +4,7 @@ from document_structure.abstract_section_splitter import AbstractSectionSplitter
 from document_structure.document_structure_language_registry import (
     DocumentStructureLanguageRegistry,
 )
+from document_structure.heading_normalization.heading_normalizer import HeadingNormalizer
 from document_structure.section_splitter_dto import (
     HeadingCandidate,
     HeadingPrecedenceResult,
@@ -68,9 +69,11 @@ class CommonSectionSplitter(AbstractSectionSplitter):
     def __init__(
         self,
         language_registry: DocumentStructureLanguageRegistry | None = None,
+        heading_normalizer: HeadingNormalizer | None = None,
     ):
         """Initialize splitter with language-rule registry."""
         self.language_registry = language_registry or DocumentStructureLanguageRegistry()
+        self.heading_normalizer = heading_normalizer or HeadingNormalizer()
 
     def split(
         self,
@@ -197,6 +200,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 toc_marker_index=toc_marker_index,
                 strong_patterns=strong_patterns,
                 body_start_heading_hints=body_start_heading_hints,
+                language=language,
             )
             if toc_body_start is not None:
                 return toc_body_start
@@ -217,6 +221,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 body_start_heading_hints=body_start_heading_hints,
                 front_matter_markers=front_matter_markers,
                 toc_markers=toc_markers,
+                language=language,
             )
             if front_body_start is not None:
                 return front_body_start
@@ -231,6 +236,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         toc_marker_index: int,
         strong_patterns: tuple[re.Pattern[str], ...],
         body_start_heading_hints: tuple[str, ...],
+        language: LanguageCode,
     ) -> int | None:
         """Find main-body start by matching TOC heading list and duplicated body headings."""
         toc_window_end = min(len(line_infos), toc_marker_index + 1 + self._TOC_SCAN_LINES)
@@ -246,6 +252,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             line_infos[toc_marker_index + 1:toc_window_end],
             strong_patterns,
             body_start_heading_hints,
+            language,
         )
         if len(toc_heading_titles) < self._TOC_MIN_HEADING_COUNT:
             return None
@@ -256,10 +263,17 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             stripped = line_infos[idx].stripped
             if not stripped:
                 continue
-            if not self._is_strong_heading(stripped, strong_patterns):
+            if not self._is_strong_heading(
+                stripped,
+                strong_patterns,
+                language,
+            ):
                 continue
 
-            normalized_title = self._normalize_heading_title(stripped)
+            normalized_title = self._normalize_heading_for_comparison(
+                stripped,
+                language,
+            )
             if (
                 body_start_heading_hints
                 and not self._contains_heading_hint(normalized_title, body_start_heading_hints)
@@ -276,6 +290,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 line_infos=line_infos,
                 heading_index=idx,
                 strong_patterns=strong_patterns,
+                language=language,
             ):
                 return line_infos[idx].char_start
         return None
@@ -289,6 +304,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         body_start_heading_hints: tuple[str, ...],
         front_matter_markers: tuple[str, ...],
         toc_markers: tuple[str, ...],
+        language: LanguageCode,
     ) -> int | None:
         """Find first likely real body heading after front-matter area."""
         normalized_front_markers = tuple(
@@ -306,10 +322,17 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             stripped = line_infos[idx].stripped
             if not stripped:
                 continue
-            if not self._is_strong_heading(stripped, strong_patterns):
+            if not self._is_strong_heading(
+                stripped,
+                strong_patterns,
+                language,
+            ):
                 continue
 
-            normalized_title = self._normalize_heading_title(stripped)
+            normalized_title = self._normalize_heading_for_comparison(
+                stripped,
+                language,
+            )
             if (
                 body_start_heading_hints
                 and not self._contains_heading_hint(normalized_title, body_start_heading_hints)
@@ -323,6 +346,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 line_infos=line_infos,
                 heading_index=idx,
                 strong_patterns=strong_patterns,
+                language=language,
             ):
                 return line_infos[idx].char_start
         return None
@@ -516,19 +540,25 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             for token in suffix_tokens
         )
 
-    @staticmethod
     def _is_strong_heading(
+        self,
         stripped_text: str,
         strong_patterns: tuple[re.Pattern[str], ...],
+        language: LanguageCode,
     ) -> bool:
         """Check whether one stripped line matches any strong heading pattern."""
-        return any(pattern.match(stripped_text) for pattern in strong_patterns)
+        normalized = self._normalize_heading_with_plugins(stripped_text, language)
+        return any(
+            pattern.match(stripped_text) or pattern.match(normalized)
+            for pattern in strong_patterns
+        )
 
     def _collect_heading_titles(
         self,
         line_infos: list[LineInfo],
         strong_patterns: tuple[re.Pattern[str], ...],
         body_start_heading_hints: tuple[str, ...],
+        language: LanguageCode,
     ) -> list[str]:
         """Collect normalized strong heading titles from a TOC-like line window."""
         titles: list[str] = []
@@ -536,9 +566,12 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             stripped = info.stripped
             if not stripped:
                 continue
-            if not self._is_strong_heading(stripped, strong_patterns):
+            if not self._is_strong_heading(stripped, strong_patterns, language):
                 continue
-            normalized_title = self._normalize_heading_title(stripped)
+            normalized_title = self._normalize_heading_for_comparison(
+                stripped,
+                language,
+            )
             if (
                 body_start_heading_hints
                 and not self._contains_heading_hint(normalized_title, body_start_heading_hints)
@@ -570,6 +603,26 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             ):
                 return True
         return False
+
+    def _normalize_heading_with_plugins(
+        self,
+        heading: str,
+        language: LanguageCode,
+    ) -> str:
+        """Run language-specific heading normalization plugin pipeline."""
+        return self.heading_normalizer.normalize(
+            heading=heading,
+            language=language,
+        )
+
+    def _normalize_heading_for_comparison(
+        self,
+        heading: str,
+        language: LanguageCode,
+    ) -> str:
+        """Normalize heading text for duplicate/hint comparisons."""
+        normalized_heading = self._normalize_heading_with_plugins(heading, language)
+        return self._normalize_heading_title(normalized_heading)
 
     @classmethod
     def _contains_region_heading_hint(
@@ -716,7 +769,10 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             normalized_heading=normalized_heading,
             normalized_hint=normalized_hint,
         ):
-            return False
+            return cls._matches_region_heading_suffix(
+                normalized_heading=normalized_heading,
+                normalized_hint=normalized_hint,
+            )
         if normalized_heading == normalized_hint:
             return True
         if not normalized_heading.startswith(normalized_hint):
@@ -740,6 +796,47 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         ):
             return True
         return cls._is_region_like_latin_suffix_tokens(suffix_tokens)
+
+    @classmethod
+    def _matches_region_heading_suffix(
+        cls,
+        *,
+        normalized_heading: str,
+        normalized_hint: str,
+    ) -> bool:
+        """Allow conservative CJK suffix-style region heading match."""
+        if not normalized_heading or not normalized_hint:
+            return False
+        if len(normalized_hint) < 2:
+            return False
+        if not cls._CJK_PATTERN.search(normalized_hint):
+            return False
+        if not normalized_heading.endswith(normalized_hint):
+            return False
+
+        prefix = normalized_heading[: -len(normalized_hint)].strip()
+        if not prefix:
+            return True
+        if cls._LATIN_TOKEN_PATTERN.search(prefix):
+            return False
+        if len(prefix) > 8:
+            return False
+
+        allowed_prefix_signals = (
+            "前",
+            "后",
+            "後",
+            "各",
+            "版",
+            "作者",
+            "编者",
+            "編者",
+            "译者",
+            "譯者",
+            "本书",
+            "本書",
+        )
+        return any(signal in prefix for signal in allowed_prefix_signals) or len(prefix) <= 4
 
     @classmethod
     def _is_region_like_cjk_suffix(cls, suffix: str) -> bool:
@@ -769,13 +866,18 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         line_infos: list[LineInfo],
         heading_index: int,
         strong_patterns: tuple[re.Pattern[str], ...],
+        language: LanguageCode,
     ) -> bool:
         """Check if a heading is followed by likely narrative prose, not another TOC list."""
         for idx in range(heading_index + 1, min(len(line_infos), heading_index + 4)):
             stripped = line_infos[idx].stripped
             if not stripped:
                 continue
-            if self._is_strong_heading(stripped, strong_patterns):
+            if self._is_strong_heading(
+                stripped,
+                strong_patterns,
+                language,
+            ):
                 continue
             if self._looks_like_body_prose(stripped):
                 return True
@@ -845,16 +947,24 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         for info in line_infos:
             if not info.stripped:
                 continue
+            normalized_heading = self._normalize_heading_with_plugins(
+                info.stripped,
+                language,
+            )
             if (
-                any(pattern.match(info.stripped) for pattern in patterns)
+                any(
+                    pattern.match(info.stripped) or pattern.match(normalized_heading)
+                    for pattern in patterns
+                )
                 or self._is_region_marker_heading(info.stripped, language)
+                or self._is_region_marker_heading(normalized_heading, language)
             ):
                 candidates.append(
                     HeadingCandidate(
-                        title=info.stripped,
+                        title=normalized_heading.strip() or info.stripped,
                         char_start=info.char_start,
                         level=self._infer_heading_level(
-                            heading_text=info.stripped,
+                            heading_text=normalized_heading,
                             part_hints=part_hints,
                             chapter_hints=chapter_hints,
                         ),
@@ -1062,11 +1172,18 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         for idx, info in enumerate(line_infos):
             if not info.stripped:
                 continue
-            if any(pattern.match(info.stripped) for pattern in patterns):
+            normalized_heading = self._normalize_heading_with_plugins(
+                info.stripped,
+                language,
+            )
+            if any(
+                pattern.match(info.stripped) or pattern.match(normalized_heading)
+                for pattern in patterns
+            ):
                 continue
 
             has_weak_signal = self._contains_weak_signal(
-                text=info.stripped,
+                text=normalized_heading,
                 weak_signals=weak_tokens,
             )
 
@@ -1096,7 +1213,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
 
             candidates.append(
                 HeadingCandidate(
-                    title=info.stripped,
+                    title=normalized_heading.strip() or info.stripped,
                     char_start=info.char_start,
                     level=1,
                 )

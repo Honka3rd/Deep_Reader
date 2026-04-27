@@ -11,6 +11,19 @@ from document_preparation.document_preparation_pipeline import DocumentPreparati
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerEvaluator,
 )
+from document_structure.heading_normalization.chinese_chapter_ocr_normalization_plugin import (
+    ChineseChapterOcrNormalizationPlugin,
+)
+from document_structure.heading_normalization.common_heading_typography_normalization_plugin import (
+    CommonHeadingTypographyNormalizationPlugin,
+)
+from document_structure.heading_normalization.heading_normalization_executor import (
+    HeadingNormalizationExecutor,
+)
+from document_structure.heading_normalization.heading_normalization_plugin_factory import (
+    HeadingNormalizationPluginFactory,
+)
+from document_structure.heading_normalization.heading_normalizer import HeadingNormalizer
 from document_structure.llm_section_splitter import LLMSectionSplitter
 from document_structure.section_splitter import CommonSectionSplitter
 from document_structure.section_splitter_selector import SectionSplitterSelector
@@ -182,8 +195,29 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         DocumentLoaderFactory,
     )
 
+    common_heading_normalization_plugin = providers.Singleton(
+        CommonHeadingTypographyNormalizationPlugin,
+    )
+    chinese_chapter_ocr_normalization_plugin = providers.Singleton(
+        ChineseChapterOcrNormalizationPlugin,
+    )
+    heading_normalization_plugin_factory = providers.Singleton(
+        HeadingNormalizationPluginFactory,
+        common_plugin=common_heading_normalization_plugin,
+        chinese_chapter_ocr_plugin=chinese_chapter_ocr_normalization_plugin,
+    )
+    heading_normalization_executor = providers.Singleton(
+        HeadingNormalizationExecutor,
+    )
+    heading_normalizer = providers.Singleton(
+        HeadingNormalizer,
+        plugin_factory=heading_normalization_plugin_factory,
+        executor=heading_normalization_executor,
+    )
+
     common_section_splitter = providers.Singleton(
         CommonSectionSplitter,
+        heading_normalizer=heading_normalizer,
     )
     llm_section_splitter = providers.Singleton(
         LLMSectionSplitter,

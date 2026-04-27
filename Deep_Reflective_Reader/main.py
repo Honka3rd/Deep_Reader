@@ -306,6 +306,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                 section_id=section.section_id,
                 title=section.title,
                 container_title=section.container_title,
+                section_role=section.section_role,
                 task_mode=section.task_mode.value,
                 task_units=[
                     TaskUnitMetadataResponse(

@@ -169,6 +169,7 @@ class SectionTaskLayoutResponse(BaseModel):
     section_id: str
     title: str | None
     container_title: str | None
+    section_role: str | None
     task_mode: str
     task_units: list[TaskUnitMetadataResponse]
 

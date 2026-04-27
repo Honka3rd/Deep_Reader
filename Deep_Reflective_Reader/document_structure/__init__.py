@@ -8,6 +8,14 @@ from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerEvaluator,
 )
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
+from document_structure.heading_normalization import (
+    ChineseChapterOcrNormalizationPlugin,
+    CommonHeadingTypographyNormalizationPlugin,
+    HeadingNormalizationExecutor,
+    HeadingNormalizationPlugin,
+    HeadingNormalizationPluginFactory,
+    HeadingNormalizer,
+)
 from document_structure.section_split_plan import (
     AnchorMatchMode,
     SectionParserMode,
@@ -37,6 +45,12 @@ __all__ = [
     "EnhancedParseTriggerDecision",
     "EnhancedParseTriggerEvaluator",
     "AbstractSectionSplitter",
+    "HeadingNormalizationPlugin",
+    "HeadingNormalizationExecutor",
+    "HeadingNormalizationPluginFactory",
+    "HeadingNormalizer",
+    "CommonHeadingTypographyNormalizationPlugin",
+    "ChineseChapterOcrNormalizationPlugin",
     "CommonSectionSplitter",
     "LLMSectionSplitter",
     "SectionSplitterMode",

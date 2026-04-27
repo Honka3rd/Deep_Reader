@@ -294,6 +294,11 @@ class SectionTaskCoordinator:
                     section_id=section.section_id,
                     title=section.title,
                     container_title=section.container_title,
+                    section_role=(
+                        None
+                        if section.section_role is None
+                        else section.section_role.value
+                    ),
                     task_mode=section_mode,
                     task_units=section_units,
                 )
