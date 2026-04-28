@@ -254,6 +254,7 @@ class QACoordinator:
         section_id: str,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
+        refresh_summary: bool = False,
     ) -> SectionTaskResult:
         """Compatibility wrapper: delegate section-summary to SectionTaskCoordinator."""
         return self.section_task_coordinator.summarize_section(
@@ -261,6 +262,7 @@ class QACoordinator:
             section_id=section_id,
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            refresh_summary=refresh_summary,
         )
 
     def summarize_chapter(
@@ -269,6 +271,7 @@ class QACoordinator:
         chapter_title: str,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
+        refresh_summary: bool = False,
     ) -> SectionTaskResult:
         """Compatibility wrapper: delegate chapter-summary to SectionTaskCoordinator."""
         return self.section_task_coordinator.summarize_chapter(
@@ -276,6 +279,7 @@ class QACoordinator:
             chapter_title=chapter_title,
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            refresh_summary=refresh_summary,
         )
 
     def generate_section_quiz(

@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from config.faiss_storage_config import FaissStorageConfig
@@ -11,7 +12,7 @@ from document_structure.enhanced_parse_trigger_evaluator import (
 )
 from document_structure.section_split_plan import SectionParserMode
 from document_structure.section_splitter_selector import SectionSplitterMode
-from document_structure.structured_document import StructuredDocument
+from document_structure.structured_document import StructuredDocument, StructuredSection
 from profile.document_profile import DocumentProfile
 from profile.document_profile_store import DocumentProfileStore
 from section_tasks.chapter_quiz_service import ChapterQuizService
@@ -29,6 +30,7 @@ from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit import TaskUnit
 from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
+from shared.task_artifacts import SummaryArtifact, TaskArtifacts
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,8 @@ class SectionTaskCoordinator:
     """Coordinator for section/chapter task orchestration and layout projection."""
     _TASK_LAYOUT_METADATA_KEY = "task_layout"
     _TASK_LAYOUT_RESOLVER_VERSION = "task_unit_resolver_v1"
+    _SECTION_SUMMARY_PROMPT_VERSION = "section_summary_v1"
+    _CHAPTER_SUMMARY_PROMPT_VERSION = "chapter_summary_v1"
 
     def __init__(
         self,
@@ -78,8 +82,9 @@ class SectionTaskCoordinator:
         section_id: str,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
+        refresh_summary: bool = False,
     ) -> SectionTaskResult:
-        """Run section-summary task by coordinator-level task-unit resolution."""
+        """Run section-summary task with persisted task-layout + summary-cache reuse."""
         resolve_options = self._resolve_task_unit_request_options(
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
@@ -93,17 +98,71 @@ class SectionTaskCoordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
         try:
-            resolved_task_unit = self._resolve_task_unit_for_section_id(
+            target_section = self._find_section_or_raise(
                 document=structured_document,
                 section_id=section_id,
-                resolve_options=resolve_options,
             )
-            return self.chapter_summary_service.summarize_task_unit(
+            if (
+                not refresh_summary
+                and self._is_section_summary_cache_valid(
+                    section=target_section,
+                    document=structured_document,
+                    document_profile=document_profile,
+                    resolve_options=resolve_options,
+                    prompt_version=self._SECTION_SUMMARY_PROMPT_VERSION,
+                    expected_scope="section",
+                )
+            ):
+                cached_summary = target_section.task_artifacts.summary
+                assert cached_summary is not None
+                print(
+                    "SectionTaskCoordinator#section_summary_cache_hit:",
+                    f"doc_name={doc_name}",
+                    f"section_id={target_section.section_id}",
+                )
+                return SectionTaskResult.ok(cached_summary.content)
+
+            layout_document = self._get_or_refresh_task_layout_document(
+                doc_name=doc_name,
+                structured_document=structured_document,
+                resolve_options=resolve_options,
+                refresh_task_units=False,
+            )
+            resolved_task_unit = self._resolve_task_unit_for_section_id_from_persisted_layout(
+                document=layout_document,
+                section_id=section_id,
+            )
+            summary_result = self.chapter_summary_service.summarize_task_unit(
                 task_unit=resolved_task_unit.task_unit,
-                document_title=structured_document.title,
+                document_title=layout_document.title,
                 document_profile=document_profile,
                 task_unit_index=resolved_task_unit.task_unit_index,
             )
+            if not summary_result.success:
+                return summary_result
+
+            summary_artifact = self._build_summary_artifact(
+                content=summary_result.payload,
+                target_section=target_section,
+                document=layout_document,
+                document_profile=document_profile,
+                resolve_options=resolve_options,
+                prompt_version=self._SECTION_SUMMARY_PROMPT_VERSION,
+                scope="section",
+                source_task_unit_id=resolved_task_unit.task_unit.unit_id,
+                chapter_title=None,
+            )
+            self.document_artifact_repository.update_section_summary_artifact(
+                doc_name=doc_name,
+                section_id=target_section.section_id,
+                summary=summary_artifact,
+            )
+            print(
+                "SectionTaskCoordinator#section_summary_cache_write:",
+                f"doc_name={doc_name}",
+                f"section_id={target_section.section_id}",
+            )
+            return summary_result
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
         except Exception as error:
@@ -115,8 +174,9 @@ class SectionTaskCoordinator:
         chapter_title: str,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
+        refresh_summary: bool = False,
     ) -> SectionTaskResult:
-        """Run chapter-summary task by chapter-title -> task-unit resolution."""
+        """Run chapter-summary task with section-level summary cache reuse."""
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             return SectionTaskResult.fail("chapter_title cannot be empty")
@@ -135,17 +195,74 @@ class SectionTaskCoordinator:
             )
 
         try:
-            resolved_task_unit = self._resolve_task_unit_for_chapter_title(
+            target_section = self._find_section_by_chapter_title_or_raise(
                 document=structured_document,
                 chapter_title=normalized_chapter_title,
-                resolve_options=resolve_options,
             )
-            return self.chapter_summary_service.summarize_task_unit(
+            if (
+                not refresh_summary
+                and self._is_section_summary_cache_valid(
+                    section=target_section,
+                    document=structured_document,
+                    document_profile=document_profile,
+                    resolve_options=resolve_options,
+                    prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
+                    expected_scope="chapter",
+                    expected_chapter_title=normalized_chapter_title,
+                )
+            ):
+                cached_summary = target_section.task_artifacts.summary
+                assert cached_summary is not None
+                print(
+                    "SectionTaskCoordinator#chapter_summary_cache_hit:",
+                    f"doc_name={doc_name}",
+                    f"chapter_title={normalized_chapter_title}",
+                    f"section_id={target_section.section_id}",
+                )
+                return SectionTaskResult.ok(cached_summary.content)
+
+            layout_document = self._get_or_refresh_task_layout_document(
+                doc_name=doc_name,
+                structured_document=structured_document,
+                resolve_options=resolve_options,
+                refresh_task_units=False,
+            )
+            resolved_task_unit = self._resolve_task_unit_for_section_id_from_persisted_layout(
+                document=layout_document,
+                section_id=target_section.section_id,
+            )
+            summary_result = self.chapter_summary_service.summarize_task_unit(
                 task_unit=resolved_task_unit.task_unit,
-                document_title=structured_document.title,
+                document_title=layout_document.title,
                 document_profile=document_profile,
                 task_unit_index=resolved_task_unit.task_unit_index,
             )
+            if not summary_result.success:
+                return summary_result
+
+            summary_artifact = self._build_summary_artifact(
+                content=summary_result.payload,
+                target_section=target_section,
+                document=layout_document,
+                document_profile=document_profile,
+                resolve_options=resolve_options,
+                prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
+                scope="chapter",
+                source_task_unit_id=resolved_task_unit.task_unit.unit_id,
+                chapter_title=normalized_chapter_title,
+            )
+            self.document_artifact_repository.update_section_summary_artifact(
+                doc_name=doc_name,
+                section_id=target_section.section_id,
+                summary=summary_artifact,
+            )
+            print(
+                "SectionTaskCoordinator#chapter_summary_cache_write:",
+                f"doc_name={doc_name}",
+                f"chapter_title={normalized_chapter_title}",
+                f"section_id={target_section.section_id}",
+            )
+            return summary_result
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
         except Exception as error:
@@ -253,47 +370,12 @@ class SectionTaskCoordinator:
             raise ValueError(
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
-
-        if (
-            not refresh_task_units
-            and self._is_task_layout_cache_valid(
-                document=structured_document,
-                resolve_options=resolve_options,
-            )
-        ):
-            cached_document = structured_document
-            print(
-                "SectionTaskCoordinator#task_layout_cache_hit:",
-                f"doc_name={doc_name}",
-                f"split_mode={resolve_options.split_mode.value}",
-                f"semantic_top_k={resolve_options.semantic_top_k_candidates}",
-            )
-        else:
-            resolved_task_units = self.task_unit_resolver.resolve_with_options(
-                document=structured_document,
-                split_mode=resolve_options.split_mode,
-                semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
-            )
-            task_units_by_section_id = self._build_task_units_by_section_id(
-                document=structured_document,
-                task_units=resolved_task_units,
-            )
-            task_layout_metadata = self._build_task_layout_metadata(
-                document=structured_document,
-                resolve_options=resolve_options,
-            )
-            cached_document = self.document_artifact_repository.update_task_layout(
-                doc_name=doc_name,
-                task_units_by_section_id=task_units_by_section_id,
-                task_layout_metadata=task_layout_metadata,
-            )
-            print(
-                "SectionTaskCoordinator#task_layout_cache_write:",
-                f"doc_name={doc_name}",
-                f"split_mode={resolve_options.split_mode.value}",
-                f"semantic_top_k={resolve_options.semantic_top_k_candidates}",
-                f"refresh={refresh_task_units}",
-            )
+        cached_document = self._get_or_refresh_task_layout_document(
+            doc_name=doc_name,
+            structured_document=structured_document,
+            resolve_options=resolve_options,
+            refresh_task_units=refresh_task_units,
+        )
 
         task_unit_dtos, section_units_by_section_id = self._build_task_unit_dtos_from_document(
             document=cached_document
@@ -510,6 +592,57 @@ class SectionTaskCoordinator:
             and raw_task_layout.get("resolver_version") == expected["resolver_version"]
         )
 
+    def _get_or_refresh_task_layout_document(
+        self,
+        *,
+        doc_name: str,
+        structured_document: StructuredDocument,
+        resolve_options: TaskUnitResolveOptions,
+        refresh_task_units: bool,
+    ) -> StructuredDocument:
+        """Return document with valid persisted section.task_units, recomputing when needed."""
+        if (
+            not refresh_task_units
+            and self._is_task_layout_cache_valid(
+                document=structured_document,
+                resolve_options=resolve_options,
+            )
+        ):
+            print(
+                "SectionTaskCoordinator#task_layout_cache_hit:",
+                f"doc_name={doc_name}",
+                f"split_mode={resolve_options.split_mode.value}",
+                f"semantic_top_k={resolve_options.semantic_top_k_candidates}",
+            )
+            return structured_document
+
+        resolved_task_units = self.task_unit_resolver.resolve_with_options(
+            document=structured_document,
+            split_mode=resolve_options.split_mode,
+            semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
+        )
+        task_units_by_section_id = self._build_task_units_by_section_id(
+            document=structured_document,
+            task_units=resolved_task_units,
+        )
+        task_layout_metadata = self._build_task_layout_metadata(
+            document=structured_document,
+            resolve_options=resolve_options,
+        )
+        updated_document = self.document_artifact_repository.update_task_layout(
+            doc_name=doc_name,
+            task_units_by_section_id=task_units_by_section_id,
+            task_layout_metadata=task_layout_metadata,
+        )
+        print(
+            "SectionTaskCoordinator#task_layout_cache_write:",
+            f"doc_name={doc_name}",
+            f"split_mode={resolve_options.split_mode.value}",
+            f"semantic_top_k={resolve_options.semantic_top_k_candidates}",
+            f"refresh={refresh_task_units}",
+        )
+        return updated_document
+
     def _build_task_units_by_section_id(
         self,
         *,
@@ -538,6 +671,183 @@ class SectionTaskCoordinator:
         """Compute stable source hash for task-layout cache invalidation."""
         payload = document.raw_text.encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
+
+    @staticmethod
+    def _compute_section_source_hash(section: StructuredSection) -> str:
+        """Compute stable source hash for one section-summary cache key."""
+        payload = section.content.encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    @staticmethod
+    def _resolve_summary_language(
+        *,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+    ) -> str | None:
+        """Resolve summary language tag from profile first, then structured document."""
+        profile_language = (
+            None
+            if document_profile is None
+            else (document_profile.document_language or "").strip() or None
+        )
+        if profile_language is not None:
+            return profile_language
+        return (document.language or "").strip() or None
+
+    def _build_summary_artifact(
+        self,
+        *,
+        content: str,
+        target_section: StructuredSection,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+        scope: str,
+        source_task_unit_id: str,
+        chapter_title: str | None,
+    ) -> SummaryArtifact:
+        """Build persisted summary artifact payload."""
+        normalized_content = content.strip()
+        metadata: dict[str, str | int | None] = {
+            "summary_scope": scope,
+            "section_id": target_section.section_id,
+            "source_task_unit_id": source_task_unit_id,
+        }
+        if chapter_title is not None:
+            metadata["chapter_title"] = chapter_title
+
+        return SummaryArtifact(
+            content=normalized_content,
+            language=self._resolve_summary_language(
+                document=document,
+                document_profile=document_profile,
+            ),
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            source_hash=self._compute_section_source_hash(target_section),
+            prompt_version=prompt_version,
+            task_unit_split_mode=resolve_options.split_mode.value,
+            semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
+            metadata=metadata,
+        )
+
+    def _is_section_summary_cache_valid(
+        self,
+        *,
+        section: StructuredSection,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+        expected_scope: str,
+        expected_chapter_title: str | None = None,
+    ) -> bool:
+        """Check whether one section-level summary artifact can be reused safely."""
+        artifacts = section.task_artifacts
+        if artifacts is None or artifacts.summary is None:
+            return False
+        summary = artifacts.summary
+        if not summary.content.strip():
+            return False
+        if summary.source_hash != self._compute_section_source_hash(section):
+            return False
+
+        expected_language = self._resolve_summary_language(
+            document=document,
+            document_profile=document_profile,
+        )
+        if summary.language != expected_language:
+            return False
+        if summary.task_unit_split_mode != resolve_options.split_mode.value:
+            return False
+        if (
+            summary.semantic_top_k_candidates
+            != resolve_options.semantic_top_k_candidates
+        ):
+            return False
+        if summary.prompt_version != prompt_version:
+            return False
+
+        metadata = dict(summary.metadata or {})
+        if metadata.get("summary_scope") != expected_scope:
+            return False
+        if metadata.get("section_id") != section.section_id:
+            return False
+        if expected_scope == "chapter":
+            if (metadata.get("chapter_title") or "") != (
+                expected_chapter_title or ""
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _find_section_or_raise(
+        *,
+        document: StructuredDocument,
+        section_id: str,
+    ) -> StructuredSection:
+        """Find one section by id or raise ValueError with clear details."""
+        normalized_section_id = section_id.strip()
+        if not normalized_section_id:
+            raise ValueError("section_id cannot be empty")
+        for section in document.sections:
+            if section.section_id == normalized_section_id:
+                return section
+        raise ValueError(
+            f"section_id '{normalized_section_id}' not found in document '{document.document_id}'"
+        )
+
+    @staticmethod
+    def _find_section_by_chapter_title_or_raise(
+        *,
+        document: StructuredDocument,
+        chapter_title: str,
+    ) -> StructuredSection:
+        """Find first section by exact chapter title or raise ValueError."""
+        normalized_chapter_title = chapter_title.strip()
+        if not normalized_chapter_title:
+            raise ValueError("chapter_title cannot be empty")
+        for section in document.sections:
+            if ((section.title or "").strip()) == normalized_chapter_title:
+                return section
+        raise ValueError(
+            f"chapter_title '{normalized_chapter_title}' not found in document '{document.title}'"
+        )
+
+    @staticmethod
+    def _resolve_task_unit_for_section_id_from_persisted_layout(
+        *,
+        document: StructuredDocument,
+        section_id: str,
+    ) -> ResolvedTaskUnit:
+        """Resolve one task unit from persisted section.task_units without recomputing resolver."""
+        normalized_section_id = section_id.strip()
+        if not normalized_section_id:
+            raise ValueError("section_id cannot be empty")
+
+        ordered_task_units: list[TaskUnit] = []
+        seen_unit_ids: set[str] = set()
+        for section in document.sections:
+            for task_unit in section.task_units:
+                if task_unit.unit_id in seen_unit_ids:
+                    continue
+                seen_unit_ids.add(task_unit.unit_id)
+                ordered_task_units.append(task_unit)
+
+        if not ordered_task_units:
+            raise ValueError(
+                f"no persisted task units found for document '{document.document_id}'"
+            )
+        for unit_index, task_unit in enumerate(ordered_task_units):
+            if normalized_section_id in task_unit.source_section_ids:
+                return ResolvedTaskUnit(
+                    task_unit=task_unit,
+                    task_unit_index=unit_index,
+                )
+        raise ValueError(
+            f"section_id '{normalized_section_id}' not found in persisted task layout "
+            f"for document '{document.document_id}'"
+        )
 
     @staticmethod
     def _log_enhanced_parse_trigger_decision(

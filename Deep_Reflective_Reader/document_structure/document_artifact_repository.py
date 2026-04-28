@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 from document_structure.structured_document import StructuredDocument
-from shared.task_artifacts import DocumentTaskArtifacts, TaskArtifacts
+from shared.task_artifacts import DocumentTaskArtifacts, SummaryArtifact, TaskArtifacts
 from shared.task_unit_model import TaskUnit
 
 
@@ -26,6 +26,16 @@ class DocumentArtifactRepository(ABC):
         artifacts: TaskArtifacts,
     ) -> StructuredDocument:
         """Update one section-level task artifact payload and persist document."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_section_summary_artifact(
+        self,
+        doc_name: str,
+        section_id: str,
+        summary: SummaryArtifact,
+    ) -> StructuredDocument:
+        """Update one section summary artifact while preserving existing section quiz artifact."""
         raise NotImplementedError
 
     @abstractmethod

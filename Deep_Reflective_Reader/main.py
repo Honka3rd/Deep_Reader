@@ -177,6 +177,7 @@ def summarize_document_section(request: SectionTaskRequest, response: Response):
             section_id=request.section_id,
             task_unit_split_mode=request.task_unit_split_mode,
             semantic_top_k_candidates=request.semantic_top_k_candidates,
+            refresh_summary=request.refresh_summary,
         )
         if result.success:
             return SectionTaskResponse(
@@ -256,6 +257,7 @@ def summarize_document_chapter(
             chapter_title=request.chapter_title,
             task_unit_split_mode=request.task_unit_split_mode,
             semantic_top_k_candidates=request.semantic_top_k_candidates,
+            refresh_summary=request.refresh_summary,
         )
         if result.success:
             return SummarizeChapterResponse(

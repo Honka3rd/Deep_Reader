@@ -72,6 +72,13 @@ class SectionTaskRequest(BaseModel):
             "Larger values may improve semantic cut precision but can be slower."
         ),
     )
+    refresh_summary: bool = Field(
+        False,
+        description=(
+            "When true, force regenerate section/chapter summary and overwrite cache. "
+            "When false, reuse cached summary artifact when valid."
+        ),
+    )
 
 
 class SectionTaskResponse(BaseModel):
@@ -119,6 +126,13 @@ class SummarizeChapterRequest(BaseModel):
         description=(
             "Optional semantic rerank top-k for semantic_safe split mode. "
             "Larger values may improve semantic cut precision but can be slower."
+        ),
+    )
+    refresh_summary: bool = Field(
+        False,
+        description=(
+            "When true, force regenerate chapter summary and overwrite cache. "
+            "When false, reuse cached chapter summary artifact when valid."
         ),
     )
 

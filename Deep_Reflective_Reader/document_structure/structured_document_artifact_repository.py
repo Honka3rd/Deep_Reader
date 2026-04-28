@@ -7,7 +7,11 @@ from config.storage_namespace_helper import StorageNamespaceHelper
 from document_structure.document_artifact_repository import DocumentArtifactRepository
 from document_structure.structured_document import StructuredDocument
 from document_structure.structured_document_store import StructuredDocumentStore
-from shared.task_artifacts import DocumentTaskArtifacts, TaskArtifacts
+from shared.task_artifacts import (
+    DocumentTaskArtifacts,
+    SummaryArtifact,
+    TaskArtifacts,
+)
 from shared.task_unit_model import TaskUnit
 
 
@@ -69,6 +73,41 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             document,
             sections=updated_sections,
         )
+        self.save_document(updated_document, doc_name=doc_name)
+        return updated_document
+
+    def update_section_summary_artifact(
+        self,
+        doc_name: str,
+        section_id: str,
+        summary: SummaryArtifact,
+    ) -> StructuredDocument:
+        """Update one section summary artifact while preserving existing section quiz artifact."""
+        document = self.load_document(doc_name)
+        updated_sections = list(document.sections)
+        target_index = next(
+            (
+                index
+                for index, section in enumerate(updated_sections)
+                if section.section_id == section_id
+            ),
+            None,
+        )
+        if target_index is None:
+            raise ValueError(
+                f"update_section_summary_artifact: unknown section_id='{section_id}' for doc_name='{doc_name}'"
+            )
+
+        existing_artifacts = updated_sections[target_index].task_artifacts
+        merged_artifacts = TaskArtifacts(
+            summary=summary,
+            quiz=(None if existing_artifacts is None else existing_artifacts.quiz),
+        )
+        updated_sections[target_index] = replace(
+            updated_sections[target_index],
+            task_artifacts=merged_artifacts,
+        )
+        updated_document = replace(document, sections=updated_sections)
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 

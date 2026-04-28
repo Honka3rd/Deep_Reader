@@ -13,6 +13,7 @@ class SummaryArtifact:
     prompt_version: str | None = None
     task_unit_split_mode: str | None = None
     semantic_top_k_candidates: int | None = None
+    metadata: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize summary artifact to JSON-compatible dictionary."""
@@ -24,6 +25,9 @@ class SummaryArtifact:
             "prompt_version": self.prompt_version,
             "task_unit_split_mode": self.task_unit_split_mode,
             "semantic_top_k_candidates": self.semantic_top_k_candidates,
+            "metadata": (
+                None if self.metadata is None else dict(self.metadata)
+            ),
         }
 
     @classmethod
@@ -52,6 +56,11 @@ class SummaryArtifact:
                 None
                 if data.get("semantic_top_k_candidates") is None
                 else int(data.get("semantic_top_k_candidates"))
+            ),
+            metadata=(
+                None
+                if not isinstance(data.get("metadata"), dict)
+                else dict(data.get("metadata"))
             ),
         )
 
