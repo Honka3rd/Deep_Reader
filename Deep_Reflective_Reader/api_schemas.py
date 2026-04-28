@@ -137,6 +137,13 @@ class GetDocumentTaskLayoutRequest(BaseModel):
     """Request payload for document task-layout endpoint."""
 
     doc_name: str = Field(..., description="Document name")
+    refresh_task_units: bool = Field(
+        False,
+        description=(
+            "When true, force recompute task units and overwrite persisted task-unit cache. "
+            "When false, reuse persisted section.task_units when cache is valid."
+        ),
+    )
     task_unit_split_mode: str | None = Field(
         None,
         description=(

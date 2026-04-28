@@ -11,6 +11,9 @@ from document_preparation.document_preparation_pipeline import DocumentPreparati
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerEvaluator,
 )
+from document_structure.structured_document_artifact_repository import (
+    StructuredDocumentArtifactRepository,
+)
 from document_structure.heading_normalization.chinese_chapter_ocr_normalization_plugin import (
     ChineseChapterOcrNormalizationPlugin,
 )
@@ -239,6 +242,10 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     structured_document_store = providers.Singleton(
         StructuredDocumentStore,
     )
+    structured_document_artifact_repository = providers.Singleton(
+        StructuredDocumentArtifactRepository,
+        store=structured_document_store,
+    )
 
     bundle_provider = providers.Singleton(
         BundleProvider,
@@ -419,6 +426,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     section_task_coordinator = providers.Singleton(
         SectionTaskCoordinator,
         document_preparation_pipeline=document_preparation_pipeline,
+        document_artifact_repository=structured_document_artifact_repository,
         document_profile_store=document_profile_store,
         chapter_summary_service=chapter_summary_service,
         chapter_quiz_service=chapter_quiz_service,

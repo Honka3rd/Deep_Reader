@@ -1,8 +1,10 @@
+import hashlib
 from dataclasses import dataclass
 
 from config.faiss_storage_config import FaissStorageConfig
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
 from document_preparation.preparation_mode import PreparationMode
+from document_structure.document_artifact_repository import DocumentArtifactRepository
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
     EnhancedParseTriggerEvaluator,
@@ -47,10 +49,13 @@ class TaskUnitResolveOptions:
 
 class SectionTaskCoordinator:
     """Coordinator for section/chapter task orchestration and layout projection."""
+    _TASK_LAYOUT_METADATA_KEY = "task_layout"
+    _TASK_LAYOUT_RESOLVER_VERSION = "task_unit_resolver_v1"
 
     def __init__(
         self,
         document_preparation_pipeline: DocumentPreparationPipeline,
+        document_artifact_repository: DocumentArtifactRepository,
         document_profile_store: DocumentProfileStore,
         chapter_summary_service: ChapterSummaryService,
         chapter_quiz_service: ChapterQuizService,
@@ -59,6 +64,7 @@ class SectionTaskCoordinator:
         semantic_top_k_candidates_max: int = 20,
     ):
         self.document_preparation_pipeline = document_preparation_pipeline
+        self.document_artifact_repository = document_artifact_repository
         self.document_profile_store = document_profile_store
         self.chapter_summary_service = chapter_summary_service
         self.chapter_quiz_service = chapter_quiz_service
@@ -228,6 +234,7 @@ class SectionTaskCoordinator:
     def get_document_task_layout(
         self,
         doc_name: str,
+        refresh_task_units: bool = False,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
     ) -> DocumentTaskLayout:
@@ -247,44 +254,54 @@ class SectionTaskCoordinator:
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
 
-        resolved_task_units = self.task_unit_resolver.resolve_with_options(
-            document=structured_document,
-            split_mode=resolve_options.split_mode,
-            semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
-        )
-        task_unit_dtos: list[TaskUnitDTO] = [
-            TaskUnitDTO(
-                unit_id=task_unit.unit_id,
-                title=task_unit.title,
-                container_title=task_unit.container_title,
-                source_section_ids=list(task_unit.source_section_ids),
-                is_fallback_generated=task_unit.is_fallback_generated,
+        if (
+            not refresh_task_units
+            and self._is_task_layout_cache_valid(
+                document=structured_document,
+                resolve_options=resolve_options,
             )
-            for task_unit in resolved_task_units
-        ]
-        task_unit_by_id: dict[str, TaskUnitDTO] = {
-            task_unit.unit_id: task_unit for task_unit in task_unit_dtos
-        }
+        ):
+            cached_document = structured_document
+            print(
+                "SectionTaskCoordinator#task_layout_cache_hit:",
+                f"doc_name={doc_name}",
+                f"split_mode={resolve_options.split_mode.value}",
+                f"semantic_top_k={resolve_options.semantic_top_k_candidates}",
+            )
+        else:
+            resolved_task_units = self.task_unit_resolver.resolve_with_options(
+                document=structured_document,
+                split_mode=resolve_options.split_mode,
+                semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
+            )
+            task_units_by_section_id = self._build_task_units_by_section_id(
+                document=structured_document,
+                task_units=resolved_task_units,
+            )
+            task_layout_metadata = self._build_task_layout_metadata(
+                document=structured_document,
+                resolve_options=resolve_options,
+            )
+            cached_document = self.document_artifact_repository.update_task_layout(
+                doc_name=doc_name,
+                task_units_by_section_id=task_units_by_section_id,
+                task_layout_metadata=task_layout_metadata,
+            )
+            print(
+                "SectionTaskCoordinator#task_layout_cache_write:",
+                f"doc_name={doc_name}",
+                f"split_mode={resolve_options.split_mode.value}",
+                f"semantic_top_k={resolve_options.semantic_top_k_candidates}",
+                f"refresh={refresh_task_units}",
+            )
 
-        section_to_unit_ids: dict[str, list[str]] = {
-            section.section_id: [] for section in structured_document.sections
-        }
-        for task_unit in task_unit_dtos:
-            for source_section_id in task_unit.source_section_ids:
-                normalized_section_id = source_section_id.strip()
-                if not normalized_section_id:
-                    continue
-                section_to_unit_ids.setdefault(normalized_section_id, [])
-                section_to_unit_ids[normalized_section_id].append(task_unit.unit_id)
+        task_unit_dtos, section_units_by_section_id = self._build_task_unit_dtos_from_document(
+            document=cached_document
+        )
 
         section_layouts: list[DocumentTaskLayoutSectionDTO] = []
-        for section in structured_document.sections:
-            unit_ids = section_to_unit_ids.get(section.section_id, [])
-            section_units = [
-                task_unit_by_id[unit_id]
-                for unit_id in unit_ids
-                if unit_id in task_unit_by_id
-            ]
+        for section in cached_document.sections:
+            section_units = section_units_by_section_id.get(section.section_id, [])
             section_mode = self._resolve_section_task_mode(
                 section_id=section.section_id,
                 section_task_units=section_units,
@@ -305,7 +322,7 @@ class SectionTaskCoordinator:
             )
 
         trigger_decision = self._evaluate_enhanced_parse_trigger(
-            structured_document=structured_document,
+            structured_document=cached_document,
             section_layouts=section_layouts,
             task_unit_dtos=task_unit_dtos,
         )
@@ -315,9 +332,9 @@ class SectionTaskCoordinator:
         )
 
         return DocumentTaskLayout(
-            document_id=structured_document.document_id,
-            title=structured_document.title,
-            language=structured_document.language,
+            document_id=cached_document.document_id,
+            title=cached_document.title,
+            language=cached_document.language,
             sections=section_layouts,
             task_units=task_unit_dtos,
             enhanced_parse_recommendation=EnhancedParseRecommendationDTO(
@@ -419,6 +436,108 @@ class SectionTaskCoordinator:
             fallback_task_unit_ratio=fallback_task_unit_ratio,
             total_task_units=total_task_units,
         )
+
+    def _build_task_unit_dtos_from_document(
+        self,
+        *,
+        document: StructuredDocument,
+    ) -> tuple[list[TaskUnitDTO], dict[str, list[TaskUnitDTO]]]:
+        """Build deduplicated task-unit DTOs and section->task-unit mapping from persisted data."""
+        task_unit_by_id: dict[str, TaskUnitDTO] = {}
+        section_units_by_section_id: dict[str, list[TaskUnitDTO]] = {
+            section.section_id: [] for section in document.sections
+        }
+
+        for section in document.sections:
+            section_task_units: list[TaskUnitDTO] = []
+            for task_unit in section.task_units:
+                if task_unit.unit_id not in task_unit_by_id:
+                    task_unit_by_id[task_unit.unit_id] = TaskUnitDTO(
+                        unit_id=task_unit.unit_id,
+                        title=task_unit.title,
+                        container_title=task_unit.container_title,
+                        source_section_ids=list(task_unit.source_section_ids),
+                        is_fallback_generated=task_unit.is_fallback_generated,
+                    )
+                section_task_units.append(task_unit_by_id[task_unit.unit_id])
+            section_units_by_section_id[section.section_id] = section_task_units
+        return list(task_unit_by_id.values()), section_units_by_section_id
+
+    def _build_task_layout_metadata(
+        self,
+        *,
+        document: StructuredDocument,
+        resolve_options: TaskUnitResolveOptions,
+    ) -> dict[str, str | int | None]:
+        """Build deterministic task-layout cache metadata."""
+        return {
+            "source_hash": self._compute_source_hash(document),
+            "task_unit_split_mode": resolve_options.split_mode.value,
+            "semantic_top_k_candidates": resolve_options.semantic_top_k_candidates,
+            "resolver_version": self._TASK_LAYOUT_RESOLVER_VERSION,
+        }
+
+    def _is_task_layout_cache_valid(
+        self,
+        *,
+        document: StructuredDocument,
+        resolve_options: TaskUnitResolveOptions,
+    ) -> bool:
+        """Check persisted section.task_units cache validity against request options."""
+        for section in document.sections:
+            if section.content.strip() and not section.task_units:
+                return False
+
+        document_task_artifacts = document.document_task_artifacts
+        if document_task_artifacts is None:
+            return False
+
+        metadata = dict(document_task_artifacts.metadata or {})
+        raw_task_layout = metadata.get(self._TASK_LAYOUT_METADATA_KEY)
+        if not isinstance(raw_task_layout, dict):
+            return False
+
+        expected = self._build_task_layout_metadata(
+            document=document,
+            resolve_options=resolve_options,
+        )
+        return (
+            raw_task_layout.get("source_hash") == expected["source_hash"]
+            and raw_task_layout.get("task_unit_split_mode")
+            == expected["task_unit_split_mode"]
+            and raw_task_layout.get("semantic_top_k_candidates")
+            == expected["semantic_top_k_candidates"]
+            and raw_task_layout.get("resolver_version") == expected["resolver_version"]
+        )
+
+    def _build_task_units_by_section_id(
+        self,
+        *,
+        document: StructuredDocument,
+        task_units: list[TaskUnit],
+    ) -> dict[str, list[TaskUnit]]:
+        """Group resolver output into section-level persisted task-unit lists."""
+        task_units_by_section_id: dict[str, list[TaskUnit]] = {
+            section.section_id: [] for section in document.sections
+        }
+        for task_unit in task_units:
+            assigned_section_ids = []
+            for section_id in task_unit.source_section_ids:
+                normalized_section_id = section_id.strip()
+                if not normalized_section_id:
+                    continue
+                if normalized_section_id in task_units_by_section_id:
+                    assigned_section_ids.append(normalized_section_id)
+
+            for section_id in dict.fromkeys(assigned_section_ids):
+                task_units_by_section_id[section_id].append(task_unit)
+        return task_units_by_section_id
+
+    @staticmethod
+    def _compute_source_hash(document: StructuredDocument) -> str:
+        """Compute stable source hash for task-layout cache invalidation."""
+        payload = document.raw_text.encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
 
     @staticmethod
     def _log_enhanced_parse_trigger_decision(

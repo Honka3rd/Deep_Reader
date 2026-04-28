@@ -142,6 +142,42 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 
+    def update_task_layout(
+        self,
+        doc_name: str,
+        task_units_by_section_id: dict[str, list[TaskUnit]],
+        task_layout_metadata: dict[str, str | int | None],
+    ) -> StructuredDocument:
+        """Bulk update section task units and task-layout metadata in one save."""
+        document = self.load_document(doc_name)
+        updated_sections = []
+        for section in document.sections:
+            section_units = task_units_by_section_id.get(section.section_id, [])
+            updated_sections.append(
+                replace(
+                    section,
+                    task_units=list(section_units),
+                )
+            )
+
+        existing_document_artifacts = (
+            document.document_task_artifacts or DocumentTaskArtifacts()
+        )
+        metadata = dict(existing_document_artifacts.metadata)
+        metadata["task_layout"] = dict(task_layout_metadata)
+        updated_document_artifacts = replace(
+            existing_document_artifacts,
+            metadata=metadata,
+        )
+
+        updated_document = replace(
+            document,
+            sections=updated_sections,
+            document_task_artifacts=updated_document_artifacts,
+        )
+        self.save_document(updated_document, doc_name=doc_name)
+        return updated_document
+
     def update_document_artifacts(
         self,
         doc_name: str,

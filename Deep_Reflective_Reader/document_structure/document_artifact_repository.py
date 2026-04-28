@@ -49,6 +49,16 @@ class DocumentArtifactRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def update_task_layout(
+        self,
+        doc_name: str,
+        task_units_by_section_id: dict[str, list[TaskUnit]],
+        task_layout_metadata: dict[str, str | int | None],
+    ) -> StructuredDocument:
+        """Bulk update section task units + task-layout metadata with one atomic save."""
+        raise NotImplementedError
+
+    @abstractmethod
     def update_document_artifacts(
         self,
         doc_name: str,

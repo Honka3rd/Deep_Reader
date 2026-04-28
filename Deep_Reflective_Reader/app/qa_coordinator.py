@@ -311,12 +311,14 @@ class QACoordinator:
     def get_document_task_layout(
         self,
         doc_name: str,
+        refresh_task_units: bool = False,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
     ) -> DocumentTaskLayout:
         """Compatibility wrapper: delegate layout projection to SectionTaskCoordinator."""
         return self.section_task_coordinator.get_document_task_layout(
             doc_name=doc_name,
+            refresh_task_units=refresh_task_units,
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
         )

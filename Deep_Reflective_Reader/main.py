@@ -288,6 +288,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
     try:
         layout = section_task_coordinator.get_document_task_layout(
             doc_name=request.doc_name,
+            refresh_task_units=request.refresh_task_units,
             task_unit_split_mode=request.task_unit_split_mode,
             semantic_top_k_candidates=request.semantic_top_k_candidates,
         )
