@@ -4,6 +4,7 @@ from typing import Any
 
 from document_structure.section_role import SectionRole
 from shared.task_artifacts import DocumentTaskArtifacts, TaskArtifacts
+from shared.task_unit_model import TaskUnit
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,7 @@ class StructuredSection:
     char_end: int
     container_title: str | None = None
     section_role: SectionRole | None = None
+    task_units: list[TaskUnit] = field(default_factory=list)
     task_artifacts: TaskArtifacts | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -35,6 +37,7 @@ class StructuredSection:
             "section_role": (
                 None if self.section_role is None else self.section_role.value
             ),
+            "task_units": [task_unit.to_dict() for task_unit in self.task_units],
             "task_artifacts": (
                 None if self.task_artifacts is None else self.task_artifacts.to_dict()
             ),
@@ -57,6 +60,11 @@ class StructuredSection:
                 else str(data.get("container_title"))
             ),
             section_role=SectionRole.resolve(data.get("section_role")),
+            task_units=[
+                TaskUnit.from_dict(task_unit_data)
+                for task_unit_data in data.get("task_units", [])
+                if isinstance(task_unit_data, dict)
+            ],
             task_artifacts=TaskArtifacts.from_dict(data.get("task_artifacts")),
         )
 

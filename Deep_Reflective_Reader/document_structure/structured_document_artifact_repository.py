@@ -8,6 +8,7 @@ from document_structure.document_artifact_repository import DocumentArtifactRepo
 from document_structure.structured_document import StructuredDocument
 from document_structure.structured_document_store import StructuredDocumentStore
 from shared.task_artifacts import DocumentTaskArtifacts, TaskArtifacts
+from shared.task_unit_model import TaskUnit
 
 
 class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
@@ -77,11 +78,69 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         task_unit_id: str,
         artifacts: TaskArtifacts,
     ) -> StructuredDocument:
-        """Reserved skeleton for future task-unit level artifact persistence."""
-        _ = (doc_name, task_unit_id, artifacts)
-        raise NotImplementedError(
-            "update_task_unit_artifacts is reserved for a future task-unit persistence round."
+        """Update one persisted task-unit artifact payload and persist document."""
+        document = self.load_document(doc_name)
+        updated_sections = list(document.sections)
+        has_updated = False
+        for section_index, section in enumerate(updated_sections):
+            if not section.task_units:
+                continue
+            updated_task_units: list[TaskUnit] = []
+            section_touched = False
+            for task_unit in section.task_units:
+                if task_unit.unit_id == task_unit_id:
+                    updated_task_units.append(
+                        replace(task_unit, task_artifacts=artifacts)
+                    )
+                    section_touched = True
+                    has_updated = True
+                else:
+                    updated_task_units.append(task_unit)
+            if section_touched:
+                updated_sections[section_index] = replace(
+                    section,
+                    task_units=updated_task_units,
+                )
+                break
+
+        if not has_updated:
+            raise ValueError(
+                f"update_task_unit_artifacts: unknown task_unit_id='{task_unit_id}' for doc_name='{doc_name}'"
+            )
+
+        updated_document = replace(document, sections=updated_sections)
+        self.save_document(updated_document, doc_name=doc_name)
+        return updated_document
+
+    def update_section_task_units(
+        self,
+        doc_name: str,
+        section_id: str,
+        task_units: list[TaskUnit],
+    ) -> StructuredDocument:
+        """Replace one section task-unit list and persist document."""
+        document = self.load_document(doc_name)
+        updated_sections = list(document.sections)
+        target_index = next(
+            (
+                index
+                for index, section in enumerate(updated_sections)
+                if section.section_id == section_id
+            ),
+            None,
         )
+        if target_index is None:
+            raise ValueError(
+                f"update_section_task_units: unknown section_id='{section_id}' for doc_name='{doc_name}'"
+            )
+
+        updated_sections[target_index] = replace(
+            updated_sections[target_index],
+            task_units=list(task_units),
+        )
+        updated_document = replace(document, sections=updated_sections)
+        self.save_document(updated_document, doc_name=doc_name)
+        return updated_document
 
     def update_document_artifacts(
         self,

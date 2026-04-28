@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 from document_structure.structured_document import StructuredDocument
 from shared.task_artifacts import DocumentTaskArtifacts, TaskArtifacts
+from shared.task_unit_model import TaskUnit
 
 
 class DocumentArtifactRepository(ABC):
@@ -35,6 +36,16 @@ class DocumentArtifactRepository(ABC):
         artifacts: TaskArtifacts,
     ) -> StructuredDocument:
         """Update one task-unit-level artifact payload (reserved skeleton)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_section_task_units(
+        self,
+        doc_name: str,
+        section_id: str,
+        task_units: list[TaskUnit],
+    ) -> StructuredDocument:
+        """Replace one section's persisted task-unit list and persist document."""
         raise NotImplementedError
 
     @abstractmethod

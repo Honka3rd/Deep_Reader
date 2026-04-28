@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
 from pathlib import Path
 
@@ -13,13 +12,13 @@ from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
 from document_structure.section_role import SectionRole
-from section_tasks.task_unit import TaskUnit
 from shared.task_artifacts import (
     DocumentTaskArtifacts,
     QuizArtifact,
     SummaryArtifact,
     TaskArtifacts,
 )
+from shared.task_unit_model import TaskUnit
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -28,7 +27,7 @@ def _assert(condition: bool, message: str) -> None:
 
 
 def test_legacy_json_compatibility() -> None:
-    """Load legacy structured JSON payload without task_artifacts fields."""
+    """Load legacy structured JSON payload without task_artifacts/task_units fields."""
     legacy_payload = json.dumps(
         {
             "document_id": "legacy-doc",
@@ -55,6 +54,10 @@ def test_legacy_json_compatibility() -> None:
         ensure_ascii=False,
     )
     loaded = StructuredDocument.from_json(legacy_payload)
+    _assert(
+        loaded.sections[0].task_units == [],
+        "legacy section should load with empty task_units",
+    )
     _assert(loaded.sections[0].task_artifacts is None, "legacy section should load without artifacts")
     _assert(
         loaded.document_task_artifacts is None,
@@ -115,12 +118,58 @@ def test_artifact_round_trip() -> None:
     )
 
 
+def test_section_task_units_round_trip() -> None:
+    """Round-trip section task_units payload including per-unit task artifacts."""
+    section = StructuredSection(
+        section_id="section-0",
+        section_index=0,
+        title="第一章",
+        level=1,
+        content="第一章\n正文",
+        char_start=0,
+        char_end=6,
+        section_role=SectionRole.MAIN_BODY,
+        task_units=[
+            TaskUnit(
+                unit_id="task-unit-0",
+                title="第一章 (Part 1)",
+                container_title=None,
+                content="正文第一段",
+                source_section_ids=["section-0"],
+                is_fallback_generated=True,
+                task_artifacts=TaskArtifacts(
+                    summary=SummaryArtifact(content="unit summary"),
+                ),
+            ),
+            TaskUnit(
+                unit_id="task-unit-1",
+                title="第一章 (Part 2)",
+                container_title=None,
+                content="正文第二段",
+                source_section_ids=["section-0"],
+                is_fallback_generated=False,
+                task_artifacts=None,
+            ),
+        ],
+    )
+
+    restored = StructuredSection.from_dict(section.to_dict())
+    _assert(len(restored.task_units) == 2, "task_units count should round-trip")
+    _assert(restored.task_units[0].unit_id == "task-unit-0", "first task unit id mismatch")
+    _assert(restored.task_units[1].content == "正文第二段", "second task unit content mismatch")
+    _assert(
+        restored.task_units[0].task_artifacts is not None
+        and restored.task_units[0].task_artifacts.summary is not None
+        and restored.task_units[0].task_artifacts.summary.content == "unit summary",
+        "task unit artifact should round-trip",
+    )
+
+
 def test_repository_atomic_save_smoke() -> None:
     """Copy one small structured JSON, update section artifact, save atomically, reload."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_root = Path(temp_dir)
-        source_path = temp_root / "source.structured.json"
-        copied_path = temp_root / "artifact-doc.structured.json"
+        target_path = temp_root / "artifact-doc.structured.json"
 
         base_document = StructuredDocument(
             document_id="artifact-doc",
@@ -141,8 +190,7 @@ def test_repository_atomic_save_smoke() -> None:
                 )
             ],
         )
-        source_path.write_text(base_document.to_json(), encoding="utf-8")
-        shutil.copy(source_path, copied_path)
+        target_path.write_text(base_document.to_json(), encoding="utf-8")
 
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
         artifacts = TaskArtifacts(
@@ -172,6 +220,174 @@ def test_repository_atomic_save_smoke() -> None:
             and reloaded.sections[0].task_artifacts.summary.content == "atomic summary",
             "persisted artifact content mismatch",
         )
+
+
+def test_repository_update_section_task_units() -> None:
+    """Persist section task_units list and verify reloaded structured document."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        base_document = StructuredDocument(
+            document_id="artifact-doc",
+            title="Artifact Doc",
+            source_path=None,
+            language="en",
+            raw_text="Chapter 1\ncontent",
+            sections=[
+                StructuredSection(
+                    section_id="section-0",
+                    section_index=0,
+                    title="Chapter 1",
+                    level=1,
+                    content="Chapter 1\ncontent",
+                    char_start=0,
+                    char_end=17,
+                    section_role=SectionRole.MAIN_BODY,
+                )
+            ],
+        )
+        target_path = Path(temp_dir) / "artifact-doc.structured.json"
+        target_path.write_text(base_document.to_json(), encoding="utf-8")
+
+        repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
+        persisted_units = [
+            TaskUnit(
+                unit_id="task-unit-0",
+                title="Chapter 1 (Part 1)",
+                container_title=None,
+                content="chunk 1",
+                source_section_ids=["section-0"],
+                is_fallback_generated=True,
+            ),
+            TaskUnit(
+                unit_id="task-unit-1",
+                title="Chapter 1 (Part 2)",
+                container_title=None,
+                content="chunk 2",
+                source_section_ids=["section-0"],
+                is_fallback_generated=False,
+            ),
+        ]
+        repository.update_section_task_units(
+            doc_name="artifact-doc",
+            section_id="section-0",
+            task_units=persisted_units,
+        )
+
+        reloaded = repository.load_document("artifact-doc")
+        _assert(len(reloaded.sections[0].task_units) == 2, "section task_units should persist")
+        _assert(
+            reloaded.sections[0].task_units[0].unit_id == "task-unit-0",
+            "persisted task unit id mismatch",
+        )
+
+
+def test_repository_update_task_unit_artifacts() -> None:
+    """Update one task-unit artifact and ensure other units stay unchanged."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        base_document = StructuredDocument(
+            document_id="artifact-doc",
+            title="Artifact Doc",
+            source_path=None,
+            language="en",
+            raw_text="Chapter 1\ncontent",
+            sections=[
+                StructuredSection(
+                    section_id="section-0",
+                    section_index=0,
+                    title="Chapter 1",
+                    level=1,
+                    content="Chapter 1\ncontent",
+                    char_start=0,
+                    char_end=17,
+                    section_role=SectionRole.MAIN_BODY,
+                    task_units=[
+                        TaskUnit(
+                            unit_id="task-unit-0",
+                            title="u0",
+                            container_title=None,
+                            content="chunk 0",
+                            source_section_ids=["section-0"],
+                            is_fallback_generated=True,
+                        ),
+                        TaskUnit(
+                            unit_id="task-unit-1",
+                            title="u1",
+                            container_title=None,
+                            content="chunk 1",
+                            source_section_ids=["section-0"],
+                            is_fallback_generated=False,
+                        ),
+                    ],
+                )
+            ],
+        )
+        target_path = Path(temp_dir) / "artifact-doc.structured.json"
+        target_path.write_text(base_document.to_json(), encoding="utf-8")
+        repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
+
+        repository.update_task_unit_artifacts(
+            doc_name="artifact-doc",
+            task_unit_id="task-unit-1",
+            artifacts=TaskArtifacts(
+                summary=SummaryArtifact(content="unit-1 summary"),
+            ),
+        )
+
+        reloaded = repository.load_document("artifact-doc")
+        unit0 = reloaded.sections[0].task_units[0]
+        unit1 = reloaded.sections[0].task_units[1]
+        _assert(unit0.task_artifacts is None, "other task unit should remain unchanged")
+        _assert(
+            unit1.task_artifacts is not None
+            and unit1.task_artifacts.summary is not None
+            and unit1.task_artifacts.summary.content == "unit-1 summary",
+            "target task unit artifact should persist",
+        )
+
+
+def test_repository_update_task_unit_artifacts_unknown_id() -> None:
+    """Unknown task_unit_id should raise ValueError."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        base_document = StructuredDocument(
+            document_id="artifact-doc",
+            title="Artifact Doc",
+            source_path=None,
+            language="en",
+            raw_text="Chapter 1\ncontent",
+            sections=[
+                StructuredSection(
+                    section_id="section-0",
+                    section_index=0,
+                    title="Chapter 1",
+                    level=1,
+                    content="Chapter 1\ncontent",
+                    char_start=0,
+                    char_end=17,
+                    section_role=SectionRole.MAIN_BODY,
+                    task_units=[
+                        TaskUnit(
+                            unit_id="task-unit-0",
+                            title="u0",
+                            container_title=None,
+                            content="chunk 0",
+                            source_section_ids=["section-0"],
+                            is_fallback_generated=True,
+                        ),
+                    ],
+                )
+            ],
+        )
+        target_path = Path(temp_dir) / "artifact-doc.structured.json"
+        target_path.write_text(base_document.to_json(), encoding="utf-8")
+        repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
+        try:
+            repository.update_task_unit_artifacts(
+                doc_name="artifact-doc",
+                task_unit_id="unknown-unit",
+                artifacts=TaskArtifacts(summary=SummaryArtifact(content="x")),
+            )
+        except ValueError:
+            return
+        raise AssertionError("unknown task_unit_id should raise ValueError")
 
 
 def test_task_unit_artifact_smoke() -> None:
@@ -228,7 +444,11 @@ def test_document_level_artifacts_round_trip() -> None:
 def main() -> None:
     test_legacy_json_compatibility()
     test_artifact_round_trip()
+    test_section_task_units_round_trip()
     test_repository_atomic_save_smoke()
+    test_repository_update_section_task_units()
+    test_repository_update_task_unit_artifacts()
+    test_repository_update_task_unit_artifacts_unknown_id()
     test_task_unit_artifact_smoke()
     test_document_level_artifacts_round_trip()
 
@@ -239,7 +459,11 @@ def main() -> None:
                 "tests": [
                     "legacy_json_compatibility",
                     "artifact_round_trip",
+                    "section_task_units_round_trip",
                     "repository_atomic_save_smoke",
+                    "repository_update_section_task_units",
+                    "repository_update_task_unit_artifacts",
+                    "repository_update_task_unit_artifacts_unknown_id",
                     "task_unit_artifact_smoke",
                     "document_level_artifacts_round_trip",
                 ],

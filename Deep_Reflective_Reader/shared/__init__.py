@@ -5,6 +5,7 @@ from shared.task_artifacts import (
     SummaryArtifact,
     TaskArtifacts,
 )
+from shared.task_unit_model import TaskUnit
 
 __all__ = [
     "AbstractResult",
@@ -12,4 +13,5 @@ __all__ = [
     "QuizArtifact",
     "TaskArtifacts",
     "DocumentTaskArtifacts",
+    "TaskUnit",
 ]
