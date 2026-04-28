@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from document_structure.section_role import SectionRole
+from shared.task_artifacts import DocumentTaskArtifacts, TaskArtifacts
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class StructuredSection:
     char_end: int
     container_title: str | None = None
     section_role: SectionRole | None = None
+    task_artifacts: TaskArtifacts | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize this section into a JSON-friendly dictionary."""
@@ -32,6 +34,9 @@ class StructuredSection:
             "container_title": self.container_title,
             "section_role": (
                 None if self.section_role is None else self.section_role.value
+            ),
+            "task_artifacts": (
+                None if self.task_artifacts is None else self.task_artifacts.to_dict()
             ),
         }
 
@@ -52,6 +57,7 @@ class StructuredSection:
                 else str(data.get("container_title"))
             ),
             section_role=SectionRole.resolve(data.get("section_role")),
+            task_artifacts=TaskArtifacts.from_dict(data.get("task_artifacts")),
         )
 
 
@@ -67,6 +73,7 @@ class StructuredDocument:
     sections: list[StructuredSection] = field(default_factory=list)
     structure_error_code: str | None = None
     structure_error_message: str | None = None
+    document_task_artifacts: DocumentTaskArtifacts | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize this document into a JSON-friendly dictionary."""
@@ -79,6 +86,11 @@ class StructuredDocument:
             "sections": [section.to_dict() for section in self.sections],
             "structure_error_code": self.structure_error_code,
             "structure_error_message": self.structure_error_message,
+            "document_task_artifacts": (
+                None
+                if self.document_task_artifacts is None
+                else self.document_task_artifacts.to_dict()
+            ),
         }
 
     @classmethod
@@ -108,6 +120,9 @@ class StructuredDocument:
                 None
                 if data.get("structure_error_message") is None
                 else str(data.get("structure_error_message"))
+            ),
+            document_task_artifacts=DocumentTaskArtifacts.from_dict(
+                data.get("document_task_artifacts")
             ),
         )
 

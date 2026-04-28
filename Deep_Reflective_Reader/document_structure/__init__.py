@@ -35,6 +35,10 @@ from document_structure.section_splitter_selector import (
     SectionSplitterSelector,
 )
 from document_structure.structured_document_builder import StructuredDocumentBuilder
+from document_structure.document_artifact_repository import DocumentArtifactRepository
+from document_structure.structured_document_artifact_repository import (
+    StructuredDocumentArtifactRepository,
+)
 from document_structure.structured_document_store import StructuredDocumentStore
 
 __all__ = [
@@ -64,5 +68,7 @@ __all__ = [
     "HeadingPrecedenceResult",
     "SectionRole",
     "StructuredDocumentBuilder",
+    "DocumentArtifactRepository",
+    "StructuredDocumentArtifactRepository",
     "StructuredDocumentStore",
 ]

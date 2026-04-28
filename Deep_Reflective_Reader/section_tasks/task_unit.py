@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from shared.task_artifacts import TaskArtifacts
+
 
 @dataclass(frozen=True)
 class TaskUnit:
@@ -12,6 +14,7 @@ class TaskUnit:
     content: str
     source_section_ids: list[str]
     is_fallback_generated: bool
+    task_artifacts: TaskArtifacts | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize task unit into JSON-friendly dictionary."""
@@ -22,6 +25,9 @@ class TaskUnit:
             "content": self.content,
             "source_section_ids": list(self.source_section_ids),
             "is_fallback_generated": self.is_fallback_generated,
+            "task_artifacts": (
+                None if self.task_artifacts is None else self.task_artifacts.to_dict()
+            ),
         }
 
     @classmethod
@@ -42,4 +48,5 @@ class TaskUnit:
             content=str(data["content"]),
             source_section_ids=source_ids,
             is_fallback_generated=bool(data.get("is_fallback_generated", False)),
+            task_artifacts=TaskArtifacts.from_dict(data.get("task_artifacts")),
         )
