@@ -12,15 +12,25 @@ class SectionTaskResult(AbstractResult[PayloadT], Generic[PayloadT]):
     """Unified service result DTO for section task outputs."""
 
     @classmethod
-    def ok(cls, payload: PayloadT) -> Self:
+    def ok(
+        cls,
+        payload: PayloadT,
+        *,
+        cache_hit: bool | None = None,
+    ) -> Self:
         """Build success result with LLM-generated payload."""
-        return cls(success=True, payload=payload, reason="")
+        return cls(success=True, payload=payload, reason="", cache_hit=cache_hit)
 
     @classmethod
     def fail(cls, reason: str) -> Self:
         """Build failure result with explicit reason."""
         normalized_reason = reason.strip() or "unknown section task failure"
-        return cls(success=False, payload=None, reason=normalized_reason)
+        return cls(
+            success=False,
+            payload=None,
+            reason=normalized_reason,
+            cache_hit=None,
+        )
 
     @classmethod
     def from_llm_error(cls, error: Exception) -> Self:

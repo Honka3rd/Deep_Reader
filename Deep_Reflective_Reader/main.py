@@ -5,6 +5,9 @@ from fastapi import FastAPI, HTTPException, Response
 
 from app.qa_coordinator import QACoordinator
 from api_schemas import (
+    ArtifactAvailabilityResponse,
+    ChapterQuizRequest,
+    ChapterQuizResponse,
     PrepareDocumentRequest,
     PrepareDocumentResponse,
     AskDocumentRequest,
@@ -186,6 +189,7 @@ def summarize_document_section(request: SectionTaskRequest, response: Response):
                 success=True,
                 result=result.payload,
                 reason=None,
+                cache_hit=result.cache_hit,
             )
         response.status_code = _resolve_section_task_failure_status(result.reason)
         return SectionTaskResponse(
@@ -194,6 +198,7 @@ def summarize_document_section(request: SectionTaskRequest, response: Response):
             success=False,
             result=None,
             reason=result.reason,
+            cache_hit=result.cache_hit,
         )
     except HTTPException:
         raise
@@ -229,6 +234,7 @@ def generate_document_section_quiz(request: SectionTaskRequest, response: Respon
                 success=True,
                 questions=questions,
                 reason=None,
+                cache_hit=result.cache_hit,
             )
         response.status_code = _resolve_section_task_failure_status(result.reason)
         return SectionQuizResponse(
@@ -237,6 +243,7 @@ def generate_document_section_quiz(request: SectionTaskRequest, response: Respon
             success=False,
             questions=None,
             reason=result.reason,
+            cache_hit=result.cache_hit,
         )
     except HTTPException:
         raise
@@ -267,6 +274,7 @@ def summarize_document_chapter(
                 success=True,
                 result=result.payload,
                 reason=None,
+                cache_hit=result.cache_hit,
             )
 
         response.status_code = _resolve_section_task_failure_status(result.reason)
@@ -276,6 +284,56 @@ def summarize_document_chapter(
             success=False,
             result=None,
             reason=result.reason,
+            cache_hit=result.cache_hit,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/documents/chapter-quiz", response_model=ChapterQuizResponse)
+def generate_document_chapter_quiz(
+    request: ChapterQuizRequest,
+    response: Response,
+):
+    """Run quiz task for one chapter resolved by exact title."""
+    try:
+        result = section_task_coordinator.generate_chapter_quiz(
+            doc_name=request.doc_name,
+            chapter_title=request.chapter_title,
+            task_unit_split_mode=request.task_unit_split_mode,
+            semantic_top_k_candidates=request.semantic_top_k_candidates,
+            refresh_quiz=request.refresh_quiz,
+        )
+        if result.success:
+            questions = [
+                QuizQuestionResponse(
+                    question_id=question.question_id,
+                    question_text=question.question_text,
+                    answer_text=question.answer_text,
+                )
+                for question in (result.payload or [])
+            ]
+            return ChapterQuizResponse(
+                doc_name=request.doc_name,
+                chapter_title=request.chapter_title,
+                success=True,
+                questions=questions,
+                reason=None,
+                cache_hit=result.cache_hit,
+            )
+
+        response.status_code = _resolve_section_task_failure_status(result.reason)
+        return ChapterQuizResponse(
+            doc_name=request.doc_name,
+            chapter_title=request.chapter_title,
+            success=False,
+            questions=None,
+            reason=result.reason,
+            cache_hit=result.cache_hit,
         )
     except HTTPException:
         raise
@@ -302,6 +360,16 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                 container_title=task_unit.container_title,
                 source_section_ids=list(task_unit.source_section_ids),
                 is_fallback_generated=task_unit.is_fallback_generated,
+                artifacts=(
+                    None
+                    if task_unit.artifacts is None
+                    else ArtifactAvailabilityResponse(
+                        has_summary=task_unit.artifacts.has_summary,
+                        has_quiz=task_unit.artifacts.has_quiz,
+                        summary_generated_at=task_unit.artifacts.summary_generated_at,
+                        quiz_generated_at=task_unit.artifacts.quiz_generated_at,
+                    )
+                ),
             )
             for task_unit in layout.task_units
         ]
@@ -319,9 +387,29 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                         container_title=task_unit.container_title,
                         source_section_ids=list(task_unit.source_section_ids),
                         is_fallback_generated=task_unit.is_fallback_generated,
+                        artifacts=(
+                            None
+                            if task_unit.artifacts is None
+                            else ArtifactAvailabilityResponse(
+                                has_summary=task_unit.artifacts.has_summary,
+                                has_quiz=task_unit.artifacts.has_quiz,
+                                summary_generated_at=task_unit.artifacts.summary_generated_at,
+                                quiz_generated_at=task_unit.artifacts.quiz_generated_at,
+                            )
+                        ),
                     )
                     for task_unit in section.task_units
                 ],
+                artifacts=(
+                    None
+                    if section.artifacts is None
+                    else ArtifactAvailabilityResponse(
+                        has_summary=section.artifacts.has_summary,
+                        has_quiz=section.artifacts.has_quiz,
+                        summary_generated_at=section.artifacts.summary_generated_at,
+                        quiz_generated_at=section.artifacts.quiz_generated_at,
+                    )
+                ),
             )
             for section in layout.sections
         ]
@@ -334,12 +422,23 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                 metrics=dict(layout.enhanced_parse_recommendation.metrics),
             )
 
+        chapter_artifacts = {
+            chapter_key: ArtifactAvailabilityResponse(
+                has_summary=availability.has_summary,
+                has_quiz=availability.has_quiz,
+                summary_generated_at=availability.summary_generated_at,
+                quiz_generated_at=availability.quiz_generated_at,
+            )
+            for chapter_key, availability in layout.chapter_artifacts.items()
+        }
+
         return DocumentTaskLayoutResponse(
             document_id=layout.document_id,
             title=layout.title,
             language=layout.language,
             sections=sections,
             task_units=task_units,
+            chapter_artifacts=chapter_artifacts,
             enhanced_parse_recommendation=recommendation,
         )
     except ValueError as error:

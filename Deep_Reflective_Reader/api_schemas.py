@@ -96,6 +96,7 @@ class SectionTaskResponse(BaseModel):
     success: bool
     result: str | None
     reason: str | None
+    cache_hit: bool | None = None
 
 
 class QuizQuestionResponse(BaseModel):
@@ -114,6 +115,7 @@ class SectionQuizResponse(BaseModel):
     success: bool
     questions: list[QuizQuestionResponse] | None
     reason: str | None
+    cache_hit: bool | None = None
 
 
 class SummarizeChapterRequest(BaseModel):
@@ -152,6 +154,55 @@ class SummarizeChapterResponse(BaseModel):
     success: bool
     result: str | None
     reason: str | None
+    cache_hit: bool | None = None
+
+
+class ChapterQuizRequest(BaseModel):
+    """Request payload for chapter-quiz endpoint."""
+
+    doc_name: str = Field(..., description="Document name")
+    chapter_title: str = Field(..., description="Exact chapter title")
+    task_unit_split_mode: str | None = Field(
+        None,
+        description=(
+            "Task-unit split mode: semantic_safe | progressive | llm_enhanced. "
+            "This controls task-unit resolution only, not structured parser mode."
+        ),
+    )
+    semantic_top_k_candidates: int | None = Field(
+        None,
+        description=(
+            "Optional semantic rerank top-k for semantic_safe split mode. "
+            "Larger values may improve semantic cut precision but can be slower."
+        ),
+    )
+    refresh_quiz: bool = Field(
+        False,
+        description=(
+            "When true, force regenerate chapter quiz and overwrite cache. "
+            "When false, reuse cached chapter quiz artifact when valid."
+        ),
+    )
+
+
+class ChapterQuizResponse(BaseModel):
+    """Response payload for chapter-quiz endpoint."""
+
+    doc_name: str
+    chapter_title: str
+    success: bool
+    questions: list[QuizQuestionResponse] | None
+    reason: str | None
+    cache_hit: bool | None = None
+
+
+class ArtifactAvailabilityResponse(BaseModel):
+    """Lightweight artifact availability metadata without heavy task payload."""
+
+    has_summary: bool = False
+    has_quiz: bool = False
+    summary_generated_at: str | None = None
+    quiz_generated_at: str | None = None
 
 
 class GetDocumentTaskLayoutRequest(BaseModel):
@@ -189,6 +240,7 @@ class TaskUnitMetadataResponse(BaseModel):
     container_title: str | None
     source_section_ids: list[str]
     is_fallback_generated: bool
+    artifacts: ArtifactAvailabilityResponse | None = None
 
 
 class SectionTaskLayoutResponse(BaseModel):
@@ -200,6 +252,7 @@ class SectionTaskLayoutResponse(BaseModel):
     section_role: str | None
     task_mode: str
     task_units: list[TaskUnitMetadataResponse]
+    artifacts: ArtifactAvailabilityResponse | None = None
 
 
 class EnhancedParseRecommendationResponse(BaseModel):
@@ -219,6 +272,7 @@ class DocumentTaskLayoutResponse(BaseModel):
     language: str | None
     sections: list[SectionTaskLayoutResponse]
     task_units: list[TaskUnitMetadataResponse]
+    chapter_artifacts: dict[str, ArtifactAvailabilityResponse] | None = None
     enhanced_parse_recommendation: EnhancedParseRecommendationResponse | None
 
 

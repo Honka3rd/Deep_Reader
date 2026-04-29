@@ -18,6 +18,7 @@ from profile.document_profile_store import DocumentProfileStore
 from section_tasks.chapter_quiz_service import ChapterQuizService
 from section_tasks.chapter_summary_service import ChapterSummaryService
 from section_tasks.document_task_layout import (
+    ArtifactAvailabilityDTO,
     DocumentTaskLayout,
     DocumentTaskLayoutSectionDTO,
     EnhancedParseRecommendationDTO,
@@ -30,7 +31,7 @@ from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit import TaskUnit
 from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
-from shared.task_artifacts import QuizArtifact, SummaryArtifact
+from shared.task_artifacts import QuizArtifact, SummaryArtifact, TaskArtifacts
 
 
 @dataclass(frozen=True)
@@ -124,7 +125,7 @@ class SectionTaskCoordinator:
                     f"doc_name={doc_name}",
                     f"section_id={target_section.section_id}",
                 )
-                return SectionTaskResult.ok(cached_summary.content)
+                return SectionTaskResult.ok(cached_summary.content, cache_hit=True)
 
             layout_document = self._get_or_refresh_task_layout_document(
                 doc_name=doc_name,
@@ -166,7 +167,7 @@ class SectionTaskCoordinator:
                 f"doc_name={doc_name}",
                 f"section_id={target_section.section_id}",
             )
-            return summary_result
+            return SectionTaskResult.ok(summary_result.payload, cache_hit=False)
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
         except Exception as error:
@@ -227,7 +228,7 @@ class SectionTaskCoordinator:
                     f"chapter_title={normalized_chapter_title}",
                     f"section_id={target_section.section_id}",
                 )
-                return SectionTaskResult.ok(cached_summary.content)
+                return SectionTaskResult.ok(cached_summary.content, cache_hit=True)
 
             layout_document = self._get_or_refresh_task_layout_document(
                 doc_name=doc_name,
@@ -271,7 +272,7 @@ class SectionTaskCoordinator:
                 f"chapter_title={normalized_chapter_title}",
                 f"chapter_key={chapter_key}",
             )
-            return summary_result
+            return SectionTaskResult.ok(summary_result.payload, cache_hit=False)
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
         except Exception as error:
@@ -319,7 +320,7 @@ class SectionTaskCoordinator:
                     f"doc_name={doc_name}",
                     f"section_id={target_section.section_id}",
                 )
-                return SectionTaskResult.ok(cached_questions)
+                return SectionTaskResult.ok(cached_questions, cache_hit=True)
 
             layout_document = self._get_or_refresh_task_layout_document(
                 doc_name=doc_name,
@@ -361,7 +362,7 @@ class SectionTaskCoordinator:
                 f"doc_name={doc_name}",
                 f"section_id={target_section.section_id}",
             )
-            return quiz_result
+            return SectionTaskResult.ok(quiz_result.payload, cache_hit=False)
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
         except Exception as error:
@@ -417,7 +418,7 @@ class SectionTaskCoordinator:
                     f"chapter_title={normalized_chapter_title}",
                     f"chapter_key={chapter_key}",
                 )
-                return SectionTaskResult.ok(cached_questions)
+                return SectionTaskResult.ok(cached_questions, cache_hit=True)
 
             layout_document = self._get_or_refresh_task_layout_document(
                 doc_name=doc_name,
@@ -462,7 +463,7 @@ class SectionTaskCoordinator:
                 f"chapter_title={normalized_chapter_title}",
                 f"chapter_key={chapter_key}",
             )
-            return quiz_result
+            return SectionTaskResult.ok(quiz_result.payload, cache_hit=False)
         except ValueError as error:
             return SectionTaskResult.fail(str(error))
         except Exception as error:
@@ -520,6 +521,9 @@ class SectionTaskCoordinator:
                     ),
                     task_mode=section_mode,
                     task_units=section_units,
+                    artifacts=self._build_artifact_availability(
+                        section.task_artifacts
+                    ),
                 )
             )
 
@@ -539,6 +543,9 @@ class SectionTaskCoordinator:
             language=cached_document.language,
             sections=section_layouts,
             task_units=task_unit_dtos,
+            chapter_artifacts=self._build_chapter_artifact_availability(
+                cached_document
+            ),
             enhanced_parse_recommendation=EnhancedParseRecommendationDTO(
                 should_recommend=trigger_decision.should_recommend,
                 score=trigger_decision.score,
@@ -660,10 +667,51 @@ class SectionTaskCoordinator:
                         container_title=task_unit.container_title,
                         source_section_ids=list(task_unit.source_section_ids),
                         is_fallback_generated=task_unit.is_fallback_generated,
+                        artifacts=self._build_artifact_availability(
+                            task_unit.task_artifacts
+                        ),
                     )
                 section_task_units.append(task_unit_by_id[task_unit.unit_id])
             section_units_by_section_id[section.section_id] = section_task_units
         return list(task_unit_by_id.values()), section_units_by_section_id
+
+    @staticmethod
+    def _build_artifact_availability(
+        task_artifacts: TaskArtifacts | None,
+    ) -> ArtifactAvailabilityDTO | None:
+        """Build lightweight artifact availability metadata for response DTOs."""
+        if task_artifacts is None:
+            return None
+
+        summary = task_artifacts.summary
+        quiz = task_artifacts.quiz
+        has_summary = summary is not None and bool(summary.content.strip())
+        has_quiz = quiz is not None and bool(quiz.items)
+        if not has_summary and not has_quiz:
+            return None
+
+        return ArtifactAvailabilityDTO(
+            has_summary=has_summary,
+            has_quiz=has_quiz,
+            summary_generated_at=(None if summary is None else summary.generated_at),
+            quiz_generated_at=(None if quiz is None else quiz.generated_at),
+        )
+
+    def _build_chapter_artifact_availability(
+        self,
+        document: StructuredDocument,
+    ) -> dict[str, ArtifactAvailabilityDTO]:
+        """Build chapter artifact availability map without heavy payload fields."""
+        document_artifacts = document.document_task_artifacts
+        if document_artifacts is None:
+            return {}
+
+        chapter_availability: dict[str, ArtifactAvailabilityDTO] = {}
+        for chapter_key, chapter_artifacts in document_artifacts.chapter_artifacts.items():
+            availability = self._build_artifact_availability(chapter_artifacts)
+            if availability is not None:
+                chapter_availability[chapter_key] = availability
+        return chapter_availability
 
     def _build_task_layout_metadata(
         self,

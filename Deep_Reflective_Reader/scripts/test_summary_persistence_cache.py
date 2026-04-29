@@ -268,6 +268,7 @@ def test_summary_persistence_cache_flow() -> None:
             refresh_summary=False,
         )
         _assert(result_1.success, "first summarize_section call should succeed")
+        _assert(result_1.cache_hit is False, "first summarize_section should be cache miss")
         _assert(fake_summary_service.calls == 1, "first call should invoke summary service")
         _assert(fake_resolver.calls == 0, "persisted task_units should avoid resolver recompute")
 
@@ -297,6 +298,7 @@ def test_summary_persistence_cache_flow() -> None:
             refresh_summary=False,
         )
         _assert(result_2.success, "second summarize_section should succeed")
+        _assert(result_2.cache_hit is True, "second summarize_section should be cache hit")
         _assert(result_2.payload == result_1.payload, "cache hit should return persisted summary")
         _assert(fake_summary_service.calls == 1, "cache hit should skip summary service")
         _assert(fake_resolver.calls == 0, "cache hit should still skip resolver")
@@ -310,6 +312,7 @@ def test_summary_persistence_cache_flow() -> None:
             refresh_summary=True,
         )
         _assert(result_3.success, "refresh summarize_section should succeed")
+        _assert(result_3.cache_hit is False, "refresh summarize_section should regenerate")
         _assert(fake_summary_service.calls == 2, "refresh should invoke summary service again")
         _assert(result_3.payload != result_2.payload, "refresh should overwrite cached summary")
 
@@ -370,6 +373,7 @@ def test_summary_persistence_cache_flow() -> None:
             refresh_summary=False,
         )
         _assert(chapter_1.success, "first summarize_chapter should succeed")
+        _assert(chapter_1.cache_hit is False, "first summarize_chapter should be cache miss")
         _assert(fake_summary_service.calls == 6, "first chapter call should invoke summary service")
         updated_chapter = repository.load_document("summary-doc")
         section0_after_chapter = next(
@@ -409,6 +413,7 @@ def test_summary_persistence_cache_flow() -> None:
             refresh_summary=False,
         )
         _assert(chapter_2.success, "second summarize_chapter should succeed")
+        _assert(chapter_2.cache_hit is True, "second summarize_chapter should be cache hit")
         _assert(chapter_2.payload == chapter_1.payload, "chapter cache hit should return persisted summary")
         _assert(fake_summary_service.calls == 6, "chapter cache hit should skip summary service")
 
@@ -508,6 +513,7 @@ def test_summary_persistence_cache_flow() -> None:
             refresh_summary=True,
         )
         _assert(chapter_refresh.success, "chapter refresh should succeed")
+        _assert(chapter_refresh.cache_hit is False, "chapter refresh should regenerate")
         after_refresh_doc = repository.load_document("summary-doc")
         after_refresh_section_summary = next(
             s for s in after_refresh_doc.sections if s.section_id == "section-0"

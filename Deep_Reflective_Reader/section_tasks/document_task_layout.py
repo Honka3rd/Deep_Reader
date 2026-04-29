@@ -22,6 +22,7 @@ class TaskUnitDTO:
     container_title: str | None
     source_section_ids: list[str]
     is_fallback_generated: bool
+    artifacts: "ArtifactAvailabilityDTO | None" = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize task-unit metadata into JSON-friendly dictionary."""
@@ -31,6 +32,30 @@ class TaskUnitDTO:
             "container_title": self.container_title,
             "source_section_ids": list(self.source_section_ids),
             "is_fallback_generated": self.is_fallback_generated,
+            "artifacts": (
+                None
+                if self.artifacts is None
+                else self.artifacts.to_dict()
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class ArtifactAvailabilityDTO:
+    """Lightweight artifact availability metadata for UI cache awareness."""
+
+    has_summary: bool = False
+    has_quiz: bool = False
+    summary_generated_at: str | None = None
+    quiz_generated_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize artifact availability into JSON-friendly dictionary."""
+        return {
+            "has_summary": self.has_summary,
+            "has_quiz": self.has_quiz,
+            "summary_generated_at": self.summary_generated_at,
+            "quiz_generated_at": self.quiz_generated_at,
         }
 
 
@@ -44,6 +69,7 @@ class DocumentTaskLayoutSectionDTO:
     section_role: str | None
     task_mode: SectionTaskMode
     task_units: list[TaskUnitDTO]
+    artifacts: ArtifactAvailabilityDTO | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize section layout node into JSON-friendly dictionary."""
@@ -54,6 +80,11 @@ class DocumentTaskLayoutSectionDTO:
             "section_role": self.section_role,
             "task_mode": self.task_mode.value,
             "task_units": [task_unit.to_dict() for task_unit in self.task_units],
+            "artifacts": (
+                None
+                if self.artifacts is None
+                else self.artifacts.to_dict()
+            ),
         }
 
 
@@ -85,6 +116,7 @@ class DocumentTaskLayout:
     language: str | None
     sections: list[DocumentTaskLayoutSectionDTO]
     task_units: list[TaskUnitDTO] = field(default_factory=list)
+    chapter_artifacts: dict[str, ArtifactAvailabilityDTO] = field(default_factory=dict)
     enhanced_parse_recommendation: EnhancedParseRecommendationDTO | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -95,6 +127,10 @@ class DocumentTaskLayout:
             "language": self.language,
             "sections": [section.to_dict() for section in self.sections],
             "task_units": [task_unit.to_dict() for task_unit in self.task_units],
+            "chapter_artifacts": {
+                chapter_key: artifact.to_dict()
+                for chapter_key, artifact in self.chapter_artifacts.items()
+            },
             "enhanced_parse_recommendation": (
                 None
                 if self.enhanced_parse_recommendation is None

@@ -302,6 +302,7 @@ def test_quiz_persistence_cache_flow() -> None:
             refresh_quiz=False,
         )
         _assert(quiz_1.success, "first section quiz should succeed")
+        _assert(quiz_1.cache_hit is False, "first section quiz should be cache miss")
         _assert(fake_quiz_service.calls == 1, "first section quiz should call quiz service")
         _assert(fake_resolver.calls == 0, "persisted task units should avoid resolver call")
         updated_1 = repository.load_document("quiz-doc")
@@ -333,6 +334,7 @@ def test_quiz_persistence_cache_flow() -> None:
             refresh_quiz=False,
         )
         _assert(quiz_2.success, "second section quiz should succeed")
+        _assert(quiz_2.cache_hit is True, "second section quiz should be cache hit")
         _assert(fake_quiz_service.calls == 1, "second section quiz should hit cache")
         _assert(
             [q.question_id for q in quiz_2.payload] == [q.question_id for q in quiz_1.payload],
@@ -348,6 +350,7 @@ def test_quiz_persistence_cache_flow() -> None:
             refresh_quiz=True,
         )
         _assert(quiz_3.success, "refresh section quiz should succeed")
+        _assert(quiz_3.cache_hit is False, "refresh section quiz should regenerate")
         _assert(fake_quiz_service.calls == 2, "refresh section quiz should regenerate")
 
         # D. source_hash mismatch invalidates cache
@@ -452,6 +455,7 @@ def test_quiz_persistence_cache_flow() -> None:
             refresh_quiz=False,
         )
         _assert(chapter_1.success, "first chapter quiz should succeed")
+        _assert(chapter_1.cache_hit is False, "first chapter quiz should be cache miss")
         _assert(fake_quiz_service.calls == before_malformed_calls + 2, "chapter quiz first call should regenerate")
         chapter_doc = repository.load_document("quiz-doc")
         chapter_section = next(s for s in chapter_doc.sections if s.section_id == "section-0")
@@ -491,6 +495,7 @@ def test_quiz_persistence_cache_flow() -> None:
             refresh_quiz=False,
         )
         _assert(chapter_2.success, "second chapter quiz should succeed")
+        _assert(chapter_2.cache_hit is True, "second chapter quiz should be cache hit")
         _assert(
             fake_quiz_service.calls == before_malformed_calls + 2,
             "second chapter quiz should hit cache",
@@ -512,6 +517,7 @@ def test_quiz_persistence_cache_flow() -> None:
             refresh_quiz=True,
         )
         _assert(chapter_refresh.success, "chapter refresh quiz should succeed")
+        _assert(chapter_refresh.cache_hit is False, "chapter refresh quiz should regenerate")
         _assert(
             fake_quiz_service.calls == before_malformed_calls + 3,
             "chapter refresh should regenerate chapter quiz",

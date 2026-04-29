@@ -13,10 +13,11 @@ class AbstractResult(ABC, Generic[PayloadT]):
     success: bool
     payload: PayloadT | None
     reason: str
+    cache_hit: bool | None = None
 
     @classmethod
     @abstractmethod
-    def ok(cls, payload: PayloadT) -> Self:
+    def ok(cls, payload: PayloadT, *, cache_hit: bool | None = None) -> Self:
         """Build a success result."""
         raise NotImplementedError
 
