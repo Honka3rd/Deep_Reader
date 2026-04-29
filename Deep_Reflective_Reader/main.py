@@ -212,6 +212,7 @@ def generate_document_section_quiz(request: SectionTaskRequest, response: Respon
             section_id=request.section_id,
             task_unit_split_mode=request.task_unit_split_mode,
             semantic_top_k_candidates=request.semantic_top_k_candidates,
+            refresh_quiz=request.refresh_quiz,
         )
         if result.success:
             questions = [

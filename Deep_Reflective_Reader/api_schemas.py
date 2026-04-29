@@ -79,6 +79,13 @@ class SectionTaskRequest(BaseModel):
             "When false, reuse cached summary artifact when valid."
         ),
     )
+    refresh_quiz: bool = Field(
+        False,
+        description=(
+            "When true, force regenerate section/chapter quiz and overwrite cache. "
+            "When false, reuse cached quiz artifact when valid."
+        ),
+    )
 
 
 class SectionTaskResponse(BaseModel):

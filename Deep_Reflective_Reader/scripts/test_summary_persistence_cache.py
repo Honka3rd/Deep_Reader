@@ -257,6 +257,7 @@ def test_summary_persistence_cache_flow() -> None:
             enhanced_parse_trigger_evaluator=_FakeEnhancedParseEvaluator(),
             semantic_top_k_candidates_max=20,
         )
+        chapter_key = coordinator._build_chapter_artifact_key("第一章")
 
         # A. first call writes section summary cache
         result_1 = coordinator.summarize_section(
@@ -275,6 +276,10 @@ def test_summary_persistence_cache_flow() -> None:
         _assert(
             section0_1.task_artifacts is not None and section0_1.task_artifacts.summary is not None,
             "first call should persist section summary artifact",
+        )
+        _assert(
+            not (updated_1.document_task_artifacts and updated_1.document_task_artifacts.chapter_artifacts),
+            "section summary should not write chapter_artifacts",
         )
 
         # F. quiz artifact preserved after summary update
@@ -356,7 +361,7 @@ def test_summary_persistence_cache_flow() -> None:
         )
         _assert(fake_summary_service.calls == 5, "semantic_top_k mismatch should regenerate summary")
 
-        # H. chapter summary cache writes scope=chapter and then cache hit
+        # B/C/D reverse-order safety baseline: chapter first then section keeps both
         chapter_1 = coordinator.summarize_chapter(
             doc_name="summary-doc",
             chapter_title="第一章",
@@ -367,24 +372,35 @@ def test_summary_persistence_cache_flow() -> None:
         _assert(chapter_1.success, "first summarize_chapter should succeed")
         _assert(fake_summary_service.calls == 6, "first chapter call should invoke summary service")
         updated_chapter = repository.load_document("summary-doc")
-        section0_chapter = next(
+        section0_after_chapter = next(
             s for s in updated_chapter.sections if s.section_id == "section-0"
         )
         _assert(
-            section0_chapter.task_artifacts is not None
-            and section0_chapter.task_artifacts.summary is not None,
-            "chapter summary should persist section summary artifact",
+            updated_chapter.document_task_artifacts is not None,
+            "chapter summary should ensure document_task_artifacts exists",
         )
-        chapter_meta = dict(section0_chapter.task_artifacts.summary.metadata or {})
+        chapter_artifact = (
+            updated_chapter.document_task_artifacts.chapter_artifacts.get(chapter_key)
+        )
         _assert(
-            chapter_meta.get("summary_scope") == "chapter",
-            "chapter summary metadata scope should be 'chapter'",
+            chapter_artifact is not None and chapter_artifact.summary is not None,
+            "chapter summary should persist at document-level chapter_artifacts",
         )
+        section_summary_snapshot = section0_after_chapter.task_artifacts.summary
+        _assert(section_summary_snapshot is not None, "section summary should still exist after chapter summary")
+        chapter_summary_snapshot = chapter_artifact.summary
+        assert chapter_summary_snapshot is not None
+        chapter_meta = dict(chapter_summary_snapshot.metadata or {})
         _assert(
             chapter_meta.get("chapter_title") == "第一章",
             "chapter summary metadata should include chapter_title",
         )
+        _assert(
+            chapter_meta.get("summary_scope") == "chapter",
+            "chapter summary metadata scope should be chapter",
+        )
 
+        # E. chapter summary cache hit
         chapter_2 = coordinator.summarize_chapter(
             doc_name="summary-doc",
             chapter_title="第一章",
@@ -396,6 +412,117 @@ def test_summary_persistence_cache_flow() -> None:
         _assert(chapter_2.payload == chapter_1.payload, "chapter cache hit should return persisted summary")
         _assert(fake_summary_service.calls == 6, "chapter cache hit should skip summary service")
 
+        # D. reverse order safety: section after chapter should not overwrite chapter artifact
+        section_after_chapter = coordinator.summarize_section(
+            doc_name="summary-doc",
+            section_id="section-0",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            refresh_summary=True,
+        )
+        _assert(section_after_chapter.success, "section refresh after chapter should succeed")
+        _assert(fake_summary_service.calls == 7, "section refresh should invoke summary service")
+        updated_after_reverse = repository.load_document("summary-doc")
+        section0_after_reverse = next(
+            s for s in updated_after_reverse.sections if s.section_id == "section-0"
+        )
+        chapter_after_reverse = (
+            updated_after_reverse.document_task_artifacts.chapter_artifacts.get(chapter_key)
+        )
+        _assert(
+            chapter_after_reverse is not None and chapter_after_reverse.summary is not None,
+            "chapter artifact should remain after section overwrite",
+        )
+        _assert(
+            section0_after_reverse.task_artifacts is not None
+            and section0_after_reverse.task_artifacts.summary is not None,
+            "section artifact should exist after section refresh",
+        )
+        _assert(
+            section0_after_reverse.task_artifacts.summary.content
+            != chapter_after_reverse.summary.content,
+            "section/chapter summaries should be stored independently",
+        )
+
+        # G. legacy wrong chapter-in-section summary should be ignored for chapter cache
+        legacy_wrong = SummaryArtifact(
+            content="legacy-chapter-in-section-slot",
+            language="zh",
+            generated_at="2026-01-01T00:00:00+00:00",
+            source_hash=hashlib.sha256(section0_after_reverse.content.encode("utf-8")).hexdigest(),
+            prompt_version=coordinator._CHAPTER_SUMMARY_PROMPT_VERSION,
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            metadata={
+                "summary_scope": "chapter",
+                "chapter_title": "第一章",
+                "chapter_key": chapter_key,
+                "source_section_id": "section-0",
+                "source_task_unit_id": "unit-0",
+            },
+        )
+        repository.update_section_summary_artifact(
+            doc_name="summary-doc",
+            section_id="section-0",
+            summary=legacy_wrong,
+        )
+        # remove document-level chapter artifact to ensure fallback cannot hit correct cache
+        legacy_doc = repository.load_document("summary-doc")
+        existing_artifacts = legacy_doc.document_task_artifacts or DocumentTaskArtifacts()
+        patched_map = dict(existing_artifacts.chapter_artifacts)
+        patched_map.pop(chapter_key, None)
+        repository.update_document_artifacts(
+            doc_name="summary-doc",
+            artifacts=DocumentTaskArtifacts(
+                chapter_artifacts=patched_map,
+                metadata=dict(existing_artifacts.metadata),
+            ),
+        )
+        calls_before_legacy_retry = fake_summary_service.calls
+        chapter_after_legacy = coordinator.summarize_chapter(
+            doc_name="summary-doc",
+            chapter_title="第一章",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            refresh_summary=False,
+        )
+        _assert(chapter_after_legacy.success, "chapter regenerate after legacy wrong slot should succeed")
+        _assert(
+            fake_summary_service.calls == calls_before_legacy_retry + 1,
+            "legacy chapter summary in section slot should not be used as chapter cache",
+        )
+
+        # F(continued). chapter refresh only updates chapter artifact, section summary unchanged
+        before_refresh_doc = repository.load_document("summary-doc")
+        before_refresh_section_summary = next(
+            s for s in before_refresh_doc.sections if s.section_id == "section-0"
+        ).task_artifacts.summary.content
+        before_refresh_chapter_summary = (
+            before_refresh_doc.document_task_artifacts.chapter_artifacts[chapter_key].summary.content
+        )
+        chapter_refresh = coordinator.summarize_chapter(
+            doc_name="summary-doc",
+            chapter_title="第一章",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            refresh_summary=True,
+        )
+        _assert(chapter_refresh.success, "chapter refresh should succeed")
+        after_refresh_doc = repository.load_document("summary-doc")
+        after_refresh_section_summary = next(
+            s for s in after_refresh_doc.sections if s.section_id == "section-0"
+        ).task_artifacts.summary.content
+        after_refresh_chapter_summary = (
+            after_refresh_doc.document_task_artifacts.chapter_artifacts[chapter_key].summary.content
+        )
+        _assert(
+            after_refresh_section_summary == before_refresh_section_summary,
+            "chapter refresh must not overwrite section summary",
+        )
+        _assert(
+            after_refresh_chapter_summary != before_refresh_chapter_summary,
+            "chapter refresh should overwrite chapter artifact only",
+        )
 
 def main() -> None:
     test_summary_persistence_cache_flow()
@@ -404,14 +531,18 @@ def main() -> None:
             {
                 "status": "ok",
                 "tests": [
-                    "section_summary_first_call_writes_cache",
+                    "section_summary_stays_section_level",
                     "section_summary_second_call_cache_hit",
                     "refresh_summary_forces_regenerate",
                     "source_hash_mismatch_invalidates_cache",
                     "split_mode_topk_mismatch_invalidates_cache",
                     "quiz_artifact_preserved_on_summary_update",
                     "summary_uses_persisted_task_units",
-                    "chapter_summary_cache_scope",
+                    "chapter_summary_writes_document_level",
+                    "section_chapter_no_overwrite_both_directions",
+                    "chapter_summary_cache_hit",
+                    "chapter_refresh_updates_chapter_only",
+                    "legacy_wrong_section_chapter_summary_ignored",
                 ],
             },
             ensure_ascii=False,
@@ -422,4 +553,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

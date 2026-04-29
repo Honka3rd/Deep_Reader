@@ -9,6 +9,7 @@ from document_structure.structured_document import StructuredDocument
 from document_structure.structured_document_store import StructuredDocumentStore
 from shared.task_artifacts import (
     DocumentTaskArtifacts,
+    QuizArtifact,
     SummaryArtifact,
     TaskArtifacts,
 )
@@ -108,6 +109,75 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             task_artifacts=merged_artifacts,
         )
         updated_document = replace(document, sections=updated_sections)
+        self.save_document(updated_document, doc_name=doc_name)
+        return updated_document
+
+    def update_section_quiz_artifact(
+        self,
+        doc_name: str,
+        section_id: str,
+        quiz: QuizArtifact,
+    ) -> StructuredDocument:
+        """Update one section quiz artifact while preserving existing section summary artifact."""
+        document = self.load_document(doc_name)
+        updated_sections = list(document.sections)
+        target_index = next(
+            (
+                index
+                for index, section in enumerate(updated_sections)
+                if section.section_id == section_id
+            ),
+            None,
+        )
+        if target_index is None:
+            raise ValueError(
+                f"update_section_quiz_artifact: unknown section_id='{section_id}' for doc_name='{doc_name}'"
+            )
+
+        existing_artifacts = updated_sections[target_index].task_artifacts
+        merged_artifacts = TaskArtifacts(
+            summary=(None if existing_artifacts is None else existing_artifacts.summary),
+            quiz=quiz,
+        )
+        updated_sections[target_index] = replace(
+            updated_sections[target_index],
+            task_artifacts=merged_artifacts,
+        )
+        updated_document = replace(document, sections=updated_sections)
+        self.save_document(updated_document, doc_name=doc_name)
+        return updated_document
+
+    def update_chapter_summary_artifact(
+        self,
+        doc_name: str,
+        chapter_key: str,
+        summary: SummaryArtifact,
+    ) -> StructuredDocument:
+        """Update one chapter summary artifact in document-level chapter_artifacts map."""
+        normalized_chapter_key = chapter_key.strip()
+        if not normalized_chapter_key:
+            raise ValueError("update_chapter_summary_artifact: chapter_key cannot be empty")
+
+        document = self.load_document(doc_name)
+        existing_document_artifacts = (
+            document.document_task_artifacts or DocumentTaskArtifacts()
+        )
+        existing_chapter_artifacts = dict(existing_document_artifacts.chapter_artifacts)
+        existing_entry = existing_chapter_artifacts.get(normalized_chapter_key)
+        existing_quiz = None if existing_entry is None else existing_entry.quiz
+
+        existing_chapter_artifacts[normalized_chapter_key] = TaskArtifacts(
+            summary=summary,
+            quiz=existing_quiz,
+        )
+        updated_document_artifacts = replace(
+            existing_document_artifacts,
+            chapter_artifacts=existing_chapter_artifacts,
+        )
+        updated_document = replace(
+            document,
+            document_task_artifacts=updated_document_artifacts,
+        )
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 

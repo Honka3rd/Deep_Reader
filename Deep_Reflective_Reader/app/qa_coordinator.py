@@ -288,6 +288,7 @@ class QACoordinator:
         section_id: str,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
+        refresh_quiz: bool = False,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Compatibility wrapper: delegate section-quiz to SectionTaskCoordinator."""
         return self.section_task_coordinator.generate_section_quiz(
@@ -295,6 +296,7 @@ class QACoordinator:
             section_id=section_id,
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            refresh_quiz=refresh_quiz,
         )
 
     def generate_chapter_quiz(
@@ -303,6 +305,7 @@ class QACoordinator:
         chapter_title: str,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
+        refresh_quiz: bool = False,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Compatibility wrapper: delegate chapter-quiz to SectionTaskCoordinator."""
         return self.section_task_coordinator.generate_chapter_quiz(
@@ -310,6 +313,7 @@ class QACoordinator:
             chapter_title=chapter_title,
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            refresh_quiz=refresh_quiz,
         )
 
     def get_document_task_layout(
