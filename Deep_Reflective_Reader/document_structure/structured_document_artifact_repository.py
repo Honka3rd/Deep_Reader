@@ -181,6 +181,40 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 
+    def update_chapter_quiz_artifact(
+        self,
+        doc_name: str,
+        chapter_key: str,
+        quiz: QuizArtifact,
+    ) -> StructuredDocument:
+        """Update one chapter quiz artifact in document-level chapter_artifacts map."""
+        normalized_chapter_key = chapter_key.strip()
+        if not normalized_chapter_key:
+            raise ValueError("update_chapter_quiz_artifact: chapter_key cannot be empty")
+
+        document = self.load_document(doc_name)
+        existing_document_artifacts = (
+            document.document_task_artifacts or DocumentTaskArtifacts()
+        )
+        existing_chapter_artifacts = dict(existing_document_artifacts.chapter_artifacts)
+        existing_entry = existing_chapter_artifacts.get(normalized_chapter_key)
+        existing_summary = None if existing_entry is None else existing_entry.summary
+
+        existing_chapter_artifacts[normalized_chapter_key] = TaskArtifacts(
+            summary=existing_summary,
+            quiz=quiz,
+        )
+        updated_document_artifacts = replace(
+            existing_document_artifacts,
+            chapter_artifacts=existing_chapter_artifacts,
+        )
+        updated_document = replace(
+            document,
+            document_task_artifacts=updated_document_artifacts,
+        )
+        self.save_document(updated_document, doc_name=doc_name)
+        return updated_document
+
     def update_task_unit_artifacts(
         self,
         doc_name: str,

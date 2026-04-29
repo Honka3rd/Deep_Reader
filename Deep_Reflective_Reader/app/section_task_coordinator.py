@@ -375,7 +375,7 @@ class SectionTaskCoordinator:
         semantic_top_k_candidates: int | None = None,
         refresh_quiz: bool = False,
     ) -> SectionTaskResult[list[QuizQuestion]]:
-        """Run chapter-quiz task with section-level quiz cache reuse."""
+        """Run chapter-quiz task with document-level chapter quiz cache reuse."""
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             return SectionTaskResult.fail("chapter_title cannot be empty")
@@ -398,23 +398,24 @@ class SectionTaskCoordinator:
                 document=structured_document,
                 chapter_title=normalized_chapter_title,
             )
+            chapter_key = self._build_chapter_artifact_key(normalized_chapter_title)
             cached_questions = None
             if not refresh_quiz:
-                cached_questions = self._get_valid_cached_quiz_questions(
-                    section=target_section,
+                cached_questions = self._get_valid_cached_chapter_quiz_questions(
+                    chapter_key=chapter_key,
+                    chapter_title=normalized_chapter_title,
+                    source_section=target_section,
                     document=structured_document,
                     document_profile=document_profile,
                     resolve_options=resolve_options,
                     prompt_version=self._CHAPTER_QUIZ_PROMPT_VERSION,
-                    expected_scope="chapter",
-                    expected_chapter_title=normalized_chapter_title,
                 )
             if cached_questions is not None:
                 print(
                     "SectionTaskCoordinator#chapter_quiz_cache_hit:",
                     f"doc_name={doc_name}",
                     f"chapter_title={normalized_chapter_title}",
-                    f"section_id={target_section.section_id}",
+                    f"chapter_key={chapter_key}",
                 )
                 return SectionTaskResult.ok(cached_questions)
 
@@ -448,17 +449,18 @@ class SectionTaskCoordinator:
                 scope="chapter",
                 source_task_unit_id=resolved_task_unit.task_unit.unit_id,
                 chapter_title=normalized_chapter_title,
+                chapter_key=chapter_key,
             )
-            self.document_artifact_repository.update_section_quiz_artifact(
+            self.document_artifact_repository.update_chapter_quiz_artifact(
                 doc_name=doc_name,
-                section_id=target_section.section_id,
+                chapter_key=chapter_key,
                 quiz=quiz_artifact,
             )
             print(
                 "SectionTaskCoordinator#chapter_quiz_cache_write:",
                 f"doc_name={doc_name}",
                 f"chapter_title={normalized_chapter_title}",
-                f"section_id={target_section.section_id}",
+                f"chapter_key={chapter_key}",
             )
             return quiz_result
         except ValueError as error:
@@ -914,15 +916,19 @@ class SectionTaskCoordinator:
         scope: str,
         source_task_unit_id: str,
         chapter_title: str | None,
+        chapter_key: str | None = None,
     ) -> QuizArtifact:
         """Build persisted quiz artifact payload."""
         metadata: dict[str, str | int | None] = {
             "quiz_scope": scope,
             "section_id": target_section.section_id,
+            "source_section_id": target_section.section_id,
             "source_task_unit_id": source_task_unit_id,
         }
         if chapter_title is not None:
             metadata["chapter_title"] = chapter_title
+        if chapter_key is not None:
+            metadata["chapter_key"] = chapter_key
         return self._quiz_artifact_from_questions(
             questions=questions,
             target_section=target_section,
@@ -1106,6 +1112,70 @@ class SectionTaskCoordinator:
         if (metadata.get("source_section_id") or "") != source_section.section_id:
             return False
         return True
+
+    @staticmethod
+    def _get_chapter_quiz_artifact(
+        *,
+        document: StructuredDocument,
+        chapter_key: str,
+    ) -> QuizArtifact | None:
+        """Get document-level chapter quiz artifact if present."""
+        document_artifacts = document.document_task_artifacts
+        if document_artifacts is None:
+            return None
+        chapter_artifact = document_artifacts.chapter_artifacts.get(chapter_key)
+        if chapter_artifact is None:
+            return None
+        return chapter_artifact.quiz
+
+    def _get_valid_cached_chapter_quiz_questions(
+        self,
+        *,
+        chapter_key: str,
+        chapter_title: str,
+        source_section: StructuredSection,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+    ) -> list[QuizQuestion] | None:
+        """Return parsed cached chapter-quiz questions when chapter-level artifact is valid."""
+        quiz = self._get_chapter_quiz_artifact(
+            document=document,
+            chapter_key=chapter_key,
+        )
+        if quiz is None:
+            return None
+        if quiz.source_hash != self._compute_section_source_hash(source_section):
+            return None
+        expected_language = self._resolve_summary_language(
+            document=document,
+            document_profile=document_profile,
+        )
+        if quiz.language != expected_language:
+            return None
+        if quiz.task_unit_split_mode != resolve_options.split_mode.value:
+            return None
+        if (
+            quiz.semantic_top_k_candidates
+            != resolve_options.semantic_top_k_candidates
+        ):
+            return None
+        if quiz.prompt_version != prompt_version:
+            return None
+        if quiz.quiz_schema_version != self._QUIZ_SCHEMA_VERSION:
+            return None
+        metadata = dict(quiz.metadata or {})
+        if metadata.get("quiz_scope") != "chapter":
+            return None
+        if (metadata.get("chapter_title") or "") != chapter_title:
+            return None
+        if (metadata.get("chapter_key") or "") != chapter_key:
+            return None
+        if (metadata.get("source_section_id") or "") != source_section.section_id:
+            return None
+        parsed = self._quiz_questions_from_artifact(quiz)
+        return parsed
 
     @staticmethod
     def _find_section_or_raise(

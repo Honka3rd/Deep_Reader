@@ -64,6 +64,16 @@ class DocumentArtifactRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def update_chapter_quiz_artifact(
+        self,
+        doc_name: str,
+        chapter_key: str,
+        quiz: QuizArtifact,
+    ) -> StructuredDocument:
+        """Update one chapter quiz artifact at document level while preserving summary/metadata."""
+        raise NotImplementedError
+
+    @abstractmethod
     def update_task_unit_artifacts(
         self,
         doc_name: str,

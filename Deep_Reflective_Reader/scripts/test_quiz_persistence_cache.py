@@ -23,7 +23,12 @@ from document_structure.structured_document_store import StructuredDocumentStore
 from section_tasks.quiz_question import QuizQuestion
 from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
-from shared.task_artifacts import QuizArtifact, SummaryArtifact, TaskArtifacts
+from shared.task_artifacts import (
+    DocumentTaskArtifacts,
+    QuizArtifact,
+    SummaryArtifact,
+    TaskArtifacts,
+)
 from shared.task_unit_model import TaskUnit
 
 
@@ -255,7 +260,6 @@ def _seed_valid_task_layout_metadata(
             "resolver_version": "task_unit_resolver_v1",
         }
     }
-    from shared.task_artifacts import DocumentTaskArtifacts
     repository.update_document_artifacts(
         doc_name=doc_name,
         artifacts=DocumentTaskArtifacts(chapter_artifacts={}, metadata=metadata),
@@ -287,7 +291,9 @@ def test_quiz_persistence_cache_flow() -> None:
             semantic_top_k_candidates_max=20,
         )
 
-        # A. first call writes section quiz cache
+        chapter_key = SectionTaskCoordinator._build_chapter_artifact_key("第一章")
+
+        # A. section quiz remains section-level
         quiz_1 = coordinator.generate_section_quiz(
             doc_name="quiz-doc",
             section_id="section-0",
@@ -303,6 +309,13 @@ def test_quiz_persistence_cache_flow() -> None:
         _assert(
             section0_1.task_artifacts is not None and section0_1.task_artifacts.quiz is not None,
             "first section quiz should persist section quiz artifact",
+        )
+        _assert(
+            not (
+                updated_1.document_task_artifacts
+                and updated_1.document_task_artifacts.chapter_artifacts
+            ),
+            "section quiz should not create chapter-level quiz artifact",
         )
 
         # F. summary preservation
@@ -426,7 +439,11 @@ def test_quiz_persistence_cache_flow() -> None:
             "malformed cached quiz should not cause 500; should regenerate",
         )
 
-        # I. chapter quiz cache
+        # B/C/D. chapter quiz writes document-level + does not overwrite section-level
+        section_doc_before_chapter = repository.load_document("quiz-doc")
+        section_quiz_before_chapter = next(
+            s for s in section_doc_before_chapter.sections if s.section_id == "section-0"
+        ).task_artifacts.quiz
         chapter_1 = coordinator.generate_chapter_quiz(
             doc_name="quiz-doc",
             chapter_title="第一章",
@@ -438,11 +455,34 @@ def test_quiz_persistence_cache_flow() -> None:
         _assert(fake_quiz_service.calls == before_malformed_calls + 2, "chapter quiz first call should regenerate")
         chapter_doc = repository.load_document("quiz-doc")
         chapter_section = next(s for s in chapter_doc.sections if s.section_id == "section-0")
-        chapter_quiz = chapter_section.task_artifacts.quiz
-        _assert(chapter_quiz is not None, "chapter quiz should persist in section quiz slot")
+        section_quiz_after_chapter = (
+            None if chapter_section.task_artifacts is None else chapter_section.task_artifacts.quiz
+        )
+        _assert(
+            section_quiz_after_chapter is not None and section_quiz_before_chapter is not None,
+            "section quiz should still exist after chapter quiz write",
+        )
+        _assert(
+            section_quiz_after_chapter.to_dict() == section_quiz_before_chapter.to_dict(),
+            "chapter quiz write must not overwrite section-level quiz",
+        )
+        chapter_artifacts = (
+            chapter_doc.document_task_artifacts.chapter_artifacts
+            if chapter_doc.document_task_artifacts
+            else {}
+        )
+        _assert(
+            chapter_key in chapter_artifacts and chapter_artifacts[chapter_key].quiz is not None,
+            "chapter quiz should persist at document-level chapter artifact",
+        )
+        chapter_quiz = chapter_artifacts[chapter_key].quiz
+        assert chapter_quiz is not None
         chapter_meta = dict(chapter_quiz.metadata or {})
         _assert(chapter_meta.get("quiz_scope") == "chapter", "chapter quiz scope metadata should be chapter")
         _assert(chapter_meta.get("chapter_title") == "第一章", "chapter quiz metadata should include chapter title")
+        _assert(chapter_meta.get("chapter_key") == chapter_key, "chapter quiz metadata should include chapter key")
+
+        # E. chapter quiz cache hit (document-level)
         chapter_2 = coordinator.generate_chapter_quiz(
             doc_name="quiz-doc",
             chapter_title="第一章",
@@ -456,6 +496,184 @@ def test_quiz_persistence_cache_flow() -> None:
             "second chapter quiz should hit cache",
         )
 
+        # F. chapter refresh updates chapter artifact only
+        chapter_before_refresh_doc = repository.load_document("quiz-doc")
+        chapter_before_refresh = (
+            chapter_before_refresh_doc.document_task_artifacts.chapter_artifacts[chapter_key].quiz
+        )
+        section_before_refresh = next(
+            s for s in chapter_before_refresh_doc.sections if s.section_id == "section-0"
+        ).task_artifacts.quiz
+        chapter_refresh = coordinator.generate_chapter_quiz(
+            doc_name="quiz-doc",
+            chapter_title="第一章",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            refresh_quiz=True,
+        )
+        _assert(chapter_refresh.success, "chapter refresh quiz should succeed")
+        _assert(
+            fake_quiz_service.calls == before_malformed_calls + 3,
+            "chapter refresh should regenerate chapter quiz",
+        )
+        chapter_after_refresh_doc = repository.load_document("quiz-doc")
+        chapter_after_refresh = (
+            chapter_after_refresh_doc.document_task_artifacts.chapter_artifacts[chapter_key].quiz
+        )
+        section_after_refresh = next(
+            s for s in chapter_after_refresh_doc.sections if s.section_id == "section-0"
+        ).task_artifacts.quiz
+        _assert(
+            chapter_before_refresh is not None
+            and chapter_after_refresh is not None
+            and chapter_after_refresh.to_dict() != chapter_before_refresh.to_dict(),
+            "chapter refresh should update document-level chapter quiz artifact",
+        )
+        _assert(
+            section_before_refresh is not None
+            and section_after_refresh is not None
+            and section_after_refresh.to_dict() == section_before_refresh.to_dict(),
+            "chapter refresh should not change section-level quiz artifact",
+        )
+
+        # G. legacy wrong chapter-in-section quiz should be ignored (no chapter cache hit)
+        before_legacy_doc = repository.load_document("quiz-doc")
+        before_legacy_artifacts = before_legacy_doc.document_task_artifacts or DocumentTaskArtifacts()
+        before_legacy_chapters = dict(before_legacy_artifacts.chapter_artifacts)
+        legacy_entry = before_legacy_chapters.get(chapter_key) or TaskArtifacts()
+        before_legacy_chapters[chapter_key] = TaskArtifacts(
+            summary=legacy_entry.summary,
+            quiz=None,
+        )
+        repository.update_document_artifacts(
+            doc_name="quiz-doc",
+            artifacts=DocumentTaskArtifacts(
+                chapter_artifacts=before_legacy_chapters,
+                metadata=dict(before_legacy_artifacts.metadata),
+            ),
+        )
+
+        legacy_wrong = QuizArtifact(
+            items=[
+                {"question_id": "legacy-1", "question_text": "legacy", "answer_text": "legacy"},
+                {"question_id": "legacy-2", "question_text": "legacy", "answer_text": "legacy"},
+                {"question_id": "legacy-3", "question_text": "legacy", "answer_text": "legacy"},
+                {"question_id": "legacy-4", "question_text": "legacy", "answer_text": "legacy"},
+            ],
+            language="zh",
+            generated_at="2026-01-01T00:00:00+00:00",
+            source_hash=hashlib.sha256(chapter_section.content.encode("utf-8")).hexdigest(),
+            prompt_version=coordinator._CHAPTER_QUIZ_PROMPT_VERSION,
+            quiz_schema_version=coordinator._QUIZ_SCHEMA_VERSION,
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            metadata={
+                "quiz_scope": "chapter",
+                "chapter_title": "第一章",
+                "chapter_key": chapter_key,
+                "source_section_id": "section-0",
+                "source_task_unit_id": "unit-0",
+            },
+        )
+        repository.update_section_quiz_artifact(
+            doc_name="quiz-doc",
+            section_id="section-0",
+            quiz=legacy_wrong,
+        )
+        calls_before_legacy = fake_quiz_service.calls
+        legacy_result = coordinator.generate_chapter_quiz(
+            doc_name="quiz-doc",
+            chapter_title="第一章",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            refresh_quiz=False,
+        )
+        _assert(legacy_result.success, "chapter quiz should still succeed with legacy wrong section artifact")
+        _assert(
+            fake_quiz_service.calls == calls_before_legacy + 1,
+            "legacy section-level chapter quiz must not be treated as chapter cache hit",
+        )
+        legacy_doc = repository.load_document("quiz-doc")
+        legacy_chapter_quiz = legacy_doc.document_task_artifacts.chapter_artifacts[chapter_key].quiz
+        _assert(
+            legacy_chapter_quiz is not None,
+            "legacy case should regenerate and write document-level chapter quiz",
+        )
+
+        # H. chapter summary and chapter quiz coexist
+        chapter_doc_before_summary = repository.load_document("quiz-doc")
+        existing_doc_artifacts = chapter_doc_before_summary.document_task_artifacts or DocumentTaskArtifacts()
+        chapter_map = dict(existing_doc_artifacts.chapter_artifacts)
+        chapter_entry = chapter_map.get(chapter_key) or TaskArtifacts()
+        chapter_map[chapter_key] = TaskArtifacts(
+            summary=SummaryArtifact(
+                content="chapter-summary",
+                language="zh",
+                generated_at="2026-01-01T00:00:00+00:00",
+                source_hash=hashlib.sha256(chapter_section.content.encode("utf-8")).hexdigest(),
+                prompt_version="chapter_summary_v1",
+                task_unit_split_mode="semantic_safe",
+                semantic_top_k_candidates=5,
+                metadata={
+                    "summary_scope": "chapter",
+                    "chapter_title": "第一章",
+                    "chapter_key": chapter_key,
+                    "source_section_id": "section-0",
+                    "source_task_unit_id": "unit-0",
+                },
+            ),
+            quiz=chapter_entry.quiz,
+        )
+        repository.update_document_artifacts(
+            doc_name="quiz-doc",
+            artifacts=DocumentTaskArtifacts(
+                chapter_artifacts=chapter_map,
+                metadata=dict(existing_doc_artifacts.metadata),
+            ),
+        )
+        coexist_result = coordinator.generate_chapter_quiz(
+            doc_name="quiz-doc",
+            chapter_title="第一章",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            refresh_quiz=False,
+        )
+        _assert(coexist_result.success, "chapter quiz coexist check should succeed")
+        coexist_doc = repository.load_document("quiz-doc")
+        coexist_entry = coexist_doc.document_task_artifacts.chapter_artifacts[chapter_key]
+        _assert(coexist_entry.summary is not None, "chapter summary should be preserved")
+        _assert(coexist_entry.quiz is not None, "chapter quiz should remain present")
+
+        # D (reverse order safe): chapter quiz first then section quiz should keep both scopes
+        chapter_first = coordinator.generate_chapter_quiz(
+            doc_name="quiz-doc",
+            chapter_title="第二章",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            refresh_quiz=True,
+        )
+        _assert(chapter_first.success, "chapter-first quiz on 第二章 should succeed")
+        section_second = coordinator.generate_section_quiz(
+            doc_name="quiz-doc",
+            section_id="section-1",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=5,
+            refresh_quiz=True,
+        )
+        _assert(section_second.success, "section-second quiz on section-1 should succeed")
+        reverse_doc = repository.load_document("quiz-doc")
+        chapter_key_2 = SectionTaskCoordinator._build_chapter_artifact_key("第二章")
+        _assert(
+            reverse_doc.document_task_artifacts.chapter_artifacts.get(chapter_key_2) is not None,
+            "reverse order should keep chapter-level quiz for 第二章",
+        )
+        reverse_section_1 = next(s for s in reverse_doc.sections if s.section_id == "section-1")
+        _assert(
+            reverse_section_1.task_artifacts is not None
+            and reverse_section_1.task_artifacts.quiz is not None,
+            "reverse order should keep section-level quiz for section-1",
+        )
+
 
 def main() -> None:
     test_quiz_persistence_cache_flow()
@@ -464,7 +682,7 @@ def main() -> None:
             {
                 "status": "ok",
                 "tests": [
-                    "section_quiz_first_call_writes_cache",
+                    "section_quiz_remains_section_level",
                     "section_quiz_second_call_cache_hit",
                     "refresh_quiz_forces_regenerate",
                     "source_hash_mismatch_invalidates_cache",
@@ -472,7 +690,11 @@ def main() -> None:
                     "summary_artifact_preserved_on_quiz_update",
                     "quiz_uses_persisted_task_units",
                     "malformed_cached_quiz_fallback",
-                    "chapter_quiz_cache",
+                    "chapter_quiz_document_level_cache",
+                    "chapter_refresh_updates_chapter_artifact_only",
+                    "legacy_section_level_chapter_quiz_ignored",
+                    "chapter_summary_and_quiz_coexist",
+                    "reverse_order_scope_safety",
                 ],
             },
             ensure_ascii=False,
@@ -483,4 +705,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
