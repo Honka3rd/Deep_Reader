@@ -29,6 +29,7 @@ from section_tasks.quiz_question import QuizQuestion
 from section_tasks.reparse_document_structure_result import ReparseDocumentStructureResult
 from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit import TaskUnit
+from section_tasks.task_unit_id_normalizer import TaskUnitIdNormalizer
 from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from shared.task_artifacts import QuizArtifact, SummaryArtifact, TaskArtifacts
@@ -71,6 +72,7 @@ class SectionTaskCoordinator:
         task_unit_resolver: TaskUnitResolver,
         enhanced_parse_trigger_evaluator: EnhancedParseTriggerEvaluator,
         semantic_top_k_candidates_max: int = 20,
+        task_unit_id_normalizer: TaskUnitIdNormalizer | None = None,
     ):
         self.document_preparation_pipeline = document_preparation_pipeline
         self.document_artifact_repository = document_artifact_repository
@@ -80,6 +82,7 @@ class SectionTaskCoordinator:
         self.task_unit_resolver = task_unit_resolver
         self.enhanced_parse_trigger_evaluator = enhanced_parse_trigger_evaluator
         self.semantic_top_k_candidates_max = max(1, int(semantic_top_k_candidates_max))
+        self.task_unit_id_normalizer = task_unit_id_normalizer or TaskUnitIdNormalizer()
 
     def summarize_section(
         self,
@@ -497,6 +500,10 @@ class SectionTaskCoordinator:
             resolve_options=resolve_options,
             refresh_task_units=refresh_task_units,
         )
+        self.task_unit_id_normalizer.assert_unique_task_unit_ids(
+            document=cached_document,
+            context="SectionTaskCoordinator#get_document_task_layout",
+        )
 
         task_unit_dtos, section_units_by_section_id = self._build_task_unit_dtos_from_document(
             document=cached_document
@@ -651,29 +658,29 @@ class SectionTaskCoordinator:
         *,
         document: StructuredDocument,
     ) -> tuple[list[TaskUnitDTO], dict[str, list[TaskUnitDTO]]]:
-        """Build deduplicated task-unit DTOs and section->task-unit mapping from persisted data."""
-        task_unit_by_id: dict[str, TaskUnitDTO] = {}
+        """Build task-unit DTOs and section->task-unit mapping from persisted data."""
         section_units_by_section_id: dict[str, list[TaskUnitDTO]] = {
             section.section_id: [] for section in document.sections
         }
+        task_unit_dtos: list[TaskUnitDTO] = []
 
         for section in document.sections:
             section_task_units: list[TaskUnitDTO] = []
             for task_unit in section.task_units:
-                if task_unit.unit_id not in task_unit_by_id:
-                    task_unit_by_id[task_unit.unit_id] = TaskUnitDTO(
-                        unit_id=task_unit.unit_id,
-                        title=task_unit.title,
-                        container_title=task_unit.container_title,
-                        source_section_ids=list(task_unit.source_section_ids),
-                        is_fallback_generated=task_unit.is_fallback_generated,
-                        artifacts=self._build_artifact_availability(
-                            task_unit.task_artifacts
-                        ),
-                    )
-                section_task_units.append(task_unit_by_id[task_unit.unit_id])
+                task_unit_dto = TaskUnitDTO(
+                    unit_id=task_unit.unit_id,
+                    title=task_unit.title,
+                    container_title=task_unit.container_title,
+                    source_section_ids=list(task_unit.source_section_ids),
+                    is_fallback_generated=task_unit.is_fallback_generated,
+                    artifacts=self._build_artifact_availability(
+                        task_unit.task_artifacts
+                    ),
+                )
+                task_unit_dtos.append(task_unit_dto)
+                section_task_units.append(task_unit_dto)
             section_units_by_section_id[section.section_id] = section_task_units
-        return list(task_unit_by_id.values()), section_units_by_section_id
+        return task_unit_dtos, section_units_by_section_id
 
     @staticmethod
     def _build_artifact_availability(
@@ -776,6 +783,23 @@ class SectionTaskCoordinator:
                 resolve_options=resolve_options,
             )
         ):
+            duplicate_ids = self.task_unit_id_normalizer.find_duplicate_task_unit_ids(
+                document=structured_document
+            )
+            if duplicate_ids:
+                repaired_document = self.task_unit_id_normalizer.normalize_document_task_unit_ids(
+                    document=structured_document
+                )
+                self.document_artifact_repository.save_document(
+                    repaired_document,
+                    doc_name=doc_name,
+                )
+                print(
+                    "SectionTaskCoordinator#task_layout_cache_repair_duplicate_task_unit_ids:",
+                    f"doc_name={doc_name}",
+                    f"duplicates={duplicate_ids}",
+                )
+                return repaired_document
             print(
                 "SectionTaskCoordinator#task_layout_cache_hit:",
                 f"doc_name={doc_name}",
@@ -793,6 +817,10 @@ class SectionTaskCoordinator:
             document=structured_document,
             task_units=resolved_task_units,
         )
+        task_units_by_section_id = self.task_unit_id_normalizer.normalize_task_units_by_section_id(
+            document=structured_document,
+            task_units_by_section_id=task_units_by_section_id,
+        )
         task_layout_metadata = self._build_task_layout_metadata(
             document=structured_document,
             resolve_options=resolve_options,
@@ -801,6 +829,10 @@ class SectionTaskCoordinator:
             doc_name=doc_name,
             task_units_by_section_id=task_units_by_section_id,
             task_layout_metadata=task_layout_metadata,
+        )
+        self.task_unit_id_normalizer.assert_unique_task_unit_ids(
+            document=updated_document,
+            context="SectionTaskCoordinator#task_layout_cache_write",
         )
         print(
             "SectionTaskCoordinator#task_layout_cache_write:",

@@ -20,7 +20,7 @@ from document_structure.structured_document_artifact_repository import (
 from document_structure.structured_document_store import StructuredDocumentStore
 from document_structure.section_role import SectionRole
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
-from shared.task_artifacts import SummaryArtifact, TaskArtifacts
+from shared.task_artifacts import DocumentTaskArtifacts, SummaryArtifact, TaskArtifacts
 from shared.task_unit_model import TaskUnit
 
 
@@ -296,8 +296,138 @@ def test_task_layout_cache_flow() -> None:
         _assert(refreshed_layout.task_units, "refreshed layout should return task units")
 
 
+def test_task_layout_cache_duplicate_id_repair() -> None:
+    """Cache-hit path should repair duplicated persisted task-unit ids without resolver recompute."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        base_document = _build_base_document()
+        task_layout_metadata = {
+            "source_hash": SectionTaskCoordinator._compute_source_hash(base_document),
+            "task_unit_split_mode": "semantic_safe",
+            "semantic_top_k_candidates": 3,
+            "resolver_version": "task_unit_resolver_v2",
+        }
+        duplicate_document = StructuredDocument(
+            document_id=base_document.document_id,
+            title=base_document.title,
+            source_path=base_document.source_path,
+            language=base_document.language,
+            raw_text=base_document.raw_text,
+            sections=[
+                StructuredSection(
+                    section_id=base_document.sections[0].section_id,
+                    section_index=base_document.sections[0].section_index,
+                    title=base_document.sections[0].title,
+                    level=base_document.sections[0].level,
+                    content=base_document.sections[0].content,
+                    char_start=base_document.sections[0].char_start,
+                    char_end=base_document.sections[0].char_end,
+                    section_role=base_document.sections[0].section_role,
+                    task_units=[
+                        TaskUnit(
+                            unit_id="task-unit-0",
+                            title="u0",
+                            container_title=None,
+                            content="chunk-a",
+                            source_section_ids=[base_document.sections[0].section_id],
+                            is_fallback_generated=False,
+                            task_artifacts=TaskArtifacts(
+                                summary=SummaryArtifact(content="artifact-a")
+                            ),
+                        )
+                    ],
+                ),
+                StructuredSection(
+                    section_id=base_document.sections[1].section_id,
+                    section_index=base_document.sections[1].section_index,
+                    title=base_document.sections[1].title,
+                    level=base_document.sections[1].level,
+                    content=base_document.sections[1].content,
+                    char_start=base_document.sections[1].char_start,
+                    char_end=base_document.sections[1].char_end,
+                    section_role=base_document.sections[1].section_role,
+                    task_units=[
+                        TaskUnit(
+                            unit_id="task-unit-0",
+                            title="u1",
+                            container_title=None,
+                            content="chunk-b",
+                            source_section_ids=[base_document.sections[1].section_id],
+                            is_fallback_generated=False,
+                            task_artifacts=TaskArtifacts(
+                                summary=SummaryArtifact(content="artifact-b")
+                            ),
+                        )
+                    ],
+                ),
+            ],
+            document_task_artifacts=DocumentTaskArtifacts(
+                metadata={"task_layout": task_layout_metadata}
+            ),
+        )
+        (temp_path / "cache-doc.structured.json").write_text(
+            duplicate_document.to_json(),
+            encoding="utf-8",
+        )
+
+        repository = StructuredDocumentArtifactRepository(
+            store=StructuredDocumentStore(),
+            base_dir=temp_dir,
+        )
+        fake_resolver = _FakeTaskUnitResolver()
+        coordinator = SectionTaskCoordinator(
+            document_preparation_pipeline=_FakePreparationPipeline(repository),
+            document_artifact_repository=repository,
+            document_profile_store=_FakeProfileStore(),
+            chapter_summary_service=_FakeSectionTaskService(),
+            chapter_quiz_service=_FakeSectionTaskService(),
+            task_unit_resolver=fake_resolver,
+            enhanced_parse_trigger_evaluator=_FakeEnhancedParseEvaluator(),
+            semantic_top_k_candidates_max=20,
+        )
+
+        layout = coordinator.get_document_task_layout(
+            doc_name="cache-doc",
+            refresh_task_units=False,
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=3,
+        )
+        _assert(
+            fake_resolver.calls == 0,
+            "duplicate-id cache repair should not recompute resolver",
+        )
+
+        reloaded = repository.load_document("cache-doc")
+        ids = [
+            task_unit.unit_id
+            for section in reloaded.sections
+            for task_unit in section.task_units
+        ]
+        _assert(len(ids) == 2, "fixture should keep two persisted units")
+        _assert(len(set(ids)) == 2, "cache repair should normalize ids to document-unique")
+        _assert(ids == ["task-unit-0", "task-unit-1"], "normalized ids should follow reading order")
+        _assert(
+            reloaded.sections[0].task_units[0].task_artifacts is not None
+            and reloaded.sections[0].task_units[0].task_artifacts.summary is not None
+            and reloaded.sections[0].task_units[0].task_artifacts.summary.content == "artifact-a",
+            "artifact-a should stay on original section/unit position after id repair",
+        )
+        _assert(
+            reloaded.sections[1].task_units[0].task_artifacts is not None
+            and reloaded.sections[1].task_units[0].task_artifacts.summary is not None
+            and reloaded.sections[1].task_units[0].task_artifacts.summary.content == "artifact-b",
+            "artifact-b should stay on original section/unit position after id repair",
+        )
+        _assert(
+            len(layout.task_units)
+            == sum(len(section.task_units) for section in reloaded.sections),
+            "layout response should not silently drop units after duplicate-id repair",
+        )
+
+
 def main() -> None:
     test_task_layout_cache_flow()
+    test_task_layout_cache_duplicate_id_repair()
     print(
         json.dumps(
             {
@@ -308,6 +438,7 @@ def main() -> None:
                     "refresh_forces_recompute",
                     "mode_topk_mismatch_invalidates_cache",
                     "task_unit_artifacts_preserved_on_cache_hit",
+                    "cache_hit_duplicate_id_repair_without_recompute",
                 ],
             },
             ensure_ascii=False,

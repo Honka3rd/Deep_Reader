@@ -390,6 +390,85 @@ def test_repository_update_task_unit_artifacts_unknown_id() -> None:
         raise AssertionError("unknown task_unit_id should raise ValueError")
 
 
+def test_repository_update_task_unit_artifacts_duplicate_id() -> None:
+    """Duplicate task_unit_id in one document must be rejected defensively."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        base_document = StructuredDocument(
+            document_id="artifact-doc",
+            title="Artifact Doc",
+            source_path=None,
+            language="en",
+            raw_text="content",
+            sections=[
+                StructuredSection(
+                    section_id="section-0",
+                    section_index=0,
+                    title="S0",
+                    level=1,
+                    content="chunk A",
+                    char_start=0,
+                    char_end=7,
+                    section_role=SectionRole.MAIN_BODY,
+                    task_units=[
+                        TaskUnit(
+                            unit_id="task-unit-0",
+                            title="u0",
+                            container_title=None,
+                            content="chunk 0",
+                            source_section_ids=["section-0"],
+                            is_fallback_generated=False,
+                        ),
+                    ],
+                ),
+                StructuredSection(
+                    section_id="section-1",
+                    section_index=1,
+                    title="S1",
+                    level=1,
+                    content="chunk B",
+                    char_start=8,
+                    char_end=15,
+                    section_role=SectionRole.MAIN_BODY,
+                    task_units=[
+                        TaskUnit(
+                            unit_id="task-unit-0",
+                            title="u1",
+                            container_title=None,
+                            content="chunk 1",
+                            source_section_ids=["section-1"],
+                            is_fallback_generated=False,
+                        ),
+                    ],
+                ),
+            ],
+        )
+        target_path = Path(temp_dir) / "artifact-doc.structured.json"
+        target_path.write_text(base_document.to_json(), encoding="utf-8")
+        repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
+
+        try:
+            repository.update_task_unit_artifacts(
+                doc_name="artifact-doc",
+                task_unit_id="task-unit-0",
+                artifacts=TaskArtifacts(summary=SummaryArtifact(content="dup update")),
+            )
+        except ValueError as error:
+            message = str(error)
+            _assert("duplicate task_unit_id" in message, "error should mention duplicate id")
+            _assert("match_count=2" in message, "error should include duplicate match count")
+            reloaded = repository.load_document("artifact-doc")
+            _assert(
+                all(
+                    task_unit.task_artifacts is None
+                    for section in reloaded.sections
+                    for task_unit in section.task_units
+                ),
+                "duplicate-id defensive failure should not update any task unit",
+            )
+            return
+        raise AssertionError("duplicate task_unit_id should raise ValueError")
+
+
 def test_task_unit_artifact_smoke() -> None:
     """Construct TaskUnit with task_artifacts and round-trip through dict payload."""
     task_unit = TaskUnit(
@@ -449,6 +528,7 @@ def main() -> None:
     test_repository_update_section_task_units()
     test_repository_update_task_unit_artifacts()
     test_repository_update_task_unit_artifacts_unknown_id()
+    test_repository_update_task_unit_artifacts_duplicate_id()
     test_task_unit_artifact_smoke()
     test_document_level_artifacts_round_trip()
 
@@ -464,6 +544,7 @@ def main() -> None:
                     "repository_update_section_task_units",
                     "repository_update_task_unit_artifacts",
                     "repository_update_task_unit_artifacts_unknown_id",
+                    "repository_update_task_unit_artifacts_duplicate_id",
                     "task_unit_artifact_smoke",
                     "document_level_artifacts_round_trip",
                 ],

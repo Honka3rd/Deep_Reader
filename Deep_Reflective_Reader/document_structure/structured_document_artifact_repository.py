@@ -223,33 +223,35 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Update one persisted task-unit artifact payload and persist document."""
         document = self.load_document(doc_name)
-        updated_sections = list(document.sections)
-        has_updated = False
-        for section_index, section in enumerate(updated_sections):
-            if not section.task_units:
-                continue
-            updated_task_units: list[TaskUnit] = []
-            section_touched = False
-            for task_unit in section.task_units:
+        matching_paths: list[tuple[int, int]] = []
+        for section_index, section in enumerate(document.sections):
+            for task_unit_index, task_unit in enumerate(section.task_units):
                 if task_unit.unit_id == task_unit_id:
-                    updated_task_units.append(
-                        replace(task_unit, task_artifacts=artifacts)
-                    )
-                    section_touched = True
-                    has_updated = True
-                else:
-                    updated_task_units.append(task_unit)
-            if section_touched:
-                updated_sections[section_index] = replace(
-                    section,
-                    task_units=updated_task_units,
-                )
-                break
+                    matching_paths.append((section_index, task_unit_index))
 
-        if not has_updated:
+        if not matching_paths:
             raise ValueError(
                 f"update_task_unit_artifacts: unknown task_unit_id='{task_unit_id}' for doc_name='{doc_name}'"
             )
+        if len(matching_paths) > 1:
+            raise ValueError(
+                "update_task_unit_artifacts: duplicate task_unit_id detected "
+                f"for doc_name='{doc_name}' task_unit_id='{task_unit_id}' "
+                f"match_count={len(matching_paths)}"
+            )
+
+        target_section_index, target_task_unit_index = matching_paths[0]
+        updated_sections = list(document.sections)
+        target_section = updated_sections[target_section_index]
+        updated_task_units = list(target_section.task_units)
+        updated_task_units[target_task_unit_index] = replace(
+            updated_task_units[target_task_unit_index],
+            task_artifacts=artifacts,
+        )
+        updated_sections[target_section_index] = replace(
+            target_section,
+            task_units=updated_task_units,
+        )
 
         updated_document = replace(document, sections=updated_sections)
         self.save_document(updated_document, doc_name=doc_name)
@@ -318,6 +320,10 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             sections=updated_sections,
             document_task_artifacts=updated_document_artifacts,
         )
+        self._assert_unique_task_unit_ids(
+            document=updated_document,
+            context=f"update_task_layout doc_name='{doc_name}'",
+        )
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 
@@ -370,3 +376,28 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
                 temp_file.close()
             if temp_path is not None and temp_path.exists():
                 temp_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _assert_unique_task_unit_ids(
+        *,
+        document: StructuredDocument,
+        context: str,
+    ) -> None:
+        """Defensive check: persisted task-unit ids must be document-scope unique."""
+        counts: dict[str, int] = {}
+        for section in document.sections:
+            for task_unit in section.task_units:
+                counts[task_unit.unit_id] = counts.get(task_unit.unit_id, 0) + 1
+        duplicates = {
+            unit_id: count
+            for unit_id, count in counts.items()
+            if count > 1
+        }
+        if duplicates:
+            duplicate_repr = ", ".join(
+                f"{unit_id}:{count}"
+                for unit_id, count in sorted(duplicates.items())
+            )
+            raise ValueError(
+                f"{context}: duplicate task_unit_id detected -> {duplicate_repr}"
+            )
