@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from document_structure.section_role import SectionRole
+from document_structure.structured_hierarchy import StructuredDocumentNode
 from shared.task_artifacts import DocumentTaskArtifacts, TaskArtifacts
 from shared.task_unit_model import TaskUnit
 
@@ -79,6 +80,7 @@ class StructuredDocument:
     language: str | None
     raw_text: str
     sections: list[StructuredSection] = field(default_factory=list)
+    structure_nodes: list[StructuredDocumentNode] = field(default_factory=list)
     structure_error_code: str | None = None
     structure_error_message: str | None = None
     document_task_artifacts: DocumentTaskArtifacts | None = None
@@ -92,6 +94,7 @@ class StructuredDocument:
             "language": self.language,
             "raw_text": self.raw_text,
             "sections": [section.to_dict() for section in self.sections],
+            "structure_nodes": [node.to_dict() for node in self.structure_nodes],
             "structure_error_code": self.structure_error_code,
             "structure_error_message": self.structure_error_message,
             "document_task_artifacts": (
@@ -105,6 +108,7 @@ class StructuredDocument:
     def from_dict(cls, data: dict[str, Any]) -> "StructuredDocument":
         """Build a structured document DTO from dictionary payload."""
         section_payloads = data.get("sections", [])
+        structure_node_payloads = data.get("structure_nodes", [])
         return cls(
             document_id=str(data["document_id"]),
             title=str(data["title"]),
@@ -118,6 +122,11 @@ class StructuredDocument:
             sections=[
                 StructuredSection.from_dict(section_data)
                 for section_data in section_payloads
+            ],
+            structure_nodes=[
+                StructuredDocumentNode.from_dict(node_data)
+                for node_data in structure_node_payloads
+                if isinstance(node_data, dict)
             ],
             structure_error_code=(
                 None

@@ -53,7 +53,7 @@ class TaskUnitResolveOptions:
 class SectionTaskCoordinator:
     """Coordinator for section/chapter task orchestration and layout projection."""
     _TASK_LAYOUT_METADATA_KEY = "task_layout"
-    _TASK_LAYOUT_RESOLVER_VERSION = "task_unit_resolver_v1"
+    _TASK_LAYOUT_RESOLVER_VERSION = "task_unit_resolver_v2"
     _SECTION_SUMMARY_PROMPT_VERSION = "section_summary_v1"
     _CHAPTER_SUMMARY_PROMPT_VERSION = "chapter_summary_v1"
     _SECTION_QUIZ_PROMPT_VERSION = "section_quiz_v1"

@@ -6,6 +6,9 @@ from document_structure.section_splitter_selector import (
 )
 from document_structure.section_role import SectionRole
 from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_hierarchy_builder import (
+    build_document_hierarchy_from_sections,
+)
 from language.language_code import LanguageCode
 
 
@@ -55,7 +58,7 @@ class StructuredDocumentBuilder:
                     error_message="SectionSplitter returned no sections.",
                 )
 
-            return StructuredDocument(
+            document = StructuredDocument(
                 document_id=document_id,
                 title=title,
                 source_path=source_path,
@@ -65,6 +68,7 @@ class StructuredDocumentBuilder:
                 structure_error_code=None,
                 structure_error_message=None,
             )
+            return build_document_hierarchy_from_sections(document)
         except ValueError as error:
             return self._build_fallback_document(
                 document_id=document_id,
@@ -116,7 +120,7 @@ class StructuredDocumentBuilder:
             char_end=len(raw_text),
             section_role=SectionRole.MAIN_BODY,
         )
-        return StructuredDocument(
+        fallback_document = StructuredDocument(
             document_id=document_id,
             title=title,
             source_path=source_path,
@@ -126,3 +130,4 @@ class StructuredDocumentBuilder:
             structure_error_code=error_code,
             structure_error_message=error_message,
         )
+        return build_document_hierarchy_from_sections(fallback_document)
