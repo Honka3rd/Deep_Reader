@@ -1,4 +1,5 @@
 from document_structure.structured_document import StructuredDocument, StructuredSection
+from language.language_code import LanguageCodeResolver
 from section_tasks.abstract_task_unit_split_resolver import AbstractTaskUnitSplitResolver
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from section_tasks.task_unit_split_resolver_selector import TaskUnitSplitResolverSelector
@@ -36,6 +37,7 @@ class TaskUnitResolver:
         """Resolve task units with optional request-time split-mode overrides."""
         if not document.sections:
             return []
+        resolved_document_language = LanguageCodeResolver.resolve(document.language)
 
         resolved_split_mode = (
             self.split_mode
@@ -49,12 +51,14 @@ class TaskUnitResolver:
                 only_section,
                 split_mode=resolved_split_mode,
                 semantic_top_k_candidates=semantic_top_k_candidates,
+                language_code=resolved_document_language,
             )
 
         return self._merge_short_adjacent_sections(
             document.sections,
             split_mode=resolved_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            language_code=resolved_document_language,
         )
 
     def _should_split_single_huge_section(self, document: StructuredDocument) -> bool:
@@ -70,6 +74,7 @@ class TaskUnitResolver:
         *,
         split_mode: TaskUnitSplitMode,
         semantic_top_k_candidates: int | None,
+        language_code,
     ) -> list[TaskUnit]:
         """Split one huge section through selected single-section split resolver."""
         split_units = self._split_huge_section_with_resolver(
@@ -77,6 +82,7 @@ class TaskUnitResolver:
             section_index=0,
             split_mode=split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            language_code=language_code,
         )
         if not split_units:
             return []
@@ -98,12 +104,14 @@ class TaskUnitResolver:
         *,
         split_mode: TaskUnitSplitMode,
         semantic_top_k_candidates: int | None,
+        language_code,
     ) -> list[TaskUnit]:
         """Merge adjacent short sections into larger units for task stability."""
         pending_units = self._expand_sections_to_base_units(
             sections,
             split_mode=split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            language_code=language_code,
         )
         if not pending_units:
             return []
@@ -175,6 +183,7 @@ class TaskUnitResolver:
         *,
         split_mode: TaskUnitSplitMode,
         semantic_top_k_candidates: int | None,
+        language_code,
     ) -> list[TaskUnit]:
         """Expand sections into base units, splitting only inside huge sections."""
         base_units: list[TaskUnit] = []
@@ -189,6 +198,7 @@ class TaskUnitResolver:
                         section_index=section_index,
                         split_mode=split_mode,
                         semantic_top_k_candidates=semantic_top_k_candidates,
+                        language_code=language_code,
                     )
                 )
                 continue
@@ -211,6 +221,7 @@ class TaskUnitResolver:
         section_index: int,
         split_mode: TaskUnitSplitMode,
         semantic_top_k_candidates: int | None,
+        language_code,
     ) -> list[TaskUnit]:
         """Delegate section-internal split to selected split resolver."""
         resolver: AbstractTaskUnitSplitResolver = self.split_resolver_selector.get_resolver(
@@ -222,6 +233,7 @@ class TaskUnitResolver:
             task_unit_min_chars=self.task_unit_min_chars,
             task_unit_max_chars=self.task_unit_max_chars,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            language_code=language_code,
         )
 
     @staticmethod

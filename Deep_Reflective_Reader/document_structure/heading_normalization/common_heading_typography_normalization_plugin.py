@@ -24,9 +24,8 @@ class CommonHeadingTypographyNormalizationPlugin:
         }
     )
 
-    def normalize(self, heading: str, language: LanguageCode) -> str:
+    def normalize(self, heading: str, _language: LanguageCode) -> str:
         """Normalize Unicode form, dash variants, and redundant whitespace."""
-        _ = language
         normalized = unicodedata.normalize("NFKC", heading)
         normalized = normalized.translate(self._DASH_TRANSLATION_TABLE)
         normalized = normalized.replace("\u3000", " ")

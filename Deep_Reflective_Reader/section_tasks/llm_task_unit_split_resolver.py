@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 
 from document_structure.structured_document import StructuredSection
+from language.language_code import LanguageCode
 from llm.llm_provider import LLMProvider
 from section_tasks.abstract_task_unit_split_resolver import AbstractTaskUnitSplitResolver
 from section_tasks.heuristic_task_unit_split_resolver import HeuristicTaskUnitSplitResolver
@@ -53,6 +54,7 @@ class LLMTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         task_unit_min_chars: int,
         task_unit_max_chars: int,
         semantic_top_k_candidates: int | None = None,
+        language_code: LanguageCode | str | None = None,
     ) -> list[TaskUnit]:
         """Run LLM split plan + local apply flow; fallback to heuristic resolver safely."""
         try:
@@ -90,6 +92,7 @@ class LLMTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
             task_unit_min_chars=task_unit_min_chars,
             task_unit_max_chars=task_unit_max_chars,
             semantic_top_k_candidates=semantic_top_k_candidates,
+            language_code=language_code,
         )
 
     def build_split_plan(
@@ -133,7 +136,6 @@ class LLMTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         task_unit_max_chars: int,
     ) -> list[TaskUnit]:
         """Apply split plan locally with deterministic anchors and safety checks."""
-        _ = task_unit_min_chars
         section_text = (section.content or "").strip()
         if not section_text:
             raise ValueError("empty_section_content")
@@ -191,6 +193,7 @@ class LLMTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         if not self._looks_reasonable_units_output(
             section_text=section_text,
             chunks=chunks,
+            task_unit_min_chars=task_unit_min_chars,
             task_unit_max_chars=task_unit_max_chars,
         ):
             raise ValueError("abnormal_units_output")
@@ -382,6 +385,7 @@ class LLMTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
         *,
         section_text: str,
         chunks: list[tuple[str | None, str]],
+        task_unit_min_chars: int,
         task_unit_max_chars: int,
     ) -> bool:
         """Validate final chunks before accepting LLM split output."""
@@ -396,6 +400,13 @@ class LLMTaskUnitSplitResolver(AbstractTaskUnitSplitResolver):
             if len(chunk_text) > max(task_unit_max_chars * 2, 2400)
         ]
         if oversized_chunks:
+            return False
+        too_short_chunks = [
+            chunk_text
+            for _, chunk_text in chunks
+            if len(chunk_text) < max(32, int(task_unit_min_chars * 0.25))
+        ]
+        if len(too_short_chunks) > max(1, len(chunks) // 3):
             return False
         return True
 

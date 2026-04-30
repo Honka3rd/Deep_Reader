@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from document_structure.structured_document import StructuredSection
+from language.language_code import LanguageCode
 from section_tasks.task_unit import TaskUnit
 
 
@@ -16,6 +17,7 @@ class AbstractTaskUnitSplitResolver(ABC):
         task_unit_min_chars: int,
         task_unit_max_chars: int,
         semantic_top_k_candidates: int | None = None,
+        language_code: LanguageCode | str | None = None,
     ) -> list[TaskUnit]:
         """Split one section into section-internal task units."""
         raise NotImplementedError
