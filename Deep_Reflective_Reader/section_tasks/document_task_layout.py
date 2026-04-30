@@ -46,6 +46,10 @@ class ArtifactAvailabilityDTO:
 
     has_summary: bool = False
     has_quiz: bool = False
+    summary_cache_valid: bool | None = None
+    quiz_cache_valid: bool | None = None
+    summary_invalid_reason: str | None = None
+    quiz_invalid_reason: str | None = None
     summary_generated_at: str | None = None
     quiz_generated_at: str | None = None
 
@@ -54,6 +58,10 @@ class ArtifactAvailabilityDTO:
         return {
             "has_summary": self.has_summary,
             "has_quiz": self.has_quiz,
+            "summary_cache_valid": self.summary_cache_valid,
+            "quiz_cache_valid": self.quiz_cache_valid,
+            "summary_invalid_reason": self.summary_invalid_reason,
+            "quiz_invalid_reason": self.quiz_invalid_reason,
             "summary_generated_at": self.summary_generated_at,
             "quiz_generated_at": self.quiz_generated_at,
         }

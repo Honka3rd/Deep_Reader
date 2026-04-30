@@ -25,6 +25,7 @@ from section_tasks.document_task_layout import (
     SectionTaskMode,
     TaskUnitDTO,
 )
+from section_tasks.artifact_validity import ArtifactValidityResult
 from section_tasks.quiz_question import QuizQuestion
 from section_tasks.reparse_document_structure_result import ReparseDocumentStructureResult
 from section_tasks.section_task_result import SectionTaskResult
@@ -59,6 +60,8 @@ class SectionTaskCoordinator:
     _CHAPTER_SUMMARY_PROMPT_VERSION = "chapter_summary_v1"
     _SECTION_QUIZ_PROMPT_VERSION = "section_quiz_v1"
     _CHAPTER_QUIZ_PROMPT_VERSION = "chapter_quiz_v1"
+    _TASK_UNIT_SUMMARY_PROMPT_VERSION = "task_unit_summary_v1"
+    _TASK_UNIT_QUIZ_PROMPT_VERSION = "task_unit_quiz_v1"
     _QUIZ_SCHEMA_VERSION = "quiz_schema_v1"
     _CHAPTER_ARTIFACT_KEY_PREFIX = "chapter::"
 
@@ -500,13 +503,16 @@ class SectionTaskCoordinator:
             resolve_options=resolve_options,
             refresh_task_units=refresh_task_units,
         )
+        document_profile = self._load_existing_document_profile(doc_name)
         self.task_unit_id_normalizer.assert_unique_task_unit_ids(
             document=cached_document,
             context="SectionTaskCoordinator#get_document_task_layout",
         )
 
         task_unit_dtos, section_units_by_section_id = self._build_task_unit_dtos_from_document(
-            document=cached_document
+            document=cached_document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
         )
 
         section_layouts: list[DocumentTaskLayoutSectionDTO] = []
@@ -528,8 +534,11 @@ class SectionTaskCoordinator:
                     ),
                     task_mode=section_mode,
                     task_units=section_units,
-                    artifacts=self._build_artifact_availability(
-                        section.task_artifacts
+                    artifacts=self._build_section_artifact_availability(
+                        section=section,
+                        document=cached_document,
+                        document_profile=document_profile,
+                        resolve_options=resolve_options,
                     ),
                 )
             )
@@ -551,7 +560,9 @@ class SectionTaskCoordinator:
             sections=section_layouts,
             task_units=task_unit_dtos,
             chapter_artifacts=self._build_chapter_artifact_availability(
-                cached_document
+                document=cached_document,
+                document_profile=document_profile,
+                resolve_options=resolve_options,
             ),
             enhanced_parse_recommendation=EnhancedParseRecommendationDTO(
                 should_recommend=trigger_decision.should_recommend,
@@ -657,6 +668,8 @@ class SectionTaskCoordinator:
         self,
         *,
         document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
     ) -> tuple[list[TaskUnitDTO], dict[str, list[TaskUnitDTO]]]:
         """Build task-unit DTOs and section->task-unit mapping from persisted data."""
         section_units_by_section_id: dict[str, list[TaskUnitDTO]] = {
@@ -673,8 +686,11 @@ class SectionTaskCoordinator:
                     container_title=task_unit.container_title,
                     source_section_ids=list(task_unit.source_section_ids),
                     is_fallback_generated=task_unit.is_fallback_generated,
-                    artifacts=self._build_artifact_availability(
-                        task_unit.task_artifacts
+                    artifacts=self._build_task_unit_artifact_availability(
+                        task_unit=task_unit,
+                        document=document,
+                        document_profile=document_profile,
+                        resolve_options=resolve_options,
                     ),
                 )
                 task_unit_dtos.append(task_unit_dto)
@@ -683,30 +699,99 @@ class SectionTaskCoordinator:
         return task_unit_dtos, section_units_by_section_id
 
     @staticmethod
-    def _build_artifact_availability(
+    def _build_artifact_availability_from_validity(
+        *,
+        summary_validity: ArtifactValidityResult,
+        quiz_validity: ArtifactValidityResult,
         task_artifacts: TaskArtifacts | None,
     ) -> ArtifactAvailabilityDTO | None:
         """Build lightweight artifact availability metadata for response DTOs."""
-        if task_artifacts is None:
+        if not summary_validity.exists and not quiz_validity.exists:
             return None
-
-        summary = task_artifacts.summary
-        quiz = task_artifacts.quiz
-        has_summary = summary is not None and bool(summary.content.strip())
-        has_quiz = quiz is not None and bool(quiz.items)
-        if not has_summary and not has_quiz:
-            return None
+        summary = None if task_artifacts is None else task_artifacts.summary
+        quiz = None if task_artifacts is None else task_artifacts.quiz
 
         return ArtifactAvailabilityDTO(
-            has_summary=has_summary,
-            has_quiz=has_quiz,
+            has_summary=summary_validity.exists,
+            has_quiz=quiz_validity.exists,
+            summary_cache_valid=summary_validity.cache_valid,
+            quiz_cache_valid=quiz_validity.cache_valid,
+            summary_invalid_reason=summary_validity.invalid_reason,
+            quiz_invalid_reason=quiz_validity.invalid_reason,
             summary_generated_at=(None if summary is None else summary.generated_at),
             quiz_generated_at=(None if quiz is None else quiz.generated_at),
         )
 
+    def _build_section_artifact_availability(
+        self,
+        *,
+        section: StructuredSection,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+    ) -> ArtifactAvailabilityDTO | None:
+        """Build section-level artifact availability with cache-validity visibility."""
+        artifacts = section.task_artifacts
+        summary_validity = self._validate_section_summary_artifact(
+            section=section,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=self._SECTION_SUMMARY_PROMPT_VERSION,
+            expected_scope="section",
+            expected_chapter_title=None,
+        )
+        quiz_validity, _ = self._validate_section_quiz_artifact(
+            section=section,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=self._SECTION_QUIZ_PROMPT_VERSION,
+            expected_scope="section",
+            expected_chapter_title=None,
+        )
+        return self._build_artifact_availability_from_validity(
+            summary_validity=summary_validity,
+            quiz_validity=quiz_validity,
+            task_artifacts=artifacts,
+        )
+
+    def _build_task_unit_artifact_availability(
+        self,
+        *,
+        task_unit: TaskUnit,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+    ) -> ArtifactAvailabilityDTO | None:
+        """Build task-unit-level artifact availability with cache-validity visibility."""
+        artifacts = task_unit.task_artifacts
+        summary_validity = self._validate_task_unit_summary_artifact(
+            task_unit=task_unit,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=self._TASK_UNIT_SUMMARY_PROMPT_VERSION,
+        )
+        quiz_validity, _ = self._validate_task_unit_quiz_artifact(
+            task_unit=task_unit,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=self._TASK_UNIT_QUIZ_PROMPT_VERSION,
+        )
+        return self._build_artifact_availability_from_validity(
+            summary_validity=summary_validity,
+            quiz_validity=quiz_validity,
+            task_artifacts=artifacts,
+        )
+
     def _build_chapter_artifact_availability(
         self,
+        *,
         document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
     ) -> dict[str, ArtifactAvailabilityDTO]:
         """Build chapter artifact availability map without heavy payload fields."""
         document_artifacts = document.document_task_artifacts
@@ -715,7 +800,33 @@ class SectionTaskCoordinator:
 
         chapter_availability: dict[str, ArtifactAvailabilityDTO] = {}
         for chapter_key, chapter_artifacts in document_artifacts.chapter_artifacts.items():
-            availability = self._build_artifact_availability(chapter_artifacts)
+            chapter_title = chapter_key
+            if chapter_key.startswith(self._CHAPTER_ARTIFACT_KEY_PREFIX):
+                chapter_title = chapter_key[len(self._CHAPTER_ARTIFACT_KEY_PREFIX):]
+            source_section = self._find_section_by_title(document=document, title=chapter_title)
+            summary_validity = self._validate_chapter_summary_artifact(
+                chapter_key=chapter_key,
+                chapter_title=chapter_title,
+                source_section=source_section,
+                document=document,
+                document_profile=document_profile,
+                resolve_options=resolve_options,
+                prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
+            )
+            quiz_validity, _ = self._validate_chapter_quiz_artifact(
+                chapter_key=chapter_key,
+                chapter_title=chapter_title,
+                source_section=source_section,
+                document=document,
+                document_profile=document_profile,
+                resolve_options=resolve_options,
+                prompt_version=self._CHAPTER_QUIZ_PROMPT_VERSION,
+            )
+            availability = self._build_artifact_availability_from_validity(
+                summary_validity=summary_validity,
+                quiz_validity=quiz_validity,
+                task_artifacts=chapter_artifacts,
+            )
             if availability is not None:
                 chapter_availability[chapter_key] = availability
         return chapter_availability
@@ -946,43 +1057,66 @@ class SectionTaskCoordinator:
         expected_chapter_title: str | None = None,
     ) -> bool:
         """Check whether one section-level summary artifact can be reused safely."""
+        validity = self._validate_section_summary_artifact(
+            section=section,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=prompt_version,
+            expected_scope=expected_scope,
+            expected_chapter_title=expected_chapter_title,
+        )
+        return validity.cache_valid is True
+
+    def _validate_section_summary_artifact(
+        self,
+        *,
+        section: StructuredSection,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+        expected_scope: str,
+        expected_chapter_title: str | None = None,
+    ) -> ArtifactValidityResult:
+        """Validate section-level summary artifact against current runtime context."""
         artifacts = section.task_artifacts
         if artifacts is None or artifacts.summary is None:
-            return False
+            return ArtifactValidityResult.missing()
         summary = artifacts.summary
         if not summary.content.strip():
-            return False
+            return ArtifactValidityResult.invalid("empty_content")
         if summary.source_hash != self._compute_section_source_hash(section):
-            return False
+            return ArtifactValidityResult.invalid("source_hash_mismatch")
 
         expected_language = self._resolve_summary_language(
             document=document,
             document_profile=document_profile,
         )
         if summary.language != expected_language:
-            return False
+            return ArtifactValidityResult.invalid("language_mismatch")
         if summary.task_unit_split_mode != resolve_options.split_mode.value:
-            return False
+            return ArtifactValidityResult.invalid("split_mode_mismatch")
         if (
             summary.semantic_top_k_candidates
             != resolve_options.semantic_top_k_candidates
         ):
-            return False
+            return ArtifactValidityResult.invalid("semantic_top_k_mismatch")
         if summary.prompt_version != prompt_version:
-            return False
+            return ArtifactValidityResult.invalid("prompt_version_mismatch")
 
         metadata = dict(summary.metadata or {})
         if metadata.get("summary_scope") != expected_scope:
-            return False
+            return ArtifactValidityResult.invalid("scope_mismatch")
         source_section_id = metadata.get("source_section_id", metadata.get("section_id"))
         if source_section_id != section.section_id:
-            return False
+            return ArtifactValidityResult.invalid("section_id_mismatch")
         if expected_scope == "chapter":
             if (metadata.get("chapter_title") or "") != (
                 expected_chapter_title or ""
             ):
-                return False
-        return True
+                return ArtifactValidityResult.invalid("chapter_title_mismatch")
+        return ArtifactValidityResult.valid()
 
     def _build_quiz_artifact(
         self,
@@ -1031,40 +1165,68 @@ class SectionTaskCoordinator:
         expected_chapter_title: str | None = None,
     ) -> list[QuizQuestion] | None:
         """Return parsed cached quiz questions when section-level quiz artifact is valid."""
+        validity, questions = self._validate_section_quiz_artifact(
+            section=section,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=prompt_version,
+            expected_scope=expected_scope,
+            expected_chapter_title=expected_chapter_title,
+        )
+        if validity.cache_valid is not True:
+            return None
+        return questions
+
+    def _validate_section_quiz_artifact(
+        self,
+        *,
+        section: StructuredSection,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+        expected_scope: str,
+        expected_chapter_title: str | None = None,
+    ) -> tuple[ArtifactValidityResult, list[QuizQuestion] | None]:
+        """Validate section-level quiz artifact and parse persisted quiz payload."""
         artifacts = section.task_artifacts
         if artifacts is None or artifacts.quiz is None:
-            return None
+            return ArtifactValidityResult.missing(), None
         quiz = artifacts.quiz
+        parsed_questions = self._quiz_questions_from_artifact(quiz)
+        if parsed_questions is None:
+            return ArtifactValidityResult.invalid("malformed_quiz_items"), None
         if quiz.source_hash != self._compute_section_source_hash(section):
-            return None
+            return ArtifactValidityResult.invalid("source_hash_mismatch"), None
         expected_language = self._resolve_summary_language(
             document=document,
             document_profile=document_profile,
         )
         if quiz.language != expected_language:
-            return None
+            return ArtifactValidityResult.invalid("language_mismatch"), None
         if quiz.task_unit_split_mode != resolve_options.split_mode.value:
-            return None
+            return ArtifactValidityResult.invalid("split_mode_mismatch"), None
         if (
             quiz.semantic_top_k_candidates
             != resolve_options.semantic_top_k_candidates
         ):
-            return None
+            return ArtifactValidityResult.invalid("semantic_top_k_mismatch"), None
         if quiz.prompt_version != prompt_version:
-            return None
+            return ArtifactValidityResult.invalid("prompt_version_mismatch"), None
         if quiz.quiz_schema_version != self._QUIZ_SCHEMA_VERSION:
-            return None
+            return ArtifactValidityResult.invalid("quiz_schema_version_mismatch"), None
         metadata = dict(quiz.metadata or {})
         if metadata.get("quiz_scope") != expected_scope:
-            return None
+            return ArtifactValidityResult.invalid("scope_mismatch"), None
         if metadata.get("section_id") != section.section_id:
-            return None
+            return ArtifactValidityResult.invalid("section_id_mismatch"), None
         if expected_scope == "chapter":
             if (metadata.get("chapter_title") or "") != (
                 expected_chapter_title or ""
             ):
-                return None
-        return self._quiz_questions_from_artifact(quiz)
+                return ArtifactValidityResult.invalid("chapter_title_mismatch"), None
+        return ArtifactValidityResult.valid(), parsed_questions
 
     @staticmethod
     def _quiz_questions_from_artifact(
@@ -1155,43 +1317,79 @@ class SectionTaskCoordinator:
         prompt_version: str,
     ) -> bool:
         """Check whether one document-level chapter summary artifact can be reused safely."""
+        validity = self._validate_chapter_summary_artifact(
+            chapter_key=chapter_key,
+            chapter_title=chapter_title,
+            source_section=source_section,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=prompt_version,
+        )
+        return validity.cache_valid is True
+
+    def _validate_chapter_summary_artifact(
+        self,
+        *,
+        chapter_key: str,
+        chapter_title: str,
+        source_section: StructuredSection | None,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+    ) -> ArtifactValidityResult:
+        """Validate document-level chapter summary artifact against current runtime context."""
         summary = self._get_chapter_summary_artifact(
             document=document,
             chapter_key=chapter_key,
         )
         if summary is None:
-            return False
+            return ArtifactValidityResult.missing()
         if not summary.content.strip():
-            return False
-        if summary.source_hash != self._compute_section_source_hash(source_section):
-            return False
+            return ArtifactValidityResult.invalid("empty_content")
+        metadata = dict(summary.metadata or {})
+        metadata_source_section_id = (metadata.get("source_section_id") or "").strip()
+        metadata_source_section = None
+        if metadata_source_section_id:
+            metadata_source_section = self._find_section_by_id(
+                document=document,
+                section_id=metadata_source_section_id,
+            )
+            if metadata_source_section is None:
+                return ArtifactValidityResult.invalid("source_section_not_found")
+
+        resolved_source_section = metadata_source_section or source_section
+        if resolved_source_section is None:
+            return ArtifactValidityResult.invalid("source_section_not_found")
+        if summary.source_hash != self._compute_section_source_hash(resolved_source_section):
+            return ArtifactValidityResult.invalid("source_hash_mismatch")
 
         expected_language = self._resolve_summary_language(
             document=document,
             document_profile=document_profile,
         )
         if summary.language != expected_language:
-            return False
+            return ArtifactValidityResult.invalid("language_mismatch")
         if summary.task_unit_split_mode != resolve_options.split_mode.value:
-            return False
+            return ArtifactValidityResult.invalid("split_mode_mismatch")
         if (
             summary.semantic_top_k_candidates
             != resolve_options.semantic_top_k_candidates
         ):
-            return False
+            return ArtifactValidityResult.invalid("semantic_top_k_mismatch")
         if summary.prompt_version != prompt_version:
-            return False
+            return ArtifactValidityResult.invalid("prompt_version_mismatch")
 
-        metadata = dict(summary.metadata or {})
         if metadata.get("summary_scope") != "chapter":
-            return False
+            return ArtifactValidityResult.invalid("scope_mismatch")
         if (metadata.get("chapter_title") or "") != chapter_title:
-            return False
+            return ArtifactValidityResult.invalid("chapter_title_mismatch")
         if (metadata.get("chapter_key") or "") != chapter_key:
-            return False
-        if (metadata.get("source_section_id") or "") != source_section.section_id:
-            return False
-        return True
+            return ArtifactValidityResult.invalid("chapter_key_mismatch")
+        if metadata_source_section_id and metadata_source_section_id != resolved_source_section.section_id:
+            return ArtifactValidityResult.invalid("section_id_mismatch")
+        return ArtifactValidityResult.valid()
 
     @staticmethod
     def _get_chapter_quiz_artifact(
@@ -1220,42 +1418,187 @@ class SectionTaskCoordinator:
         prompt_version: str,
     ) -> list[QuizQuestion] | None:
         """Return parsed cached chapter-quiz questions when chapter-level artifact is valid."""
+        validity, parsed = self._validate_chapter_quiz_artifact(
+            chapter_key=chapter_key,
+            chapter_title=chapter_title,
+            source_section=source_section,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=prompt_version,
+        )
+        if validity.cache_valid is not True:
+            return None
+        return parsed
+
+    def _validate_chapter_quiz_artifact(
+        self,
+        *,
+        chapter_key: str,
+        chapter_title: str,
+        source_section: StructuredSection | None,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+    ) -> tuple[ArtifactValidityResult, list[QuizQuestion] | None]:
+        """Validate document-level chapter quiz artifact and parse cached payload."""
         quiz = self._get_chapter_quiz_artifact(
             document=document,
             chapter_key=chapter_key,
         )
         if quiz is None:
-            return None
-        if quiz.source_hash != self._compute_section_source_hash(source_section):
-            return None
+            return ArtifactValidityResult.missing(), None
+        parsed = self._quiz_questions_from_artifact(quiz)
+        if parsed is None:
+            return ArtifactValidityResult.invalid("malformed_quiz_items"), None
+        metadata = dict(quiz.metadata or {})
+        metadata_source_section_id = (metadata.get("source_section_id") or "").strip()
+        metadata_source_section = None
+        if metadata_source_section_id:
+            metadata_source_section = self._find_section_by_id(
+                document=document,
+                section_id=metadata_source_section_id,
+            )
+            if metadata_source_section is None:
+                return ArtifactValidityResult.invalid("source_section_not_found"), None
+
+        resolved_source_section = metadata_source_section or source_section
+        if resolved_source_section is None:
+            return ArtifactValidityResult.invalid("source_section_not_found"), None
+        if quiz.source_hash != self._compute_section_source_hash(resolved_source_section):
+            return ArtifactValidityResult.invalid("source_hash_mismatch"), None
         expected_language = self._resolve_summary_language(
             document=document,
             document_profile=document_profile,
         )
         if quiz.language != expected_language:
-            return None
+            return ArtifactValidityResult.invalid("language_mismatch"), None
         if quiz.task_unit_split_mode != resolve_options.split_mode.value:
-            return None
+            return ArtifactValidityResult.invalid("split_mode_mismatch"), None
         if (
             quiz.semantic_top_k_candidates
             != resolve_options.semantic_top_k_candidates
         ):
-            return None
+            return ArtifactValidityResult.invalid("semantic_top_k_mismatch"), None
         if quiz.prompt_version != prompt_version:
-            return None
+            return ArtifactValidityResult.invalid("prompt_version_mismatch"), None
         if quiz.quiz_schema_version != self._QUIZ_SCHEMA_VERSION:
-            return None
-        metadata = dict(quiz.metadata or {})
+            return ArtifactValidityResult.invalid("quiz_schema_version_mismatch"), None
         if metadata.get("quiz_scope") != "chapter":
-            return None
+            return ArtifactValidityResult.invalid("scope_mismatch"), None
         if (metadata.get("chapter_title") or "") != chapter_title:
-            return None
+            return ArtifactValidityResult.invalid("chapter_title_mismatch"), None
         if (metadata.get("chapter_key") or "") != chapter_key:
+            return ArtifactValidityResult.invalid("chapter_key_mismatch"), None
+        if metadata_source_section_id and metadata_source_section_id != resolved_source_section.section_id:
+            return ArtifactValidityResult.invalid("section_id_mismatch"), None
+        return ArtifactValidityResult.valid(), parsed
+
+    @staticmethod
+    def _find_section_by_id(
+        *,
+        document: StructuredDocument,
+        section_id: str,
+    ) -> StructuredSection | None:
+        """Find section by id; return None when missing."""
+        normalized = section_id.strip()
+        if not normalized:
             return None
-        if (metadata.get("source_section_id") or "") != source_section.section_id:
+        for section in document.sections:
+            if section.section_id == normalized:
+                return section
+        return None
+
+    def _validate_task_unit_summary_artifact(
+        self,
+        *,
+        task_unit: TaskUnit,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+    ) -> ArtifactValidityResult:
+        """Validate task-unit summary artifact against current task-layout context."""
+        artifacts = task_unit.task_artifacts
+        if artifacts is None or artifacts.summary is None:
+            return ArtifactValidityResult.missing()
+        summary = artifacts.summary
+        if not summary.content.strip():
+            return ArtifactValidityResult.invalid("empty_content")
+        source_hash = hashlib.sha256(task_unit.content.encode("utf-8")).hexdigest()
+        if summary.source_hash != source_hash:
+            return ArtifactValidityResult.invalid("source_hash_mismatch")
+        expected_language = self._resolve_summary_language(
+            document=document,
+            document_profile=document_profile,
+        )
+        if summary.language != expected_language:
+            return ArtifactValidityResult.invalid("language_mismatch")
+        if summary.task_unit_split_mode != resolve_options.split_mode.value:
+            return ArtifactValidityResult.invalid("split_mode_mismatch")
+        if (
+            summary.semantic_top_k_candidates
+            != resolve_options.semantic_top_k_candidates
+        ):
+            return ArtifactValidityResult.invalid("semantic_top_k_mismatch")
+        if summary.prompt_version != prompt_version:
+            return ArtifactValidityResult.invalid("prompt_version_mismatch")
+        return ArtifactValidityResult.valid()
+
+    def _validate_task_unit_quiz_artifact(
+        self,
+        *,
+        task_unit: TaskUnit,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        prompt_version: str,
+    ) -> tuple[ArtifactValidityResult, list[QuizQuestion] | None]:
+        """Validate task-unit quiz artifact against current task-layout context."""
+        artifacts = task_unit.task_artifacts
+        if artifacts is None or artifacts.quiz is None:
+            return ArtifactValidityResult.missing(), None
+        quiz = artifacts.quiz
+        parsed_questions = self._quiz_questions_from_artifact(quiz)
+        if parsed_questions is None:
+            return ArtifactValidityResult.invalid("malformed_quiz_items"), None
+        source_hash = hashlib.sha256(task_unit.content.encode("utf-8")).hexdigest()
+        if quiz.source_hash != source_hash:
+            return ArtifactValidityResult.invalid("source_hash_mismatch"), None
+        expected_language = self._resolve_summary_language(
+            document=document,
+            document_profile=document_profile,
+        )
+        if quiz.language != expected_language:
+            return ArtifactValidityResult.invalid("language_mismatch"), None
+        if quiz.task_unit_split_mode != resolve_options.split_mode.value:
+            return ArtifactValidityResult.invalid("split_mode_mismatch"), None
+        if (
+            quiz.semantic_top_k_candidates
+            != resolve_options.semantic_top_k_candidates
+        ):
+            return ArtifactValidityResult.invalid("semantic_top_k_mismatch"), None
+        if quiz.prompt_version != prompt_version:
+            return ArtifactValidityResult.invalid("prompt_version_mismatch"), None
+        if quiz.quiz_schema_version != self._QUIZ_SCHEMA_VERSION:
+            return ArtifactValidityResult.invalid("quiz_schema_version_mismatch"), None
+        return ArtifactValidityResult.valid(), parsed_questions
+
+    @staticmethod
+    def _find_section_by_title(
+        *,
+        document: StructuredDocument,
+        title: str,
+    ) -> StructuredSection | None:
+        """Find section by exact normalized title; return None when missing."""
+        normalized = title.strip()
+        if not normalized:
             return None
-        parsed = self._quiz_questions_from_artifact(quiz)
-        return parsed
+        for section in document.sections:
+            if ((section.title or "").strip()) == normalized:
+                return section
+        return None
 
     @staticmethod
     def _find_section_or_raise(

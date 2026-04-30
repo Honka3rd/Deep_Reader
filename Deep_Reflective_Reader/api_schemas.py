@@ -201,6 +201,10 @@ class ArtifactAvailabilityResponse(BaseModel):
 
     has_summary: bool = False
     has_quiz: bool = False
+    summary_cache_valid: bool | None = None
+    quiz_cache_valid: bool | None = None
+    summary_invalid_reason: str | None = None
+    quiz_invalid_reason: str | None = None
     summary_generated_at: str | None = None
     quiz_generated_at: str | None = None
 

@@ -366,6 +366,10 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                     else ArtifactAvailabilityResponse(
                         has_summary=task_unit.artifacts.has_summary,
                         has_quiz=task_unit.artifacts.has_quiz,
+                        summary_cache_valid=task_unit.artifacts.summary_cache_valid,
+                        quiz_cache_valid=task_unit.artifacts.quiz_cache_valid,
+                        summary_invalid_reason=task_unit.artifacts.summary_invalid_reason,
+                        quiz_invalid_reason=task_unit.artifacts.quiz_invalid_reason,
                         summary_generated_at=task_unit.artifacts.summary_generated_at,
                         quiz_generated_at=task_unit.artifacts.quiz_generated_at,
                     )
@@ -393,6 +397,10 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                             else ArtifactAvailabilityResponse(
                                 has_summary=task_unit.artifacts.has_summary,
                                 has_quiz=task_unit.artifacts.has_quiz,
+                                summary_cache_valid=task_unit.artifacts.summary_cache_valid,
+                                quiz_cache_valid=task_unit.artifacts.quiz_cache_valid,
+                                summary_invalid_reason=task_unit.artifacts.summary_invalid_reason,
+                                quiz_invalid_reason=task_unit.artifacts.quiz_invalid_reason,
                                 summary_generated_at=task_unit.artifacts.summary_generated_at,
                                 quiz_generated_at=task_unit.artifacts.quiz_generated_at,
                             )
@@ -406,6 +414,10 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                     else ArtifactAvailabilityResponse(
                         has_summary=section.artifacts.has_summary,
                         has_quiz=section.artifacts.has_quiz,
+                        summary_cache_valid=section.artifacts.summary_cache_valid,
+                        quiz_cache_valid=section.artifacts.quiz_cache_valid,
+                        summary_invalid_reason=section.artifacts.summary_invalid_reason,
+                        quiz_invalid_reason=section.artifacts.quiz_invalid_reason,
                         summary_generated_at=section.artifacts.summary_generated_at,
                         quiz_generated_at=section.artifacts.quiz_generated_at,
                     )
@@ -426,6 +438,10 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
             chapter_key: ArtifactAvailabilityResponse(
                 has_summary=availability.has_summary,
                 has_quiz=availability.has_quiz,
+                summary_cache_valid=availability.summary_cache_valid,
+                quiz_cache_valid=availability.quiz_cache_valid,
+                summary_invalid_reason=availability.summary_invalid_reason,
+                quiz_invalid_reason=availability.quiz_invalid_reason,
                 summary_generated_at=availability.summary_generated_at,
                 quiz_generated_at=availability.quiz_generated_at,
             )
