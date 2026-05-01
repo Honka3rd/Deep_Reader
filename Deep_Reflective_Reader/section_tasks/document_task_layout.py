@@ -75,6 +75,9 @@ class DocumentTaskLayoutSectionDTO:
     title: str | None
     container_title: str | None
     section_role: str | None
+    parent_chapter_id: str | None
+    section_kind: str | None
+    is_implicit_section: bool
     task_mode: SectionTaskMode
     task_units: list[TaskUnitDTO]
     artifacts: ArtifactAvailabilityDTO | None = None
@@ -86,6 +89,9 @@ class DocumentTaskLayoutSectionDTO:
             "title": self.title,
             "container_title": self.container_title,
             "section_role": self.section_role,
+            "parent_chapter_id": self.parent_chapter_id,
+            "section_kind": self.section_kind,
+            "is_implicit_section": self.is_implicit_section,
             "task_mode": self.task_mode.value,
             "task_units": [task_unit.to_dict() for task_unit in self.task_units],
             "artifacts": (
@@ -93,6 +99,35 @@ class DocumentTaskLayoutSectionDTO:
                 if self.artifacts is None
                 else self.artifacts.to_dict()
             ),
+        }
+
+
+@dataclass(frozen=True)
+class DocumentTaskLayoutChapterDTO:
+    """Hierarchy-first chapter node for document -> chapter -> section -> task_unit layout."""
+
+    chapter_id: str
+    title: str | None
+    level: int
+    chapter_role: str | None
+    sections: list[DocumentTaskLayoutSectionDTO]
+    artifacts: ArtifactAvailabilityDTO | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize chapter layout node into JSON-friendly dictionary."""
+        return {
+            "chapter_id": self.chapter_id,
+            "title": self.title,
+            "level": self.level,
+            "chapter_role": self.chapter_role,
+            "sections": [section.to_dict() for section in self.sections],
+            "artifacts": (
+                None
+                if self.artifacts is None
+                else self.artifacts.to_dict()
+            ),
+            "metadata": dict(self.metadata),
         }
 
 
@@ -117,12 +152,17 @@ class EnhancedParseRecommendationDTO:
 
 @dataclass(frozen=True)
 class DocumentTaskLayout:
-    """Frontend-consumable layout that keeps structured-first and task-unit metadata."""
+    """Frontend-consumable layout with hierarchy-first chapters tree.
+
+    `sections` / `task_units` / `chapter_artifacts` are transitional legacy
+    fields kept for backward compatibility in current tests and mappers.
+    """
 
     document_id: str
     title: str
     language: str | None
-    sections: list[DocumentTaskLayoutSectionDTO]
+    chapters: list[DocumentTaskLayoutChapterDTO]
+    sections: list[DocumentTaskLayoutSectionDTO] = field(default_factory=list)
     task_units: list[TaskUnitDTO] = field(default_factory=list)
     chapter_artifacts: dict[str, ArtifactAvailabilityDTO] = field(default_factory=dict)
     enhanced_parse_recommendation: EnhancedParseRecommendationDTO | None = None
@@ -133,6 +173,7 @@ class DocumentTaskLayout:
             "document_id": self.document_id,
             "title": self.title,
             "language": self.language,
+            "chapters": [chapter.to_dict() for chapter in self.chapters],
             "sections": [section.to_dict() for section in self.sections],
             "task_units": [task_unit.to_dict() for task_unit in self.task_units],
             "chapter_artifacts": {

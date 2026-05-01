@@ -458,17 +458,21 @@ def test_task_layout_hierarchy_first_read() -> None:
             semantic_top_k_candidates=3,
         )
         _assert(
-            [section.section_id for section in hierarchy_layout.sections] == ["section-1"],
-            "layout should use hierarchy sections when chapters exist",
+            [chapter.chapter_id for chapter in hierarchy_layout.chapters] == ["chapter-0"],
+            "layout should expose hierarchy chapters when available",
         )
         _assert(
-            [task_unit.unit_id for task_unit in hierarchy_layout.task_units] == ["task-unit-h1"],
-            "layout task units should come from hierarchy sections",
+            [
+                section.section_id
+                for section in hierarchy_layout.chapters[0].sections
+            ]
+            == ["section-1"],
+            "chapter sections should come from hierarchy source",
         )
         _assert(resolver.calls == 0, "valid hierarchy cache should not trigger resolver")
         _assert(
-            "chapters" not in hierarchy_layout.to_dict(),
-            "task-layout schema must remain unchanged (no chapters field)",
+            "chapters" in hierarchy_layout.to_dict(),
+            "task-layout schema should now expose chapters field",
         )
 
         # B. legacy fallback when chapters empty
@@ -483,8 +487,12 @@ def test_task_layout_hierarchy_first_read() -> None:
             semantic_top_k_candidates=3,
         )
         _assert(
-            [section.section_id for section in legacy_layout.sections] == ["section-legacy"],
-            "layout should fallback to legacy sections when chapters are empty",
+            [chapter.chapter_id for chapter in legacy_layout.chapters] == ["chapter-legacy-0"],
+            "layout should provide synthetic chapter fallback when chapters are missing",
+        )
+        _assert(
+            [section.section_id for section in legacy_layout.chapters[0].sections] == ["section-legacy"],
+            "synthetic chapter should wrap legacy sections",
         )
 
         # C. cache validity checks effective(hierarchy) sections
@@ -516,7 +524,7 @@ def test_task_layout_hierarchy_first_read() -> None:
             semantic_top_k_candidates=3,
         )
         _assert(
-            [section.section_id for section in inconsistent_layout.sections] == ["section-legacy"],
+            [section.section_id for section in inconsistent_layout.chapters[0].sections] == ["section-legacy"],
             "severe hierarchy inconsistency should fallback to legacy sections",
         )
 
@@ -532,7 +540,7 @@ def main() -> None:
                     "legacy_fallback",
                     "cache_validity_uses_effective_sections",
                     "hierarchy_inconsistency_fallback",
-                    "no_schema_change",
+                    "chapters_schema_exposed",
                 ],
             },
             ensure_ascii=False,

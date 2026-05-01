@@ -254,9 +254,24 @@ class SectionTaskLayoutResponse(BaseModel):
     title: str | None
     container_title: str | None
     section_role: str | None
+    parent_chapter_id: str | None
+    section_kind: str | None
+    is_implicit_section: bool = False
     task_mode: str
     task_units: list[TaskUnitMetadataResponse]
     artifacts: ArtifactAvailabilityResponse | None = None
+
+
+class DocumentTaskLayoutChapterResponse(BaseModel):
+    """Hierarchy-first chapter response node."""
+
+    chapter_id: str
+    title: str | None
+    level: int
+    chapter_role: str | None
+    sections: list[SectionTaskLayoutResponse]
+    artifacts: ArtifactAvailabilityResponse | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class EnhancedParseRecommendationResponse(BaseModel):
@@ -274,8 +289,9 @@ class DocumentTaskLayoutResponse(BaseModel):
     document_id: str
     title: str
     language: str | None
-    sections: list[SectionTaskLayoutResponse]
-    task_units: list[TaskUnitMetadataResponse]
+    chapters: list[DocumentTaskLayoutChapterResponse]
+    sections: list[SectionTaskLayoutResponse] | None = None
+    task_units: list[TaskUnitMetadataResponse] | None = None
     chapter_artifacts: dict[str, ArtifactAvailabilityResponse] | None = None
     enhanced_parse_recommendation: EnhancedParseRecommendationResponse | None
 

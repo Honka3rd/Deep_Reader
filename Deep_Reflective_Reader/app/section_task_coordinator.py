@@ -17,13 +17,18 @@ from document_structure.enhanced_parse_trigger_evaluator import (
 )
 from document_structure.section_split_plan import SectionParserMode
 from document_structure.section_splitter_selector import SectionSplitterMode
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import (
+    StructuredChapter,
+    StructuredDocument,
+    StructuredSection,
+)
 from profile.document_profile import DocumentProfile
 from profile.document_profile_store import DocumentProfileStore
 from section_tasks.chapter_quiz_service import ChapterQuizService
 from section_tasks.chapter_summary_service import ChapterSummaryService
 from section_tasks.document_task_layout import (
     ArtifactAvailabilityDTO,
+    DocumentTaskLayoutChapterDTO,
     DocumentTaskLayout,
     DocumentTaskLayoutSectionDTO,
     EnhancedParseRecommendationDTO,
@@ -486,7 +491,7 @@ class SectionTaskCoordinator:
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
     ) -> DocumentTaskLayout:
-        """Return section-first document layout with embedded task-unit metadata."""
+        """Return hierarchy-first document layout with embedded task-unit metadata."""
         resolve_options = self._resolve_task_unit_request_options(
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
@@ -524,6 +529,7 @@ class SectionTaskCoordinator:
             sections=effective_sections,
         )
 
+        section_layout_by_id: dict[str, DocumentTaskLayoutSectionDTO] = {}
         section_layouts: list[DocumentTaskLayoutSectionDTO] = []
         for section in effective_sections:
             section_units = section_units_by_section_id.get(section.section_id, [])
@@ -531,26 +537,47 @@ class SectionTaskCoordinator:
                 section_id=section.section_id,
                 section_task_units=section_units,
             )
-            section_layouts.append(
-                DocumentTaskLayoutSectionDTO(
-                    section_id=section.section_id,
-                    title=section.title,
-                    container_title=section.container_title,
-                    section_role=(
-                        None
-                        if section.section_role is None
-                        else section.section_role.value
-                    ),
-                    task_mode=section_mode,
-                    task_units=section_units,
-                    artifacts=self._build_section_artifact_availability(
-                        section=section,
-                        document=cached_document,
-                        document_profile=document_profile,
-                        resolve_options=resolve_options,
-                    ),
-                )
+            section_layout = DocumentTaskLayoutSectionDTO(
+                section_id=section.section_id,
+                title=section.title,
+                container_title=section.container_title,
+                section_role=(
+                    None
+                    if section.section_role is None
+                    else section.section_role.value
+                ),
+                parent_chapter_id=section.parent_chapter_id,
+                section_kind=section.section_kind,
+                is_implicit_section=section.is_implicit_section,
+                task_mode=section_mode,
+                task_units=section_units,
+                artifacts=self._build_section_artifact_availability(
+                    section=section,
+                    document=cached_document,
+                    document_profile=document_profile,
+                    resolve_options=resolve_options,
+                ),
             )
+            section_layouts.append(section_layout)
+            section_layout_by_id[section.section_id] = section_layout
+
+        hierarchy_section_ids = {
+            section.section_id
+            for chapter in cached_document.chapters
+            for section in chapter.sections
+        }
+        sections_are_hierarchy_source = bool(cached_document.chapters) and all(
+            section.section_id in hierarchy_section_ids
+            for section in effective_sections
+        )
+        chapter_layouts = self._build_chapter_layouts(
+            document=cached_document,
+            section_layout_by_id=section_layout_by_id,
+            fallback_section_layouts=section_layouts,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            sections_are_hierarchy_source=sections_are_hierarchy_source,
+        )
 
         trigger_decision = self._evaluate_enhanced_parse_trigger(
             structured_document=cached_document,
@@ -566,6 +593,7 @@ class SectionTaskCoordinator:
             document_id=cached_document.document_id,
             title=cached_document.title,
             language=cached_document.language,
+            chapters=chapter_layouts,
             sections=section_layouts,
             task_units=task_unit_dtos,
             chapter_artifacts=self._build_chapter_artifact_availability(
@@ -580,6 +608,58 @@ class SectionTaskCoordinator:
                 metrics=dict(trigger_decision.metrics),
             ),
         )
+
+    def _build_chapter_layouts(
+        self,
+        *,
+        document: StructuredDocument,
+        section_layout_by_id: dict[str, DocumentTaskLayoutSectionDTO],
+        fallback_section_layouts: list[DocumentTaskLayoutSectionDTO],
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+        sections_are_hierarchy_source: bool,
+    ) -> list[DocumentTaskLayoutChapterDTO]:
+        """Build hierarchy-first chapter layout tree with legacy synthetic fallback."""
+        if document.chapters and sections_are_hierarchy_source:
+            chapter_layouts: list[DocumentTaskLayoutChapterDTO] = []
+            for chapter in document.chapters:
+                section_layouts = [
+                    section_layout_by_id[section.section_id]
+                    for section in chapter.sections
+                    if section.section_id in section_layout_by_id
+                ]
+                chapter_layouts.append(
+                    DocumentTaskLayoutChapterDTO(
+                        chapter_id=chapter.chapter_id,
+                        title=chapter.title,
+                        level=chapter.level,
+                        chapter_role=chapter.chapter_role,
+                        sections=section_layouts,
+                        artifacts=self._build_single_chapter_artifact_availability(
+                            chapter=chapter,
+                            document=document,
+                            document_profile=document_profile,
+                            resolve_options=resolve_options,
+                        ),
+                        metadata=dict(chapter.metadata),
+                    )
+                )
+            return chapter_layouts
+
+        return [
+            DocumentTaskLayoutChapterDTO(
+                chapter_id="chapter-legacy-0",
+                title=document.title,
+                level=1,
+                chapter_role="legacy_flat_sections",
+                sections=list(fallback_section_layouts),
+                artifacts=None,
+                metadata={
+                    "synthetic": True,
+                    "reason": "missing_chapters",
+                },
+            )
+        ]
 
     def reparse_document_structure(
         self,
@@ -840,6 +920,78 @@ class SectionTaskCoordinator:
             if availability is not None:
                 chapter_availability[chapter_key] = availability
         return chapter_availability
+
+    def _build_single_chapter_artifact_availability(
+        self,
+        *,
+        chapter: StructuredChapter,
+        document: StructuredDocument,
+        document_profile: DocumentProfile | None,
+        resolve_options: TaskUnitResolveOptions,
+    ) -> ArtifactAvailabilityDTO | None:
+        """Build one chapter artifact availability using legacy chapter-key compatibility."""
+        document_artifacts = document.document_task_artifacts
+        if document_artifacts is None:
+            return None
+
+        candidate_keys: list[str] = []
+        legacy_chapter_key = chapter.metadata.get("legacy_chapter_key")
+        if isinstance(legacy_chapter_key, str) and legacy_chapter_key.strip():
+            candidate_keys.append(legacy_chapter_key.strip())
+        if chapter.title and chapter.title.strip():
+            candidate_keys.append(self._build_chapter_artifact_key(chapter.title))
+        if chapter.chapter_id.strip():
+            candidate_keys.append(self._build_chapter_artifact_key(chapter.chapter_id))
+
+        seen_keys: set[str] = set()
+        resolved_chapter_key: str | None = None
+        task_artifacts: TaskArtifacts | None = None
+        for chapter_key in candidate_keys:
+            if chapter_key in seen_keys:
+                continue
+            seen_keys.add(chapter_key)
+            candidate_artifacts = document_artifacts.chapter_artifacts.get(chapter_key)
+            if candidate_artifacts is not None:
+                resolved_chapter_key = chapter_key
+                task_artifacts = candidate_artifacts
+                break
+        if resolved_chapter_key is None or task_artifacts is None:
+            return None
+
+        chapter_title = (
+            (chapter.title or "").strip()
+            or resolved_chapter_key.removeprefix(self._CHAPTER_ARTIFACT_KEY_PREFIX)
+        )
+        source_section = self._find_section_by_title(
+            document=document,
+            title=chapter_title,
+        )
+        if source_section is None and chapter.sections:
+            source_section = chapter.sections[0]
+
+        summary_validity = self._validate_chapter_summary_artifact(
+            chapter_key=resolved_chapter_key,
+            chapter_title=chapter_title,
+            source_section=source_section,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
+        )
+        quiz_validity, _ = self._validate_chapter_quiz_artifact(
+            chapter_key=resolved_chapter_key,
+            chapter_title=chapter_title,
+            source_section=source_section,
+            document=document,
+            document_profile=document_profile,
+            resolve_options=resolve_options,
+            prompt_version=self._CHAPTER_QUIZ_PROMPT_VERSION,
+        )
+        return self._build_artifact_availability_from_validity(
+            summary_validity=summary_validity,
+            quiz_validity=quiz_validity,
+            task_artifacts=task_artifacts,
+        )
 
     def _build_task_layout_metadata(
         self,

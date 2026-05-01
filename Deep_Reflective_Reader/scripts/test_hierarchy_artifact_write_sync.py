@@ -478,6 +478,7 @@ def test_task_layout_availability_sees_updated_section_artifact() -> None:
             enhanced_parse_trigger_evaluator=_FakeEnhancedParseEvaluator(),
         )
         layout = coordinator.get_document_task_layout(doc_name="hier-artifact-doc")
+        _assert(layout.chapters, "layout should expose hierarchy chapters")
         section_layout = next(
             section for section in layout.sections if section.section_id == "section-1"
         )

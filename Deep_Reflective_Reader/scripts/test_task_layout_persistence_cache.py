@@ -291,6 +291,9 @@ def test_task_layout_cache_flow() -> None:
         )
 
         # Sanity check: layout payloads are non-empty.
+        _assert(first_layout.chapters, "first layout should return chapters")
+        _assert(second_layout.chapters, "second layout should return chapters")
+        _assert(refreshed_layout.chapters, "refreshed layout should return chapters")
         _assert(first_layout.sections, "first layout should return sections")
         _assert(second_layout.task_units, "second layout should return task units")
         _assert(refreshed_layout.task_units, "refreshed layout should return task units")

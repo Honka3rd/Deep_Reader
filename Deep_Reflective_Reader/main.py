@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Response
 from app.qa_coordinator import QACoordinator
 from api_schemas import (
     ArtifactAvailabilityResponse,
+    DocumentTaskLayoutChapterResponse,
     ChapterQuizRequest,
     ChapterQuizResponse,
     PrepareDocumentRequest,
@@ -353,77 +354,68 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
             task_unit_split_mode=request.task_unit_split_mode,
             semantic_top_k_candidates=request.semantic_top_k_candidates,
         )
-        task_units = [
-            TaskUnitMetadataResponse(
+        def _artifact_response(
+            artifact,
+        ) -> ArtifactAvailabilityResponse | None:
+            if artifact is None:
+                return None
+            return ArtifactAvailabilityResponse(
+                has_summary=artifact.has_summary,
+                has_quiz=artifact.has_quiz,
+                summary_cache_valid=artifact.summary_cache_valid,
+                quiz_cache_valid=artifact.quiz_cache_valid,
+                summary_invalid_reason=artifact.summary_invalid_reason,
+                quiz_invalid_reason=artifact.quiz_invalid_reason,
+                summary_generated_at=artifact.summary_generated_at,
+                quiz_generated_at=artifact.quiz_generated_at,
+            )
+
+        def _task_unit_response(task_unit) -> TaskUnitMetadataResponse:
+            return TaskUnitMetadataResponse(
                 unit_id=task_unit.unit_id,
                 title=task_unit.title,
                 container_title=task_unit.container_title,
                 source_section_ids=list(task_unit.source_section_ids),
                 is_fallback_generated=task_unit.is_fallback_generated,
-                artifacts=(
-                    None
-                    if task_unit.artifacts is None
-                    else ArtifactAvailabilityResponse(
-                        has_summary=task_unit.artifacts.has_summary,
-                        has_quiz=task_unit.artifacts.has_quiz,
-                        summary_cache_valid=task_unit.artifacts.summary_cache_valid,
-                        quiz_cache_valid=task_unit.artifacts.quiz_cache_valid,
-                        summary_invalid_reason=task_unit.artifacts.summary_invalid_reason,
-                        quiz_invalid_reason=task_unit.artifacts.quiz_invalid_reason,
-                        summary_generated_at=task_unit.artifacts.summary_generated_at,
-                        quiz_generated_at=task_unit.artifacts.quiz_generated_at,
-                    )
-                ),
+                artifacts=_artifact_response(task_unit.artifacts),
             )
-            for task_unit in layout.task_units
-        ]
-        sections = [
-            SectionTaskLayoutResponse(
+
+        def _section_response(section) -> SectionTaskLayoutResponse:
+            return SectionTaskLayoutResponse(
                 section_id=section.section_id,
                 title=section.title,
                 container_title=section.container_title,
                 section_role=section.section_role,
+                parent_chapter_id=section.parent_chapter_id,
+                section_kind=section.section_kind,
+                is_implicit_section=section.is_implicit_section,
                 task_mode=section.task_mode.value,
                 task_units=[
-                    TaskUnitMetadataResponse(
-                        unit_id=task_unit.unit_id,
-                        title=task_unit.title,
-                        container_title=task_unit.container_title,
-                        source_section_ids=list(task_unit.source_section_ids),
-                        is_fallback_generated=task_unit.is_fallback_generated,
-                        artifacts=(
-                            None
-                            if task_unit.artifacts is None
-                            else ArtifactAvailabilityResponse(
-                                has_summary=task_unit.artifacts.has_summary,
-                                has_quiz=task_unit.artifacts.has_quiz,
-                                summary_cache_valid=task_unit.artifacts.summary_cache_valid,
-                                quiz_cache_valid=task_unit.artifacts.quiz_cache_valid,
-                                summary_invalid_reason=task_unit.artifacts.summary_invalid_reason,
-                                quiz_invalid_reason=task_unit.artifacts.quiz_invalid_reason,
-                                summary_generated_at=task_unit.artifacts.summary_generated_at,
-                                quiz_generated_at=task_unit.artifacts.quiz_generated_at,
-                            )
-                        ),
-                    )
+                    _task_unit_response(task_unit)
                     for task_unit in section.task_units
                 ],
-                artifacts=(
-                    None
-                    if section.artifacts is None
-                    else ArtifactAvailabilityResponse(
-                        has_summary=section.artifacts.has_summary,
-                        has_quiz=section.artifacts.has_quiz,
-                        summary_cache_valid=section.artifacts.summary_cache_valid,
-                        quiz_cache_valid=section.artifacts.quiz_cache_valid,
-                        summary_invalid_reason=section.artifacts.summary_invalid_reason,
-                        quiz_invalid_reason=section.artifacts.quiz_invalid_reason,
-                        summary_generated_at=section.artifacts.summary_generated_at,
-                        quiz_generated_at=section.artifacts.quiz_generated_at,
-                    )
-                ),
+                artifacts=_artifact_response(section.artifacts),
             )
+
+        task_units = [
+            _task_unit_response(task_unit)
+            for task_unit in layout.task_units
+        ]
+        sections = [
+            _section_response(section)
             for section in layout.sections
+        ]
+        chapters = [
+            DocumentTaskLayoutChapterResponse(
+                chapter_id=chapter.chapter_id,
+                title=chapter.title,
+                level=chapter.level,
+                chapter_role=chapter.chapter_role,
+                sections=[_section_response(section) for section in chapter.sections],
+                artifacts=_artifact_response(chapter.artifacts),
+                metadata=dict(chapter.metadata),
+            )
+            for chapter in layout.chapters
         ]
         recommendation = None
         if layout.enhanced_parse_recommendation is not None:
@@ -435,16 +427,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
             )
 
         chapter_artifacts = {
-            chapter_key: ArtifactAvailabilityResponse(
-                has_summary=availability.has_summary,
-                has_quiz=availability.has_quiz,
-                summary_cache_valid=availability.summary_cache_valid,
-                quiz_cache_valid=availability.quiz_cache_valid,
-                summary_invalid_reason=availability.summary_invalid_reason,
-                quiz_invalid_reason=availability.quiz_invalid_reason,
-                summary_generated_at=availability.summary_generated_at,
-                quiz_generated_at=availability.quiz_generated_at,
-            )
+            chapter_key: _artifact_response(availability)
             for chapter_key, availability in layout.chapter_artifacts.items()
         }
 
@@ -452,6 +435,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
             document_id=layout.document_id,
             title=layout.title,
             language=layout.language,
+            chapters=chapters,
             sections=sections,
             task_units=task_units,
             chapter_artifacts=chapter_artifacts,

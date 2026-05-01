@@ -174,6 +174,11 @@ def test_task_layout_artifact_availability() -> None:
             task_unit_split_mode="semantic_safe",
             semantic_top_k_candidates=3,
         )
+        _assert(layout.chapters, "layout should expose chapters tree")
+        _assert(
+            layout.chapters[0].sections[0].section_id == "section-0",
+            "chapter section nesting should include target section",
+        )
 
         _assert(layout.sections[0].artifacts is not None, "section artifacts availability should exist")
         _assert(layout.sections[0].artifacts.has_summary is True, "section has_summary should be true")
@@ -188,8 +193,10 @@ def test_task_layout_artifact_availability() -> None:
         _assert(layout.chapter_artifacts["chapter::第一章"].has_quiz is True, "chapter has_quiz should be true")
 
         payload = layout.to_dict()
+        first_chapter_section = payload["chapters"][0]["sections"][0]
         first_section = payload["sections"][0]
         first_unit = payload["task_units"][0]
+        _assert("content" not in first_chapter_section, "chapter section payload must not include section content")
         _assert("content" not in first_section, "section layout payload must not include summary content")
         _assert("content" not in first_unit, "task-unit layout payload must not include task-unit content")
         _assert("summary" not in first_section, "section layout payload must not include summary object")
