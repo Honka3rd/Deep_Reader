@@ -1,6 +1,6 @@
 import hashlib
 from datetime import datetime, timezone
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from config.faiss_storage_config import FaissStorageConfig
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
@@ -8,6 +8,7 @@ from document_preparation.preparation_mode import PreparationMode
 from document_structure.document_artifact_repository import DocumentArtifactRepository
 from document_structure.document_hierarchy_index import (
     get_effective_sections,
+    is_severe_hierarchy_warning,
     validate_chapter_hierarchy_consistency,
 )
 from document_structure.enhanced_parse_trigger_evaluator import (
@@ -68,14 +69,6 @@ class SectionTaskCoordinator:
     _TASK_UNIT_QUIZ_PROMPT_VERSION = "task_unit_quiz_v1"
     _QUIZ_SCHEMA_VERSION = "quiz_schema_v1"
     _CHAPTER_ARTIFACT_KEY_PREFIX = "chapter::"
-    _HIERARCHY_SEVERE_WARNING_PREFIXES = (
-        "duplicate_chapter_id:",
-        "duplicate_hierarchy_section_id:",
-        "duplicate_task_unit_id:",
-        "section_parent_mismatch:",
-        "task_unit_parent_section_mismatch:",
-    )
-
     def __init__(
         self,
         document_preparation_pipeline: DocumentPreparationPipeline,
@@ -941,16 +934,26 @@ class SectionTaskCoordinator:
             return structured_document
 
         resolved_task_units = self.task_unit_resolver.resolve_with_options(
-            document=structured_document,
+            document=replace(
+                structured_document,
+                sections=self._resolve_task_layout_sections(
+                    document=structured_document,
+                    context="SectionTaskCoordinator#task_layout_cache_write_source",
+                ),
+            ),
             split_mode=resolve_options.split_mode,
             semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
         )
-        task_units_by_section_id = self._build_task_units_by_section_id(
+        sections_for_write = self._resolve_task_layout_sections(
             document=structured_document,
+            context="SectionTaskCoordinator#task_layout_cache_write_target",
+        )
+        task_units_by_section_id = self._build_task_units_by_section_id(
+            sections=sections_for_write,
             task_units=resolved_task_units,
         )
         task_units_by_section_id = self.task_unit_id_normalizer.normalize_task_units_by_section_id(
-            document=structured_document,
+            document=replace(structured_document, sections=sections_for_write),
             task_units_by_section_id=task_units_by_section_id,
         )
         task_layout_metadata = self._build_task_layout_metadata(
@@ -991,7 +994,7 @@ class SectionTaskCoordinator:
         severe_warnings = [
             warning
             for warning in warnings
-            if warning.startswith(self._HIERARCHY_SEVERE_WARNING_PREFIXES)
+            if is_severe_hierarchy_warning(warning)
         ]
         if severe_warnings:
             print(
@@ -1051,12 +1054,12 @@ class SectionTaskCoordinator:
     def _build_task_units_by_section_id(
         self,
         *,
-        document: StructuredDocument,
+        sections: list[StructuredSection],
         task_units: list[TaskUnit],
     ) -> dict[str, list[TaskUnit]]:
         """Group resolver output into section-level persisted task-unit lists."""
         task_units_by_section_id: dict[str, list[TaskUnit]] = {
-            section.section_id: [] for section in document.sections
+            section.section_id: [] for section in sections
         }
         for task_unit in task_units:
             assigned_section_ids = []

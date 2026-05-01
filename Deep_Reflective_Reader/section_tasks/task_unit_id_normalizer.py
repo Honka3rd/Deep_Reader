@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from document_structure.document_hierarchy_index import (
+    get_effective_sections,
+    with_sections_synced_across_hierarchy_and_legacy,
+)
 from document_structure.structured_document import StructuredDocument, StructuredSection
 from shared.task_unit_model import TaskUnit
 
@@ -18,11 +22,12 @@ class TaskUnitIdNormalizer:
         task_units_by_section_id: dict[str, list[TaskUnit]],
     ) -> dict[str, list[TaskUnit]]:
         """Return section->task_units mapping with document-global unique unit ids."""
+        sections = get_effective_sections(document)
         normalized: dict[str, list[TaskUnit]] = {
-            section.section_id: [] for section in document.sections
+            section.section_id: [] for section in sections
         }
         global_index = 0
-        for section in document.sections:
+        for section in sections:
             section_units = task_units_by_section_id.get(section.section_id, [])
             normalized_units: list[TaskUnit] = []
             for task_unit in section_units:
@@ -41,10 +46,17 @@ class TaskUnitIdNormalizer:
         *,
         document: StructuredDocument,
     ) -> StructuredDocument:
-        """Return new document with section.task_units ids normalized globally by reading order."""
+        """Return new document with ids normalized globally by effective section reading order."""
+        working_document = document
+        if document.chapters:
+            working_document = with_sections_synced_across_hierarchy_and_legacy(
+                document=document,
+                updated_sections=get_effective_sections(document),
+            )
+
         global_index = 0
         updated_sections: list[StructuredSection] = []
-        for section in document.sections:
+        for section in working_document.sections:
             updated_units: list[TaskUnit] = []
             for task_unit in section.task_units:
                 updated_units.append(
@@ -55,7 +67,12 @@ class TaskUnitIdNormalizer:
                 )
                 global_index += 1
             updated_sections.append(replace(section, task_units=updated_units))
-        return replace(document, sections=updated_sections)
+        if not working_document.chapters:
+            return replace(working_document, sections=updated_sections)
+        return with_sections_synced_across_hierarchy_and_legacy(
+            document=working_document,
+            updated_sections=updated_sections,
+        )
 
     @staticmethod
     def collect_task_unit_id_counts(
@@ -105,4 +122,3 @@ class TaskUnitIdNormalizer:
             raise ValueError(
                 f"{context}: duplicate task_unit_id detected -> {duplicate_repr}"
             )
-

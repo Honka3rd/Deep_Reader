@@ -12,11 +12,15 @@ from document_structure.structured_hierarchy_builder import (
     build_document_hierarchy_from_sections,
 )
 from document_structure.document_hierarchy_index import (
+    SEVERE_HIERARCHY_WARNING_PREFIXES,
     assert_chapter_hierarchy_consistency,
     build_section_index_from_chapters,
     flatten_sections_from_chapters,
     get_effective_sections,
+    is_severe_hierarchy_warning,
     validate_chapter_hierarchy_consistency,
+    with_sections_replaced_in_hierarchy,
+    with_sections_synced_across_hierarchy_and_legacy,
     with_legacy_sections_synced_from_chapters,
 )
 from document_structure.document_structure_language_registry import (
@@ -72,8 +76,12 @@ __all__ = [
     "flatten_sections_from_chapters",
     "build_section_index_from_chapters",
     "get_effective_sections",
+    "SEVERE_HIERARCHY_WARNING_PREFIXES",
+    "is_severe_hierarchy_warning",
     "validate_chapter_hierarchy_consistency",
     "assert_chapter_hierarchy_consistency",
+    "with_sections_replaced_in_hierarchy",
+    "with_sections_synced_across_hierarchy_and_legacy",
     "with_legacy_sections_synced_from_chapters",
     "DocumentStructureLanguageRegistry",
     "DocumentStructureLanguageRules",

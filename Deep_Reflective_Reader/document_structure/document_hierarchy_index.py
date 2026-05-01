@@ -9,6 +9,16 @@ from document_structure.structured_document import (
 )
 
 
+SEVERE_HIERARCHY_WARNING_PREFIXES: tuple[str, ...] = (
+    "duplicate_chapter_id:",
+    "duplicate_hierarchy_section_id:",
+    "duplicate_task_unit_id:",
+    "section_parent_mismatch:",
+    "task_unit_parent_section_mismatch:",
+    "section_field_mismatch:",
+)
+
+
 def flatten_sections_from_chapters(
     document: StructuredDocument,
 ) -> list[StructuredSection]:
@@ -144,6 +154,65 @@ def with_legacy_sections_synced_from_chapters(
         return document
     flattened = flatten_sections_from_chapters(document)
     return replace(document, sections=flattened)
+
+
+def with_sections_replaced_in_hierarchy(
+    document: StructuredDocument,
+    sections_by_id: dict[str, StructuredSection],
+) -> StructuredDocument:
+    """Replace matching nested chapter sections by id, preserving chapter ordering."""
+    if not document.chapters:
+        return document
+
+    updated_chapters: list[StructuredChapter] = []
+    for chapter in document.chapters:
+        updated_sections = [
+            sections_by_id.get(section.section_id, section)
+            for section in chapter.sections
+        ]
+        updated_chapters.append(
+            replace(
+                chapter,
+                sections=updated_sections,
+            )
+        )
+    return replace(document, chapters=updated_chapters)
+
+
+def with_sections_synced_across_hierarchy_and_legacy(
+    document: StructuredDocument,
+    updated_sections: list[StructuredSection],
+) -> StructuredDocument:
+    """Sync section updates into primary hierarchy and transitional legacy flat index."""
+    updated_sections_by_id = {
+        section.section_id: section
+        for section in updated_sections
+    }
+
+    if not document.chapters:
+        return replace(document, sections=list(updated_sections))
+
+    hierarchy_updated_document = with_sections_replaced_in_hierarchy(
+        document,
+        updated_sections_by_id,
+    )
+    flattened_chapter_sections = flatten_sections_from_chapters(hierarchy_updated_document)
+    flattened_chapter_ids = {
+        section.section_id for section in flattened_chapter_sections
+    }
+
+    preserved_non_chapter_sections = [
+        updated_sections_by_id.get(section.section_id, section)
+        for section in document.sections
+        if section.section_id not in flattened_chapter_ids
+    ]
+    combined_sections = preserved_non_chapter_sections + flattened_chapter_sections
+    return replace(hierarchy_updated_document, sections=combined_sections)
+
+
+def is_severe_hierarchy_warning(warning: str) -> bool:
+    """Return whether one hierarchy consistency warning should block save/read."""
+    return warning.startswith(SEVERE_HIERARCHY_WARNING_PREFIXES)
 
 
 def _find_hierarchy_section_by_id(

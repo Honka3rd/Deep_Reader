@@ -5,6 +5,12 @@ from pathlib import Path
 
 from config.storage_namespace_helper import StorageNamespaceHelper
 from document_structure.document_artifact_repository import DocumentArtifactRepository
+from document_structure.document_hierarchy_index import (
+    get_effective_sections,
+    is_severe_hierarchy_warning,
+    validate_chapter_hierarchy_consistency,
+    with_sections_synced_across_hierarchy_and_legacy,
+)
 from document_structure.structured_document import StructuredDocument
 from document_structure.structured_document_store import StructuredDocumentStore
 from shared.task_artifacts import (
@@ -295,18 +301,22 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Bulk update section task units and task-layout metadata in one save."""
         document = self.load_document(doc_name)
-        updated_sections = []
-        for section in document.sections:
+        updated_effective_sections = []
+        for section in get_effective_sections(document):
             section_units = task_units_by_section_id.get(section.section_id, [])
-            updated_sections.append(
+            updated_effective_sections.append(
                 replace(
                     section,
                     task_units=list(section_units),
                 )
             )
+        document_with_synced_sections = with_sections_synced_across_hierarchy_and_legacy(
+            document=document,
+            updated_sections=updated_effective_sections,
+        )
 
         existing_document_artifacts = (
-            document.document_task_artifacts or DocumentTaskArtifacts()
+            document_with_synced_sections.document_task_artifacts or DocumentTaskArtifacts()
         )
         metadata = dict(existing_document_artifacts.metadata)
         metadata["task_layout"] = dict(task_layout_metadata)
@@ -316,10 +326,21 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         )
 
         updated_document = replace(
-            document,
-            sections=updated_sections,
+            document_with_synced_sections,
             document_task_artifacts=updated_document_artifacts,
         )
+        if updated_document.chapters:
+            warnings = validate_chapter_hierarchy_consistency(updated_document)
+            severe_warnings = [
+                warning
+                for warning in warnings
+                if is_severe_hierarchy_warning(warning)
+            ]
+            if severe_warnings:
+                raise ValueError(
+                    "update_task_layout: severe hierarchy inconsistency detected "
+                    f"for doc_name='{doc_name}': {' | '.join(severe_warnings)}"
+                )
         self._assert_unique_task_unit_ids(
             document=updated_document,
             context=f"update_task_layout doc_name='{doc_name}'",
