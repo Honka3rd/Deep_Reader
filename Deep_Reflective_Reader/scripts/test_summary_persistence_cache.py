@@ -227,7 +227,7 @@ def _build_base_document() -> StructuredDocument:
                     "source_hash": source_hash,
                     "task_unit_split_mode": "semantic_safe",
                     "semantic_top_k_candidates": 3,
-                    "resolver_version": "task_unit_resolver_v1",
+                    "resolver_version": "task_unit_resolver_v2",
                 }
             }
         ),

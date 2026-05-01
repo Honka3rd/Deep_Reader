@@ -1,17 +1,20 @@
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
 from config.storage_namespace_helper import StorageNamespaceHelper
 from document_structure.document_artifact_repository import DocumentArtifactRepository
 from document_structure.document_hierarchy_index import (
+    build_section_index_from_chapters,
+    flatten_sections_from_chapters,
     get_effective_sections,
     is_severe_hierarchy_warning,
     validate_chapter_hierarchy_consistency,
     with_sections_synced_across_hierarchy_and_legacy,
 )
-from document_structure.structured_document import StructuredDocument
+from document_structure.structured_document import StructuredDocument, StructuredSection
 from document_structure.structured_document_store import StructuredDocumentStore
 from shared.task_artifacts import (
     DocumentTaskArtifacts,
@@ -58,27 +61,12 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Update one section artifact payload and persist new structured document."""
         document = self.load_document(doc_name)
-        updated_sections = list(document.sections)
-        target_index = next(
-            (
-                index
-                for index, section in enumerate(updated_sections)
-                if section.section_id == section_id
-            ),
-            None,
-        )
-        if target_index is None:
-            raise ValueError(
-                f"update_section_artifacts: unknown section_id='{section_id}' for doc_name='{doc_name}'"
-            )
-
-        updated_sections[target_index] = replace(
-            updated_sections[target_index],
-            task_artifacts=artifacts,
-        )
-        updated_document = replace(
-            document,
-            sections=updated_sections,
+        updated_document = self._update_section_by_id(
+            document=document,
+            section_id=section_id,
+            update_fn=lambda section: replace(section, task_artifacts=artifacts),
+            context="update_section_artifacts",
+            doc_name=doc_name,
         )
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
@@ -91,30 +79,24 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Update one section summary artifact while preserving existing section quiz artifact."""
         document = self.load_document(doc_name)
-        updated_sections = list(document.sections)
-        target_index = next(
-            (
-                index
-                for index, section in enumerate(updated_sections)
-                if section.section_id == section_id
-            ),
-            None,
-        )
-        if target_index is None:
-            raise ValueError(
-                f"update_section_summary_artifact: unknown section_id='{section_id}' for doc_name='{doc_name}'"
+        def _update_fn(section: StructuredSection) -> StructuredSection:
+            existing_artifacts = section.task_artifacts
+            merged_artifacts = TaskArtifacts(
+                summary=summary,
+                quiz=(None if existing_artifacts is None else existing_artifacts.quiz),
+            )
+            return replace(
+                section,
+                task_artifacts=merged_artifacts,
             )
 
-        existing_artifacts = updated_sections[target_index].task_artifacts
-        merged_artifacts = TaskArtifacts(
-            summary=summary,
-            quiz=(None if existing_artifacts is None else existing_artifacts.quiz),
+        updated_document = self._update_section_by_id(
+            document=document,
+            section_id=section_id,
+            update_fn=_update_fn,
+            context="update_section_summary_artifact",
+            doc_name=doc_name,
         )
-        updated_sections[target_index] = replace(
-            updated_sections[target_index],
-            task_artifacts=merged_artifacts,
-        )
-        updated_document = replace(document, sections=updated_sections)
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 
@@ -126,30 +108,24 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Update one section quiz artifact while preserving existing section summary artifact."""
         document = self.load_document(doc_name)
-        updated_sections = list(document.sections)
-        target_index = next(
-            (
-                index
-                for index, section in enumerate(updated_sections)
-                if section.section_id == section_id
-            ),
-            None,
-        )
-        if target_index is None:
-            raise ValueError(
-                f"update_section_quiz_artifact: unknown section_id='{section_id}' for doc_name='{doc_name}'"
+        def _update_fn(section: StructuredSection) -> StructuredSection:
+            existing_artifacts = section.task_artifacts
+            merged_artifacts = TaskArtifacts(
+                summary=(None if existing_artifacts is None else existing_artifacts.summary),
+                quiz=quiz,
+            )
+            return replace(
+                section,
+                task_artifacts=merged_artifacts,
             )
 
-        existing_artifacts = updated_sections[target_index].task_artifacts
-        merged_artifacts = TaskArtifacts(
-            summary=(None if existing_artifacts is None else existing_artifacts.summary),
-            quiz=quiz,
+        updated_document = self._update_section_by_id(
+            document=document,
+            section_id=section_id,
+            update_fn=_update_fn,
+            context="update_section_quiz_artifact",
+            doc_name=doc_name,
         )
-        updated_sections[target_index] = replace(
-            updated_sections[target_index],
-            task_artifacts=merged_artifacts,
-        )
-        updated_document = replace(document, sections=updated_sections)
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 
@@ -229,11 +205,16 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Update one persisted task-unit artifact payload and persist document."""
         document = self.load_document(doc_name)
-        matching_paths: list[tuple[int, int]] = []
-        for section_index, section in enumerate(document.sections):
+        section_source = (
+            flatten_sections_from_chapters(document)
+            if document.chapters
+            else list(document.sections)
+        )
+        matching_paths: list[tuple[str, int]] = []
+        for section in section_source:
             for task_unit_index, task_unit in enumerate(section.task_units):
                 if task_unit.unit_id == task_unit_id:
-                    matching_paths.append((section_index, task_unit_index))
+                    matching_paths.append((section.section_id, task_unit_index))
 
         if not matching_paths:
             raise ValueError(
@@ -246,20 +227,26 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
                 f"match_count={len(matching_paths)}"
             )
 
-        target_section_index, target_task_unit_index = matching_paths[0]
-        updated_sections = list(document.sections)
-        target_section = updated_sections[target_section_index]
-        updated_task_units = list(target_section.task_units)
-        updated_task_units[target_task_unit_index] = replace(
-            updated_task_units[target_task_unit_index],
-            task_artifacts=artifacts,
-        )
-        updated_sections[target_section_index] = replace(
-            target_section,
-            task_units=updated_task_units,
-        )
+        target_section_id, target_task_unit_index = matching_paths[0]
 
-        updated_document = replace(document, sections=updated_sections)
+        def _update_fn(section: StructuredSection) -> StructuredSection:
+            updated_task_units = list(section.task_units)
+            updated_task_units[target_task_unit_index] = replace(
+                updated_task_units[target_task_unit_index],
+                task_artifacts=artifacts,
+            )
+            return replace(
+                section,
+                task_units=updated_task_units,
+            )
+
+        updated_document = self._update_section_by_id(
+            document=document,
+            section_id=target_section_id,
+            update_fn=_update_fn,
+            context="update_task_unit_artifacts",
+            doc_name=doc_name,
+        )
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 
@@ -271,25 +258,13 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Replace one section task-unit list and persist document."""
         document = self.load_document(doc_name)
-        updated_sections = list(document.sections)
-        target_index = next(
-            (
-                index
-                for index, section in enumerate(updated_sections)
-                if section.section_id == section_id
-            ),
-            None,
+        updated_document = self._update_section_by_id(
+            document=document,
+            section_id=section_id,
+            update_fn=lambda section: replace(section, task_units=list(task_units)),
+            context="update_section_task_units",
+            doc_name=doc_name,
         )
-        if target_index is None:
-            raise ValueError(
-                f"update_section_task_units: unknown section_id='{section_id}' for doc_name='{doc_name}'"
-            )
-
-        updated_sections[target_index] = replace(
-            updated_sections[target_index],
-            task_units=list(task_units),
-        )
-        updated_document = replace(document, sections=updated_sections)
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 
@@ -422,3 +397,95 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             raise ValueError(
                 f"{context}: duplicate task_unit_id detected -> {duplicate_repr}"
             )
+
+    @staticmethod
+    def _assert_hierarchy_save_consistency(
+        *,
+        document: StructuredDocument,
+        doc_name: str,
+        context: str,
+    ) -> None:
+        if not document.chapters:
+            return
+        warnings = validate_chapter_hierarchy_consistency(document)
+        severe_warnings = [
+            warning
+            for warning in warnings
+            if is_severe_hierarchy_warning(warning)
+        ]
+        if severe_warnings:
+            raise ValueError(
+                f"{context}: severe hierarchy inconsistency detected for doc_name='{doc_name}': "
+                + " | ".join(severe_warnings)
+            )
+
+    def _update_section_by_id(
+        self,
+        *,
+        document: StructuredDocument,
+        section_id: str,
+        update_fn: Callable[[StructuredSection], StructuredSection],
+        context: str,
+        doc_name: str,
+    ) -> StructuredDocument:
+        if document.chapters:
+            build_section_index_from_chapters(document)
+            hierarchy_sections = flatten_sections_from_chapters(document)
+            hierarchy_target = next(
+                (section for section in hierarchy_sections if section.section_id == section_id),
+                None,
+            )
+            if hierarchy_target is not None:
+                updated_sections = [
+                    update_fn(section) if section.section_id == section_id else section
+                    for section in hierarchy_sections
+                ]
+            else:
+                legacy_target = next(
+                    (section for section in document.sections if section.section_id == section_id),
+                    None,
+                )
+                if legacy_target is None:
+                    raise ValueError(
+                        f"{context}: unknown section_id='{section_id}' for doc_name='{doc_name}'"
+                    )
+                updated_sections = [
+                    update_fn(section) if section.section_id == section_id else section
+                    for section in document.sections
+                ]
+            updated_document = with_sections_synced_across_hierarchy_and_legacy(
+                document=document,
+                updated_sections=updated_sections,
+            )
+            self._assert_hierarchy_save_consistency(
+                document=updated_document,
+                doc_name=doc_name,
+                context=context,
+            )
+            self._assert_unique_task_unit_ids(
+                document=updated_document,
+                context=f"{context} doc_name='{doc_name}'",
+            )
+            return updated_document
+
+        legacy_target = next(
+            (section for section in document.sections if section.section_id == section_id),
+            None,
+        )
+        if legacy_target is None:
+            raise ValueError(
+                f"{context}: unknown section_id='{section_id}' for doc_name='{doc_name}'"
+            )
+        updated_sections = [
+            update_fn(section) if section.section_id == section_id else section
+            for section in document.sections
+        ]
+        updated_document = replace(
+            document,
+            sections=updated_sections,
+        )
+        self._assert_unique_task_unit_ids(
+            document=updated_document,
+            context=f"{context} doc_name='{doc_name}'",
+        )
+        return updated_document
