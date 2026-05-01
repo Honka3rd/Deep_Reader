@@ -1,9 +1,14 @@
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import (
+    StructuredChapter,
+    StructuredDocument,
+    StructuredSection,
+)
 from document_structure.structured_hierarchy import (
     StructuredDocumentNode,
     StructuredNodeType,
 )
 from document_structure.structured_hierarchy_builder import (
+    DocumentHierarchyBuilder,
     build_document_hierarchy_from_sections,
 )
 from document_structure.document_structure_language_registry import (
@@ -51,8 +56,10 @@ from document_structure.structured_document_store import StructuredDocumentStore
 __all__ = [
     "StructuredDocument",
     "StructuredSection",
+    "StructuredChapter",
     "StructuredDocumentNode",
     "StructuredNodeType",
+    "DocumentHierarchyBuilder",
     "build_document_hierarchy_from_sections",
     "DocumentStructureLanguageRegistry",
     "DocumentStructureLanguageRules",

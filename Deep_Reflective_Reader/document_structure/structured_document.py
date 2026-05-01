@@ -21,6 +21,9 @@ class StructuredSection:
     char_end: int
     container_title: str | None = None
     section_role: SectionRole | None = None
+    parent_chapter_id: str | None = None
+    section_kind: str | None = None
+    is_implicit_section: bool = False
     task_units: list[TaskUnit] = field(default_factory=list)
     task_artifacts: TaskArtifacts | None = None
 
@@ -38,6 +41,9 @@ class StructuredSection:
             "section_role": (
                 None if self.section_role is None else self.section_role.value
             ),
+            "parent_chapter_id": self.parent_chapter_id,
+            "section_kind": self.section_kind,
+            "is_implicit_section": self.is_implicit_section,
             "task_units": [task_unit.to_dict() for task_unit in self.task_units],
             "task_artifacts": (
                 None if self.task_artifacts is None else self.task_artifacts.to_dict()
@@ -61,6 +67,15 @@ class StructuredSection:
                 else str(data.get("container_title"))
             ),
             section_role=SectionRole.resolve(data.get("section_role")),
+            parent_chapter_id=(
+                None
+                if data.get("parent_chapter_id") is None
+                else str(data.get("parent_chapter_id"))
+            ),
+            section_kind=(
+                None if data.get("section_kind") is None else str(data.get("section_kind"))
+            ),
+            is_implicit_section=bool(data.get("is_implicit_section", False)),
             task_units=[
                 TaskUnit.from_dict(task_unit_data)
                 for task_unit_data in data.get("task_units", [])
@@ -71,8 +86,64 @@ class StructuredSection:
 
 
 @dataclass(frozen=True)
+class StructuredChapter:
+    """Hierarchy chapter DTO with nested sections for direct tree rendering."""
+
+    chapter_id: str
+    title: str | None
+    level: int
+    chapter_role: str | None
+    sections: list[StructuredSection] = field(default_factory=list)
+    task_artifacts: TaskArtifacts | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize chapter into JSON-friendly dictionary."""
+        return {
+            "chapter_id": self.chapter_id,
+            "title": self.title,
+            "level": self.level,
+            "chapter_role": self.chapter_role,
+            "sections": [section.to_dict() for section in self.sections],
+            "task_artifacts": (
+                None if self.task_artifacts is None else self.task_artifacts.to_dict()
+            ),
+            "metadata": dict(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "StructuredChapter":
+        """Deserialize chapter payload with nested sections."""
+        return cls(
+            chapter_id=str(data["chapter_id"]),
+            title=(None if data.get("title") is None else str(data.get("title"))),
+            level=int(data.get("level", 1)),
+            chapter_role=(
+                None
+                if data.get("chapter_role") is None
+                else str(data.get("chapter_role"))
+            ),
+            sections=[
+                StructuredSection.from_dict(section_payload)
+                for section_payload in data.get("sections", [])
+                if isinstance(section_payload, dict)
+            ],
+            task_artifacts=TaskArtifacts.from_dict(data.get("task_artifacts")),
+            metadata=(
+                {}
+                if not isinstance(data.get("metadata"), dict)
+                else dict(data.get("metadata"))
+            ),
+        )
+
+
+@dataclass(frozen=True)
 class StructuredDocument:
-    """Top-level structured document DTO with flat section list."""
+    """Top-level structured document DTO.
+
+    `sections` remains legacy compatibility/index view.
+    `chapters` is the primary hierarchy projection for tree rendering.
+    """
 
     document_id: str
     title: str
@@ -80,6 +151,7 @@ class StructuredDocument:
     language: str | None
     raw_text: str
     sections: list[StructuredSection] = field(default_factory=list)
+    chapters: list[StructuredChapter] = field(default_factory=list)
     structure_nodes: list[StructuredDocumentNode] = field(default_factory=list)
     structure_error_code: str | None = None
     structure_error_message: str | None = None
@@ -94,6 +166,7 @@ class StructuredDocument:
             "language": self.language,
             "raw_text": self.raw_text,
             "sections": [section.to_dict() for section in self.sections],
+            "chapters": [chapter.to_dict() for chapter in self.chapters],
             "structure_nodes": [node.to_dict() for node in self.structure_nodes],
             "structure_error_code": self.structure_error_code,
             "structure_error_message": self.structure_error_message,
@@ -108,6 +181,7 @@ class StructuredDocument:
     def from_dict(cls, data: dict[str, Any]) -> "StructuredDocument":
         """Build a structured document DTO from dictionary payload."""
         section_payloads = data.get("sections", [])
+        chapter_payloads = data.get("chapters", [])
         structure_node_payloads = data.get("structure_nodes", [])
         return cls(
             document_id=str(data["document_id"]),
@@ -122,6 +196,11 @@ class StructuredDocument:
             sections=[
                 StructuredSection.from_dict(section_data)
                 for section_data in section_payloads
+            ],
+            chapters=[
+                StructuredChapter.from_dict(chapter_payload)
+                for chapter_payload in chapter_payloads
+                if isinstance(chapter_payload, dict)
             ],
             structure_nodes=[
                 StructuredDocumentNode.from_dict(node_data)

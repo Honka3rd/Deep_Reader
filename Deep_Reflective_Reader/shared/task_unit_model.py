@@ -14,6 +14,7 @@ class TaskUnit:
     content: str
     source_section_ids: list[str]
     is_fallback_generated: bool
+    parent_section_id: str | None = None
     task_artifacts: TaskArtifacts | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -25,6 +26,7 @@ class TaskUnit:
             "content": self.content,
             "source_section_ids": list(self.source_section_ids),
             "is_fallback_generated": self.is_fallback_generated,
+            "parent_section_id": self.parent_section_id,
             "task_artifacts": (
                 None if self.task_artifacts is None else self.task_artifacts.to_dict()
             ),
@@ -48,5 +50,10 @@ class TaskUnit:
             content=str(data["content"]),
             source_section_ids=source_ids,
             is_fallback_generated=bool(data.get("is_fallback_generated", False)),
+            parent_section_id=(
+                None
+                if data.get("parent_section_id") is None
+                else str(data.get("parent_section_id"))
+            ),
             task_artifacts=TaskArtifacts.from_dict(data.get("task_artifacts")),
         )
