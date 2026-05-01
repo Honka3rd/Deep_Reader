@@ -11,6 +11,7 @@ from pathlib import Path
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.document_hierarchy_index import (
+    get_effective_sections,
     is_severe_hierarchy_warning,
     validate_chapter_hierarchy_consistency,
 )
@@ -88,7 +89,7 @@ class _FakeTaskUnitResolver:
         _ = (split_mode, semantic_top_k_candidates)
         self.calls += 1
         units: list[TaskUnit] = []
-        for idx, section in enumerate(document.sections):
+        for idx, section in enumerate(get_effective_sections(document)):
             if not section.content.strip():
                 continue
             units.append(
@@ -189,47 +190,53 @@ def _build_hierarchy_doc(
         is_implicit_section=True,
         task_units=chapter_section_units,
     )
-    legacy_sections: list[StructuredSection] = []
+    chapters: list[StructuredChapter] = []
     if include_front_matter:
-        legacy_sections.append(
-            StructuredSection(
-                section_id="section-0",
-                section_index=0,
+        chapters.append(
+            StructuredChapter(
+                chapter_id="front-matter-0",
                 title="前言",
                 level=1,
-                content="front matter content",
-                char_start=0,
-                char_end=9,
-                section_role=SectionRole.FRONT_MATTER,
-                task_units=[
-                    TaskUnit(
-                        unit_id="task-unit-front",
-                        title="front",
-                        container_title=None,
+                chapter_role="front_matter",
+                sections=[
+                    StructuredSection(
+                        section_id="section-0",
+                        section_index=0,
+                        title="前言",
+                        level=1,
                         content="front matter content",
-                        source_section_ids=["section-0"],
-                        is_fallback_generated=False,
-                        parent_section_id="section-0",
-                        task_artifacts=TaskArtifacts(
-                            summary=SummaryArtifact(content="front-summary"),
-                        ),
+                        char_start=0,
+                        char_end=9,
+                        section_role=SectionRole.FRONT_MATTER,
+                        parent_chapter_id="front-matter-0",
+                        section_kind="front_matter",
+                        task_units=[
+                            TaskUnit(
+                                unit_id="task-unit-front",
+                                title="front",
+                                container_title=None,
+                                content="front matter content",
+                                source_section_ids=["section-0"],
+                                is_fallback_generated=False,
+                                parent_section_id="section-0",
+                                task_artifacts=TaskArtifacts(
+                                    summary=SummaryArtifact(content="front-summary"),
+                                ),
+                            )
+                        ]
+                        if with_task_units
+                        else [],
                     )
-                ]
-                if with_task_units
-                else [],
+                ],
             )
         )
-    legacy_sections.append(
-        StructuredSection(
-            section_id="section-1",
-            section_index=1,
+    chapters.append(
+        StructuredChapter(
+            chapter_id="chapter-0",
             title="第一章",
             level=1,
-            content="chapter body content",
-            char_start=10,
-            char_end=30,
-            section_role=SectionRole.MAIN_BODY,
-            task_units=list(chapter_section_units),
+            chapter_role="main_body",
+            sections=[chapter_section],
         )
     )
     doc = StructuredDocument(
@@ -238,16 +245,8 @@ def _build_hierarchy_doc(
         source_path=None,
         language="zh",
         raw_text="front matter content\nchapter body content",
-        sections=legacy_sections,
-        chapters=[
-            StructuredChapter(
-                chapter_id="chapter-0",
-                title="第一章",
-                level=1,
-                chapter_role="main_body",
-                sections=[chapter_section],
-            )
-        ],
+        sections=[],
+        chapters=chapters,
     )
     return StructuredDocument(
         document_id=doc.document_id,
@@ -263,7 +262,7 @@ def _build_hierarchy_doc(
 
 def _build_duplicate_id_doc() -> StructuredDocument:
     doc = _build_hierarchy_doc(include_front_matter=True, with_task_units=True)
-    chapter = doc.chapters[0]
+    chapter = next(ch for ch in doc.chapters if ch.chapter_role == "main_body")
     chapter_dup_section = StructuredSection(
         section_id=chapter.sections[0].section_id,
         section_index=chapter.sections[0].section_index,
@@ -296,40 +295,40 @@ def _build_duplicate_id_doc() -> StructuredDocument:
         sections=[chapter_dup_section],
         metadata=dict(chapter.metadata),
     )
-
-    updated_sections = list(doc.sections)
-    updated_sections[0] = StructuredSection(
-        section_id=updated_sections[0].section_id,
-        section_index=updated_sections[0].section_index,
-        title=updated_sections[0].title,
-        level=updated_sections[0].level,
-        content=updated_sections[0].content,
-        char_start=updated_sections[0].char_start,
-        char_end=updated_sections[0].char_end,
-        section_role=updated_sections[0].section_role,
-        task_units=[
-            TaskUnit(
-                unit_id="task-unit-dup",
-                title="dup-front",
-                container_title=None,
-                content="front matter content",
-                source_section_ids=["section-0"],
-                is_fallback_generated=False,
-                parent_section_id="section-0",
-                task_artifacts=updated_sections[0].task_units[0].task_artifacts,
+    front_chapter = next(ch for ch in doc.chapters if ch.chapter_role == "front_matter")
+    front_section = front_chapter.sections[0]
+    updated_front_chapter = StructuredChapter(
+        chapter_id=front_chapter.chapter_id,
+        title=front_chapter.title,
+        level=front_chapter.level,
+        chapter_role=front_chapter.chapter_role,
+        sections=[
+            StructuredSection(
+                section_id=front_section.section_id,
+                section_index=front_section.section_index,
+                title=front_section.title,
+                level=front_section.level,
+                content=front_section.content,
+                char_start=front_section.char_start,
+                char_end=front_section.char_end,
+                section_role=front_section.section_role,
+                parent_chapter_id=front_section.parent_chapter_id,
+                section_kind=front_section.section_kind,
+                task_units=[
+                    TaskUnit(
+                        unit_id="task-unit-dup",
+                        title="dup-front",
+                        container_title=None,
+                        content="front matter content",
+                        source_section_ids=["section-0"],
+                        is_fallback_generated=False,
+                        parent_section_id="section-0",
+                        task_artifacts=front_section.task_units[0].task_artifacts,
+                    )
+                ],
             )
         ],
-    )
-    updated_sections[1] = StructuredSection(
-        section_id=updated_sections[1].section_id,
-        section_index=updated_sections[1].section_index,
-        title=updated_sections[1].title,
-        level=updated_sections[1].level,
-        content=updated_sections[1].content,
-        char_start=updated_sections[1].char_start,
-        char_end=updated_sections[1].char_end,
-        section_role=updated_sections[1].section_role,
-        task_units=list(chapter_dup_section.task_units),
+        metadata=dict(front_chapter.metadata),
     )
     return StructuredDocument(
         document_id=doc.document_id,
@@ -337,8 +336,8 @@ def _build_duplicate_id_doc() -> StructuredDocument:
         source_path=doc.source_path,
         language=doc.language,
         raw_text=doc.raw_text,
-        sections=updated_sections,
-        chapters=[updated_chapter],
+        sections=[],
+        chapters=[updated_front_chapter, updated_chapter],
         document_task_artifacts=doc.document_task_artifacts,
     )
 
@@ -383,20 +382,23 @@ def test_hierarchy_write_sync() -> None:
         )
         _assert(resolver.calls == 1, "cache miss should resolve once")
         after_first = repo.load_document("hier-sync-doc")
-        chapter_units = after_first.chapters[0].sections[0].task_units
-        legacy_chapter = next(section for section in after_first.sections if section.section_id == "section-1")
-        _assert(chapter_units, "cache miss should write task units into hierarchy chapter section")
-        _assert(legacy_chapter.task_units, "cache miss should write task units into legacy flat section")
-        _assert(
-            [unit.unit_id for unit in chapter_units] == [unit.unit_id for unit in legacy_chapter.task_units],
-            "hierarchy and legacy chapter section task-unit ids should stay aligned",
+        chapter_units = next(
+            chapter.sections[0].task_units
+            for chapter in after_first.chapters
+            if chapter.chapter_role == "main_body"
         )
+        front_section = next(
+            chapter.sections[0]
+            for chapter in after_first.chapters
+            if chapter.chapter_role == "front_matter"
+        )
+        _assert(chapter_units, "cache miss should write task units into hierarchy chapter section")
         _assert(
-            "chapters" not in first_layout.to_dict(),
-            "task-layout response schema should not add chapters field in this round",
+            first_layout.chapters,
+            "task-layout response should expose chapters in hierarchy-first mode",
         )
 
-        # refresh should rewrite both
+        # refresh should rewrite hierarchy
         refreshed_layout = coordinator.get_document_task_layout(
             doc_name="hier-sync-doc",
             refresh_task_units=True,
@@ -405,10 +407,17 @@ def test_hierarchy_write_sync() -> None:
         )
         _assert(resolver.calls == 2, "refresh=true should force resolver recompute")
         after_refresh = repo.load_document("hier-sync-doc")
-        _assert(after_refresh.chapters[0].sections[0].task_units, "refresh should keep hierarchy task units populated")
         _assert(
-            next(section for section in after_refresh.sections if section.section_id == "section-1").task_units,
-            "refresh should keep legacy chapter section task units populated",
+            next(
+                chapter.sections[0].task_units
+                for chapter in after_refresh.chapters
+                if chapter.chapter_role == "main_body"
+            ),
+            "refresh should keep hierarchy task units populated",
+        )
+        _assert(
+            refreshed_layout.chapters,
+            "refresh response should remain chapter-based",
         )
 
         # cache hit should read hierarchy and skip resolver
@@ -424,21 +433,29 @@ def test_hierarchy_write_sync() -> None:
             "cache hit should not invoke resolver again",
         )
         _assert(
-            [section.section_id for section in cache_hit_layout.sections] == ["section-1"],
+            [
+                section.section_id
+                for chapter in cache_hit_layout.chapters
+                if chapter.chapter_role == "main_body"
+                for section in chapter.sections
+            ]
+            == ["section-1"],
             "hierarchy-first cache hit should read chapter sections",
         )
 
         # D: front matter preserved after write sync
         front_matter = next(
-            section for section in after_refresh.sections if section.section_id == "section-0"
+            chapter.sections[0]
+            for chapter in after_refresh.chapters
+            if chapter.chapter_role == "front_matter"
         )
         _assert(
             front_matter.section_role == SectionRole.FRONT_MATTER,
-            "front matter section should be preserved in legacy sections",
+            "front matter section should be preserved in hierarchy",
         )
         _assert(
             len(front_matter.task_units) <= 1,
-            "front matter task units/artifacts should not be dropped by hierarchy sync",
+            "front matter task units/artifacts should not be dropped by hierarchy write",
         )
         warnings = validate_chapter_hierarchy_consistency(after_refresh)
         severe = [warning for warning in warnings if is_severe_hierarchy_warning(warning)]
@@ -462,13 +479,21 @@ def test_hierarchy_write_sync() -> None:
             "duplicate-id repair on cache-hit should not re-run resolver",
         )
         repaired = repo.load_document("hier-sync-doc")
-        ids = [unit.unit_id for section in repaired.sections for unit in section.task_units]
+        ids = [unit.unit_id for section in get_effective_sections(repaired) for unit in section.task_units]
         _assert(len(ids) == len(set(ids)), "repaired document should have globally unique task-unit ids")
         _assert(
-            repaired.chapters[0].sections[0].task_units,
+            next(
+                chapter.sections[0].task_units
+                for chapter in repaired.chapters
+                if chapter.chapter_role == "main_body"
+            ),
             "duplicate repair should also update hierarchy sections",
         )
-        front_after_repair = next(section for section in repaired.sections if section.section_id == "section-0")
+        front_after_repair = next(
+            chapter.sections[0]
+            for chapter in repaired.chapters
+            if chapter.chapter_role == "front_matter"
+        )
         _assert(
             front_after_repair.task_units[0].task_artifacts is not None,
             "duplicate repair should preserve task-unit artifacts by position",
@@ -482,8 +507,8 @@ def main() -> None:
             {
                 "status": "ok",
                 "tests": [
-                    "cache_miss_writes_hierarchy_and_legacy",
-                    "refresh_rewrites_hierarchy_and_legacy",
+                    "cache_miss_writes_hierarchy",
+                    "refresh_rewrites_hierarchy",
                     "cache_hit_reads_hierarchy",
                     "front_matter_preserved",
                     "duplicate_id_repair_hierarchy_aware",

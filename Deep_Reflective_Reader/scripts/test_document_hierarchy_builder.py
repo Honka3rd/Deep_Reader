@@ -104,10 +104,15 @@ def test_chapter_only_chinese_novel() -> None:
     )
 
     built = DocumentHierarchyBuilder().build(doc)
-    _assert(len(built.chapters) == 3, "chapter-only novel should create 3 chapters")
+    _assert(len(built.chapters) == 4, "chapter-only novel should create one front-matter chapter plus 3 body chapters")
+    _assert(built.chapters[0].chapter_role == "front_matter", "front matter should be materialized into hierarchy")
+    _assert(
+        [section.section_id for section in built.chapters[0].sections] == ["section-0"],
+        "front matter chapter should retain original section id",
+    )
 
     for chapter, expected_section_id in zip(
-        built.chapters,
+        built.chapters[1:],
         ["section-1", "section-2", "section-3"],
         strict=True,
     ):
@@ -119,8 +124,8 @@ def test_chapter_only_chinese_novel() -> None:
         _assert(len(nested.task_units) == 1, "nested task units should be preserved")
 
     _assert(
-        all(section.title != "前言" for chapter in built.chapters for section in chapter.sections),
-        "front matter section must not be included under chapters",
+        built.sections == [],
+        "hierarchy build should no longer persist legacy flat sections mirror",
     )
 
 
@@ -243,7 +248,6 @@ def test_nested_roundtrip() -> None:
         source_path=None,
         language="zh",
         raw_text="正文",
-        sections=[nested_section],
         chapters=[chapter],
     )
 
@@ -288,29 +292,31 @@ def test_no_id_drift_and_no_fake_sections() -> None:
     )
     built = DocumentHierarchyBuilder().build(doc)
 
-    flat_by_id = {section.section_id: section for section in built.sections}
+    source_by_id = {section.section_id: section for section in sections}
     seen_task_unit_ids: set[str] = set()
 
     for chapter in built.chapters:
         for nested_section in chapter.sections:
             _assert(
-                nested_section.section_id in flat_by_id,
-                "hierarchy section must map to an existing flat section",
+                nested_section.section_id in source_by_id,
+                "hierarchy section must map to an original source section",
             )
-            flat_section = flat_by_id[nested_section.section_id]
+            source_section = source_by_id[nested_section.section_id]
             _assert(
-                nested_section.section_id == flat_section.section_id,
-                "section id must not drift between flat and nested",
+                nested_section.section_id == source_section.section_id,
+                "section id must not drift between source and nested",
             )
             nested_unit_ids = [unit.unit_id for unit in nested_section.task_units]
-            flat_unit_ids = [unit.unit_id for unit in flat_section.task_units]
+            source_unit_ids = [unit.unit_id for unit in source_section.task_units]
             _assert(
-                nested_unit_ids == flat_unit_ids,
-                "task-unit ids must not drift between flat and nested",
+                nested_unit_ids == source_unit_ids,
+                "task-unit ids must not drift between source and nested",
             )
             for unit in nested_section.task_units:
                 _assert(unit.unit_id not in seen_task_unit_ids, "task-unit id must stay globally unique")
                 seen_task_unit_ids.add(unit.unit_id)
+
+    _assert(built.sections == [], "built document should not keep legacy flat sections mirror")
 
 
 def main() -> None:

@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from document_structure.document_hierarchy_index import (
     get_effective_sections,
-    with_sections_synced_across_hierarchy_and_legacy,
+    with_sections_replaced_in_hierarchy,
 )
 from document_structure.structured_document import StructuredDocument, StructuredSection
 from shared.task_unit_model import TaskUnit
@@ -47,16 +47,9 @@ class TaskUnitIdNormalizer:
         document: StructuredDocument,
     ) -> StructuredDocument:
         """Return new document with ids normalized globally by effective section reading order."""
-        working_document = document
-        if document.chapters:
-            working_document = with_sections_synced_across_hierarchy_and_legacy(
-                document=document,
-                updated_sections=get_effective_sections(document),
-            )
-
         global_index = 0
         updated_sections: list[StructuredSection] = []
-        for section in working_document.sections:
+        for section in get_effective_sections(document):
             updated_units: list[TaskUnit] = []
             for task_unit in section.task_units:
                 updated_units.append(
@@ -67,11 +60,18 @@ class TaskUnitIdNormalizer:
                 )
                 global_index += 1
             updated_sections.append(replace(section, task_units=updated_units))
-        if not working_document.chapters:
-            return replace(working_document, sections=updated_sections)
-        return with_sections_synced_across_hierarchy_and_legacy(
-            document=working_document,
-            updated_sections=updated_sections,
+        if not document.chapters:
+            return replace(document, sections=updated_sections)
+        updated_sections_by_id = {
+            section.section_id: section
+            for section in updated_sections
+        }
+        return replace(
+            with_sections_replaced_in_hierarchy(
+                document=document,
+                sections_by_id=updated_sections_by_id,
+            ),
+            sections=[],
         )
 
     @staticmethod
@@ -80,7 +80,7 @@ class TaskUnitIdNormalizer:
     ) -> dict[str, int]:
         """Return task-unit id occurrence counts in one persisted document."""
         counts: dict[str, int] = {}
-        for section in document.sections:
+        for section in get_effective_sections(document):
             for task_unit in section.task_units:
                 counts[task_unit.unit_id] = counts.get(task_unit.unit_id, 0) + 1
         return counts

@@ -11,8 +11,9 @@ from document_structure.document_hierarchy_index import (
     flatten_sections_from_chapters,
     get_effective_sections,
     is_severe_hierarchy_warning,
+    migrate_legacy_sections_to_chapters,
     validate_chapter_hierarchy_consistency,
-    with_sections_synced_across_hierarchy_and_legacy,
+    with_sections_replaced_in_hierarchy,
 )
 from document_structure.structured_document import StructuredDocument, StructuredSection
 from document_structure.structured_document_store import StructuredDocumentStore
@@ -43,6 +44,17 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         path = self._resolve_document_path(doc_name)
         return self.store.load(str(path))
 
+    def _load_document_for_write(self, doc_name: str) -> StructuredDocument:
+        """Load one document and migrate legacy sections-only payloads to hierarchy."""
+        document = self.load_document(doc_name)
+        if document.chapters:
+            return document
+        if document.sections:
+            return migrate_legacy_sections_to_chapters(document)
+        raise ValueError(
+            f"load_document_for_write: document '{doc_name}' has neither chapters nor sections"
+        )
+
     def save_document(
         self,
         document: StructuredDocument,
@@ -60,7 +72,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         artifacts: TaskArtifacts,
     ) -> StructuredDocument:
         """Update one section artifact payload and persist new structured document."""
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         updated_document = self._update_section_by_id(
             document=document,
             section_id=section_id,
@@ -78,7 +90,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         summary: SummaryArtifact,
     ) -> StructuredDocument:
         """Update one section summary artifact while preserving existing section quiz artifact."""
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         def _update_fn(section: StructuredSection) -> StructuredSection:
             existing_artifacts = section.task_artifacts
             merged_artifacts = TaskArtifacts(
@@ -107,7 +119,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         quiz: QuizArtifact,
     ) -> StructuredDocument:
         """Update one section quiz artifact while preserving existing section summary artifact."""
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         def _update_fn(section: StructuredSection) -> StructuredSection:
             existing_artifacts = section.task_artifacts
             merged_artifacts = TaskArtifacts(
@@ -140,7 +152,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         if not normalized_chapter_key:
             raise ValueError("update_chapter_summary_artifact: chapter_key cannot be empty")
 
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         existing_document_artifacts = (
             document.document_task_artifacts or DocumentTaskArtifacts()
         )
@@ -174,7 +186,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         if not normalized_chapter_key:
             raise ValueError("update_chapter_quiz_artifact: chapter_key cannot be empty")
 
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         existing_document_artifacts = (
             document.document_task_artifacts or DocumentTaskArtifacts()
         )
@@ -204,7 +216,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         artifacts: TaskArtifacts,
     ) -> StructuredDocument:
         """Update one persisted task-unit artifact payload and persist document."""
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         section_source = (
             flatten_sections_from_chapters(document)
             if document.chapters
@@ -257,7 +269,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         task_units: list[TaskUnit],
     ) -> StructuredDocument:
         """Replace one section task-unit list and persist document."""
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         updated_document = self._update_section_by_id(
             document=document,
             section_id=section_id,
@@ -275,7 +287,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         task_layout_metadata: dict[str, str | int | None],
     ) -> StructuredDocument:
         """Bulk update section task units and task-layout metadata in one save."""
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         updated_effective_sections = []
         for section in get_effective_sections(document):
             section_units = task_units_by_section_id.get(section.section_id, [])
@@ -285,9 +297,13 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
                     task_units=list(section_units),
                 )
             )
-        document_with_synced_sections = with_sections_synced_across_hierarchy_and_legacy(
+        updated_sections_by_id = {
+            section.section_id: section
+            for section in updated_effective_sections
+        }
+        document_with_synced_sections = with_sections_replaced_in_hierarchy(
             document=document,
-            updated_sections=updated_effective_sections,
+            sections_by_id=updated_sections_by_id,
         )
 
         existing_document_artifacts = (
@@ -302,6 +318,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
 
         updated_document = replace(
             document_with_synced_sections,
+            sections=[],
             document_task_artifacts=updated_document_artifacts,
         )
         if updated_document.chapters:
@@ -381,7 +398,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> None:
         """Defensive check: persisted task-unit ids must be document-scope unique."""
         counts: dict[str, int] = {}
-        for section in document.sections:
+        for section in get_effective_sections(document):
             for task_unit in section.task_units:
                 counts[task_unit.unit_id] = counts.get(task_unit.unit_id, 0) + 1
         duplicates = {
@@ -435,28 +452,23 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
                 (section for section in hierarchy_sections if section.section_id == section_id),
                 None,
             )
-            if hierarchy_target is not None:
-                updated_sections = [
-                    update_fn(section) if section.section_id == section_id else section
-                    for section in hierarchy_sections
-                ]
-            else:
-                legacy_target = next(
-                    (section for section in document.sections if section.section_id == section_id),
-                    None,
+            if hierarchy_target is None:
+                raise ValueError(
+                    f"{context}: unknown section_id='{section_id}' for doc_name='{doc_name}'"
                 )
-                if legacy_target is None:
-                    raise ValueError(
-                        f"{context}: unknown section_id='{section_id}' for doc_name='{doc_name}'"
-                    )
-                updated_sections = [
-                    update_fn(section) if section.section_id == section_id else section
-                    for section in document.sections
-                ]
-            updated_document = with_sections_synced_across_hierarchy_and_legacy(
+            updated_sections_by_id = {
+                section.section_id: (
+                    update_fn(section)
+                    if section.section_id == section_id
+                    else section
+                )
+                for section in hierarchy_sections
+            }
+            updated_document = with_sections_replaced_in_hierarchy(
                 document=document,
-                updated_sections=updated_sections,
+                sections_by_id=updated_sections_by_id,
             )
+            updated_document = replace(updated_document, sections=[])
             self._assert_hierarchy_save_consistency(
                 document=updated_document,
                 doc_name=doc_name,

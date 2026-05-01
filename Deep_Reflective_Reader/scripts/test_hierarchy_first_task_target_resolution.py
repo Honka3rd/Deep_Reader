@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.preparation_mode import PreparationMode
+from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
 )
@@ -91,7 +92,7 @@ class _FakeTaskUnitResolver:
         _ = (split_mode, semantic_top_k_candidates)
         self.calls += 1
         units: list[TaskUnit] = []
-        for index, section in enumerate(document.sections):
+        for index, section in enumerate(get_effective_sections(document)):
             if not section.content.strip():
                 continue
             units.append(
@@ -195,7 +196,7 @@ class _FakeQuizService:
 
 
 def _build_doc_with_hierarchy_vs_legacy_drift() -> StructuredDocument:
-    """Hierarchy section content differs from legacy same-id section content."""
+    """Hierarchy sections are the only persisted source, including front matter."""
     section_a_hierarchy_content = "hierarchy-content-a"
     section_b_hierarchy_content = "hierarchy-content-b"
 
@@ -248,32 +249,7 @@ def _build_doc_with_hierarchy_vs_legacy_drift() -> StructuredDocument:
         ],
     )
 
-    # Legacy flat order intentionally reversed and content stale.
-    # Keep key structural fields (char ranges) aligned so hierarchy-vs-legacy
-    # consistency guards stay focused on target-resolution behavior.
-    section_b_legacy = StructuredSection(
-        section_id="section-b",
-        section_index=0,
-        title="第二章",
-        level=1,
-        content="legacy-stale-content-b",
-        char_start=21,
-        char_end=40,
-        section_role=SectionRole.MAIN_BODY,
-        task_units=[],
-    )
-    section_a_legacy = StructuredSection(
-        section_id="section-a",
-        section_index=1,
-        title="第一章",
-        level=1,
-        content="legacy-stale-content-a",
-        char_start=0,
-        char_end=20,
-        section_role=SectionRole.MAIN_BODY,
-        task_units=[],
-    )
-    front_legacy = StructuredSection(
+    front_section = StructuredSection(
         section_id="section-front",
         section_index=2,
         title="前言",
@@ -282,6 +258,8 @@ def _build_doc_with_hierarchy_vs_legacy_drift() -> StructuredDocument:
         char_start=40,
         char_end=59,
         section_role=SectionRole.FRONT_MATTER,
+        parent_chapter_id="front-matter-0",
+        section_kind="front_matter",
         task_units=[
             TaskUnit(
                 unit_id="task-unit-front",
@@ -311,8 +289,15 @@ def _build_doc_with_hierarchy_vs_legacy_drift() -> StructuredDocument:
         source_path=None,
         language="zh",
         raw_text=raw_text,
-        sections=[section_b_legacy, section_a_legacy, front_legacy],
+        sections=[],
         chapters=[
+            StructuredChapter(
+                chapter_id="front-matter-0",
+                title="前言",
+                level=1,
+                chapter_role="front_matter",
+                sections=[front_section],
+            ),
             StructuredChapter(
                 chapter_id="chapter-a",
                 title="第一章",
@@ -384,7 +369,7 @@ def _build_doc_with_duplicate_chapter_title() -> StructuredDocument:
         source_path=None,
         language="en",
         raw_text="intro-1\nintro-2",
-        sections=[section_1, section_2],
+        sections=[],
         chapters=[
             StructuredChapter("chapter-1", "Introduction", 1, "main_body", [section_1]),
             StructuredChapter("chapter-2", "Introduction", 1, "main_body", [section_2]),
@@ -451,8 +436,8 @@ def test_section_summary_and_quiz_use_hierarchy_section() -> None:
             "section summary should use hierarchy section task unit content",
         )
         _assert(
-            summary_service.last_task_unit_index == 0,
-            "section summary task_unit_index should follow hierarchy order",
+            summary_service.last_task_unit_index == 1,
+            "section summary task_unit_index should follow hierarchy order including front matter",
         )
 
         updated = repo.load_document("target-resolution-doc")
@@ -481,8 +466,8 @@ def test_section_summary_and_quiz_use_hierarchy_section() -> None:
             "section quiz should use hierarchy section task unit content",
         )
         _assert(
-            quiz_service.last_task_unit_index == 0,
-            "section quiz task_unit_index should follow hierarchy order",
+            quiz_service.last_task_unit_index == 1,
+            "section quiz task_unit_index should follow hierarchy order including front matter",
         )
         updated_after_quiz = repo.load_document("target-resolution-doc")
         section_a_after_quiz = next(
@@ -563,7 +548,7 @@ def test_chapter_resolution_hierarchy_and_ambiguity() -> None:
         )
 
 
-def test_front_matter_fallback_and_hierarchy_order_index() -> None:
+def test_front_matter_hierarchy_resolution_and_order_index() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repo = StructuredDocumentArtifactRepository(
             store=StructuredDocumentStore(),
@@ -585,8 +570,8 @@ def test_front_matter_fallback_and_hierarchy_order_index() -> None:
         )
         _assert(section_b_summary.success, "section-b summary should succeed")
         _assert(
-            summary_service.last_task_unit_index == 1,
-            "task unit index for section-b should follow hierarchy order (A then B)",
+            summary_service.last_task_unit_index == 2,
+            "task unit index for section-b should follow hierarchy order (front matter, A, then B)",
         )
 
         front_summary = coordinator.summarize_section(
@@ -596,10 +581,10 @@ def test_front_matter_fallback_and_hierarchy_order_index() -> None:
             semantic_top_k_candidates=3,
             refresh_summary=False,
         )
-        _assert(front_summary.success, "front matter section summary should fallback via legacy and succeed")
+        _assert(front_summary.success, "front matter section summary should resolve from hierarchy and succeed")
         _assert(
             summary_service.last_task_unit_content == "front-matter-content",
-            "front matter fallback should resolve legacy-only section task unit",
+            "front matter summary should resolve hierarchy front matter task unit",
         )
         _assert(
             resolver.calls == 0,
@@ -610,7 +595,7 @@ def test_front_matter_fallback_and_hierarchy_order_index() -> None:
 def main() -> None:
     test_section_summary_and_quiz_use_hierarchy_section()
     test_chapter_resolution_hierarchy_and_ambiguity()
-    test_front_matter_fallback_and_hierarchy_order_index()
+    test_front_matter_hierarchy_resolution_and_order_index()
     print(
         json.dumps(
             {
@@ -620,7 +605,7 @@ def main() -> None:
                     "section_quiz_hierarchy_first",
                     "chapter_summary_quiz_chapter_body",
                     "duplicate_chapter_title_ambiguous",
-                    "front_matter_legacy_fallback",
+                    "front_matter_hierarchy_resolution",
                     "task_unit_index_hierarchy_order",
                     "persisted_layout_resolution_hierarchy_first",
                 ],

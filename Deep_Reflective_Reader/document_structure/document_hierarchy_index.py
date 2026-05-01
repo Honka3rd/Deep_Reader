@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from document_structure.structured_hierarchy_builder import (
+    build_document_hierarchy_from_sections,
+)
 from document_structure.structured_document import (
     StructuredChapter,
     StructuredDocument,
@@ -61,8 +64,10 @@ def get_effective_sections(
 def find_section_by_id_effective(
     document: StructuredDocument,
     section_id: str,
+    *,
+    allow_legacy_fallback: bool = False,
 ) -> StructuredSection | None:
-    """Find section by id with hierarchy-first lookup and legacy fallback."""
+    """Find section by id with hierarchy as primary source."""
     normalized_section_id = section_id.strip()
     if not normalized_section_id:
         return None
@@ -80,6 +85,8 @@ def find_section_by_id_effective(
             )
         if len(hierarchy_matches) == 1:
             return hierarchy_matches[0]
+        if not allow_legacy_fallback:
+            return None
 
     legacy_matches = [
         section for section in document.sections if section.section_id == normalized_section_id
@@ -97,6 +104,8 @@ def find_section_by_id_effective(
 def find_sections_by_title_effective(
     document: StructuredDocument,
     title: str,
+    *,
+    allow_legacy_fallback: bool = False,
 ) -> list[StructuredSection]:
     """Find sections by exact normalized title with hierarchy-first preference."""
     normalized_title = title.strip()
@@ -111,6 +120,8 @@ def find_sections_by_title_effective(
         ]
         if hierarchy_matches:
             return hierarchy_matches
+        if not allow_legacy_fallback:
+            return []
 
     return [
         section
@@ -122,6 +133,8 @@ def find_sections_by_title_effective(
 def find_section_by_chapter_title_effective(
     document: StructuredDocument,
     chapter_title: str,
+    *,
+    allow_legacy_fallback: bool = False,
 ) -> StructuredSection | None:
     """Resolve chapter title into section with chapter-aware hierarchy-first semantics."""
     normalized_chapter_title = chapter_title.strip()
@@ -154,6 +167,8 @@ def find_section_by_chapter_title_effective(
             if chapter_body_sections:
                 return chapter_body_sections[0]
             return chapter.sections[0]
+        if not allow_legacy_fallback:
+            return None
 
     legacy_title_matches = [
         section
@@ -173,7 +188,7 @@ def find_section_by_chapter_title_effective(
 def validate_chapter_hierarchy_consistency(
     document: StructuredDocument,
 ) -> list[str]:
-    """Return consistency warnings between chapters (primary) and sections (legacy)."""
+    """Return consistency warnings for hierarchy-first document state."""
     warnings: list[str] = []
 
     chapter_ids: set[str] = set()
@@ -210,43 +225,8 @@ def validate_chapter_hierarchy_consistency(
                     warnings.append(f"duplicate_task_unit_id:{task_unit.unit_id}")
                 hierarchy_task_unit_ids.add(task_unit.unit_id)
 
-    flat_index: dict[str, StructuredSection] = {}
-    flat_duplicates: set[str] = set()
-    for section in document.sections:
-        if section.section_id in flat_index:
-            flat_duplicates.add(section.section_id)
-        else:
-            flat_index[section.section_id] = section
-    for section_id in sorted(flat_duplicates):
-        warnings.append(f"duplicate_flat_section_id:{section_id}")
-
-    if document.sections and hierarchy_section_ids:
-        flat_ids = set(flat_index.keys())
-        missing_in_flat = hierarchy_section_ids - flat_ids
-        missing_in_hierarchy = flat_ids - hierarchy_section_ids
-        for section_id in sorted(missing_in_flat):
-            warnings.append(f"hierarchy_section_missing_in_flat:{section_id}")
-        for section_id in sorted(missing_in_hierarchy):
-            warnings.append(f"flat_section_missing_in_hierarchy:{section_id}")
-
-        comparable_ids = hierarchy_section_ids & flat_ids
-        for section_id in sorted(comparable_ids):
-            nested = _find_hierarchy_section_by_id(document, section_id)
-            if nested is None:
-                continue
-            flat = flat_index[section_id]
-            if nested.title != flat.title:
-                warnings.append(f"section_field_mismatch:{section_id}:title")
-            if nested.level != flat.level:
-                warnings.append(f"section_field_mismatch:{section_id}:level")
-            nested_role = None if nested.section_role is None else nested.section_role.value
-            flat_role = None if flat.section_role is None else flat.section_role.value
-            if nested_role != flat_role:
-                warnings.append(f"section_field_mismatch:{section_id}:section_role")
-            if nested.char_start != flat.char_start:
-                warnings.append(f"section_field_mismatch:{section_id}:char_start")
-            if nested.char_end != flat.char_end:
-                warnings.append(f"section_field_mismatch:{section_id}:char_end")
+    if document.sections and document.chapters:
+        warnings.append("legacy_sections_present")
 
     return warnings
 
@@ -261,7 +241,7 @@ def assert_chapter_hierarchy_consistency(document: StructuredDocument) -> None:
 def with_legacy_sections_synced_from_chapters(
     document: StructuredDocument,
 ) -> StructuredDocument:
-    """Rebuild document.sections from chapters when hierarchy exists."""
+    """Deprecated transitional helper; prefer hierarchy-only persistence."""
     if not document.chapters:
         return document
     flattened = flatten_sections_from_chapters(document)
@@ -295,7 +275,7 @@ def with_sections_synced_across_hierarchy_and_legacy(
     document: StructuredDocument,
     updated_sections: list[StructuredSection],
 ) -> StructuredDocument:
-    """Sync section updates into primary hierarchy and transitional legacy flat index."""
+    """Deprecated transitional helper; prefer hierarchy-only write paths."""
     updated_sections_by_id = {
         section.section_id: section
         for section in updated_sections
@@ -336,3 +316,15 @@ def _find_hierarchy_section_by_id(
             if section.section_id == section_id:
                 return section
     return None
+
+
+def migrate_legacy_sections_to_chapters(
+    document: StructuredDocument,
+) -> StructuredDocument:
+    """Upgrade sections-only legacy document into hierarchy-first structure."""
+    if document.chapters:
+        return replace(document, sections=[])
+    if not document.sections:
+        return document
+    migrated = build_document_hierarchy_from_sections(document)
+    return replace(migrated, sections=[])

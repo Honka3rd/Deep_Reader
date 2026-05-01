@@ -290,9 +290,6 @@ class DocumentTaskLayoutResponse(BaseModel):
     title: str
     language: str | None
     chapters: list[DocumentTaskLayoutChapterResponse]
-    sections: list[SectionTaskLayoutResponse] | None = None
-    task_units: list[TaskUnitMetadataResponse] | None = None
-    chapter_artifacts: dict[str, ArtifactAvailabilityResponse] | None = None
     enhanced_parse_recommendation: EnhancedParseRecommendationResponse | None
 
 

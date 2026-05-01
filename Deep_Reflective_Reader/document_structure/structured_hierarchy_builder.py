@@ -28,13 +28,22 @@ _ZH_SUBSECTION_PATTERN = re.compile(
 class DocumentHierarchyBuilder:
     """Build document->chapter->section->task-unit hierarchy from flat sections."""
 
+    _SPECIAL_CHAPTER_LABELS: dict[str, str] = {
+        "front_matter": "Front Matter",
+        "toc": "Table of Contents",
+        "appendix": "Appendix",
+        "back_matter": "Back Matter",
+        "unknown_region": "Other Sections",
+    }
+
     def build(self, document: StructuredDocument) -> StructuredDocument:
         if not document.sections:
-            return replace(document, chapters=[], structure_nodes=[])
+            return replace(document, chapters=[], structure_nodes=[], sections=[])
 
         mutable_chapters: list[_MutableChapter] = []
-        resolved_sections: list[StructuredSection] = []
         current_chapter: _MutableChapter | None = None
+        current_special_chapter: _MutableChapter | None = None
+        special_chapter_counts: dict[str, int] = {}
 
         for section in document.sections:
             role = section.section_role
@@ -42,6 +51,7 @@ class DocumentHierarchyBuilder:
             is_main_body = role in (None, SectionRole.MAIN_BODY)
 
             if is_main_body and _is_chapter_heading(title):
+                current_special_chapter = None
                 chapter_id = f"chapter-{len(mutable_chapters)}"
                 chapter_section = self._with_section_parent(
                     section=section,
@@ -61,7 +71,6 @@ class DocumentHierarchyBuilder:
                     sections=[chapter_section],
                 )
                 mutable_chapters.append(current_chapter)
-                resolved_sections.append(chapter_section)
                 continue
 
             if (
@@ -83,18 +92,48 @@ class DocumentHierarchyBuilder:
                     current_chapter.sections[0],
                     is_implicit_section=False,
                 )
-                resolved_sections.append(subsection)
                 continue
+
+            if is_main_body:
+                current_special_chapter = None
+                fallback_chapter = self._ensure_main_body_fallback_chapter(
+                    mutable_chapters=mutable_chapters,
+                    section=section,
+                )
+                standalone_main_body = self._with_section_parent(
+                    section=section,
+                    parent_chapter_id=fallback_chapter.chapter_id,
+                    section_kind="chapter_body" if not fallback_chapter.sections else "subsection",
+                    is_implicit_section=not fallback_chapter.sections,
+                )
+                fallback_chapter.sections.append(standalone_main_body)
+                current_chapter = fallback_chapter
+                continue
+
+            current_chapter = None
+            special_role = _resolve_special_chapter_role(section)
+            if (
+                current_special_chapter is None
+                or current_special_chapter.chapter_role != special_role
+            ):
+                special_index = special_chapter_counts.get(special_role, 0)
+                special_chapter_counts[special_role] = special_index + 1
+                current_special_chapter = _MutableChapter(
+                    chapter_id=f"{special_role.replace('_', '-')}-{special_index}",
+                    title=self._SPECIAL_CHAPTER_LABELS.get(special_role, "Other Sections"),
+                    level=max(1, int(section.level)),
+                    chapter_role=special_role,
+                    sections=[],
+                )
+                mutable_chapters.append(current_special_chapter)
 
             standalone = self._with_section_parent(
                 section=section,
-                parent_chapter_id=None,
-                section_kind=_resolve_standalone_section_kind(section),
+                parent_chapter_id=current_special_chapter.chapter_id,
+                section_kind=_resolve_special_section_kind(section),
                 is_implicit_section=False,
             )
-            resolved_sections.append(standalone)
-            if not is_main_body:
-                current_chapter = None
+            current_special_chapter.sections.append(standalone)
 
         chapters = [
             StructuredChapter(
@@ -110,15 +149,34 @@ class DocumentHierarchyBuilder:
         ]
 
         structure_nodes = self._build_structure_nodes(
-            sections=resolved_sections,
+            sections=flattened_sections_from_chapters(chapters),
             chapters=chapters,
         )
         return replace(
             document,
-            sections=resolved_sections,
             chapters=chapters,
             structure_nodes=structure_nodes,
+            sections=[],
         )
+
+    @staticmethod
+    def _ensure_main_body_fallback_chapter(
+        *,
+        mutable_chapters: list["_MutableChapter"],
+        section: StructuredSection,
+    ) -> "_MutableChapter":
+        """Create a fallback main-body chapter when flat sections lack explicit chapter headings."""
+        chapter_id = f"chapter-{len(mutable_chapters)}"
+        chapter_title = section.title or f"Main Body {len(mutable_chapters) + 1}"
+        fallback_chapter = _MutableChapter(
+            chapter_id=chapter_id,
+            title=chapter_title,
+            level=max(1, int(section.level)),
+            chapter_role=SectionRole.MAIN_BODY.value,
+            sections=[],
+        )
+        mutable_chapters.append(fallback_chapter)
+        return fallback_chapter
 
     @staticmethod
     def _with_section_parent(
@@ -226,6 +284,16 @@ def build_document_hierarchy_from_sections(
     return DocumentHierarchyBuilder().build(document)
 
 
+def flattened_sections_from_chapters(
+    chapters: list[StructuredChapter],
+) -> list[StructuredSection]:
+    """Flatten chapter sections without reintroducing legacy root mirrors."""
+    flattened: list[StructuredSection] = []
+    for chapter in chapters:
+        flattened.extend(chapter.sections)
+    return flattened
+
+
 def _build_node_from_section(
     *,
     section: StructuredSection,
@@ -266,6 +334,26 @@ def _resolve_standalone_section_kind(section: StructuredSection) -> str | None:
     role = section.section_role
     if role is None:
         return None
+    return role.value
+
+
+def _resolve_special_chapter_role(section: StructuredSection) -> str:
+    role = section.section_role
+    if role == SectionRole.FRONT_MATTER:
+        return SectionRole.FRONT_MATTER.value
+    if role == SectionRole.TOC:
+        return SectionRole.TOC.value
+    if role == SectionRole.APPENDIX:
+        return SectionRole.APPENDIX.value
+    if role == SectionRole.BACK_MATTER:
+        return SectionRole.BACK_MATTER.value
+    return "unknown_region"
+
+
+def _resolve_special_section_kind(section: StructuredSection) -> str | None:
+    role = section.section_role
+    if role is None:
+        return "unknown_region"
     return role.value
 
 

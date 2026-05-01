@@ -13,6 +13,7 @@ from document_preparation.preparation_mode import PreparationMode
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
 )
+from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.section_role import SectionRole
 from document_structure.structured_document import (
     StructuredChapter,
@@ -62,19 +63,9 @@ def _build_document(
         ],
     )
     duplicate_section = chapter_section if duplicate_hierarchy_section else None
-    chapters = [
-        StructuredChapter(
-            chapter_id="chapter-0",
-            title="第一章",
-            level=1,
-            chapter_role="main_body",
-            sections=[chapter_section] if duplicate_section is None else [chapter_section, duplicate_section],
-        )
-    ]
-    legacy_sections: list[StructuredSection] = []
+    chapters: list[StructuredChapter] = []
     if include_front_matter:
-        legacy_sections.append(
-            StructuredSection(
+        front_section = StructuredSection(
                 section_id="section-0",
                 section_index=0,
                 title="前言",
@@ -83,32 +74,28 @@ def _build_document(
                 char_start=0,
                 char_end=9,
                 section_role=SectionRole.FRONT_MATTER,
+                parent_chapter_id="front-matter-0",
+                section_kind="front_matter",
                 task_artifacts=TaskArtifacts(
                     summary=SummaryArtifact(content="front-summary"),
                 ),
             )
+        chapters.append(
+            StructuredChapter(
+                chapter_id="front-matter-0",
+                title="Front Matter",
+                level=1,
+                chapter_role="front_matter",
+                sections=[front_section],
+            )
         )
-    legacy_sections.append(
-        StructuredSection(
-            section_id="section-1",
-            section_index=1,
+    chapters.append(
+        StructuredChapter(
+            chapter_id="chapter-0",
             title="第一章",
             level=1,
-            content="chapter body content",
-            char_start=10,
-            char_end=30,
-            section_role=SectionRole.MAIN_BODY,
-            task_units=[
-                TaskUnit(
-                    unit_id="task-unit-1",
-                    title="unit-1",
-                    container_title=None,
-                    content="chapter body content",
-                    source_section_ids=["section-1"],
-                    is_fallback_generated=False,
-                    parent_section_id="section-1",
-                )
-            ],
+            chapter_role="main_body",
+            sections=[chapter_section] if duplicate_section is None else [chapter_section, duplicate_section],
         )
     )
     return StructuredDocument(
@@ -117,7 +104,7 @@ def _build_document(
         source_path=None,
         language="zh",
         raw_text="front matter content\nchapter body content",
-        sections=legacy_sections,
+        sections=[],
         chapters=chapters,
     )
 
@@ -170,7 +157,7 @@ class _FakeTaskUnitResolver:
     ) -> list[TaskUnit]:
         _ = (split_mode, semantic_top_k_candidates)
         units: list[TaskUnit] = []
-        for section in document.sections:
+        for section in get_effective_sections(document):
             if section.content.strip():
                 units.append(
                     TaskUnit(
@@ -231,7 +218,7 @@ def _write_document(temp_dir: str, document: StructuredDocument) -> StructuredDo
     return StructuredDocumentArtifactRepository(base_dir=temp_dir)
 
 
-def test_section_summary_writes_hierarchy_and_legacy() -> None:
+def test_section_summary_writes_hierarchy_only() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repository = _write_document(temp_dir, _build_document())
         repository.update_section_summary_artifact(
@@ -241,7 +228,6 @@ def test_section_summary_writes_hierarchy_and_legacy() -> None:
         )
         reloaded = repository.load_document("hier-artifact-doc")
         hierarchy_section = reloaded.chapters[0].sections[0]
-        legacy_section = next(section for section in reloaded.sections if section.section_id == "section-1")
         _assert(
             hierarchy_section.task_artifacts is not None
             and hierarchy_section.task_artifacts.summary is not None
@@ -249,14 +235,12 @@ def test_section_summary_writes_hierarchy_and_legacy() -> None:
             "hierarchy section summary should be updated",
         )
         _assert(
-            legacy_section.task_artifacts is not None
-            and legacy_section.task_artifacts.summary is not None
-            and legacy_section.task_artifacts.summary.content == "section-summary",
-            "legacy section summary should be updated",
+            reloaded.sections == [],
+            "pure hierarchy save should not persist legacy flat sections mirror",
         )
 
 
-def test_section_quiz_writes_hierarchy_and_legacy_preserving_summary() -> None:
+def test_section_quiz_writes_hierarchy_only_preserving_summary() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repository = _write_document(temp_dir, _build_document())
         repository.update_section_summary_artifact(
@@ -276,7 +260,7 @@ def test_section_quiz_writes_hierarchy_and_legacy_preserving_summary() -> None:
         _assert(section.task_artifacts.quiz is not None, "quiz should exist")
 
 
-def test_update_section_artifacts_hierarchy_and_legacy_and_front_matter_preserved() -> None:
+def test_update_section_artifacts_hierarchy_only_and_front_matter_preserved() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repository = _write_document(temp_dir, _build_document(include_front_matter=True))
         repository.update_section_artifacts(
@@ -289,9 +273,10 @@ def test_update_section_artifacts_hierarchy_and_legacy_and_front_matter_preserve
             any(
                 section.section_id == "section-0"
                 and section.section_role == SectionRole.FRONT_MATTER
-                for section in reloaded.sections
+                for chapter in reloaded.chapters
+                for section in chapter.sections
             ),
-            "front matter section should be preserved in legacy sections",
+            "front matter section should be preserved in hierarchy",
         )
         _assert(
             reloaded.chapters[0].sections[0].task_artifacts is not None,
@@ -299,7 +284,7 @@ def test_update_section_artifacts_hierarchy_and_legacy_and_front_matter_preserve
         )
 
 
-def test_task_unit_artifacts_writes_hierarchy_and_legacy() -> None:
+def test_task_unit_artifacts_writes_hierarchy_only() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repository = _write_document(temp_dir, _build_document())
         repository.update_task_unit_artifacts(
@@ -309,8 +294,6 @@ def test_task_unit_artifacts_writes_hierarchy_and_legacy() -> None:
         )
         reloaded = repository.load_document("hier-artifact-doc")
         hierarchy_unit = reloaded.chapters[0].sections[0].task_units[0]
-        legacy_section = next(section for section in reloaded.sections if section.section_id == "section-1")
-        legacy_unit = legacy_section.task_units[0]
         _assert(
             hierarchy_unit.task_artifacts is not None
             and hierarchy_unit.task_artifacts.summary is not None
@@ -318,13 +301,11 @@ def test_task_unit_artifacts_writes_hierarchy_and_legacy() -> None:
             "hierarchy task-unit artifacts should be updated",
         )
         _assert(
-            legacy_unit.task_artifacts is not None
-            and legacy_unit.task_artifacts.summary is not None
-            and legacy_unit.task_artifacts.summary.content == "unit-summary",
-            "legacy task-unit artifacts should be updated",
+            reloaded.sections == [],
+            "task-unit artifact write should not recreate legacy flat sections mirror",
         )
         _assert(hierarchy_unit.parent_section_id == "section-1", "parent_section_id should be preserved")
-        _assert(legacy_unit.source_section_ids == ["section-1"], "source_section_ids should be preserved")
+        _assert(hierarchy_unit.source_section_ids == ["section-1"], "source_section_ids should be preserved")
 
 
 def test_duplicate_task_unit_id_rejected_hierarchy_first() -> None:
@@ -432,15 +413,17 @@ def test_legacy_fallback_without_chapters() -> None:
             artifacts=TaskArtifacts(summary=SummaryArtifact(content="legacy-unit-summary")),
         )
         reloaded = repository.load_document("legacy-only-doc")
+        _assert(reloaded.chapters, "legacy-only document should migrate to hierarchy on write")
         _assert(
-            reloaded.sections[0].task_artifacts is not None
-            and reloaded.sections[0].task_artifacts.summary is not None,
-            "legacy section summary should be updated without chapters",
+            reloaded.chapters[0].sections[0].task_artifacts is not None
+            and reloaded.chapters[0].sections[0].task_artifacts.summary is not None,
+            "migrated hierarchy section summary should be updated",
         )
         _assert(
-            reloaded.sections[0].task_units[0].task_artifacts is not None,
-            "legacy task-unit artifact should be updated without chapters",
+            reloaded.chapters[0].sections[0].task_units[0].task_artifacts is not None,
+            "migrated hierarchy task-unit artifact should be updated",
         )
+        _assert(reloaded.sections == [], "saved migrated document should no longer persist legacy sections mirror")
 
 
 def test_hierarchy_severe_inconsistency_blocks_save() -> None:
@@ -479,18 +462,16 @@ def test_task_layout_availability_sees_updated_section_artifact() -> None:
         )
         layout = coordinator.get_document_task_layout(doc_name="hier-artifact-doc")
         _assert(layout.chapters, "layout should expose hierarchy chapters")
-        section_layout = next(
-            section for section in layout.sections if section.section_id == "section-1"
-        )
+        section_layout = layout.chapters[0].sections[0]
         _assert(section_layout.artifacts is not None, "section artifacts availability should exist")
         _assert(section_layout.artifacts.has_summary, "layout should observe updated section summary")
 
 
 def main() -> None:
-    test_section_summary_writes_hierarchy_and_legacy()
-    test_section_quiz_writes_hierarchy_and_legacy_preserving_summary()
-    test_update_section_artifacts_hierarchy_and_legacy_and_front_matter_preserved()
-    test_task_unit_artifacts_writes_hierarchy_and_legacy()
+    test_section_summary_writes_hierarchy_only()
+    test_section_quiz_writes_hierarchy_only_preserving_summary()
+    test_update_section_artifacts_hierarchy_only_and_front_matter_preserved()
+    test_task_unit_artifacts_writes_hierarchy_only()
     test_duplicate_task_unit_id_rejected_hierarchy_first()
     test_legacy_fallback_without_chapters()
     test_hierarchy_severe_inconsistency_blocks_save()
@@ -501,10 +482,10 @@ def main() -> None:
             {
                 "status": "ok",
                 "tests": [
-                    "section_summary_hierarchy_legacy_sync",
-                    "section_quiz_hierarchy_legacy_sync",
-                    "section_artifacts_replace_sync_and_front_matter_preserved",
-                    "task_unit_artifacts_hierarchy_legacy_sync",
+                    "section_summary_hierarchy_only",
+                    "section_quiz_hierarchy_only",
+                    "section_artifacts_hierarchy_only_front_matter_preserved",
+                    "task_unit_artifacts_hierarchy_only",
                     "duplicate_task_unit_id_rejected",
                     "legacy_fallback_without_chapters",
                     "severe_hierarchy_inconsistency_blocks_save",

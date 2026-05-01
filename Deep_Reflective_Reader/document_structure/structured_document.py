@@ -141,8 +141,9 @@ class StructuredChapter:
 class StructuredDocument:
     """Top-level structured document DTO.
 
-    `chapters` is the primary hierarchy representation.
-    `sections` is a transitional legacy/derived flat index for compatibility.
+    `chapters` is the primary hierarchy representation and the only persisted
+    section/task-unit source for new JSON artifacts.
+    `sections` is deprecated compatibility input for loading legacy payloads.
     `structure_nodes` is legacy experimental hierarchy and should not be expanded.
     """
 
@@ -158,15 +159,14 @@ class StructuredDocument:
     structure_error_message: str | None = None
     document_task_artifacts: DocumentTaskArtifacts | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, include_legacy_sections: bool = False) -> dict[str, Any]:
         """Serialize this document into a JSON-friendly dictionary."""
-        return {
+        payload = {
             "document_id": self.document_id,
             "title": self.title,
             "source_path": self.source_path,
             "language": self.language,
             "raw_text": self.raw_text,
-            "sections": [section.to_dict() for section in self.sections],
             "chapters": [chapter.to_dict() for chapter in self.chapters],
             "structure_nodes": [node.to_dict() for node in self.structure_nodes],
             "structure_error_code": self.structure_error_code,
@@ -177,6 +177,9 @@ class StructuredDocument:
                 else self.document_task_artifacts.to_dict()
             ),
         }
+        if include_legacy_sections or not self.chapters:
+            payload["sections"] = [section.to_dict() for section in self.sections]
+        return payload
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "StructuredDocument":
@@ -223,10 +226,16 @@ class StructuredDocument:
             ),
         )
 
-    def to_json(self, *, ensure_ascii: bool = False, indent: int | None = 2) -> str:
+    def to_json(
+        self,
+        *,
+        ensure_ascii: bool = False,
+        indent: int | None = 2,
+        include_legacy_sections: bool = False,
+    ) -> str:
         """Serialize this document into a JSON string."""
         return json.dumps(
-            self.to_dict(),
+            self.to_dict(include_legacy_sections=include_legacy_sections),
             ensure_ascii=ensure_ascii,
             indent=indent,
         )

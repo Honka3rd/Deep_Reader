@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.preparation_mode import PreparationMode
+from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
 )
@@ -92,7 +93,7 @@ class _FakeTaskUnitResolver:
         )
 
         task_units: list[TaskUnit] = []
-        for index, section in enumerate(document.sections):
+        for index, section in enumerate(get_effective_sections(document)):
             if not section.content.strip():
                 continue
             task_units.append(
@@ -179,6 +180,13 @@ def _build_base_document() -> StructuredDocument:
     )
 
 
+def _find_section(document: StructuredDocument, section_id: str) -> StructuredSection:
+    for section in get_effective_sections(document):
+        if section.section_id == section_id:
+            return section
+    raise ValueError(f"unknown section_id: {section_id}")
+
+
 def test_task_layout_cache_flow() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -215,13 +223,13 @@ def test_task_layout_cache_flow() -> None:
         _assert(fake_resolver.calls == 1, "first call should resolve task units")
         reloaded_after_first = repository.load_document("cache-doc")
         _assert(
-            all(section.task_units for section in reloaded_after_first.sections),
+            all(section.task_units for section in get_effective_sections(reloaded_after_first)),
             "first call should persist non-empty section.task_units",
         )
 
         # Add unit-level artifact manually and save back for cache-hit preservation check.
-        section0_unit0 = reloaded_after_first.sections[0].task_units[0]
-        updated_section0_units = list(reloaded_after_first.sections[0].task_units)
+        section0_unit0 = _find_section(reloaded_after_first, "section-0").task_units[0]
+        updated_section0_units = list(_find_section(reloaded_after_first, "section-0").task_units)
         updated_section0_units[0] = TaskUnit(
             unit_id=section0_unit0.unit_id,
             title=section0_unit0.title,
@@ -252,7 +260,7 @@ def test_task_layout_cache_flow() -> None:
         )
         persisted_after_second = repository.load_document("cache-doc")
         _assert(
-            persisted_after_second.sections[0].task_units[0].task_artifacts is not None,
+            _find_section(persisted_after_second, "section-0").task_units[0].task_artifacts is not None,
             "cache hit should not clear persisted task_unit.task_artifacts",
         )
 
@@ -294,9 +302,18 @@ def test_task_layout_cache_flow() -> None:
         _assert(first_layout.chapters, "first layout should return chapters")
         _assert(second_layout.chapters, "second layout should return chapters")
         _assert(refreshed_layout.chapters, "refreshed layout should return chapters")
-        _assert(first_layout.sections, "first layout should return sections")
-        _assert(second_layout.task_units, "second layout should return task units")
-        _assert(refreshed_layout.task_units, "refreshed layout should return task units")
+        _assert(
+            first_layout.chapters[0].sections[0].task_units,
+            "first layout should return chapter section task units",
+        )
+        _assert(
+            second_layout.chapters[0].sections[0].task_units,
+            "second layout should return chapter section task units",
+        )
+        _assert(
+            refreshed_layout.chapters[0].sections[0].task_units,
+            "refreshed layout should return chapter section task units",
+        )
 
 
 def test_task_layout_cache_duplicate_id_repair() -> None:
@@ -403,27 +420,27 @@ def test_task_layout_cache_duplicate_id_repair() -> None:
         reloaded = repository.load_document("cache-doc")
         ids = [
             task_unit.unit_id
-            for section in reloaded.sections
+            for section in get_effective_sections(reloaded)
             for task_unit in section.task_units
         ]
         _assert(len(ids) == 2, "fixture should keep two persisted units")
         _assert(len(set(ids)) == 2, "cache repair should normalize ids to document-unique")
         _assert(ids == ["task-unit-0", "task-unit-1"], "normalized ids should follow reading order")
         _assert(
-            reloaded.sections[0].task_units[0].task_artifacts is not None
-            and reloaded.sections[0].task_units[0].task_artifacts.summary is not None
-            and reloaded.sections[0].task_units[0].task_artifacts.summary.content == "artifact-a",
+            _find_section(reloaded, "section-0").task_units[0].task_artifacts is not None
+            and _find_section(reloaded, "section-0").task_units[0].task_artifacts.summary is not None
+            and _find_section(reloaded, "section-0").task_units[0].task_artifacts.summary.content == "artifact-a",
             "artifact-a should stay on original section/unit position after id repair",
         )
         _assert(
-            reloaded.sections[1].task_units[0].task_artifacts is not None
-            and reloaded.sections[1].task_units[0].task_artifacts.summary is not None
-            and reloaded.sections[1].task_units[0].task_artifacts.summary.content == "artifact-b",
+            _find_section(reloaded, "section-1").task_units[0].task_artifacts is not None
+            and _find_section(reloaded, "section-1").task_units[0].task_artifacts.summary is not None
+            and _find_section(reloaded, "section-1").task_units[0].task_artifacts.summary.content == "artifact-b",
             "artifact-b should stay on original section/unit position after id repair",
         )
         _assert(
-            len(layout.task_units)
-            == sum(len(section.task_units) for section in reloaded.sections),
+            sum(len(section.task_units) for chapter in layout.chapters for section in chapter.sections)
+            == sum(len(section.task_units) for section in get_effective_sections(reloaded)),
             "layout response should not silently drop units after duplicate-id repair",
         )
 

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.preparation_mode import PreparationMode
+from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
 )
@@ -90,7 +91,7 @@ class _FakeTaskUnitResolver:
         self.calls += 1
         resolved_mode = TaskUnitSplitMode.resolve(split_mode or self.split_mode)
         units: list[TaskUnit] = []
-        for index, section in enumerate(document.sections):
+        for index, section in enumerate(get_effective_sections(document)):
             if not section.content.strip():
                 continue
             units.append(
@@ -105,6 +106,13 @@ class _FakeTaskUnitResolver:
             )
         _ = semantic_top_k_candidates
         return units
+
+
+def _find_section(document: StructuredDocument, section_id: str) -> StructuredSection:
+    for section in get_effective_sections(document):
+        if section.section_id == section_id:
+            return section
+    raise ValueError(f"unknown section_id: {section_id}")
 
 
 class _FakeProfileStore:
@@ -273,7 +281,7 @@ def test_summary_persistence_cache_flow() -> None:
         _assert(fake_resolver.calls == 0, "persisted task_units should avoid resolver recompute")
 
         updated_1 = repository.load_document("summary-doc")
-        section0_1 = next(s for s in updated_1.sections if s.section_id == "section-0")
+        section0_1 = _find_section(updated_1, "section-0")
         _assert(
             section0_1.task_artifacts is not None and section0_1.task_artifacts.summary is not None,
             "first call should persist section summary artifact",
@@ -376,9 +384,7 @@ def test_summary_persistence_cache_flow() -> None:
         _assert(chapter_1.cache_hit is False, "first summarize_chapter should be cache miss")
         _assert(fake_summary_service.calls == 6, "first chapter call should invoke summary service")
         updated_chapter = repository.load_document("summary-doc")
-        section0_after_chapter = next(
-            s for s in updated_chapter.sections if s.section_id == "section-0"
-        )
+        section0_after_chapter = _find_section(updated_chapter, "section-0")
         _assert(
             updated_chapter.document_task_artifacts is not None,
             "chapter summary should ensure document_task_artifacts exists",
@@ -428,9 +434,7 @@ def test_summary_persistence_cache_flow() -> None:
         _assert(section_after_chapter.success, "section refresh after chapter should succeed")
         _assert(fake_summary_service.calls == 7, "section refresh should invoke summary service")
         updated_after_reverse = repository.load_document("summary-doc")
-        section0_after_reverse = next(
-            s for s in updated_after_reverse.sections if s.section_id == "section-0"
-        )
+        section0_after_reverse = _find_section(updated_after_reverse, "section-0")
         chapter_after_reverse = (
             updated_after_reverse.document_task_artifacts.chapter_artifacts.get(chapter_key)
         )
@@ -499,8 +503,9 @@ def test_summary_persistence_cache_flow() -> None:
 
         # F(continued). chapter refresh only updates chapter artifact, section summary unchanged
         before_refresh_doc = repository.load_document("summary-doc")
-        before_refresh_section_summary = next(
-            s for s in before_refresh_doc.sections if s.section_id == "section-0"
+        before_refresh_section_summary = _find_section(
+            before_refresh_doc,
+            "section-0",
         ).task_artifacts.summary.content
         before_refresh_chapter_summary = (
             before_refresh_doc.document_task_artifacts.chapter_artifacts[chapter_key].summary.content
@@ -515,8 +520,9 @@ def test_summary_persistence_cache_flow() -> None:
         _assert(chapter_refresh.success, "chapter refresh should succeed")
         _assert(chapter_refresh.cache_hit is False, "chapter refresh should regenerate")
         after_refresh_doc = repository.load_document("summary-doc")
-        after_refresh_section_summary = next(
-            s for s in after_refresh_doc.sections if s.section_id == "section-0"
+        after_refresh_section_summary = _find_section(
+            after_refresh_doc,
+            "section-0",
         ).task_artifacts.summary.content
         after_refresh_chapter_summary = (
             after_refresh_doc.document_task_artifacts.chapter_artifacts[chapter_key].summary.content

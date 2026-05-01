@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.structured_document import StructuredDocument, StructuredSection
 
 MetricValue: TypeAlias = int | float
@@ -68,7 +69,7 @@ class EnhancedParseTriggerEvaluator:
         """Evaluate whether enhanced parser should be recommended."""
         reasons: list[str] = []
         score = 0
-        sections = structured_document.sections
+        sections = get_effective_sections(structured_document)
         total_sections = len(sections)
         raw_text = structured_document.raw_text
         raw_text_length = len(raw_text)

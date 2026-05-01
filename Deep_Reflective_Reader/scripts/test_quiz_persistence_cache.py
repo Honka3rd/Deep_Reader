@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.preparation_mode import PreparationMode
+from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
 )
@@ -91,7 +92,7 @@ class _FakeTaskUnitResolver:
         self.calls += 1
         resolved_mode = TaskUnitSplitMode.resolve(split_mode or self.split_mode)
         units: list[TaskUnit] = []
-        for index, section in enumerate(document.sections):
+        for index, section in enumerate(get_effective_sections(document)):
             if not section.content.strip():
                 continue
             units.append(
@@ -106,6 +107,13 @@ class _FakeTaskUnitResolver:
             )
         _ = semantic_top_k_candidates
         return units
+
+
+def _find_section(document: StructuredDocument, section_id: str) -> StructuredSection:
+    for section in get_effective_sections(document):
+        if section.section_id == section_id:
+            return section
+    raise ValueError(f"unknown section_id: {section_id}")
 
 
 class _FakeProfileStore:
@@ -306,7 +314,7 @@ def test_quiz_persistence_cache_flow() -> None:
         _assert(fake_quiz_service.calls == 1, "first section quiz should call quiz service")
         _assert(fake_resolver.calls == 0, "persisted task units should avoid resolver call")
         updated_1 = repository.load_document("quiz-doc")
-        section0_1 = next(s for s in updated_1.sections if s.section_id == "section-0")
+        section0_1 = _find_section(updated_1, "section-0")
         _assert(
             section0_1.task_artifacts is not None and section0_1.task_artifacts.quiz is not None,
             "first section quiz should persist section quiz artifact",
@@ -444,8 +452,9 @@ def test_quiz_persistence_cache_flow() -> None:
 
         # B/C/D. chapter quiz writes document-level + does not overwrite section-level
         section_doc_before_chapter = repository.load_document("quiz-doc")
-        section_quiz_before_chapter = next(
-            s for s in section_doc_before_chapter.sections if s.section_id == "section-0"
+        section_quiz_before_chapter = _find_section(
+            section_doc_before_chapter,
+            "section-0",
         ).task_artifacts.quiz
         chapter_1 = coordinator.generate_chapter_quiz(
             doc_name="quiz-doc",
@@ -458,7 +467,7 @@ def test_quiz_persistence_cache_flow() -> None:
         _assert(chapter_1.cache_hit is False, "first chapter quiz should be cache miss")
         _assert(fake_quiz_service.calls == before_malformed_calls + 2, "chapter quiz first call should regenerate")
         chapter_doc = repository.load_document("quiz-doc")
-        chapter_section = next(s for s in chapter_doc.sections if s.section_id == "section-0")
+        chapter_section = _find_section(chapter_doc, "section-0")
         section_quiz_after_chapter = (
             None if chapter_section.task_artifacts is None else chapter_section.task_artifacts.quiz
         )
@@ -506,8 +515,9 @@ def test_quiz_persistence_cache_flow() -> None:
         chapter_before_refresh = (
             chapter_before_refresh_doc.document_task_artifacts.chapter_artifacts[chapter_key].quiz
         )
-        section_before_refresh = next(
-            s for s in chapter_before_refresh_doc.sections if s.section_id == "section-0"
+        section_before_refresh = _find_section(
+            chapter_before_refresh_doc,
+            "section-0",
         ).task_artifacts.quiz
         chapter_refresh = coordinator.generate_chapter_quiz(
             doc_name="quiz-doc",
@@ -526,8 +536,9 @@ def test_quiz_persistence_cache_flow() -> None:
         chapter_after_refresh = (
             chapter_after_refresh_doc.document_task_artifacts.chapter_artifacts[chapter_key].quiz
         )
-        section_after_refresh = next(
-            s for s in chapter_after_refresh_doc.sections if s.section_id == "section-0"
+        section_after_refresh = _find_section(
+            chapter_after_refresh_doc,
+            "section-0",
         ).task_artifacts.quiz
         _assert(
             chapter_before_refresh is not None
@@ -673,7 +684,7 @@ def test_quiz_persistence_cache_flow() -> None:
             reverse_doc.document_task_artifacts.chapter_artifacts.get(chapter_key_2) is not None,
             "reverse order should keep chapter-level quiz for 第二章",
         )
-        reverse_section_1 = next(s for s in reverse_doc.sections if s.section_id == "section-1")
+        reverse_section_1 = _find_section(reverse_doc, "section-1")
         _assert(
             reverse_section_1.task_artifacts is not None
             and reverse_section_1.task_artifacts.quiz is not None,

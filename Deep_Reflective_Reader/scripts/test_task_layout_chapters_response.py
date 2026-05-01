@@ -389,14 +389,14 @@ def test_missing_chapters_synthetic_fallback() -> None:
         )
         coordinator = _build_coordinator(repo)
         layout = coordinator.get_document_task_layout(doc_name="layout-doc")
-        _assert(len(layout.chapters) == 1, "legacy flat document should be wrapped by one synthetic chapter")
+        _assert(len(layout.chapters) == 2, "legacy flat document should migrate to two real hierarchy chapters")
         _assert(
-            layout.chapters[0].metadata.get("synthetic") is True,
-            "synthetic chapter metadata flag should be present",
+            all(not chapter.metadata.get("synthetic") for chapter in layout.chapters),
+            "migrated hierarchy chapters should not be synthetic",
         )
         _assert(
-            layout.chapters[0].metadata.get("reason") == "missing_chapters",
-            "synthetic chapter should provide fallback reason",
+            [chapter.title for chapter in layout.chapters] == ["第一章", "第二章"],
+            "legacy flat sections should be promoted into real chapter titles",
         )
 
 

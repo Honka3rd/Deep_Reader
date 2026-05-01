@@ -699,7 +699,9 @@ class SectionTaskCoordinator:
             and assets.structured_document_path is not None
             and preparation_result.structured_document is not None
         ):
-            section_count = len(preparation_result.structured_document.sections)
+            section_count = len(
+                get_effective_sections(preparation_result.structured_document)
+            )
             return ReparseDocumentStructureResult.ok(
                 doc_name=normalized_doc_name,
                 parser_mode=resolved_parser_mode.value,
@@ -1120,10 +1122,11 @@ class SectionTaskCoordinator:
             task_units_by_section_id=task_units_by_section_id,
             task_layout_metadata=task_layout_metadata,
         )
-        # NOTE: task-layout write still targets legacy flat sections only.
-        # Hierarchy write-sync (chapters[].sections task_units) is deferred.
         self._assert_unique_task_unit_ids_in_sections(
-            sections=list(updated_document.sections),
+            sections=self._resolve_task_layout_sections(
+                document=updated_document,
+                context="SectionTaskCoordinator#task_layout_cache_write",
+            ),
             context="SectionTaskCoordinator#task_layout_cache_write",
         )
         print(
@@ -1151,13 +1154,34 @@ class SectionTaskCoordinator:
             for warning in warnings
             if is_severe_hierarchy_warning(warning)
         ]
-        if severe_warnings:
+        repairable_warnings = [
+            warning
+            for warning in severe_warnings
+            if warning.startswith("duplicate_task_unit_id:")
+        ]
+        blocking_warnings = [
+            warning
+            for warning in severe_warnings
+            if not warning.startswith("duplicate_task_unit_id:")
+        ]
+        if blocking_warnings:
             print(
                 "SectionTaskCoordinator#task_layout_hierarchy_fallback_legacy:",
                 f"context={context}",
-                f"severe_warnings={severe_warnings}",
+                f"severe_warnings={blocking_warnings}",
             )
+            if not document.sections:
+                raise ValueError(
+                    f"{context}: hierarchy is inconsistent and no legacy sections are available"
+                )
             return list(document.sections)
+
+        if repairable_warnings:
+            print(
+                "SectionTaskCoordinator#task_layout_hierarchy_repairable_warnings:",
+                f"context={context}",
+                f"warnings={repairable_warnings}",
+            )
 
         if warnings:
             print(
@@ -1925,15 +1949,15 @@ class SectionTaskCoordinator:
         selected_task_unit = target_section.task_units[0]
         selected_index = task_unit_index_by_id.get(selected_task_unit.unit_id)
         if selected_index is None:
-            # Legacy fallback path (for example front-matter sections not yet materialized
-            # into hierarchy chapters): extend ordering with unseen legacy units.
-            for section in document.sections:
-                for task_unit in section.task_units:
-                    if task_unit.unit_id in task_unit_index_by_id:
-                        continue
-                    task_unit_index_by_id[task_unit.unit_id] = len(ordered_task_units)
-                    ordered_task_units.append(task_unit)
-            selected_index = task_unit_index_by_id.get(selected_task_unit.unit_id)
+            if document.sections:
+                # Backward-compatible extension path for old sections-only payloads.
+                for section in document.sections:
+                    for task_unit in section.task_units:
+                        if task_unit.unit_id in task_unit_index_by_id:
+                            continue
+                        task_unit_index_by_id[task_unit.unit_id] = len(ordered_task_units)
+                        ordered_task_units.append(task_unit)
+                selected_index = task_unit_index_by_id.get(selected_task_unit.unit_id)
             if selected_index is None:
                 raise ValueError(
                     f"section_id '{normalized_section_id}' task units are not aligned with effective "

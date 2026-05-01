@@ -397,14 +397,6 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                 artifacts=_artifact_response(section.artifacts),
             )
 
-        task_units = [
-            _task_unit_response(task_unit)
-            for task_unit in layout.task_units
-        ]
-        sections = [
-            _section_response(section)
-            for section in layout.sections
-        ]
         chapters = [
             DocumentTaskLayoutChapterResponse(
                 chapter_id=chapter.chapter_id,
@@ -426,19 +418,11 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                 metrics=dict(layout.enhanced_parse_recommendation.metrics),
             )
 
-        chapter_artifacts = {
-            chapter_key: _artifact_response(availability)
-            for chapter_key, availability in layout.chapter_artifacts.items()
-        }
-
         return DocumentTaskLayoutResponse(
             document_id=layout.document_id,
             title=layout.title,
             language=layout.language,
             chapters=chapters,
-            sections=sections,
-            task_units=task_units,
-            chapter_artifacts=chapter_artifacts,
             enhanced_parse_recommendation=recommendation,
         )
     except ValueError as error:
