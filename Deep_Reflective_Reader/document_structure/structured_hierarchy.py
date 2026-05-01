@@ -33,7 +33,10 @@ class StructuredNodeType(StrEnum):
 
 @dataclass(frozen=True)
 class StructuredDocumentNode:
-    """Hierarchy node derived from flat structured sections (backward-compatible addition)."""
+    """Legacy experimental hierarchy node.
+
+    Prefer `StructuredDocument.chapters[].sections[]` as primary hierarchy source.
+    """
 
     node_id: str
     node_type: StructuredNodeType

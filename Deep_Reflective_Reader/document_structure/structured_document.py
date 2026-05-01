@@ -141,8 +141,9 @@ class StructuredChapter:
 class StructuredDocument:
     """Top-level structured document DTO.
 
-    `sections` remains legacy compatibility/index view.
-    `chapters` is the primary hierarchy projection for tree rendering.
+    `chapters` is the primary hierarchy representation.
+    `sections` is a transitional legacy/derived flat index for compatibility.
+    `structure_nodes` is legacy experimental hierarchy and should not be expanded.
     """
 
     document_id: str

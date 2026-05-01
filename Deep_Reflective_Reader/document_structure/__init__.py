@@ -11,6 +11,14 @@ from document_structure.structured_hierarchy_builder import (
     DocumentHierarchyBuilder,
     build_document_hierarchy_from_sections,
 )
+from document_structure.document_hierarchy_index import (
+    assert_chapter_hierarchy_consistency,
+    build_section_index_from_chapters,
+    flatten_sections_from_chapters,
+    get_effective_sections,
+    validate_chapter_hierarchy_consistency,
+    with_legacy_sections_synced_from_chapters,
+)
 from document_structure.document_structure_language_registry import (
     DocumentStructureLanguageRegistry,
     DocumentStructureLanguageRules,
@@ -61,6 +69,12 @@ __all__ = [
     "StructuredNodeType",
     "DocumentHierarchyBuilder",
     "build_document_hierarchy_from_sections",
+    "flatten_sections_from_chapters",
+    "build_section_index_from_chapters",
+    "get_effective_sections",
+    "validate_chapter_hierarchy_consistency",
+    "assert_chapter_hierarchy_consistency",
+    "with_legacy_sections_synced_from_chapters",
     "DocumentStructureLanguageRegistry",
     "DocumentStructureLanguageRules",
     "EnhancedParseTriggerDecision",
