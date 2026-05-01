@@ -6,6 +6,10 @@ from config.faiss_storage_config import FaissStorageConfig
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.document_artifact_repository import DocumentArtifactRepository
+from document_structure.document_hierarchy_index import (
+    get_effective_sections,
+    validate_chapter_hierarchy_consistency,
+)
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
     EnhancedParseTriggerEvaluator,
@@ -64,6 +68,13 @@ class SectionTaskCoordinator:
     _TASK_UNIT_QUIZ_PROMPT_VERSION = "task_unit_quiz_v1"
     _QUIZ_SCHEMA_VERSION = "quiz_schema_v1"
     _CHAPTER_ARTIFACT_KEY_PREFIX = "chapter::"
+    _HIERARCHY_SEVERE_WARNING_PREFIXES = (
+        "duplicate_chapter_id:",
+        "duplicate_hierarchy_section_id:",
+        "duplicate_task_unit_id:",
+        "section_parent_mismatch:",
+        "task_unit_parent_section_mismatch:",
+    )
 
     def __init__(
         self,
@@ -504,8 +515,12 @@ class SectionTaskCoordinator:
             refresh_task_units=refresh_task_units,
         )
         document_profile = self._load_existing_document_profile(doc_name)
-        self.task_unit_id_normalizer.assert_unique_task_unit_ids(
+        effective_sections = self._resolve_task_layout_sections(
             document=cached_document,
+            context="SectionTaskCoordinator#get_document_task_layout",
+        )
+        self._assert_unique_task_unit_ids_in_sections(
+            sections=effective_sections,
             context="SectionTaskCoordinator#get_document_task_layout",
         )
 
@@ -513,10 +528,11 @@ class SectionTaskCoordinator:
             document=cached_document,
             document_profile=document_profile,
             resolve_options=resolve_options,
+            sections=effective_sections,
         )
 
         section_layouts: list[DocumentTaskLayoutSectionDTO] = []
-        for section in cached_document.sections:
+        for section in effective_sections:
             section_units = section_units_by_section_id.get(section.section_id, [])
             section_mode = self._resolve_section_task_mode(
                 section_id=section.section_id,
@@ -670,14 +686,15 @@ class SectionTaskCoordinator:
         document: StructuredDocument,
         document_profile: DocumentProfile | None,
         resolve_options: TaskUnitResolveOptions,
+        sections: list[StructuredSection],
     ) -> tuple[list[TaskUnitDTO], dict[str, list[TaskUnitDTO]]]:
         """Build task-unit DTOs and section->task-unit mapping from persisted data."""
         section_units_by_section_id: dict[str, list[TaskUnitDTO]] = {
-            section.section_id: [] for section in document.sections
+            section.section_id: [] for section in sections
         }
         task_unit_dtos: list[TaskUnitDTO] = []
 
-        for section in document.sections:
+        for section in sections:
             section_task_units: list[TaskUnitDTO] = []
             for task_unit in section.task_units:
                 task_unit_dto = TaskUnitDTO(
@@ -852,7 +869,11 @@ class SectionTaskCoordinator:
         resolve_options: TaskUnitResolveOptions,
     ) -> bool:
         """Check persisted section.task_units cache validity against request options."""
-        for section in document.sections:
+        sections = self._resolve_task_layout_sections(
+            document=document,
+            context="SectionTaskCoordinator#_is_task_layout_cache_valid",
+        )
+        for section in sections:
             if section.content.strip() and not section.task_units:
                 return False
 
@@ -941,8 +962,10 @@ class SectionTaskCoordinator:
             task_units_by_section_id=task_units_by_section_id,
             task_layout_metadata=task_layout_metadata,
         )
-        self.task_unit_id_normalizer.assert_unique_task_unit_ids(
-            document=updated_document,
+        # NOTE: task-layout write still targets legacy flat sections only.
+        # Hierarchy write-sync (chapters[].sections task_units) is deferred.
+        self._assert_unique_task_unit_ids_in_sections(
+            sections=list(updated_document.sections),
             context="SectionTaskCoordinator#task_layout_cache_write",
         )
         print(
@@ -953,6 +976,77 @@ class SectionTaskCoordinator:
             f"refresh={refresh_task_units}",
         )
         return updated_document
+
+    def _resolve_task_layout_sections(
+        self,
+        *,
+        document: StructuredDocument,
+        context: str,
+    ) -> list[StructuredSection]:
+        """Resolve section list for task-layout read path with hierarchy-first fallback."""
+        if not document.chapters:
+            return list(document.sections)
+
+        warnings = validate_chapter_hierarchy_consistency(document)
+        severe_warnings = [
+            warning
+            for warning in warnings
+            if warning.startswith(self._HIERARCHY_SEVERE_WARNING_PREFIXES)
+        ]
+        if severe_warnings:
+            print(
+                "SectionTaskCoordinator#task_layout_hierarchy_fallback_legacy:",
+                f"context={context}",
+                f"severe_warnings={severe_warnings}",
+            )
+            return list(document.sections)
+
+        if warnings:
+            print(
+                "SectionTaskCoordinator#task_layout_hierarchy_warnings:",
+                f"context={context}",
+                f"warnings={warnings}",
+            )
+        sections = get_effective_sections(document)
+        print(
+            "SectionTaskCoordinator#task_layout_hierarchy_first_read:",
+            f"context={context}",
+            f"section_count={len(sections)}",
+            "source=chapters",
+        )
+        return sections
+
+    @staticmethod
+    def _find_duplicate_task_unit_ids_in_sections(
+        *,
+        sections: list[StructuredSection],
+    ) -> dict[str, int]:
+        """Collect duplicate task-unit ids from arbitrary section list."""
+        counts: dict[str, int] = {}
+        for section in sections:
+            for task_unit in section.task_units:
+                counts[task_unit.unit_id] = counts.get(task_unit.unit_id, 0) + 1
+        return {
+            unit_id: count
+            for unit_id, count in counts.items()
+            if count > 1
+        }
+
+    def _assert_unique_task_unit_ids_in_sections(
+        self,
+        *,
+        sections: list[StructuredSection],
+        context: str,
+    ) -> None:
+        """Raise when duplicate task-unit ids are detected in selected sections."""
+        duplicates = self._find_duplicate_task_unit_ids_in_sections(sections=sections)
+        if duplicates:
+            duplicate_repr = ", ".join(
+                f"{unit_id}:{count}" for unit_id, count in sorted(duplicates.items())
+            )
+            raise ValueError(
+                f"{context}: duplicate task_unit_id detected -> {duplicate_repr}"
+            )
 
     def _build_task_units_by_section_id(
         self,
