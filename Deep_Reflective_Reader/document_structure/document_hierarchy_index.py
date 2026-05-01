@@ -58,6 +58,118 @@ def get_effective_sections(
     return list(document.sections)
 
 
+def find_section_by_id_effective(
+    document: StructuredDocument,
+    section_id: str,
+) -> StructuredSection | None:
+    """Find section by id with hierarchy-first lookup and legacy fallback."""
+    normalized_section_id = section_id.strip()
+    if not normalized_section_id:
+        return None
+
+    if document.chapters:
+        hierarchy_matches = [
+            section
+            for section in flatten_sections_from_chapters(document)
+            if section.section_id == normalized_section_id
+        ]
+        if len(hierarchy_matches) > 1:
+            raise ValueError(
+                "duplicate_hierarchy_section_id:"
+                f"{normalized_section_id}"
+            )
+        if len(hierarchy_matches) == 1:
+            return hierarchy_matches[0]
+
+    legacy_matches = [
+        section for section in document.sections if section.section_id == normalized_section_id
+    ]
+    if len(legacy_matches) > 1:
+        raise ValueError(
+            "duplicate_flat_section_id:"
+            f"{normalized_section_id}"
+        )
+    if len(legacy_matches) == 1:
+        return legacy_matches[0]
+    return None
+
+
+def find_sections_by_title_effective(
+    document: StructuredDocument,
+    title: str,
+) -> list[StructuredSection]:
+    """Find sections by exact normalized title with hierarchy-first preference."""
+    normalized_title = title.strip()
+    if not normalized_title:
+        return []
+
+    if document.chapters:
+        hierarchy_matches = [
+            section
+            for section in flatten_sections_from_chapters(document)
+            if ((section.title or "").strip()) == normalized_title
+        ]
+        if hierarchy_matches:
+            return hierarchy_matches
+
+    return [
+        section
+        for section in document.sections
+        if ((section.title or "").strip()) == normalized_title
+    ]
+
+
+def find_section_by_chapter_title_effective(
+    document: StructuredDocument,
+    chapter_title: str,
+) -> StructuredSection | None:
+    """Resolve chapter title into section with chapter-aware hierarchy-first semantics."""
+    normalized_chapter_title = chapter_title.strip()
+    if not normalized_chapter_title:
+        return None
+
+    if document.chapters:
+        matched_chapters = [
+            chapter
+            for chapter in document.chapters
+            if ((chapter.title or "").strip()) == normalized_chapter_title
+        ]
+        if len(matched_chapters) > 1:
+            raise ValueError(
+                "ambiguous chapter title: "
+                f"'{normalized_chapter_title}' matched {len(matched_chapters)} chapters"
+            )
+        if len(matched_chapters) == 1:
+            chapter = matched_chapters[0]
+            if not chapter.sections:
+                raise ValueError(
+                    "chapter has no sections: "
+                    f"title='{normalized_chapter_title}' chapter_id='{chapter.chapter_id}'"
+                )
+            chapter_body_sections = [
+                section
+                for section in chapter.sections
+                if (section.section_kind or "").strip() == "chapter_body"
+            ]
+            if chapter_body_sections:
+                return chapter_body_sections[0]
+            return chapter.sections[0]
+
+    legacy_title_matches = [
+        section
+        for section in document.sections
+        if ((section.title or "").strip()) == normalized_chapter_title
+    ]
+    if len(legacy_title_matches) > 1:
+        raise ValueError(
+            "ambiguous chapter title: "
+            f"'{normalized_chapter_title}' matched {len(legacy_title_matches)} legacy sections"
+        )
+    if len(legacy_title_matches) == 1:
+        return legacy_title_matches[0]
+    return None
+
+
 def validate_chapter_hierarchy_consistency(
     document: StructuredDocument,
 ) -> list[str]:

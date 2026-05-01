@@ -7,6 +7,9 @@ from document_preparation.document_preparation_pipeline import DocumentPreparati
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.document_artifact_repository import DocumentArtifactRepository
 from document_structure.document_hierarchy_index import (
+    find_section_by_chapter_title_effective,
+    find_section_by_id_effective,
+    find_sections_by_title_effective,
     get_effective_sections,
     is_severe_hierarchy_warning,
     validate_chapter_hierarchy_consistency,
@@ -1750,14 +1753,8 @@ class SectionTaskCoordinator:
         document: StructuredDocument,
         section_id: str,
     ) -> StructuredSection | None:
-        """Find section by id; return None when missing."""
-        normalized = section_id.strip()
-        if not normalized:
-            return None
-        for section in document.sections:
-            if section.section_id == normalized:
-                return section
-        return None
+        """Find section by id using hierarchy-first lookup with legacy fallback."""
+        return find_section_by_id_effective(document, section_id)
 
     def _validate_task_unit_summary_artifact(
         self,
@@ -1840,14 +1837,11 @@ class SectionTaskCoordinator:
         document: StructuredDocument,
         title: str,
     ) -> StructuredSection | None:
-        """Find section by exact normalized title; return None when missing."""
-        normalized = title.strip()
-        if not normalized:
+        """Find first section by exact normalized title using effective lookup order."""
+        matches = find_sections_by_title_effective(document, title)
+        if not matches:
             return None
-        for section in document.sections:
-            if ((section.title or "").strip()) == normalized:
-                return section
-        return None
+        return matches[0]
 
     @staticmethod
     def _find_section_or_raise(
@@ -1855,13 +1849,16 @@ class SectionTaskCoordinator:
         document: StructuredDocument,
         section_id: str,
     ) -> StructuredSection:
-        """Find one section by id or raise ValueError with clear details."""
+        """Find one section by id with hierarchy-first semantics or raise ValueError."""
         normalized_section_id = section_id.strip()
         if not normalized_section_id:
             raise ValueError("section_id cannot be empty")
-        for section in document.sections:
-            if section.section_id == normalized_section_id:
-                return section
+        resolved = find_section_by_id_effective(
+            document,
+            normalized_section_id,
+        )
+        if resolved is not None:
+            return resolved
         raise ValueError(
             f"section_id '{normalized_section_id}' not found in document '{document.document_id}'"
         )
@@ -1872,19 +1869,22 @@ class SectionTaskCoordinator:
         document: StructuredDocument,
         chapter_title: str,
     ) -> StructuredSection:
-        """Find first section by exact chapter title or raise ValueError."""
+        """Find chapter target section by title using hierarchy-first chapter semantics."""
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             raise ValueError("chapter_title cannot be empty")
-        for section in document.sections:
-            if ((section.title or "").strip()) == normalized_chapter_title:
-                return section
+        resolved = find_section_by_chapter_title_effective(
+            document,
+            normalized_chapter_title,
+        )
+        if resolved is not None:
+            return resolved
         raise ValueError(
             f"chapter_title '{normalized_chapter_title}' not found in document '{document.title}'"
         )
 
-    @staticmethod
     def _resolve_task_unit_for_section_id_from_persisted_layout(
+        self,
         *,
         document: StructuredDocument,
         section_id: str,
@@ -1894,44 +1894,55 @@ class SectionTaskCoordinator:
         if not normalized_section_id:
             raise ValueError("section_id cannot be empty")
 
+        target_section = self._find_section_or_raise(
+            document=document,
+            section_id=normalized_section_id,
+        )
+        if not target_section.task_units:
+            raise ValueError(
+                f"section_id '{normalized_section_id}' has no persisted task units in "
+                f"document '{document.document_id}' (task-layout cache missing/stale)"
+            )
+
+        sections_for_order = self._resolve_task_layout_sections(
+            document=document,
+            context="SectionTaskCoordinator#resolve_task_unit_for_section_id_from_persisted_layout",
+        )
+        task_unit_index_by_id: dict[str, int] = {}
         ordered_task_units: list[TaskUnit] = []
-        seen_unit_ids: set[str] = set()
-        for section in document.sections:
+        for section in sections_for_order:
             for task_unit in section.task_units:
-                if task_unit.unit_id in seen_unit_ids:
+                if task_unit.unit_id in task_unit_index_by_id:
                     continue
-                seen_unit_ids.add(task_unit.unit_id)
+                task_unit_index_by_id[task_unit.unit_id] = len(ordered_task_units)
                 ordered_task_units.append(task_unit)
 
         if not ordered_task_units:
             raise ValueError(
                 f"no persisted task units found for document '{document.document_id}'"
             )
-        for unit_index, task_unit in enumerate(ordered_task_units):
-            if normalized_section_id in task_unit.source_section_ids:
-                return ResolvedTaskUnit(
-                    task_unit=task_unit,
-                    task_unit_index=unit_index,
-                )
-        raise ValueError(
-            f"section_id '{normalized_section_id}' not found in persisted task layout "
-            f"for document '{document.document_id}'"
-        )
 
-    @staticmethod
-    def _log_enhanced_parse_trigger_decision(
-        *,
-        doc_name: str,
-        decision: EnhancedParseTriggerDecision,
-    ) -> None:
-        """Print deterministic recommendation decision for inspection/debug."""
-        print(
-            "SectionTaskCoordinator#enhanced_parse_trigger:",
-            f"doc_name={doc_name}",
-            f"should_recommend={decision.should_recommend}",
-            f"score={decision.score}",
-            f"reasons={decision.reasons}",
-            f"metrics={decision.metrics}",
+        selected_task_unit = target_section.task_units[0]
+        selected_index = task_unit_index_by_id.get(selected_task_unit.unit_id)
+        if selected_index is None:
+            # Legacy fallback path (for example front-matter sections not yet materialized
+            # into hierarchy chapters): extend ordering with unseen legacy units.
+            for section in document.sections:
+                for task_unit in section.task_units:
+                    if task_unit.unit_id in task_unit_index_by_id:
+                        continue
+                    task_unit_index_by_id[task_unit.unit_id] = len(ordered_task_units)
+                    ordered_task_units.append(task_unit)
+            selected_index = task_unit_index_by_id.get(selected_task_unit.unit_id)
+            if selected_index is None:
+                raise ValueError(
+                    f"section_id '{normalized_section_id}' task units are not aligned with effective "
+                    f"task-layout ordering for document '{document.document_id}'"
+                )
+
+        return ResolvedTaskUnit(
+            task_unit=selected_task_unit,
+            task_unit_index=selected_index,
         )
 
     def _resolve_task_unit_for_section_id(
@@ -1942,9 +1953,11 @@ class SectionTaskCoordinator:
         resolve_options: TaskUnitResolveOptions,
     ) -> ResolvedTaskUnit:
         """Resolve first task unit whose source section ids contain target section id."""
-        normalized_section_id = section_id.strip()
-        if not normalized_section_id:
-            raise ValueError("section_id cannot be empty")
+        target_section = self._find_section_or_raise(
+            document=document,
+            section_id=section_id,
+        )
+        normalized_section_id = target_section.section_id
 
         task_units = self.task_unit_resolver.resolve_with_options(
             document=document,
@@ -1967,6 +1980,22 @@ class SectionTaskCoordinator:
             f"for document '{document.document_id}'"
         )
 
+    @staticmethod
+    def _log_enhanced_parse_trigger_decision(
+        *,
+        doc_name: str,
+        decision: EnhancedParseTriggerDecision,
+    ) -> None:
+        """Print deterministic recommendation decision for inspection/debug."""
+        print(
+            "SectionTaskCoordinator#enhanced_parse_trigger:",
+            f"doc_name={doc_name}",
+            f"should_recommend={decision.should_recommend}",
+            f"score={decision.score}",
+            f"reasons={decision.reasons}",
+            f"metrics={decision.metrics}",
+        )
+
     def _resolve_task_unit_for_chapter_title(
         self,
         *,
@@ -1978,20 +2007,14 @@ class SectionTaskCoordinator:
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             raise ValueError("chapter_title cannot be empty")
-
-        target_section_id: str | None = None
-        for section in document.sections:
-            if ((section.title or "").strip()) == normalized_chapter_title:
-                target_section_id = section.section_id
-                break
-        if target_section_id is None:
-            raise ValueError(
-                f"chapter_title '{normalized_chapter_title}' not found in document '{document.title}'"
-            )
+        target_section = self._find_section_by_chapter_title_or_raise(
+            document=document,
+            chapter_title=normalized_chapter_title,
+        )
 
         return self._resolve_task_unit_for_section_id(
             document=document,
-            section_id=target_section_id,
+            section_id=target_section.section_id,
             resolve_options=resolve_options,
         )
 
