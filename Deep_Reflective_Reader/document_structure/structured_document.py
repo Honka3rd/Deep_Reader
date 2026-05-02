@@ -159,7 +159,12 @@ class StructuredDocument:
     structure_error_message: str | None = None
     document_task_artifacts: DocumentTaskArtifacts | None = None
 
-    def to_dict(self, *, include_legacy_sections: bool = False) -> dict[str, Any]:
+    def to_dict(
+        self,
+        *,
+        include_legacy_sections: bool = False,
+        include_legacy_structure_nodes: bool = False,
+    ) -> dict[str, Any]:
         """Serialize this document into a JSON-friendly dictionary."""
         payload = {
             "document_id": self.document_id,
@@ -168,7 +173,6 @@ class StructuredDocument:
             "language": self.language,
             "raw_text": self.raw_text,
             "chapters": [chapter.to_dict() for chapter in self.chapters],
-            "structure_nodes": [node.to_dict() for node in self.structure_nodes],
             "structure_error_code": self.structure_error_code,
             "structure_error_message": self.structure_error_message,
             "document_task_artifacts": (
@@ -179,6 +183,10 @@ class StructuredDocument:
         }
         if include_legacy_sections or not self.chapters:
             payload["sections"] = [section.to_dict() for section in self.sections]
+        if include_legacy_structure_nodes:
+            payload["structure_nodes"] = [
+                node.to_dict() for node in self.structure_nodes
+            ]
         return payload
 
     @classmethod
@@ -232,10 +240,14 @@ class StructuredDocument:
         ensure_ascii: bool = False,
         indent: int | None = 2,
         include_legacy_sections: bool = False,
+        include_legacy_structure_nodes: bool = False,
     ) -> str:
         """Serialize this document into a JSON string."""
         return json.dumps(
-            self.to_dict(include_legacy_sections=include_legacy_sections),
+            self.to_dict(
+                include_legacy_sections=include_legacy_sections,
+                include_legacy_structure_nodes=include_legacy_structure_nodes,
+            ),
             ensure_ascii=ensure_ascii,
             indent=indent,
         )

@@ -148,14 +148,10 @@ class DocumentHierarchyBuilder:
             for chapter in mutable_chapters
         ]
 
-        structure_nodes = self._build_structure_nodes(
-            sections=flattened_sections_from_chapters(chapters),
-            chapters=chapters,
-        )
         return replace(
             document,
             chapters=chapters,
-            structure_nodes=structure_nodes,
+            structure_nodes=[],
             sections=[],
         )
 
@@ -204,6 +200,7 @@ class DocumentHierarchyBuilder:
         sections: list[StructuredSection],
         chapters: list[StructuredChapter],
     ) -> list[StructuredDocumentNode]:
+        """Deprecated legacy mirror builder. Keep for backward compatibility only."""
         chapter_by_id = {chapter.chapter_id: chapter for chapter in chapters}
         emitted_chapters: set[str] = set()
         nodes: list[StructuredDocumentNode] = []

@@ -35,6 +35,7 @@ class TaskUnitIdNormalizer:
                     replace(
                         task_unit,
                         unit_id=f"{self._UNIT_ID_PREFIX}{global_index}",
+                        parent_section_id=section.section_id,
                     )
                 )
                 global_index += 1
@@ -56,6 +57,7 @@ class TaskUnitIdNormalizer:
                     replace(
                         task_unit,
                         unit_id=f"{self._UNIT_ID_PREFIX}{global_index}",
+                        parent_section_id=section.section_id,
                     )
                 )
                 global_index += 1

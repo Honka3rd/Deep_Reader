@@ -246,6 +246,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             updated_task_units[target_task_unit_index] = replace(
                 updated_task_units[target_task_unit_index],
                 task_artifacts=artifacts,
+                parent_section_id=section.section_id,
             )
             return replace(
                 section,
@@ -273,7 +274,13 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         updated_document = self._update_section_by_id(
             document=document,
             section_id=section_id,
-            update_fn=lambda section: replace(section, task_units=list(task_units)),
+            update_fn=lambda section: replace(
+                section,
+                task_units=self._with_task_units_parent_section(
+                    task_units=task_units,
+                    section_id=section.section_id,
+                ),
+            ),
             context="update_section_task_units",
             doc_name=doc_name,
         )
@@ -294,7 +301,10 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             updated_effective_sections.append(
                 replace(
                     section,
-                    task_units=list(section_units),
+                    task_units=self._with_task_units_parent_section(
+                        task_units=section_units,
+                        section_id=section.section_id,
+                    ),
                 )
             )
         updated_sections_by_id = {
@@ -346,7 +356,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         artifacts: DocumentTaskArtifacts,
     ) -> StructuredDocument:
         """Update document-level task-artifact payload and persist."""
-        document = self.load_document(doc_name)
+        document = self._load_document_for_write(doc_name)
         updated_document = replace(document, document_task_artifacts=artifacts)
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
@@ -414,6 +424,18 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             raise ValueError(
                 f"{context}: duplicate task_unit_id detected -> {duplicate_repr}"
             )
+
+    @staticmethod
+    def _with_task_units_parent_section(
+        *,
+        task_units: list[TaskUnit],
+        section_id: str,
+    ) -> list[TaskUnit]:
+        """Ensure each task unit carries stable hierarchy owner identity."""
+        return [
+            replace(task_unit, parent_section_id=section_id)
+            for task_unit in task_units
+        ]
 
     @staticmethod
     def _assert_hierarchy_save_consistency(
