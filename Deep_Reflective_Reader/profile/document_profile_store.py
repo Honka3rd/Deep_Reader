@@ -15,11 +15,7 @@ class DocumentProfileStore:
 Args:
     profile: Document profile with topic/language/summary fields.
     config: FaissStorageConfig describing filesystem artifact paths."""
-        payload = {
-            "topic": profile.topic,
-            "summary": profile.summary,
-            "document_language": profile.document_language,
-        }
+        payload = profile.to_dict()
 
         with open(config.get_raw_profile_path(), "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -36,11 +32,7 @@ Returns:
         with open(config.get_raw_profile_path(), "r", encoding="utf-8") as f:
             payload = json.load(f)
 
-        return DocumentProfile(
-            topic=payload["topic"],
-            summary=payload["summary"],
-            document_language=payload["document_language"],
-        )
+        return DocumentProfile.from_dict(payload)
 
     @staticmethod
     def exists(config: FaissStorageConfig) -> bool:

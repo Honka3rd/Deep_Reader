@@ -1,6 +1,10 @@
 import json
 import re
 
+from config.app_DI_config import (
+    LLMSectionPreviewPolicyConfig,
+    PromptTextNormalizationConfig,
+)
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
 from document_structure.section_split_plan import (
     AnchorMatchMode,
@@ -15,28 +19,42 @@ from document_structure.structured_document import StructuredSection
 from language.language_code import LanguageCode
 from llm.llm_provider import LLMProvider
 
+_JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+_WHITESPACE_COLLAPSE_PATTERN = re.compile(r"\s+")
+
 
 class LLMSectionSplitter(AbstractSectionSplitter):
     """Optional high-cost splitter: LLM plans boundaries, local code applies them."""
-
-    _JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
-    _WHITESPACE_COLLAPSE_PATTERN = re.compile(r"\s+")
-    _DEFAULT_PREVIEW_CHARS = 16_000
-    _MIN_PREVIEW_CHARS = 2_000
-    _MAX_PREVIEW_CHARS_HARD_CAP = 400_000
-    _PREVIEW_PROMPT_OVERHEAD_TOKENS = 1_200
-    _PREVIEW_TOKEN_UTILIZATION_RATIO = 0.65
-    _PREVIEW_CHARS_PER_TOKEN = 4
-    _PREVIEW_HEAD_RATIO = 0.65
-    _PREVIEW_OMITTED_SEPARATOR = "\n\n[... middle omitted ...]\n\n"
 
     def __init__(
         self,
         llm_provider: LLMProvider | None = None,
         common_splitter: CommonSectionSplitter | None = None,
+        prompt_text_normalization: PromptTextNormalizationConfig | None = None,
+        preview_policy: LLMSectionPreviewPolicyConfig | None = None,
     ):
         self.llm_provider = llm_provider
         self.common_splitter = common_splitter or CommonSectionSplitter()
+        self.prompt_text_normalization = (
+            prompt_text_normalization
+            if prompt_text_normalization is not None
+            else PromptTextNormalizationConfig(
+                default_excerpt_chars=16_000,
+                min_excerpt_chars=2_000,
+                max_excerpt_chars_hard_cap=400_000,
+                chars_per_token=4,
+            )
+        )
+        self.preview_policy = (
+            preview_policy
+            if preview_policy is not None
+            else LLMSectionPreviewPolicyConfig(
+                prompt_overhead_tokens=1_200,
+                excerpt_token_utilization_ratio=0.65,
+                preview_head_ratio=0.65,
+                preview_omitted_separator="\n\n[... middle omitted ...]\n\n",
+            )
+        )
 
     def split(
         self,
@@ -208,46 +226,34 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         )
 
     def _compute_preview_char_budget(self, *, raw_text_length: int) -> int:
-        """Compute preview-char budget from model capability with conservative headroom."""
-        fallback_budget = min(raw_text_length, self._DEFAULT_PREVIEW_CHARS)
+        """Compute preview-char budget via provider-level prompt text normalization."""
         if raw_text_length <= 0:
             return 0
+        sample_text = "x" * raw_text_length
+        excerpt = self._normalize_preview_excerpt(sample_text)
+        return max(1, len(excerpt))
+
+    def _normalize_preview_excerpt(self, raw_text: str) -> str:
+        if not raw_text:
+            return ""
         if self.llm_provider is None:
-            return max(1, fallback_budget)
-
-        try:
-            capability = self.llm_provider.get_model_capabilities()
-        except Exception as error:
-            print(
-                "LLMSectionSplitter#preview_budget_fallback:",
-                f"reason=capability_unavailable error={error}",
+            fallback_chars = min(
+                len(raw_text),
+                self.prompt_text_normalization.default_excerpt_chars,
             )
-            return max(1, fallback_budget)
-
-        available_prompt_tokens = (
-            int(capability.max_input_tokens) - self._PREVIEW_PROMPT_OVERHEAD_TOKENS
+            return raw_text[:fallback_chars]
+        return self.llm_provider.normalize_input_text_for_prompt(
+            text=raw_text,
+            prompt_overhead_tokens=self.preview_policy.prompt_overhead_tokens,
+            token_utilization_ratio=self.preview_policy.excerpt_token_utilization_ratio,
+            default_excerpt_chars=self.prompt_text_normalization.default_excerpt_chars,
+            min_excerpt_chars=self.prompt_text_normalization.min_excerpt_chars,
+            max_excerpt_chars_hard_cap=self.prompt_text_normalization.max_excerpt_chars_hard_cap,
+            chars_per_token=self.prompt_text_normalization.chars_per_token,
         )
-        if available_prompt_tokens <= 0:
-            return max(1, fallback_budget)
 
-        preview_tokens = int(
-            available_prompt_tokens * self._PREVIEW_TOKEN_UTILIZATION_RATIO
-        )
-        if preview_tokens <= 0:
-            return max(1, fallback_budget)
-
-        preview_chars = preview_tokens * self._PREVIEW_CHARS_PER_TOKEN
-        preview_chars = max(self._MIN_PREVIEW_CHARS, preview_chars)
-        preview_chars = min(
-            raw_text_length,
-            preview_chars,
-            self._MAX_PREVIEW_CHARS_HARD_CAP,
-        )
-        return max(1, preview_chars)
-
-    @classmethod
     def _build_preview_text(
-        cls,
+        self,
         *,
         raw_text: str,
         preview_budget_chars: int,
@@ -258,12 +264,12 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         if len(raw_text) <= preview_budget_chars:
             return raw_text
 
-        separator = cls._PREVIEW_OMITTED_SEPARATOR
+        separator = self.preview_policy.preview_omitted_separator
         if preview_budget_chars <= len(separator) + 20:
             return raw_text[:preview_budget_chars]
 
         content_budget = preview_budget_chars - len(separator)
-        head_chars = max(20, int(content_budget * cls._PREVIEW_HEAD_RATIO))
+        head_chars = max(20, int(content_budget * self.preview_policy.preview_head_ratio))
         tail_chars = max(20, content_budget - head_chars)
         if head_chars + tail_chars > content_budget:
             tail_chars = max(20, content_budget - head_chars)
@@ -342,7 +348,7 @@ class LLMSectionSplitter(AbstractSectionSplitter):
     def _extract_json_payload(self, response_text: str) -> str:
         """Extract JSON payload from raw response, tolerant to fenced output."""
         stripped = response_text.strip()
-        block_match = self._JSON_BLOCK_PATTERN.search(stripped)
+        block_match = _JSON_BLOCK_PATTERN.search(stripped)
         if block_match:
             return block_match.group(1).strip()
         return stripped
@@ -494,10 +500,10 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             return False
         return True
 
-    @classmethod
-    def _normalize_line(cls, value: str) -> str:
+    @staticmethod
+    def _normalize_line(value: str) -> str:
         """Normalize line text for exact/contains anchor matching."""
-        return cls._WHITESPACE_COLLAPSE_PATTERN.sub(" ", value.strip().lower())
+        return _WHITESPACE_COLLAPSE_PATTERN.sub(" ", value.strip().lower())
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:

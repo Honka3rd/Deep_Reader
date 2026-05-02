@@ -132,6 +132,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     document_profile_builder = providers.Singleton(
         DocumentProfileBuilder,
         llm_provider=llm_provider,
+        prompt_text_normalization=config.prompt_text_normalization,
+        profile_prompt_policy=config.profile_prompt_policy,
     )
 
     document_profile_store = providers.Singleton(
@@ -226,6 +228,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         LLMSectionSplitter,
         llm_provider=llm_provider,
         common_splitter=common_section_splitter,
+        prompt_text_normalization=config.prompt_text_normalization,
+        preview_policy=config.llm_section_preview_policy,
     )
     section_splitter_selector = providers.Singleton(
         SectionSplitterSelector,
@@ -445,114 +449,5 @@ Args:
 Returns:
     Container instance wired with values from ``app_config``."""
         container = cls()
-        container.config.from_dict(
-            {
-                "chunk_size": app_config.chunk_size,
-                "chunk_overlap": app_config.chunk_overlap,
-                "embedding_model": app_config.embedding_model,
-                "llm_model": app_config.llm_model,
-                "target_max_input_tokens": app_config.target_max_input_tokens,
-                "target_max_output_tokens": app_config.target_max_output_tokens,
-                "target_max_context_tokens": app_config.target_max_context_tokens,
-                "input_budget_utilization_ratio": app_config.input_budget_utilization_ratio,
-                "context_budget_utilization_ratio": app_config.context_budget_utilization_ratio,
-                "full_text_input_budget_utilization_ratio": (
-                    app_config.full_text_input_budget_utilization_ratio
-                ),
-                "full_text_context_budget_utilization_ratio": (
-                    app_config.full_text_context_budget_utilization_ratio
-                ),
-                "embedding_batch_size": app_config.embedding_batch_size,
-                "bundle_cache_capacity": app_config.bundle_cache_capacity,
-                "session_recent_limit": app_config.session_recent_limit,
-                "base_near_chunk_threshold": app_config.base_near_chunk_threshold,
-                "min_near_chunk_threshold": app_config.min_near_chunk_threshold,
-                "max_near_chunk_threshold": app_config.max_near_chunk_threshold,
-                "global_scope_min_top_k": app_config.global_scope_min_top_k,
-                "global_coverage_chunk_gap": app_config.global_coverage_chunk_gap,
-                "question_scope_global_similarity_threshold": (
-                    app_config.question_scope_global_similarity_threshold
-                ),
-                "question_scope_llm_gray_zone_min_similarity": (
-                    app_config.question_scope_llm_gray_zone_min_similarity
-                ),
-                "question_scope_llm_gray_zone_max_similarity": (
-                    app_config.question_scope_llm_gray_zone_max_similarity
-                ),
-                "question_scope_llm_fallback_enabled": (
-                    app_config.question_scope_llm_fallback_enabled
-                ),
-                "question_scope_llm_summary_char_limit": (
-                    app_config.question_scope_llm_summary_char_limit
-                ),
-                "question_scope_local_anchor_similarity_threshold": (
-                    app_config.question_scope_local_anchor_similarity_threshold
-                ),
-                "quiz_min_section_chars": app_config.quiz_min_section_chars,
-                "section_task_topic_semantic_match_enabled": (
-                    app_config.section_task_topic_semantic_match_enabled
-                ),
-                "section_task_topic_semantic_similarity_threshold": (
-                    app_config.section_task_topic_semantic_similarity_threshold
-                ),
-                "task_unit_min_chars": app_config.task_unit_min_chars,
-                "task_unit_max_chars": app_config.task_unit_max_chars,
-                "task_unit_split_mode": app_config.task_unit_split_mode,
-                "task_unit_semantic_boundary_window_chars": (
-                    app_config.task_unit_semantic_boundary_window_chars
-                ),
-                "task_unit_semantic_context_window_chars": (
-                    app_config.task_unit_semantic_context_window_chars
-                ),
-                "task_unit_semantic_top_k_candidates": (
-                    app_config.task_unit_semantic_top_k_candidates
-                ),
-                "task_unit_semantic_top_k_candidates_max": (
-                    app_config.task_unit_semantic_top_k_candidates_max
-                ),
-                "task_unit_semantic_max_scoring_per_window": (
-                    app_config.task_unit_semantic_max_scoring_per_window
-                ),
-                "task_unit_semantic_max_scoring_per_section": (
-                    app_config.task_unit_semantic_max_scoring_per_section
-                ),
-                "task_unit_semantic_score_weight": app_config.task_unit_semantic_score_weight,
-                "task_unit_semantic_scoring_debug_log": (
-                    app_config.task_unit_semantic_scoring_debug_log
-                ),
-                "task_unit_semantic_embedding_batch_size": (
-                    app_config.task_unit_semantic_embedding_batch_size
-                ),
-                "task_unit_semantic_embedding_cache_size": (
-                    app_config.task_unit_semantic_embedding_cache_size
-                ),
-                "enhanced_parse_min_section_count": app_config.enhanced_parse_min_section_count,
-                "enhanced_parse_max_section_count": app_config.enhanced_parse_max_section_count,
-                "enhanced_parse_min_title_coverage": app_config.enhanced_parse_min_title_coverage,
-                "enhanced_parse_min_sections_for_ratio_signal": (
-                    app_config.enhanced_parse_min_sections_for_ratio_signal
-                ),
-                "enhanced_parse_min_units_for_ratio_signal": (
-                    app_config.enhanced_parse_min_units_for_ratio_signal
-                ),
-                "enhanced_parse_max_affected_section_ratio": (
-                    app_config.enhanced_parse_max_affected_section_ratio
-                ),
-                "enhanced_parse_max_fallback_task_unit_ratio": (
-                    app_config.enhanced_parse_max_fallback_task_unit_ratio
-                ),
-                "enhanced_parse_min_avg_chars_per_section": (
-                    app_config.enhanced_parse_min_avg_chars_per_section
-                ),
-                "enhanced_parse_max_avg_chars_per_section": (
-                    app_config.enhanced_parse_max_avg_chars_per_section
-                ),
-                "enhanced_parse_min_raw_chars_for_structure_density_signal": (
-                    app_config.enhanced_parse_min_raw_chars_for_structure_density_signal
-                ),
-                "enhanced_parse_recommend_score_threshold": (
-                    app_config.enhanced_parse_recommend_score_threshold
-                ),
-            }
-        )
+        container.config.from_dict(app_config.to_container_config_dict())
         return container

@@ -1,5 +1,97 @@
 from dataclasses import dataclass
+from typing import Any
 from llm.openai_llm_provider import OpenAIModelName
+
+
+@dataclass(frozen=True)
+class RetrievalTokenBudgetConfig:
+    """Token budget policy for retrieval and full-text orchestration."""
+    target_max_input_tokens: int
+    target_max_output_tokens: int
+    target_max_context_tokens: int
+    input_budget_utilization_ratio: float
+    context_budget_utilization_ratio: float
+    full_text_input_budget_utilization_ratio: float
+    full_text_context_budget_utilization_ratio: float
+
+
+@dataclass(frozen=True)
+class PromptTextNormalizationConfig:
+    """Generic prompt-text normalization policy based on model capability."""
+    default_excerpt_chars: int
+    min_excerpt_chars: int
+    max_excerpt_chars_hard_cap: int
+    chars_per_token: int
+
+
+@dataclass(frozen=True)
+class ProfilePromptPolicyConfig:
+    """Profile-specific prompt policy (topic/summary overhead + utilization)."""
+    topic_prompt_overhead_tokens: int
+    summary_prompt_overhead_tokens: int
+    structure_prompt_overhead_tokens: int
+    topic_excerpt_token_utilization_ratio: float
+    summary_excerpt_token_utilization_ratio: float
+    structure_excerpt_token_utilization_ratio: float
+    evidence_head_chars: int
+    evidence_tail_chars: int
+    evidence_middle_chars: int
+    evidence_heading_lines_limit: int
+
+
+@dataclass(frozen=True)
+class QuestionScopePolicyConfig:
+    """Scope-resolution policy values for semantic/LLM fallback routing."""
+    global_similarity_threshold: float
+    llm_gray_zone_min_similarity: float
+    llm_gray_zone_max_similarity: float
+    llm_fallback_enabled: bool
+    llm_summary_char_limit: int
+    local_anchor_similarity_threshold: float
+
+
+@dataclass(frozen=True)
+class TaskUnitSplitPolicyConfig:
+    """Task-unit split and semantic boundary scoring policy values."""
+    min_chars: int
+    max_chars: int
+    split_mode: str
+    semantic_boundary_window_chars: int
+    semantic_context_window_chars: int
+    semantic_top_k_candidates: int
+    semantic_top_k_candidates_max: int
+    semantic_max_scoring_per_window: int
+    semantic_max_scoring_per_section: int
+    semantic_score_weight: float
+    semantic_scoring_debug_log: bool
+    semantic_embedding_batch_size: int
+    semantic_embedding_cache_size: int
+
+
+@dataclass(frozen=True)
+class EnhancedParsePolicyConfig:
+    """Enhanced parser recommendation policy thresholds and bounds."""
+    min_section_count: int
+    max_section_count: int
+    min_title_coverage: float
+    min_sections_for_ratio_signal: int
+    min_units_for_ratio_signal: int
+    max_affected_section_ratio: float
+    max_fallback_task_unit_ratio: float
+    min_avg_chars_per_section: int
+    max_avg_chars_per_section: int
+    min_raw_chars_for_structure_density_signal: int
+    recommend_score_threshold: int
+
+
+@dataclass(frozen=True)
+class LLMSectionPreviewPolicyConfig:
+    """LLM section-split prompt preview policy."""
+    prompt_overhead_tokens: int
+    excerpt_token_utilization_ratio: float
+    preview_head_ratio: float
+    preview_omitted_separator: str
+
 
 @dataclass(frozen=True)
 class AppDIConfig:
@@ -22,6 +114,48 @@ class AppDIConfig:
     # App-level target for max generated tokens in normal retrieval/local paths.
     # Introduced to control output length/cost with a conservative default policy.
     target_max_output_tokens: int = 500
+    # Default excerpt character budget for prompt-conditioning document profile generation.
+    # Introduced to provide deterministic fallback when model capability is unavailable.
+    profile_prompt_default_excerpt_chars: int = 16_000
+    # Minimum excerpt character budget for document profile prompts under capability scaling.
+    # Introduced to avoid over-truncation on small-capability models.
+    profile_prompt_min_excerpt_chars: int = 2_000
+    # Hard cap for profile prompt excerpt characters even on very large-context models.
+    # Introduced to prevent unbounded prompt growth and protect latency/cost.
+    profile_prompt_max_excerpt_chars_hard_cap: int = 400_000
+    # Heuristic chars-per-token ratio used for prompt excerpt budget conversion.
+    # Introduced to keep budgeting model-agnostic while remaining conservative.
+    profile_prompt_chars_per_token: int = 4
+    # Estimated fixed token overhead for topic classification prompt instructions.
+    # Introduced so profile excerpt budget can reserve instruction/headroom.
+    profile_topic_prompt_overhead_tokens: int = 700
+    # Estimated fixed token overhead for summary-generation prompt instructions.
+    # Introduced so profile excerpt budget can reserve instruction/headroom.
+    profile_summary_prompt_overhead_tokens: int = 900
+    # Estimated fixed token overhead for structure-profile JSON prompt instructions.
+    # Introduced so structure-hints prompt can reserve instruction/headroom.
+    profile_structure_prompt_overhead_tokens: int = 1_100
+    # Utilization ratio of available prompt tokens used by topic prompt excerpt.
+    # Introduced to balance topic classification signal and instruction headroom.
+    profile_topic_excerpt_token_utilization_ratio: float = 0.55
+    # Utilization ratio of available prompt tokens used by summary prompt excerpt.
+    # Introduced to improve summary grounding under large-context models.
+    profile_summary_excerpt_token_utilization_ratio: float = 0.70
+    # Utilization ratio of available prompt tokens used by structure-profile prompt excerpt.
+    # Introduced to provide sufficient structural signal for hints extraction.
+    profile_structure_excerpt_token_utilization_ratio: float = 0.72
+    # Head excerpt char limit for structure-profile evidence package.
+    # Introduced to bound profile prompt while preserving leading structure signals.
+    profile_evidence_head_chars: int = 4_000
+    # Tail excerpt char limit for structure-profile evidence package.
+    # Introduced to preserve appendix/back-matter clues in compact evidence package.
+    profile_evidence_tail_chars: int = 2_500
+    # Middle excerpt char limit for structure-profile evidence package.
+    # Introduced to preserve mid-document structural clues in compact evidence package.
+    profile_evidence_middle_chars: int = 2_200
+    # Maximum heading-like lines included in structure-profile evidence package.
+    # Introduced to keep profile prompt concise while retaining structural cues.
+    profile_evidence_heading_lines_limit: int = 60
     # App-level target for retrieval/local context token budget (subset of input budget).
     # Introduced to tune evidence size independently from total prompt budget.
     target_max_context_tokens: int = 1500
@@ -160,3 +294,270 @@ class AppDIConfig:
     # Score threshold for recommending enhanced parser.
     # Introduced to combine strong/weak signals into one deterministic decision.
     enhanced_parse_recommend_score_threshold: int = 4
+    # Estimated fixed token overhead for LLM section-split planning prompt.
+    # Introduced so preview excerpt budget reserves instruction/headroom.
+    llm_section_preview_prompt_overhead_tokens: int = 1_200
+    # Utilization ratio of available prompt tokens used by section-split preview excerpt.
+    # Introduced to balance plan quality and prompt-headroom safety.
+    llm_section_preview_excerpt_token_utilization_ratio: float = 0.65
+    # Ratio of preview content budget allocated to document head in head+tail preview rendering.
+    # Introduced to keep early ToC/front-matter visibility while still preserving tail regions.
+    llm_section_preview_head_ratio: float = 0.65
+    # Explicit omission marker inserted between head/tail preview slices.
+    # Introduced to make truncation visible to the model in planning prompts.
+    llm_section_preview_omitted_separator: str = "\n\n[... middle omitted ...]\n\n"
+
+    def retrieval_token_budget(self) -> RetrievalTokenBudgetConfig:
+        """Return grouped retrieval/full-text token budget config."""
+        return RetrievalTokenBudgetConfig(
+            target_max_input_tokens=self.target_max_input_tokens,
+            target_max_output_tokens=self.target_max_output_tokens,
+            target_max_context_tokens=self.target_max_context_tokens,
+            input_budget_utilization_ratio=self.input_budget_utilization_ratio,
+            context_budget_utilization_ratio=self.context_budget_utilization_ratio,
+            full_text_input_budget_utilization_ratio=(
+                self.full_text_input_budget_utilization_ratio
+            ),
+            full_text_context_budget_utilization_ratio=(
+                self.full_text_context_budget_utilization_ratio
+            ),
+        )
+
+    def prompt_text_normalization(self) -> PromptTextNormalizationConfig:
+        """Return generic prompt-text normalization config."""
+        return PromptTextNormalizationConfig(
+            default_excerpt_chars=self.profile_prompt_default_excerpt_chars,
+            min_excerpt_chars=self.profile_prompt_min_excerpt_chars,
+            max_excerpt_chars_hard_cap=self.profile_prompt_max_excerpt_chars_hard_cap,
+            chars_per_token=self.profile_prompt_chars_per_token,
+        )
+
+    def profile_prompt_policy(self) -> ProfilePromptPolicyConfig:
+        """Return profile-specific prompt policy config."""
+        return ProfilePromptPolicyConfig(
+            topic_prompt_overhead_tokens=self.profile_topic_prompt_overhead_tokens,
+            summary_prompt_overhead_tokens=self.profile_summary_prompt_overhead_tokens,
+            structure_prompt_overhead_tokens=self.profile_structure_prompt_overhead_tokens,
+            topic_excerpt_token_utilization_ratio=(
+                self.profile_topic_excerpt_token_utilization_ratio
+            ),
+            summary_excerpt_token_utilization_ratio=(
+                self.profile_summary_excerpt_token_utilization_ratio
+            ),
+            structure_excerpt_token_utilization_ratio=(
+                self.profile_structure_excerpt_token_utilization_ratio
+            ),
+            evidence_head_chars=self.profile_evidence_head_chars,
+            evidence_tail_chars=self.profile_evidence_tail_chars,
+            evidence_middle_chars=self.profile_evidence_middle_chars,
+            evidence_heading_lines_limit=self.profile_evidence_heading_lines_limit,
+        )
+
+    def question_scope_policy(self) -> QuestionScopePolicyConfig:
+        """Return grouped question-scope policy config."""
+        return QuestionScopePolicyConfig(
+            global_similarity_threshold=self.question_scope_global_similarity_threshold,
+            llm_gray_zone_min_similarity=self.question_scope_llm_gray_zone_min_similarity,
+            llm_gray_zone_max_similarity=self.question_scope_llm_gray_zone_max_similarity,
+            llm_fallback_enabled=self.question_scope_llm_fallback_enabled,
+            llm_summary_char_limit=self.question_scope_llm_summary_char_limit,
+            local_anchor_similarity_threshold=(
+                self.question_scope_local_anchor_similarity_threshold
+            ),
+        )
+
+    def task_unit_split_policy(self) -> TaskUnitSplitPolicyConfig:
+        """Return grouped task-unit split policy config."""
+        return TaskUnitSplitPolicyConfig(
+            min_chars=self.task_unit_min_chars,
+            max_chars=self.task_unit_max_chars,
+            split_mode=self.task_unit_split_mode,
+            semantic_boundary_window_chars=self.task_unit_semantic_boundary_window_chars,
+            semantic_context_window_chars=self.task_unit_semantic_context_window_chars,
+            semantic_top_k_candidates=self.task_unit_semantic_top_k_candidates,
+            semantic_top_k_candidates_max=self.task_unit_semantic_top_k_candidates_max,
+            semantic_max_scoring_per_window=self.task_unit_semantic_max_scoring_per_window,
+            semantic_max_scoring_per_section=self.task_unit_semantic_max_scoring_per_section,
+            semantic_score_weight=self.task_unit_semantic_score_weight,
+            semantic_scoring_debug_log=self.task_unit_semantic_scoring_debug_log,
+            semantic_embedding_batch_size=self.task_unit_semantic_embedding_batch_size,
+            semantic_embedding_cache_size=self.task_unit_semantic_embedding_cache_size,
+        )
+
+    def enhanced_parse_policy(self) -> EnhancedParsePolicyConfig:
+        """Return grouped enhanced-parse recommendation policy config."""
+        return EnhancedParsePolicyConfig(
+            min_section_count=self.enhanced_parse_min_section_count,
+            max_section_count=self.enhanced_parse_max_section_count,
+            min_title_coverage=self.enhanced_parse_min_title_coverage,
+            min_sections_for_ratio_signal=self.enhanced_parse_min_sections_for_ratio_signal,
+            min_units_for_ratio_signal=self.enhanced_parse_min_units_for_ratio_signal,
+            max_affected_section_ratio=self.enhanced_parse_max_affected_section_ratio,
+            max_fallback_task_unit_ratio=self.enhanced_parse_max_fallback_task_unit_ratio,
+            min_avg_chars_per_section=self.enhanced_parse_min_avg_chars_per_section,
+            max_avg_chars_per_section=self.enhanced_parse_max_avg_chars_per_section,
+            min_raw_chars_for_structure_density_signal=(
+                self.enhanced_parse_min_raw_chars_for_structure_density_signal
+            ),
+            recommend_score_threshold=self.enhanced_parse_recommend_score_threshold,
+        )
+
+    def llm_section_preview_policy(self) -> LLMSectionPreviewPolicyConfig:
+        """Return grouped LLM section-split preview policy config."""
+        return LLMSectionPreviewPolicyConfig(
+            prompt_overhead_tokens=self.llm_section_preview_prompt_overhead_tokens,
+            excerpt_token_utilization_ratio=(
+                self.llm_section_preview_excerpt_token_utilization_ratio
+            ),
+            preview_head_ratio=self.llm_section_preview_head_ratio,
+            preview_omitted_separator=self.llm_section_preview_omitted_separator,
+        )
+
+    def to_container_config_dict(self) -> dict[str, Any]:
+        """Export normalized container config map from grouped policy views."""
+        retrieval_budget = self.retrieval_token_budget()
+        prompt_text_normalization = self.prompt_text_normalization()
+        profile_prompt_policy = self.profile_prompt_policy()
+        scope_policy = self.question_scope_policy()
+        task_unit_policy = self.task_unit_split_policy()
+        enhanced_parse_policy = self.enhanced_parse_policy()
+        llm_section_preview_policy = self.llm_section_preview_policy()
+        return {
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
+            "embedding_model": self.embedding_model,
+            "llm_model": self.llm_model,
+            "target_max_input_tokens": retrieval_budget.target_max_input_tokens,
+            "target_max_output_tokens": retrieval_budget.target_max_output_tokens,
+            "target_max_context_tokens": retrieval_budget.target_max_context_tokens,
+            "input_budget_utilization_ratio": retrieval_budget.input_budget_utilization_ratio,
+            "context_budget_utilization_ratio": retrieval_budget.context_budget_utilization_ratio,
+            "full_text_input_budget_utilization_ratio": (
+                retrieval_budget.full_text_input_budget_utilization_ratio
+            ),
+            "full_text_context_budget_utilization_ratio": (
+                retrieval_budget.full_text_context_budget_utilization_ratio
+            ),
+            "profile_prompt_default_excerpt_chars": (
+                prompt_text_normalization.default_excerpt_chars
+            ),
+            "profile_prompt_min_excerpt_chars": prompt_text_normalization.min_excerpt_chars,
+            "profile_prompt_max_excerpt_chars_hard_cap": (
+                prompt_text_normalization.max_excerpt_chars_hard_cap
+            ),
+            "profile_prompt_chars_per_token": prompt_text_normalization.chars_per_token,
+            "profile_topic_prompt_overhead_tokens": (
+                profile_prompt_policy.topic_prompt_overhead_tokens
+            ),
+            "profile_summary_prompt_overhead_tokens": (
+                profile_prompt_policy.summary_prompt_overhead_tokens
+            ),
+            "profile_structure_prompt_overhead_tokens": (
+                profile_prompt_policy.structure_prompt_overhead_tokens
+            ),
+            "profile_topic_excerpt_token_utilization_ratio": (
+                profile_prompt_policy.topic_excerpt_token_utilization_ratio
+            ),
+            "profile_summary_excerpt_token_utilization_ratio": (
+                profile_prompt_policy.summary_excerpt_token_utilization_ratio
+            ),
+            "profile_structure_excerpt_token_utilization_ratio": (
+                profile_prompt_policy.structure_excerpt_token_utilization_ratio
+            ),
+            "profile_evidence_head_chars": profile_prompt_policy.evidence_head_chars,
+            "profile_evidence_tail_chars": profile_prompt_policy.evidence_tail_chars,
+            "profile_evidence_middle_chars": profile_prompt_policy.evidence_middle_chars,
+            "profile_evidence_heading_lines_limit": (
+                profile_prompt_policy.evidence_heading_lines_limit
+            ),
+            "prompt_text_normalization": prompt_text_normalization,
+            "profile_prompt_policy": profile_prompt_policy,
+            "embedding_batch_size": self.embedding_batch_size,
+            "bundle_cache_capacity": self.bundle_cache_capacity,
+            "session_recent_limit": self.session_recent_limit,
+            "base_near_chunk_threshold": self.base_near_chunk_threshold,
+            "min_near_chunk_threshold": self.min_near_chunk_threshold,
+            "max_near_chunk_threshold": self.max_near_chunk_threshold,
+            "global_scope_min_top_k": self.global_scope_min_top_k,
+            "global_coverage_chunk_gap": self.global_coverage_chunk_gap,
+            "question_scope_global_similarity_threshold": (
+                scope_policy.global_similarity_threshold
+            ),
+            "question_scope_llm_gray_zone_min_similarity": (
+                scope_policy.llm_gray_zone_min_similarity
+            ),
+            "question_scope_llm_gray_zone_max_similarity": (
+                scope_policy.llm_gray_zone_max_similarity
+            ),
+            "question_scope_llm_fallback_enabled": scope_policy.llm_fallback_enabled,
+            "question_scope_llm_summary_char_limit": scope_policy.llm_summary_char_limit,
+            "question_scope_local_anchor_similarity_threshold": (
+                scope_policy.local_anchor_similarity_threshold
+            ),
+            "quiz_min_section_chars": self.quiz_min_section_chars,
+            "section_task_topic_semantic_match_enabled": (
+                self.section_task_topic_semantic_match_enabled
+            ),
+            "section_task_topic_semantic_similarity_threshold": (
+                self.section_task_topic_semantic_similarity_threshold
+            ),
+            "task_unit_min_chars": task_unit_policy.min_chars,
+            "task_unit_max_chars": task_unit_policy.max_chars,
+            "task_unit_split_mode": task_unit_policy.split_mode,
+            "task_unit_semantic_boundary_window_chars": (
+                task_unit_policy.semantic_boundary_window_chars
+            ),
+            "task_unit_semantic_context_window_chars": (
+                task_unit_policy.semantic_context_window_chars
+            ),
+            "task_unit_semantic_top_k_candidates": (
+                task_unit_policy.semantic_top_k_candidates
+            ),
+            "task_unit_semantic_top_k_candidates_max": (
+                task_unit_policy.semantic_top_k_candidates_max
+            ),
+            "task_unit_semantic_max_scoring_per_window": (
+                task_unit_policy.semantic_max_scoring_per_window
+            ),
+            "task_unit_semantic_max_scoring_per_section": (
+                task_unit_policy.semantic_max_scoring_per_section
+            ),
+            "task_unit_semantic_score_weight": task_unit_policy.semantic_score_weight,
+            "task_unit_semantic_scoring_debug_log": (
+                task_unit_policy.semantic_scoring_debug_log
+            ),
+            "task_unit_semantic_embedding_batch_size": (
+                task_unit_policy.semantic_embedding_batch_size
+            ),
+            "task_unit_semantic_embedding_cache_size": (
+                task_unit_policy.semantic_embedding_cache_size
+            ),
+            "enhanced_parse_min_section_count": enhanced_parse_policy.min_section_count,
+            "enhanced_parse_max_section_count": enhanced_parse_policy.max_section_count,
+            "enhanced_parse_min_title_coverage": enhanced_parse_policy.min_title_coverage,
+            "enhanced_parse_min_sections_for_ratio_signal": (
+                enhanced_parse_policy.min_sections_for_ratio_signal
+            ),
+            "enhanced_parse_min_units_for_ratio_signal": (
+                enhanced_parse_policy.min_units_for_ratio_signal
+            ),
+            "enhanced_parse_max_affected_section_ratio": (
+                enhanced_parse_policy.max_affected_section_ratio
+            ),
+            "enhanced_parse_max_fallback_task_unit_ratio": (
+                enhanced_parse_policy.max_fallback_task_unit_ratio
+            ),
+            "enhanced_parse_min_avg_chars_per_section": (
+                enhanced_parse_policy.min_avg_chars_per_section
+            ),
+            "enhanced_parse_max_avg_chars_per_section": (
+                enhanced_parse_policy.max_avg_chars_per_section
+            ),
+            "enhanced_parse_min_raw_chars_for_structure_density_signal": (
+                enhanced_parse_policy.min_raw_chars_for_structure_density_signal
+            ),
+            "enhanced_parse_recommend_score_threshold": (
+                enhanced_parse_policy.recommend_score_threshold
+            ),
+            "llm_section_preview_policy": llm_section_preview_policy,
+        }
