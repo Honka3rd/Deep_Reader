@@ -14,6 +14,7 @@ from fingerprint_handler import FingerprintHandler
 from language.document_language_detector import DocumentLanguageDetector
 from language.language_code import LanguageCodeResolver, LanguageCode
 from profile.document_profile_builder import DocumentProfileBuilder
+from profile.document_profile import DocumentProfile
 from profile.document_profile_store import DocumentProfileStore
 from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
@@ -95,7 +96,16 @@ class DocumentPreparationPipeline:
             assets=assets,
         )
 
-        # Step 3. Prepare structured document artifact.
+        # Step 3. Prepare profile artifact.
+        assets.profile_ready, prepared_profile = self._prepare_profile(
+            doc_name=doc_name,
+            raw_text=assets.raw_text,
+            language=assets.language,
+            assets=assets,
+            force_rebuild=force_rebuild,
+        )
+
+        # Step 4. Prepare structured document artifact.
         (
             assets.structured_document_ready,
             assets.structured_document_path,
@@ -103,6 +113,7 @@ class DocumentPreparationPipeline:
             doc_name=doc_name,
             raw_text=assets.raw_text,
             language=assets.language,
+            document_profile=prepared_profile,
             assets=assets,
             force_rebuild=force_rebuild,
             parser_mode=parser_mode,
@@ -111,19 +122,10 @@ class DocumentPreparationPipeline:
         if preparation_mode == PreparationMode.BASE:
             return assets
 
-        # Step 4. Prepare FAISS artifacts.
+        # Step 5. Prepare FAISS artifacts.
         assets.faiss_ready, assets.faiss_namespace = self._prepare_faiss(
             doc_name=doc_name,
             raw_text=assets.raw_text,
-            assets=assets,
-            force_rebuild=force_rebuild,
-        )
-
-        # Step 5. Prepare profile artifact.
-        assets.profile_ready = self._prepare_profile(
-            doc_name=doc_name,
-            raw_text=assets.raw_text,
-            language=assets.language,
             assets=assets,
             force_rebuild=force_rebuild,
         )
@@ -242,6 +244,7 @@ class DocumentPreparationPipeline:
         doc_name: str,
         raw_text: str | None,
         language: str | None,
+        document_profile: DocumentProfile | None,
         assets: PreparedDocumentAssets,
         force_rebuild: bool,
         parser_mode: SectionSplitterMode,
@@ -264,6 +267,9 @@ class DocumentPreparationPipeline:
         storage_config = StructuredDocumentStorageConfig(namespace=doc_name)
         structured_document_path = storage_config.get_raw_document_path()
         try:
+            # TODO: Pass document_profile.structure_profile into structured parser
+            # once StructureProfile is implemented.
+            _ = document_profile
             should_rebuild = force_rebuild or parser_mode == SectionSplitterMode.LLM_ENHANCED
             if storage_config.exists() and not should_rebuild:
                 try:
@@ -369,22 +375,22 @@ class DocumentPreparationPipeline:
         language: str | None,
         assets: PreparedDocumentAssets,
         force_rebuild: bool,
-    ) -> bool:
+    ) -> tuple[bool, DocumentProfile | None]:
         """Prepare profile artifact using canonical raw text and detected language."""
         if raw_text is None or not raw_text.strip():
             assets.errors.append("prepare_profile_skipped:missing_raw_text")
-            return False
+            return False, None
         if language is None or not language.strip():
             assets.errors.append("prepare_profile_skipped:missing_language")
-            return False
+            return False, None
 
         config = FaissStorageConfig(namespace=doc_name)
 
         try:
             if self.profile_store.exists(config) and not force_rebuild:
                 try:
-                    self.profile_store.load(config)
-                    return True
+                    profile = self.profile_store.load(config)
+                    return True, profile
                 except Exception as load_error:
                     assets.errors.append(
                         f"prepare_profile_reload_failed:{doc_name}:{load_error}"
@@ -398,10 +404,10 @@ class DocumentPreparationPipeline:
                 document_language=language.strip().lower(),
             )
             self.profile_store.save(profile, config)
-            return True
+            return True, profile
         except Exception as error:
             assets.errors.append(f"prepare_profile_failed:{doc_name}:{error}")
-            return False
+            return False, None
 
     def _prepare_bundle(
         self,
