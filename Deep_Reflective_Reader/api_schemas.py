@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PrepareDocumentRequest(BaseModel):
@@ -122,7 +122,20 @@ class SummarizeChapterRequest(BaseModel):
     """Request payload for chapter-summary endpoint."""
 
     doc_name: str = Field(..., description="Document name")
-    chapter_title: str = Field(..., description="Exact chapter title")
+    chapter_title: str | None = Field(
+        None,
+        description=(
+            "Exact chapter title. Optional when chapter_id is provided. "
+            "When both chapter_id and chapter_title are provided, chapter_id wins."
+        ),
+    )
+    chapter_id: str | None = Field(
+        None,
+        description=(
+            "Stable chapter identifier from task-layout response. "
+            "Preferred target for duplicate chapter titles."
+        ),
+    )
     task_unit_split_mode: str | None = Field(
         None,
         description=(
@@ -145,6 +158,22 @@ class SummarizeChapterRequest(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def _validate_target(self) -> "SummarizeChapterRequest":
+        chapter_id = (self.chapter_id or "").strip()
+        chapter_title = (self.chapter_title or "").strip()
+        if not chapter_id and not chapter_title:
+            raise ValueError("chapter_id or chapter_title must be provided")
+        if not chapter_id:
+            self.chapter_id = None
+        else:
+            self.chapter_id = chapter_id
+        if not chapter_title:
+            self.chapter_title = None
+        else:
+            self.chapter_title = chapter_title
+        return self
+
 
 class SummarizeChapterResponse(BaseModel):
     """Response payload for chapter-summary endpoint."""
@@ -161,7 +190,20 @@ class ChapterQuizRequest(BaseModel):
     """Request payload for chapter-quiz endpoint."""
 
     doc_name: str = Field(..., description="Document name")
-    chapter_title: str = Field(..., description="Exact chapter title")
+    chapter_title: str | None = Field(
+        None,
+        description=(
+            "Exact chapter title. Optional when chapter_id is provided. "
+            "When both chapter_id and chapter_title are provided, chapter_id wins."
+        ),
+    )
+    chapter_id: str | None = Field(
+        None,
+        description=(
+            "Stable chapter identifier from task-layout response. "
+            "Preferred target for duplicate chapter titles."
+        ),
+    )
     task_unit_split_mode: str | None = Field(
         None,
         description=(
@@ -183,6 +225,22 @@ class ChapterQuizRequest(BaseModel):
             "When false, reuse cached chapter quiz artifact when valid."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_target(self) -> "ChapterQuizRequest":
+        chapter_id = (self.chapter_id or "").strip()
+        chapter_title = (self.chapter_title or "").strip()
+        if not chapter_id and not chapter_title:
+            raise ValueError("chapter_id or chapter_title must be provided")
+        if not chapter_id:
+            self.chapter_id = None
+        else:
+            self.chapter_id = chapter_id
+        if not chapter_title:
+            self.chapter_title = None
+        else:
+            self.chapter_title = chapter_title
+        return self
 
 
 class ChapterQuizResponse(BaseModel):

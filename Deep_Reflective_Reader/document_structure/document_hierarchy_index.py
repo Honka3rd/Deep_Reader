@@ -185,6 +185,43 @@ def find_section_by_chapter_title_effective(
     return None
 
 
+def find_chapter_by_id_effective(
+    document: StructuredDocument,
+    chapter_id: str,
+) -> StructuredChapter | None:
+    """Find chapter by stable chapter_id with duplicate defense."""
+    normalized_chapter_id = chapter_id.strip()
+    if not normalized_chapter_id:
+        return None
+    matches = [
+        chapter for chapter in document.chapters
+        if chapter.chapter_id == normalized_chapter_id
+    ]
+    if len(matches) > 1:
+        raise ValueError(
+            "duplicate_chapter_id:"
+            f"{normalized_chapter_id}"
+        )
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def find_chapters_by_title_effective(
+    document: StructuredDocument,
+    chapter_title: str,
+) -> list[StructuredChapter]:
+    """Find chapters by exact normalized title."""
+    normalized_title = chapter_title.strip()
+    if not normalized_title:
+        return []
+    return [
+        chapter
+        for chapter in document.chapters
+        if ((chapter.title or "").strip()) == normalized_title
+    ]
+
+
 def validate_chapter_hierarchy_consistency(
     document: StructuredDocument,
 ) -> list[str]:

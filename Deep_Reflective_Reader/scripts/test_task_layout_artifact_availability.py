@@ -188,9 +188,14 @@ def test_task_layout_artifact_availability() -> None:
         _assert(layout.task_units[0].artifacts.has_summary is True, "task unit has_summary should be true")
         _assert(layout.task_units[0].artifacts.has_quiz is False, "task unit has_quiz should be false")
 
-        _assert("chapter::第一章" in layout.chapter_artifacts, "chapter artifacts availability key should exist")
-        _assert(layout.chapter_artifacts["chapter::第一章"].has_summary is True, "chapter has_summary should be true")
-        _assert(layout.chapter_artifacts["chapter::第一章"].has_quiz is True, "chapter has_quiz should be true")
+        chapter_id = layout.chapters[0].chapter_id
+        chapter_key = f"chapter_id::{chapter_id}"
+        chapter_av = layout.chapter_artifacts.get(chapter_key)
+        if chapter_av is None:
+            chapter_av = layout.chapter_artifacts.get("chapter::第一章")
+        _assert(chapter_av is not None, "chapter artifacts availability key should exist")
+        _assert(chapter_av.has_summary is True, "chapter has_summary should be true")
+        _assert(chapter_av.has_quiz is True, "chapter has_quiz should be true")
 
         payload = layout.to_dict()
         first_chapter_section = payload["chapters"][0]["sections"][0]

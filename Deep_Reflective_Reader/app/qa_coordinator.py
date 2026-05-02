@@ -268,7 +268,8 @@ class QACoordinator:
     def summarize_chapter(
         self,
         doc_name: str,
-        chapter_title: str,
+        chapter_title: str | None = None,
+        chapter_id: str | None = None,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
         refresh_summary: bool = False,
@@ -277,6 +278,7 @@ class QACoordinator:
         return self.section_task_coordinator.summarize_chapter(
             doc_name=doc_name,
             chapter_title=chapter_title,
+            chapter_id=chapter_id,
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
             refresh_summary=refresh_summary,
@@ -302,7 +304,8 @@ class QACoordinator:
     def generate_chapter_quiz(
         self,
         doc_name: str,
-        chapter_title: str,
+        chapter_title: str | None = None,
+        chapter_id: str | None = None,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
         refresh_quiz: bool = False,
@@ -311,6 +314,7 @@ class QACoordinator:
         return self.section_task_coordinator.generate_chapter_quiz(
             doc_name=doc_name,
             chapter_title=chapter_title,
+            chapter_id=chapter_id,
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
             refresh_quiz=refresh_quiz,

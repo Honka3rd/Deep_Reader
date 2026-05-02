@@ -259,11 +259,13 @@ def summarize_document_chapter(
     request: SummarizeChapterRequest,
     response: Response,
 ):
-    """Run summary task for one chapter resolved by exact title."""
+    """Run summary task for one chapter resolved by chapter_id first, then title."""
     try:
+        response_chapter_title = request.chapter_title or request.chapter_id or ""
         result = section_task_coordinator.summarize_chapter(
             doc_name=request.doc_name,
             chapter_title=request.chapter_title,
+            chapter_id=request.chapter_id,
             task_unit_split_mode=request.task_unit_split_mode,
             semantic_top_k_candidates=request.semantic_top_k_candidates,
             refresh_summary=request.refresh_summary,
@@ -271,7 +273,7 @@ def summarize_document_chapter(
         if result.success:
             return SummarizeChapterResponse(
                 doc_name=request.doc_name,
-                chapter_title=request.chapter_title,
+                chapter_title=response_chapter_title,
                 success=True,
                 result=result.payload,
                 reason=None,
@@ -281,7 +283,7 @@ def summarize_document_chapter(
         response.status_code = _resolve_section_task_failure_status(result.reason)
         return SummarizeChapterResponse(
             doc_name=request.doc_name,
-            chapter_title=request.chapter_title,
+            chapter_title=response_chapter_title,
             success=False,
             result=None,
             reason=result.reason,
@@ -300,11 +302,13 @@ def generate_document_chapter_quiz(
     request: ChapterQuizRequest,
     response: Response,
 ):
-    """Run quiz task for one chapter resolved by exact title."""
+    """Run quiz task for one chapter resolved by chapter_id first, then title."""
     try:
+        response_chapter_title = request.chapter_title or request.chapter_id or ""
         result = section_task_coordinator.generate_chapter_quiz(
             doc_name=request.doc_name,
             chapter_title=request.chapter_title,
+            chapter_id=request.chapter_id,
             task_unit_split_mode=request.task_unit_split_mode,
             semantic_top_k_candidates=request.semantic_top_k_candidates,
             refresh_quiz=request.refresh_quiz,
@@ -320,7 +324,7 @@ def generate_document_chapter_quiz(
             ]
             return ChapterQuizResponse(
                 doc_name=request.doc_name,
-                chapter_title=request.chapter_title,
+                chapter_title=response_chapter_title,
                 success=True,
                 questions=questions,
                 reason=None,
@@ -330,7 +334,7 @@ def generate_document_chapter_quiz(
         response.status_code = _resolve_section_task_failure_status(result.reason)
         return ChapterQuizResponse(
             doc_name=request.doc_name,
-            chapter_title=request.chapter_title,
+            chapter_title=response_chapter_title,
             success=False,
             questions=None,
             reason=result.reason,

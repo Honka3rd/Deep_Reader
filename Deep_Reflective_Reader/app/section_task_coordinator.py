@@ -7,6 +7,8 @@ from document_preparation.document_preparation_pipeline import DocumentPreparati
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.document_artifact_repository import DocumentArtifactRepository
 from document_structure.document_hierarchy_index import (
+    find_chapter_by_id_effective,
+    find_chapters_by_title_effective,
     find_section_by_chapter_title_effective,
     find_section_by_id_effective,
     find_sections_by_title_effective,
@@ -77,6 +79,7 @@ class SectionTaskCoordinator:
     _TASK_UNIT_QUIZ_PROMPT_VERSION = "task_unit_quiz_v1"
     _QUIZ_SCHEMA_VERSION = "quiz_schema_v1"
     _CHAPTER_ARTIFACT_KEY_PREFIX = "chapter::"
+    _CHAPTER_ARTIFACT_KEY_BY_ID_PREFIX = "chapter_id::"
     def __init__(
         self,
         document_preparation_pipeline: DocumentPreparationPipeline,
@@ -194,15 +197,17 @@ class SectionTaskCoordinator:
     def summarize_chapter(
         self,
         doc_name: str,
-        chapter_title: str,
+        chapter_title: str | None = None,
+        chapter_id: str | None = None,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
         refresh_summary: bool = False,
     ) -> SectionTaskResult:
         """Run chapter-summary task with document-level chapter summary cache reuse."""
-        normalized_chapter_title = chapter_title.strip()
-        if not normalized_chapter_title:
-            return SectionTaskResult.fail("chapter_title cannot be empty")
+        normalized_chapter_id, normalized_chapter_title = self._normalize_chapter_target(
+            chapter_id=chapter_id,
+            chapter_title=chapter_title,
+        )
         resolve_options = self._resolve_task_unit_request_options(
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
@@ -218,16 +223,45 @@ class SectionTaskCoordinator:
             )
 
         try:
-            target_section = self._find_section_by_chapter_title_or_raise(
+            target_chapter = self._find_chapter_or_raise(
                 document=structured_document,
+                chapter_id=normalized_chapter_id,
                 chapter_title=normalized_chapter_title,
             )
-            chapter_key = self._build_chapter_artifact_key(normalized_chapter_title)
+            target_section = self._find_section_for_chapter_or_raise(
+                chapter=target_chapter,
+            )
+            resolved_chapter_title = (
+                (target_chapter.title or target_section.title or target_chapter.chapter_id).strip()
+            )
+            chapter_key = self._build_chapter_artifact_key(target_chapter)
+            legacy_chapter_key = (
+                self._build_legacy_chapter_artifact_key(resolved_chapter_title)
+                if resolved_chapter_title
+                else None
+            )
+            chapter_candidate_keys = self._build_chapter_artifact_candidate_keys(
+                chapter=target_chapter,
+                chapter_title=resolved_chapter_title,
+            )
+            if (
+                normalized_chapter_id is not None
+                and normalized_chapter_title is not None
+                and normalized_chapter_title != resolved_chapter_title
+            ):
+                print(
+                    "SectionTaskCoordinator#chapter_target_title_ignored:",
+                    f"doc_name={doc_name}",
+                    f"chapter_id={normalized_chapter_id}",
+                    f"request_chapter_title={normalized_chapter_title}",
+                    f"resolved_chapter_title={resolved_chapter_title}",
+                )
             if (
                 not refresh_summary
                 and self._is_chapter_summary_cache_valid(
-                    chapter_key=chapter_key,
-                    chapter_title=normalized_chapter_title,
+                    chapter_keys=chapter_candidate_keys,
+                    chapter_id=target_chapter.chapter_id,
+                    chapter_title=resolved_chapter_title,
                     source_section=target_section,
                     document=structured_document,
                     document_profile=document_profile,
@@ -237,13 +271,14 @@ class SectionTaskCoordinator:
             ):
                 cached_summary = self._get_chapter_summary_artifact(
                     document=structured_document,
-                    chapter_key=chapter_key,
+                    chapter_keys=chapter_candidate_keys,
                 )
                 assert cached_summary is not None
                 print(
                     "SectionTaskCoordinator#chapter_summary_cache_hit:",
                     f"doc_name={doc_name}",
-                    f"chapter_title={normalized_chapter_title}",
+                    f"chapter_title={resolved_chapter_title}",
+                    f"chapter_id={target_chapter.chapter_id}",
                     f"section_id={target_section.section_id}",
                 )
                 return SectionTaskResult.ok(cached_summary.content, cache_hit=True)
@@ -276,8 +311,10 @@ class SectionTaskCoordinator:
                 prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
                 scope="chapter",
                 source_task_unit_id=resolved_task_unit.task_unit.unit_id,
-                chapter_title=normalized_chapter_title,
+                chapter_title=resolved_chapter_title,
+                chapter_id=target_chapter.chapter_id,
                 chapter_key=chapter_key,
+                legacy_chapter_key=legacy_chapter_key,
             )
             self.document_artifact_repository.update_chapter_summary_artifact(
                 doc_name=doc_name,
@@ -287,7 +324,8 @@ class SectionTaskCoordinator:
             print(
                 "SectionTaskCoordinator#chapter_summary_cache_write:",
                 f"doc_name={doc_name}",
-                f"chapter_title={normalized_chapter_title}",
+                f"chapter_title={resolved_chapter_title}",
+                f"chapter_id={target_chapter.chapter_id}",
                 f"chapter_key={chapter_key}",
             )
             return SectionTaskResult.ok(summary_result.payload, cache_hit=False)
@@ -389,15 +427,17 @@ class SectionTaskCoordinator:
     def generate_chapter_quiz(
         self,
         doc_name: str,
-        chapter_title: str,
+        chapter_title: str | None = None,
+        chapter_id: str | None = None,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
         refresh_quiz: bool = False,
     ) -> SectionTaskResult[list[QuizQuestion]]:
         """Run chapter-quiz task with document-level chapter quiz cache reuse."""
-        normalized_chapter_title = chapter_title.strip()
-        if not normalized_chapter_title:
-            return SectionTaskResult.fail("chapter_title cannot be empty")
+        normalized_chapter_id, normalized_chapter_title = self._normalize_chapter_target(
+            chapter_id=chapter_id,
+            chapter_title=chapter_title,
+        )
         resolve_options = self._resolve_task_unit_request_options(
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
@@ -413,16 +453,45 @@ class SectionTaskCoordinator:
             )
 
         try:
-            target_section = self._find_section_by_chapter_title_or_raise(
+            target_chapter = self._find_chapter_or_raise(
                 document=structured_document,
+                chapter_id=normalized_chapter_id,
                 chapter_title=normalized_chapter_title,
             )
-            chapter_key = self._build_chapter_artifact_key(normalized_chapter_title)
+            target_section = self._find_section_for_chapter_or_raise(
+                chapter=target_chapter,
+            )
+            resolved_chapter_title = (
+                (target_chapter.title or target_section.title or target_chapter.chapter_id).strip()
+            )
+            chapter_key = self._build_chapter_artifact_key(target_chapter)
+            legacy_chapter_key = (
+                self._build_legacy_chapter_artifact_key(resolved_chapter_title)
+                if resolved_chapter_title
+                else None
+            )
+            chapter_candidate_keys = self._build_chapter_artifact_candidate_keys(
+                chapter=target_chapter,
+                chapter_title=resolved_chapter_title,
+            )
+            if (
+                normalized_chapter_id is not None
+                and normalized_chapter_title is not None
+                and normalized_chapter_title != resolved_chapter_title
+            ):
+                print(
+                    "SectionTaskCoordinator#chapter_target_title_ignored:",
+                    f"doc_name={doc_name}",
+                    f"chapter_id={normalized_chapter_id}",
+                    f"request_chapter_title={normalized_chapter_title}",
+                    f"resolved_chapter_title={resolved_chapter_title}",
+                )
             cached_questions = None
             if not refresh_quiz:
                 cached_questions = self._get_valid_cached_chapter_quiz_questions(
-                    chapter_key=chapter_key,
-                    chapter_title=normalized_chapter_title,
+                    chapter_keys=chapter_candidate_keys,
+                    chapter_id=target_chapter.chapter_id,
+                    chapter_title=resolved_chapter_title,
                     source_section=target_section,
                     document=structured_document,
                     document_profile=document_profile,
@@ -433,7 +502,8 @@ class SectionTaskCoordinator:
                 print(
                     "SectionTaskCoordinator#chapter_quiz_cache_hit:",
                     f"doc_name={doc_name}",
-                    f"chapter_title={normalized_chapter_title}",
+                    f"chapter_title={resolved_chapter_title}",
+                    f"chapter_id={target_chapter.chapter_id}",
                     f"chapter_key={chapter_key}",
                 )
                 return SectionTaskResult.ok(cached_questions, cache_hit=True)
@@ -467,8 +537,10 @@ class SectionTaskCoordinator:
                 prompt_version=self._CHAPTER_QUIZ_PROMPT_VERSION,
                 scope="chapter",
                 source_task_unit_id=resolved_task_unit.task_unit.unit_id,
-                chapter_title=normalized_chapter_title,
+                chapter_title=resolved_chapter_title,
+                chapter_id=target_chapter.chapter_id,
                 chapter_key=chapter_key,
+                legacy_chapter_key=legacy_chapter_key,
             )
             self.document_artifact_repository.update_chapter_quiz_artifact(
                 doc_name=doc_name,
@@ -478,7 +550,8 @@ class SectionTaskCoordinator:
             print(
                 "SectionTaskCoordinator#chapter_quiz_cache_write:",
                 f"doc_name={doc_name}",
-                f"chapter_title={normalized_chapter_title}",
+                f"chapter_title={resolved_chapter_title}",
+                f"chapter_id={target_chapter.chapter_id}",
                 f"chapter_key={chapter_key}",
             )
             return SectionTaskResult.ok(quiz_result.payload, cache_hit=False)
@@ -894,33 +967,57 @@ class SectionTaskCoordinator:
             return {}
 
         chapter_availability: dict[str, ArtifactAvailabilityDTO] = {}
-        for chapter_key, chapter_artifacts in document_artifacts.chapter_artifacts.items():
-            chapter_title = chapter_key
-            if chapter_key.startswith(self._CHAPTER_ARTIFACT_KEY_PREFIX):
-                chapter_title = chapter_key[len(self._CHAPTER_ARTIFACT_KEY_PREFIX):]
-            source_section = self._find_section_by_title(document=document, title=chapter_title)
-            summary_validity = self._validate_chapter_summary_artifact(
-                chapter_key=chapter_key,
-                chapter_title=chapter_title,
-                source_section=source_section,
+        if not document.chapters:
+            for chapter_key, chapter_artifacts in document_artifacts.chapter_artifacts.items():
+                metadata = {}
+                if chapter_artifacts.summary is not None:
+                    metadata = dict(chapter_artifacts.summary.metadata or {})
+                elif chapter_artifacts.quiz is not None:
+                    metadata = dict(chapter_artifacts.quiz.metadata or {})
+                chapter_title = str(metadata.get("chapter_title") or "")
+                if not chapter_title and chapter_key.startswith(self._CHAPTER_ARTIFACT_KEY_PREFIX):
+                    chapter_title = chapter_key[len(self._CHAPTER_ARTIFACT_KEY_PREFIX):]
+                source_section = self._find_section_by_title(
+                    document=document,
+                    title=chapter_title,
+                )
+                chapter_id = str(metadata.get("chapter_id") or "")
+                summary_validity = self._validate_chapter_summary_artifact(
+                    chapter_keys=[chapter_key],
+                    chapter_id=chapter_id,
+                    chapter_title=chapter_title,
+                    source_section=source_section,
+                    document=document,
+                    document_profile=document_profile,
+                    resolve_options=resolve_options,
+                    prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
+                )
+                quiz_validity, _ = self._validate_chapter_quiz_artifact(
+                    chapter_keys=[chapter_key],
+                    chapter_id=chapter_id,
+                    chapter_title=chapter_title,
+                    source_section=source_section,
+                    document=document,
+                    document_profile=document_profile,
+                    resolve_options=resolve_options,
+                    prompt_version=self._CHAPTER_QUIZ_PROMPT_VERSION,
+                )
+                availability = self._build_artifact_availability_from_validity(
+                    summary_validity=summary_validity,
+                    quiz_validity=quiz_validity,
+                    task_artifacts=chapter_artifacts,
+                )
+                if availability is not None:
+                    chapter_availability[chapter_key] = availability
+            return chapter_availability
+
+        for chapter in document.chapters:
+            chapter_key = self._build_chapter_artifact_key(chapter)
+            availability = self._build_single_chapter_artifact_availability(
+                chapter=chapter,
                 document=document,
                 document_profile=document_profile,
                 resolve_options=resolve_options,
-                prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
-            )
-            quiz_validity, _ = self._validate_chapter_quiz_artifact(
-                chapter_key=chapter_key,
-                chapter_title=chapter_title,
-                source_section=source_section,
-                document=document,
-                document_profile=document_profile,
-                resolve_options=resolve_options,
-                prompt_version=self._CHAPTER_QUIZ_PROMPT_VERSION,
-            )
-            availability = self._build_artifact_availability_from_validity(
-                summary_validity=summary_validity,
-                quiz_validity=quiz_validity,
-                task_artifacts=chapter_artifacts,
             )
             if availability is not None:
                 chapter_availability[chapter_key] = availability
@@ -939,22 +1036,15 @@ class SectionTaskCoordinator:
         if document_artifacts is None:
             return None
 
-        candidate_keys: list[str] = []
-        legacy_chapter_key = chapter.metadata.get("legacy_chapter_key")
-        if isinstance(legacy_chapter_key, str) and legacy_chapter_key.strip():
-            candidate_keys.append(legacy_chapter_key.strip())
-        if chapter.title and chapter.title.strip():
-            candidate_keys.append(self._build_chapter_artifact_key(chapter.title))
-        if chapter.chapter_id.strip():
-            candidate_keys.append(self._build_chapter_artifact_key(chapter.chapter_id))
+        chapter_title = (chapter.title or "").strip()
+        candidate_keys = self._build_chapter_artifact_candidate_keys(
+            chapter=chapter,
+            chapter_title=chapter_title,
+        )
 
-        seen_keys: set[str] = set()
         resolved_chapter_key: str | None = None
         task_artifacts: TaskArtifacts | None = None
         for chapter_key in candidate_keys:
-            if chapter_key in seen_keys:
-                continue
-            seen_keys.add(chapter_key)
             candidate_artifacts = document_artifacts.chapter_artifacts.get(chapter_key)
             if candidate_artifacts is not None:
                 resolved_chapter_key = chapter_key
@@ -963,10 +1053,6 @@ class SectionTaskCoordinator:
         if resolved_chapter_key is None or task_artifacts is None:
             return None
 
-        chapter_title = (
-            (chapter.title or "").strip()
-            or resolved_chapter_key.removeprefix(self._CHAPTER_ARTIFACT_KEY_PREFIX)
-        )
         source_section = self._find_section_by_title(
             document=document,
             title=chapter_title,
@@ -975,7 +1061,8 @@ class SectionTaskCoordinator:
             source_section = chapter.sections[0]
 
         summary_validity = self._validate_chapter_summary_artifact(
-            chapter_key=resolved_chapter_key,
+            chapter_keys=candidate_keys,
+            chapter_id=chapter.chapter_id,
             chapter_title=chapter_title,
             source_section=source_section,
             document=document,
@@ -984,7 +1071,8 @@ class SectionTaskCoordinator:
             prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
         )
         quiz_validity, _ = self._validate_chapter_quiz_artifact(
-            chapter_key=resolved_chapter_key,
+            chapter_keys=candidate_keys,
+            chapter_id=chapter.chapter_id,
             chapter_title=chapter_title,
             source_section=source_section,
             document=document,
@@ -1293,7 +1381,9 @@ class SectionTaskCoordinator:
         scope: str,
         source_task_unit_id: str,
         chapter_title: str | None,
+        chapter_id: str | None = None,
         chapter_key: str | None = None,
+        legacy_chapter_key: str | None = None,
     ) -> SummaryArtifact:
         """Build persisted summary artifact payload."""
         normalized_content = content.strip()
@@ -1304,8 +1394,12 @@ class SectionTaskCoordinator:
         }
         if chapter_title is not None:
             metadata["chapter_title"] = chapter_title
+        if chapter_id is not None:
+            metadata["chapter_id"] = chapter_id
         if chapter_key is not None:
             metadata["chapter_key"] = chapter_key
+        if legacy_chapter_key is not None:
+            metadata["legacy_chapter_key"] = legacy_chapter_key
 
         return SummaryArtifact(
             content=normalized_content,
@@ -1406,7 +1500,9 @@ class SectionTaskCoordinator:
         scope: str,
         source_task_unit_id: str,
         chapter_title: str | None,
+        chapter_id: str | None = None,
         chapter_key: str | None = None,
+        legacy_chapter_key: str | None = None,
     ) -> QuizArtifact:
         """Build persisted quiz artifact payload."""
         metadata: dict[str, str | int | None] = {
@@ -1417,8 +1513,12 @@ class SectionTaskCoordinator:
         }
         if chapter_title is not None:
             metadata["chapter_title"] = chapter_title
+        if chapter_id is not None:
+            metadata["chapter_id"] = chapter_id
         if chapter_key is not None:
             metadata["chapter_key"] = chapter_key
+        if legacy_chapter_key is not None:
+            metadata["legacy_chapter_key"] = legacy_chapter_key
         return self._quiz_artifact_from_questions(
             questions=questions,
             target_section=target_section,
@@ -1559,32 +1659,80 @@ class SectionTaskCoordinator:
         )
 
     @classmethod
-    def _build_chapter_artifact_key(cls, chapter_title: str) -> str:
-        """Build stable chapter artifact key used by document-level chapter_artifacts map."""
+    def _build_chapter_artifact_key(
+        cls,
+        chapter: StructuredChapter | str,
+    ) -> str:
+        """Build chapter artifact key.
+
+        StructuredChapter input -> stable id-based key (preferred).
+        str input -> legacy title-based key (compatibility).
+        """
+        if isinstance(chapter, StructuredChapter):
+            chapter_id = chapter.chapter_id.strip()
+            if not chapter_id:
+                raise ValueError("chapter.chapter_id cannot be empty")
+            return f"{cls._CHAPTER_ARTIFACT_KEY_BY_ID_PREFIX}{chapter_id}"
+
+        normalized_chapter_title = chapter.strip()
+        if not normalized_chapter_title:
+            raise ValueError("chapter_title cannot be empty")
+        return f"{cls._CHAPTER_ARTIFACT_KEY_PREFIX}{normalized_chapter_title}"
+
+    @classmethod
+    def _build_legacy_chapter_artifact_key(cls, chapter_title: str) -> str:
+        """Build legacy title-based chapter artifact key."""
         normalized_chapter_title = chapter_title.strip()
         if not normalized_chapter_title:
             raise ValueError("chapter_title cannot be empty")
         return f"{cls._CHAPTER_ARTIFACT_KEY_PREFIX}{normalized_chapter_title}"
 
+    def _build_chapter_artifact_candidate_keys(
+        self,
+        *,
+        chapter: StructuredChapter,
+        chapter_title: str | None,
+    ) -> list[str]:
+        """Return preferred chapter artifact lookup keys (id-first with legacy fallback)."""
+        candidate_keys: list[str] = [self._build_chapter_artifact_key(chapter)]
+        legacy_chapter_key = chapter.metadata.get("legacy_chapter_key")
+        if isinstance(legacy_chapter_key, str) and legacy_chapter_key.strip():
+            candidate_keys.append(legacy_chapter_key.strip())
+        normalized_chapter_title = (chapter_title or "").strip()
+        if normalized_chapter_title:
+            candidate_keys.append(self._build_legacy_chapter_artifact_key(normalized_chapter_title))
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for key in candidate_keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(key)
+        return deduped
+
     @staticmethod
     def _get_chapter_summary_artifact(
         *,
         document: StructuredDocument,
-        chapter_key: str,
+        chapter_keys: list[str],
     ) -> SummaryArtifact | None:
         """Get document-level chapter summary artifact if present."""
         document_artifacts = document.document_task_artifacts
         if document_artifacts is None:
             return None
-        chapter_artifact = document_artifacts.chapter_artifacts.get(chapter_key)
-        if chapter_artifact is None:
-            return None
-        return chapter_artifact.summary
+        for chapter_key in chapter_keys:
+            chapter_artifact = document_artifacts.chapter_artifacts.get(chapter_key)
+            if chapter_artifact is None:
+                continue
+            if chapter_artifact.summary is not None:
+                return chapter_artifact.summary
+        return None
 
     def _is_chapter_summary_cache_valid(
         self,
         *,
-        chapter_key: str,
+        chapter_keys: list[str],
+        chapter_id: str,
         chapter_title: str,
         source_section: StructuredSection,
         document: StructuredDocument,
@@ -1594,7 +1742,8 @@ class SectionTaskCoordinator:
     ) -> bool:
         """Check whether one document-level chapter summary artifact can be reused safely."""
         validity = self._validate_chapter_summary_artifact(
-            chapter_key=chapter_key,
+            chapter_keys=chapter_keys,
+            chapter_id=chapter_id,
             chapter_title=chapter_title,
             source_section=source_section,
             document=document,
@@ -1607,7 +1756,8 @@ class SectionTaskCoordinator:
     def _validate_chapter_summary_artifact(
         self,
         *,
-        chapter_key: str,
+        chapter_keys: list[str],
+        chapter_id: str,
         chapter_title: str,
         source_section: StructuredSection | None,
         document: StructuredDocument,
@@ -1618,7 +1768,7 @@ class SectionTaskCoordinator:
         """Validate document-level chapter summary artifact against current runtime context."""
         summary = self._get_chapter_summary_artifact(
             document=document,
-            chapter_key=chapter_key,
+            chapter_keys=chapter_keys,
         )
         if summary is None:
             return ArtifactValidityResult.missing()
@@ -1659,9 +1809,13 @@ class SectionTaskCoordinator:
 
         if metadata.get("summary_scope") != "chapter":
             return ArtifactValidityResult.invalid("scope_mismatch")
+        metadata_chapter_id = (metadata.get("chapter_id") or "").strip()
+        if metadata_chapter_id and metadata_chapter_id != chapter_id:
+            return ArtifactValidityResult.invalid("chapter_id_mismatch")
         if (metadata.get("chapter_title") or "") != chapter_title:
             return ArtifactValidityResult.invalid("chapter_title_mismatch")
-        if (metadata.get("chapter_key") or "") != chapter_key:
+        metadata_chapter_key = (metadata.get("chapter_key") or "").strip()
+        if metadata_chapter_key and metadata_chapter_key not in chapter_keys:
             return ArtifactValidityResult.invalid("chapter_key_mismatch")
         if metadata_source_section_id and metadata_source_section_id != resolved_source_section.section_id:
             return ArtifactValidityResult.invalid("section_id_mismatch")
@@ -1671,21 +1825,25 @@ class SectionTaskCoordinator:
     def _get_chapter_quiz_artifact(
         *,
         document: StructuredDocument,
-        chapter_key: str,
+        chapter_keys: list[str],
     ) -> QuizArtifact | None:
         """Get document-level chapter quiz artifact if present."""
         document_artifacts = document.document_task_artifacts
         if document_artifacts is None:
             return None
-        chapter_artifact = document_artifacts.chapter_artifacts.get(chapter_key)
-        if chapter_artifact is None:
-            return None
-        return chapter_artifact.quiz
+        for chapter_key in chapter_keys:
+            chapter_artifact = document_artifacts.chapter_artifacts.get(chapter_key)
+            if chapter_artifact is None:
+                continue
+            if chapter_artifact.quiz is not None:
+                return chapter_artifact.quiz
+        return None
 
     def _get_valid_cached_chapter_quiz_questions(
         self,
         *,
-        chapter_key: str,
+        chapter_keys: list[str],
+        chapter_id: str,
         chapter_title: str,
         source_section: StructuredSection,
         document: StructuredDocument,
@@ -1695,7 +1853,8 @@ class SectionTaskCoordinator:
     ) -> list[QuizQuestion] | None:
         """Return parsed cached chapter-quiz questions when chapter-level artifact is valid."""
         validity, parsed = self._validate_chapter_quiz_artifact(
-            chapter_key=chapter_key,
+            chapter_keys=chapter_keys,
+            chapter_id=chapter_id,
             chapter_title=chapter_title,
             source_section=source_section,
             document=document,
@@ -1710,7 +1869,8 @@ class SectionTaskCoordinator:
     def _validate_chapter_quiz_artifact(
         self,
         *,
-        chapter_key: str,
+        chapter_keys: list[str],
+        chapter_id: str,
         chapter_title: str,
         source_section: StructuredSection | None,
         document: StructuredDocument,
@@ -1721,7 +1881,7 @@ class SectionTaskCoordinator:
         """Validate document-level chapter quiz artifact and parse cached payload."""
         quiz = self._get_chapter_quiz_artifact(
             document=document,
-            chapter_key=chapter_key,
+            chapter_keys=chapter_keys,
         )
         if quiz is None:
             return ArtifactValidityResult.missing(), None
@@ -1763,9 +1923,13 @@ class SectionTaskCoordinator:
             return ArtifactValidityResult.invalid("quiz_schema_version_mismatch"), None
         if metadata.get("quiz_scope") != "chapter":
             return ArtifactValidityResult.invalid("scope_mismatch"), None
+        metadata_chapter_id = (metadata.get("chapter_id") or "").strip()
+        if metadata_chapter_id and metadata_chapter_id != chapter_id:
+            return ArtifactValidityResult.invalid("chapter_id_mismatch"), None
         if (metadata.get("chapter_title") or "") != chapter_title:
             return ArtifactValidityResult.invalid("chapter_title_mismatch"), None
-        if (metadata.get("chapter_key") or "") != chapter_key:
+        metadata_chapter_key = (metadata.get("chapter_key") or "").strip()
+        if metadata_chapter_key and metadata_chapter_key not in chapter_keys:
             return ArtifactValidityResult.invalid("chapter_key_mismatch"), None
         if metadata_source_section_id and metadata_source_section_id != resolved_source_section.section_id:
             return ArtifactValidityResult.invalid("section_id_mismatch"), None
@@ -1906,6 +2070,98 @@ class SectionTaskCoordinator:
         raise ValueError(
             f"chapter_title '{normalized_chapter_title}' not found in document '{document.title}'"
         )
+
+    @staticmethod
+    def _normalize_chapter_target(
+        *,
+        chapter_id: str | None,
+        chapter_title: str | None,
+    ) -> tuple[str | None, str | None]:
+        """Normalize chapter target identity and enforce at-least-one rule."""
+        normalized_chapter_id = (chapter_id or "").strip() or None
+        normalized_chapter_title = (chapter_title or "").strip() or None
+        if normalized_chapter_id is None and normalized_chapter_title is None:
+            raise ValueError("chapter_id or chapter_title must be provided")
+        return normalized_chapter_id, normalized_chapter_title
+
+    @staticmethod
+    def _find_chapter_or_raise(
+        *,
+        document: StructuredDocument,
+        chapter_id: str | None,
+        chapter_title: str | None,
+    ) -> StructuredChapter:
+        """Resolve one chapter by chapter_id first, then chapter_title as fallback."""
+        normalized_chapter_id = (chapter_id or "").strip() or None
+        normalized_chapter_title = (chapter_title or "").strip() or None
+        if normalized_chapter_id is None and normalized_chapter_title is None:
+            raise ValueError("chapter_id or chapter_title must be provided")
+
+        if normalized_chapter_id is not None:
+            resolved = find_chapter_by_id_effective(document, normalized_chapter_id)
+            if resolved is None:
+                raise ValueError(
+                    f"chapter_id '{normalized_chapter_id}' not found in document '{document.document_id}'"
+                )
+            return resolved
+
+        assert normalized_chapter_title is not None
+        matched_chapters = find_chapters_by_title_effective(
+            document,
+            normalized_chapter_title,
+        )
+        if len(matched_chapters) > 1:
+            raise ValueError(
+                f"ambiguous chapter title: '{normalized_chapter_title}' matched {len(matched_chapters)} chapters"
+            )
+        if len(matched_chapters) == 1:
+            return matched_chapters[0]
+
+        resolved_section = find_section_by_chapter_title_effective(
+            document,
+            normalized_chapter_title,
+            allow_legacy_fallback=True,
+        )
+        if resolved_section is not None:
+            synthetic_chapter_id = (
+                (resolved_section.parent_chapter_id or "").strip()
+                or f"legacy::{resolved_section.section_id}"
+            )
+            return StructuredChapter(
+                chapter_id=synthetic_chapter_id,
+                title=resolved_section.title,
+                level=max(1, int(resolved_section.level)),
+                chapter_role=(
+                    None
+                    if resolved_section.section_role is None
+                    else resolved_section.section_role.value
+                ),
+                sections=[resolved_section],
+                metadata={"synthetic_from_legacy": True},
+            )
+
+        raise ValueError(
+            f"chapter_title '{normalized_chapter_title}' not found in document '{document.title}'"
+        )
+
+    @staticmethod
+    def _find_section_for_chapter_or_raise(
+        *,
+        chapter: StructuredChapter,
+    ) -> StructuredSection:
+        """Resolve task target section for one chapter, preferring chapter_body."""
+        if not chapter.sections:
+            raise ValueError(
+                f"chapter has no sections: chapter_id='{chapter.chapter_id}' title='{chapter.title}'"
+            )
+        chapter_body_sections = [
+            section
+            for section in chapter.sections
+            if (section.section_kind or "").strip() == "chapter_body"
+        ]
+        if chapter_body_sections:
+            return chapter_body_sections[0]
+        return chapter.sections[0]
 
     def _resolve_task_unit_for_section_id_from_persisted_layout(
         self,

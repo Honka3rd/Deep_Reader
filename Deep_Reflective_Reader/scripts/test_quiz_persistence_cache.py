@@ -299,7 +299,13 @@ def test_quiz_persistence_cache_flow() -> None:
             semantic_top_k_candidates_max=20,
         )
 
-        chapter_key = SectionTaskCoordinator._build_chapter_artifact_key("第一章")
+        loaded_for_key = repository.load_document("quiz-doc")
+        chapter_for_key = coordinator._find_chapter_or_raise(
+            document=loaded_for_key,
+            chapter_id=None,
+            chapter_title="第一章",
+        )
+        chapter_key = coordinator._build_chapter_artifact_key(chapter_for_key)
 
         # A. section quiz remains section-level
         quiz_1 = coordinator.generate_section_quiz(
@@ -679,7 +685,12 @@ def test_quiz_persistence_cache_flow() -> None:
         )
         _assert(section_second.success, "section-second quiz on section-1 should succeed")
         reverse_doc = repository.load_document("quiz-doc")
-        chapter_key_2 = SectionTaskCoordinator._build_chapter_artifact_key("第二章")
+        chapter_for_key_2 = coordinator._find_chapter_or_raise(
+            document=reverse_doc,
+            chapter_id=None,
+            chapter_title="第二章",
+        )
+        chapter_key_2 = coordinator._build_chapter_artifact_key(chapter_for_key_2)
         _assert(
             reverse_doc.document_task_artifacts.chapter_artifacts.get(chapter_key_2) is not None,
             "reverse order should keep chapter-level quiz for 第二章",

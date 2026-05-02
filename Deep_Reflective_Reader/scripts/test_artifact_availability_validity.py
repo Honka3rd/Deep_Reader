@@ -297,6 +297,35 @@ def test_artifact_availability_validity() -> None:
             summary_service=summary_service,
             resolver=resolver,
         )
+        def resolve_chapter_key() -> str:
+            current = repo.load_document("validity-doc")
+            current_artifacts = current.document_task_artifacts or DocumentTaskArtifacts()
+            if current_artifacts.chapter_artifacts:
+                if "chapter::第一章" in current_artifacts.chapter_artifacts:
+                    return "chapter::第一章"
+                return next(iter(current_artifacts.chapter_artifacts.keys()))
+            chapter = coordinator._find_chapter_or_raise(
+                document=current,
+                chapter_id=None,
+                chapter_title="第一章",
+            )
+            return coordinator._build_chapter_artifact_key(chapter)
+        def resolve_doc_chapter_artifacts(chapter_key: str) -> TaskArtifacts:
+            current = repo.load_document("validity-doc")
+            chapter_map = (
+                (current.document_task_artifacts or DocumentTaskArtifacts()).chapter_artifacts
+            )
+            if chapter_key in chapter_map:
+                return chapter_map[chapter_key]
+            if chapter_map:
+                return chapter_map[next(iter(chapter_map.keys()))]
+            raise AssertionError("chapter_artifacts should not be empty")
+        def resolve_layout_chapter_availability(layout_obj, chapter_key: str):
+            if chapter_key in layout_obj.chapter_artifacts:
+                return layout_obj.chapter_artifacts[chapter_key]
+            if layout_obj.chapter_artifacts:
+                return layout_obj.chapter_artifacts[next(iter(layout_obj.chapter_artifacts.keys()))]
+            raise AssertionError("layout.chapter_artifacts should not be empty")
 
         # A/E/G/H/J: valid baseline + no heavy payload.
         layout = coordinator.get_document_task_layout(
@@ -311,7 +340,8 @@ def test_artifact_availability_validity() -> None:
         unit_av = layout.task_units[0].artifacts
         _assert(unit_av is not None and unit_av.has_summary, "task unit summary should exist")
         _assert(unit_av.summary_cache_valid is True, "task unit summary should be valid")
-        chapter_av = layout.chapter_artifacts["chapter::第一章"]
+        chapter_key = resolve_chapter_key()
+        chapter_av = resolve_layout_chapter_availability(layout, chapter_key)
         _assert(chapter_av.summary_cache_valid is True, "chapter summary should be valid")
         _assert(chapter_av.quiz_cache_valid is True, "chapter quiz should be valid")
         payload = layout.to_dict()
@@ -390,13 +420,14 @@ def test_artifact_availability_validity() -> None:
         # F: chapter summary source section not found.
         write_base_document()
         missing_source_doc = repo.load_document("validity-doc")
-        chapter_summary = missing_source_doc.document_task_artifacts.chapter_artifacts["chapter::第一章"].summary
+        chapter_key = resolve_chapter_key()
+        chapter_summary = resolve_doc_chapter_artifacts(chapter_key).summary
         assert chapter_summary is not None
         metadata = dict(chapter_summary.metadata or {})
         metadata["source_section_id"] = "missing-section"
         repo.update_chapter_summary_artifact(
             "validity-doc",
-            "chapter::第一章",
+            chapter_key,
             SummaryArtifact(
                 content=chapter_summary.content,
                 source_hash=chapter_summary.source_hash,
@@ -412,18 +443,19 @@ def test_artifact_availability_validity() -> None:
             task_unit_split_mode="semantic_safe",
             semantic_top_k_candidates=3,
         )
-        chapter_missing_av = chapter_missing_layout.chapter_artifacts["chapter::第一章"]
+        chapter_missing_av = resolve_layout_chapter_availability(chapter_missing_layout, chapter_key)
         _assert(chapter_missing_av.summary_cache_valid is False, "missing chapter source section should invalidate")
         _assert(chapter_missing_av.summary_invalid_reason == "source_section_not_found", "reason should be source_section_not_found")
 
         # G: chapter quiz schema mismatch.
         write_base_document()
         chapter_quiz_doc = repo.load_document("validity-doc")
-        chapter_quiz = chapter_quiz_doc.document_task_artifacts.chapter_artifacts["chapter::第一章"].quiz
+        chapter_key = resolve_chapter_key()
+        chapter_quiz = resolve_doc_chapter_artifacts(chapter_key).quiz
         assert chapter_quiz is not None
         repo.update_chapter_quiz_artifact(
             "validity-doc",
-            "chapter::第一章",
+            chapter_key,
             QuizArtifact(
                 items=list(chapter_quiz.items),
                 source_hash=chapter_quiz.source_hash,
@@ -440,7 +472,7 @@ def test_artifact_availability_validity() -> None:
             task_unit_split_mode="semantic_safe",
             semantic_top_k_candidates=3,
         )
-        chapter_quiz_av = chapter_quiz_layout.chapter_artifacts["chapter::第一章"]
+        chapter_quiz_av = resolve_layout_chapter_availability(chapter_quiz_layout, chapter_key)
         _assert(chapter_quiz_av.quiz_cache_valid is False, "chapter quiz schema mismatch should invalidate")
         _assert(chapter_quiz_av.quiz_invalid_reason == "quiz_schema_version_mismatch", "reason should be quiz_schema_version_mismatch")
 

@@ -265,7 +265,7 @@ def test_summary_persistence_cache_flow() -> None:
             enhanced_parse_trigger_evaluator=_FakeEnhancedParseEvaluator(),
             semantic_top_k_candidates_max=20,
         )
-        chapter_key = coordinator._build_chapter_artifact_key("第一章")
+        chapter_key: str | None = None
 
         # A. first call writes section summary cache
         result_1 = coordinator.summarize_section(
@@ -384,6 +384,12 @@ def test_summary_persistence_cache_flow() -> None:
         _assert(chapter_1.cache_hit is False, "first summarize_chapter should be cache miss")
         _assert(fake_summary_service.calls == 6, "first chapter call should invoke summary service")
         updated_chapter = repository.load_document("summary-doc")
+        chapter_for_key = coordinator._find_chapter_or_raise(
+            document=updated_chapter,
+            chapter_id=None,
+            chapter_title="第一章",
+        )
+        chapter_key = coordinator._build_chapter_artifact_key(chapter_for_key)
         section0_after_chapter = _find_section(updated_chapter, "section-0")
         _assert(
             updated_chapter.document_task_artifacts is not None,
