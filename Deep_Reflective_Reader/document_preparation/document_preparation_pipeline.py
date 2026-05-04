@@ -267,8 +267,8 @@ class DocumentPreparationPipeline:
         storage_config = StructuredDocumentStorageConfig(namespace=doc_name)
         structured_document_path = storage_config.get_raw_document_path()
         try:
-            # TODO: Pass document_profile.structure_profile into structured parser
-            # once StructureProfile is implemented.
+            # TODO: Pass document_profile.parser_metadata hints into structured parser
+            # once parser-side consumption is implemented.
             _ = document_profile
             should_rebuild = force_rebuild or parser_mode == SectionSplitterMode.LLM_ENHANCED
             if storage_config.exists() and not should_rebuild:
@@ -388,6 +388,10 @@ class DocumentPreparationPipeline:
 
         try:
             if self.profile_store.exists(config) and not force_rebuild:
+                print(
+                    "DocumentPreparationPipeline#profile_cache_hit",
+                    f"doc={doc_name}",
+                )
                 try:
                     profile = self.profile_store.load(config)
                     return True, profile
@@ -397,15 +401,34 @@ class DocumentPreparationPipeline:
                     )
                     self.profile_store.clear(config)
             elif self.profile_store.exists(config) and force_rebuild:
+                print(
+                    "DocumentPreparationPipeline#profile_force_rebuild_clear",
+                    f"doc={doc_name}",
+                )
                 self.profile_store.clear(config)
 
+            print(
+                "DocumentPreparationPipeline#profile_build_start",
+                f"doc={doc_name}",
+            )
             profile = self.profile_builder.build(
                 text=raw_text,
                 document_language=language.strip().lower(),
             )
             self.profile_store.save(profile, config)
+            print(
+                "DocumentPreparationPipeline#profile_build_success",
+                f"doc={doc_name}",
+                f"has_parser_metadata={profile.parser_metadata is not None}",
+                f"has_structure_profile={profile.structure_profile is not None}",
+            )
             return True, profile
         except Exception as error:
+            print(
+                "DocumentPreparationPipeline#profile_build_failed",
+                f"doc={doc_name}",
+                f"error={error}",
+            )
             assets.errors.append(f"prepare_profile_failed:{doc_name}:{error}")
             return False, None
 

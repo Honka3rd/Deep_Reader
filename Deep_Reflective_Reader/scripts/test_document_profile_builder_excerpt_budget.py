@@ -3,13 +3,32 @@
 
 from __future__ import annotations
 
-from config.app_DI_config import (
-    ProfilePromptPolicyConfig,
-    PromptTextNormalizationConfig,
-)
+from dataclasses import dataclass
 from llm.llm_model_capabilities import ENDPOINT_KIND_RESPONSES, LLMModelCapabilities
 from llm.llm_provider import LLMProvider
 from profile.document_profile_builder import DocumentProfileBuilder
+
+
+@dataclass(frozen=True)
+class _PromptTextNormalizationConfig:
+    default_excerpt_chars: int
+    min_excerpt_chars: int
+    max_excerpt_chars_hard_cap: int
+    chars_per_token: int
+
+
+@dataclass(frozen=True)
+class _ProfilePromptPolicyConfig:
+    topic_prompt_overhead_tokens: int
+    summary_prompt_overhead_tokens: int
+    structure_prompt_overhead_tokens: int
+    topic_excerpt_token_utilization_ratio: float
+    summary_excerpt_token_utilization_ratio: float
+    structure_excerpt_token_utilization_ratio: float
+    evidence_head_chars: int
+    evidence_tail_chars: int
+    evidence_middle_chars: int
+    evidence_heading_lines_limit: int
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -58,8 +77,8 @@ def _extract_document_excerpt(prompt: str) -> str:
     return prompt[start + len(marker) :].rstrip("\n")
 
 
-def _build_prompt_text_normalization() -> PromptTextNormalizationConfig:
-    return PromptTextNormalizationConfig(
+def _build_prompt_text_normalization() -> _PromptTextNormalizationConfig:
+    return _PromptTextNormalizationConfig(
         default_excerpt_chars=16_000,
         min_excerpt_chars=2_000,
         max_excerpt_chars_hard_cap=400_000,
@@ -67,8 +86,8 @@ def _build_prompt_text_normalization() -> PromptTextNormalizationConfig:
     )
 
 
-def _build_profile_prompt_policy() -> ProfilePromptPolicyConfig:
-    return ProfilePromptPolicyConfig(
+def _build_profile_prompt_policy() -> _ProfilePromptPolicyConfig:
+    return _ProfilePromptPolicyConfig(
         topic_prompt_overhead_tokens=700,
         summary_prompt_overhead_tokens=900,
         structure_prompt_overhead_tokens=1_100,
@@ -133,3 +152,23 @@ if __name__ == "__main__":
     test_summary_excerpt_uses_model_capability_budget()
     test_excerpt_fallback_when_capability_unavailable()
     print("test_document_profile_builder_excerpt_budget: ok")
+@dataclass(frozen=True)
+class _PromptTextNormalizationConfig:
+    default_excerpt_chars: int
+    min_excerpt_chars: int
+    max_excerpt_chars_hard_cap: int
+    chars_per_token: int
+
+
+@dataclass(frozen=True)
+class _ProfilePromptPolicyConfig:
+    topic_prompt_overhead_tokens: int
+    summary_prompt_overhead_tokens: int
+    structure_prompt_overhead_tokens: int
+    topic_excerpt_token_utilization_ratio: float
+    summary_excerpt_token_utilization_ratio: float
+    structure_excerpt_token_utilization_ratio: float
+    evidence_head_chars: int
+    evidence_tail_chars: int
+    evidence_middle_chars: int
+    evidence_heading_lines_limit: int

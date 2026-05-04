@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
 from document_preparation.preparation_mode import PreparationMode
+from language.language_code import LanguageCode
 from profile.document_profile import DocumentProfile
 
 
@@ -119,7 +120,7 @@ class _FakeProfileBuilder:
         return DocumentProfile(
             topic="essay",
             summary=f"summary for {text[:8]}",
-            document_language=document_language,
+            document_language=LanguageCode(document_language),
         )
 
 
@@ -146,7 +147,7 @@ class _FakeProfileStore:
         return self.loaded_profile or DocumentProfile(
             topic="loaded",
             summary="loaded-summary",
-            document_language="zh",
+            document_language=LanguageCode.ZH,
         )
 
     def clear(self, config) -> None:
@@ -208,7 +209,11 @@ class _OrderTrackingPipeline(DocumentPreparationPipeline):
         if self.profile_should_fail:
             assets.errors.append("prepare_profile_failed:mock_failure")
             return False, None
-        return True, DocumentProfile(topic="essay", summary="ok", document_language="zh")
+        return True, DocumentProfile(
+            topic="essay",
+            summary="ok",
+            document_language=LanguageCode.ZH,
+        )
 
     def _prepare_structured_document(
         self,

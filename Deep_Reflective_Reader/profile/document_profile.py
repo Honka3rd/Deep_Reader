@@ -1,28 +1,243 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
+
+from language.language_code import LanguageCode, LanguageCodeResolver
+
+
+class ScriptSystem(StrEnum):
+    LATIN = "latin"
+    SIMPLIFIED_CHINESE = "simplified_chinese"
+    TRADITIONAL_CHINESE = "traditional_chinese"
+    JAPANESE = "japanese"
+    KOREAN = "korean"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
+class TextForm(StrEnum):
+    NOVEL = "novel"
+    ESSAY = "essay"
+    ACADEMIC_PAPER = "academic_paper"
+    TECHNICAL_DOCUMENT = "technical_document"
+    FINANCIAL_REPORT = "financial_report"
+    LEGAL_DOCUMENT = "legal_document"
+    NEWS_ARTICLE = "news_article"
+    MANUAL = "manual"
+    DIALOGUE_SCRIPT = "dialogue_script"
+    POETRY = "poetry"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
+class DiscourseMode(StrEnum):
+    NARRATIVE = "narrative"
+    EXPOSITORY = "expository"
+    ARGUMENTATIVE = "argumentative"
+    INSTRUCTIONAL = "instructional"
+    DIALOGUE = "dialogue"
+    REFERENCE = "reference"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
+class LineBreakQuality(StrEnum):
+    PARAGRAPH_LIKE = "paragraph_like"
+    HARD_WRAPPED = "hard_wrapped"
+    LINE_PER_SENTENCE = "line_per_sentence"
+    BROKEN_OCR = "broken_ocr"
+    MINIMAL_LINE_BREAKS = "minimal_line_breaks"
+    UNKNOWN = "unknown"
+
+
+class OCRNoiseLevel(StrEnum):
+    NONE = "none"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    UNKNOWN = "unknown"
+
+
+class DialogueDensity(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    UNKNOWN = "unknown"
+
+
+class LikelihoodLevel(StrEnum):
+    NONE = "none"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    UNKNOWN = "unknown"
+
+
+class DocumentStructureShape(StrEnum):
+    CHAPTER_ONLY = "chapter_only"
+    PART_CHAPTER = "part_chapter"
+    CHAPTER_SECTION = "chapter_section"
+    ESSAY_SECTIONS = "essay_sections"
+    FLAT_LONG_TEXT = "flat_long_text"
+    OVER_FRAGMENTED = "over_fragmented"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
+class HeadingStyle(StrEnum):
+    CHINESE_CHAPTER_NUMBERS = "chinese_chapter_numbers"
+    ENGLISH_CHAPTER_WORDS = "english_chapter_words"
+    ROMAN_NUMERAL_PARTS = "roman_numeral_parts"
+    NUMBERED_DECIMAL_SECTIONS = "numbered_decimal_sections"
+    NUMBERED_CHINESE_POINTS = "numbered_chinese_points"
+    PLAIN_TITLE_HEADINGS = "plain_title_headings"
+    NONE = "none"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class ParserRelevantMetadata:
+    metadata_version: str = "parser_metadata_v1"
+    script_system: ScriptSystem | None = None
+    text_form: TextForm | None = None
+    discourse_mode: DiscourseMode | None = None
+    line_break_quality: LineBreakQuality | None = None
+    ocr_noise_level: OCRNoiseLevel | None = None
+    dialogue_density: DialogueDensity | None = None
+    toc_likelihood: LikelihoodLevel | None = None
+    front_matter_likelihood: LikelihoodLevel | None = None
+    terminal_region_likelihood: LikelihoodLevel | None = None
+    document_structure_shape: DocumentStructureShape | None = None
+    likely_heading_style: HeadingStyle | None = None
+    title_uniqueness_risk: LikelihoodLevel | None = None
+    confidence: float | None = None
+    notes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "metadata_version": self.metadata_version,
+            "script_system": _enum_value(self.script_system),
+            "text_form": _enum_value(self.text_form),
+            "discourse_mode": _enum_value(self.discourse_mode),
+            "line_break_quality": _enum_value(self.line_break_quality),
+            "ocr_noise_level": _enum_value(self.ocr_noise_level),
+            "dialogue_density": _enum_value(self.dialogue_density),
+            "toc_likelihood": _enum_value(self.toc_likelihood),
+            "front_matter_likelihood": _enum_value(self.front_matter_likelihood),
+            "terminal_region_likelihood": _enum_value(self.terminal_region_likelihood),
+            "document_structure_shape": _enum_value(self.document_structure_shape),
+            "likely_heading_style": _enum_value(self.likely_heading_style),
+            "title_uniqueness_risk": _enum_value(self.title_uniqueness_risk),
+            "confidence": self.confidence,
+            "notes": list(self.notes),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ParserRelevantMetadata":
+        return cls(
+            metadata_version=(
+                _optional_text(payload.get("metadata_version")) or "parser_metadata_v1"
+            ),
+            script_system=_optional_enum(
+                payload.get("script_system"),
+                ScriptSystem,
+                ScriptSystem.UNKNOWN,
+            ),
+            text_form=_optional_enum(
+                payload.get("text_form"),
+                TextForm,
+                TextForm.UNKNOWN,
+            ),
+            discourse_mode=_optional_enum(
+                payload.get("discourse_mode"),
+                DiscourseMode,
+                DiscourseMode.UNKNOWN,
+            ),
+            line_break_quality=_optional_enum(
+                payload.get("line_break_quality"),
+                LineBreakQuality,
+                LineBreakQuality.UNKNOWN,
+            ),
+            ocr_noise_level=_optional_enum(
+                payload.get("ocr_noise_level"),
+                OCRNoiseLevel,
+                OCRNoiseLevel.UNKNOWN,
+            ),
+            dialogue_density=_optional_enum(
+                payload.get("dialogue_density"),
+                DialogueDensity,
+                DialogueDensity.UNKNOWN,
+            ),
+            toc_likelihood=_optional_enum(
+                payload.get("toc_likelihood"),
+                LikelihoodLevel,
+                LikelihoodLevel.UNKNOWN,
+            ),
+            front_matter_likelihood=_optional_enum(
+                payload.get("front_matter_likelihood"),
+                LikelihoodLevel,
+                LikelihoodLevel.UNKNOWN,
+            ),
+            terminal_region_likelihood=_optional_enum(
+                payload.get("terminal_region_likelihood"),
+                LikelihoodLevel,
+                LikelihoodLevel.UNKNOWN,
+            ),
+            document_structure_shape=_optional_enum(
+                payload.get("document_structure_shape"),
+                DocumentStructureShape,
+                DocumentStructureShape.UNKNOWN,
+            ),
+            likely_heading_style=_optional_enum(
+                payload.get("likely_heading_style"),
+                HeadingStyle,
+                HeadingStyle.UNKNOWN,
+            ),
+            title_uniqueness_risk=_optional_enum(
+                payload.get("title_uniqueness_risk"),
+                LikelihoodLevel,
+                LikelihoodLevel.UNKNOWN,
+            ),
+            confidence=_optional_confidence(payload.get("confidence")),
+            notes=_string_list(payload.get("notes")),
+        )
 
 
 @dataclass(frozen=True)
 class DocumentProfile:
     """Document profile data used for prompt conditioning."""
+
     topic: str
     summary: str
-    document_language: str
+    document_language: LanguageCode
+    parser_metadata: ParserRelevantMetadata | None = None
+    # legacy compatibility only
     structure_profile: "DocumentStructureProfile | None" = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "topic": self.topic,
             "summary": self.summary,
-            "document_language": self.document_language,
+            "document_language": self.document_language.value,
         }
+        if self.parser_metadata is not None:
+            payload["parser_metadata"] = self.parser_metadata.to_dict()
         if self.structure_profile is not None:
             payload["structure_profile"] = self.structure_profile.to_dict()
         return payload
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "DocumentProfile":
+        parser_metadata_payload = payload.get("parser_metadata")
         structure_profile_payload = payload.get("structure_profile")
+        parser_metadata = (
+            None
+            if not isinstance(parser_metadata_payload, dict)
+            else ParserRelevantMetadata.from_dict(parser_metadata_payload)
+        )
         structure_profile = (
             None
             if not isinstance(structure_profile_payload, dict)
@@ -31,269 +246,256 @@ class DocumentProfile:
         return cls(
             topic=str(payload.get("topic") or "").strip(),
             summary=str(payload.get("summary") or "").strip(),
-            document_language=str(payload.get("document_language") or "").strip(),
+            document_language=LanguageCodeResolver.resolve(payload.get("document_language")),
+            parser_metadata=parser_metadata,
             structure_profile=structure_profile,
         )
 
 
+# -----------------------------------------------------------------------------
+# Legacy compatibility model: keep old structure_profile schema loadable.
+# -----------------------------------------------------------------------------
+
+
 @dataclass(frozen=True)
-class StructureHeadingPattern:
-    exists: bool
-    pattern_type: str | None = None
-    description: str | None = None
-    examples: list[str] = field(default_factory=list)
-    confidence: float | None = None
-    suggested_regex: str | None = None
+class StructureCharRange:
+    start_char: int | None = None
+    end_char: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "exists": self.exists,
-            "pattern_type": self.pattern_type,
-            "description": self.description,
-            "examples": list(self.examples),
-            "confidence": self.confidence,
-            "suggested_regex": self.suggested_regex,
+            "start_char": self.start_char,
+            "end_char": self.end_char,
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "StructureHeadingPattern":
+    def from_dict(cls, payload: dict[str, Any]) -> "StructureCharRange":
         return cls(
-            exists=bool(payload.get("exists")),
-            pattern_type=_optional_text(payload.get("pattern_type")),
-            description=_optional_text(payload.get("description")),
-            examples=_string_list(payload.get("examples")),
-            confidence=_optional_confidence(payload.get("confidence")),
-            suggested_regex=_optional_text(payload.get("suggested_regex")),
+            start_char=_optional_int(payload.get("start_char")),
+            end_char=_optional_int(payload.get("end_char")),
         )
 
 
 @dataclass(frozen=True)
-class StructureHeadingPatterns:
-    chapter: StructureHeadingPattern | None = None
-    section: StructureHeadingPattern | None = None
-    front_matter: StructureHeadingPattern | None = None
-    appendix: StructureHeadingPattern | None = None
-    back_matter: StructureHeadingPattern | None = None
+class StructureRegionHints:
+    exists: bool = False
+    ranges: list[StructureCharRange] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "exists": self.exists,
+            "ranges": [char_range.to_dict() for char_range in self.ranges],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "StructureRegionHints":
+        ranges_payload = payload.get("ranges")
+        ranges: list[StructureCharRange] = []
+        if isinstance(ranges_payload, list):
+            for item in ranges_payload:
+                if isinstance(item, dict):
+                    ranges.append(StructureCharRange.from_dict(item))
+        return cls(
+            exists=bool(payload.get("exists")),
+            ranges=ranges,
+        )
+
+
+@dataclass(frozen=True)
+class StructureRegions:
+    front_matter: StructureRegionHints | None = None
+    back_matter: StructureRegionHints | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "front_matter": (
+                None if self.front_matter is None else self.front_matter.to_dict()
+            ),
+            "back_matter": (
+                None if self.back_matter is None else self.back_matter.to_dict()
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "StructureRegions":
+        return cls(
+            front_matter=_optional_region_hints(payload.get("front_matter")),
+            back_matter=_optional_region_hints(payload.get("back_matter")),
+        )
+
+
+@dataclass(frozen=True)
+class StructureHeadingRule:
+    enabled: bool = False
+    keywords: list[str] = field(default_factory=list)
+    regex_candidates: list[str] = field(default_factory=list)
+    positions: list[int] = field(default_factory=list)
+    line_anchor_window: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "keywords": list(self.keywords),
+            "regex_candidates": list(self.regex_candidates),
+            "positions": list(self.positions),
+            "line_anchor_window": self.line_anchor_window,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "StructureHeadingRule":
+        return cls(
+            enabled=bool(payload.get("enabled")),
+            keywords=_string_list(payload.get("keywords")),
+            regex_candidates=_string_list(payload.get("regex_candidates")),
+            positions=_int_list(payload.get("positions")),
+            line_anchor_window=max(
+                0,
+                _optional_int(payload.get("line_anchor_window")) or 0,
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class StructureHeadingRules:
+    chapter: StructureHeadingRule | None = None
+    section: StructureHeadingRule | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "chapter": None if self.chapter is None else self.chapter.to_dict(),
             "section": None if self.section is None else self.section.to_dict(),
-            "front_matter": (
-                None if self.front_matter is None else self.front_matter.to_dict()
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "StructureHeadingRules":
+        return cls(
+            chapter=_optional_heading_rule(payload.get("chapter")),
+            section=_optional_heading_rule(payload.get("section")),
+        )
+
+
+@dataclass(frozen=True)
+class StructureSplitPolicyHint:
+    prefer_heading_boundaries: bool = True
+    prefer_paragraph_boundaries: bool = True
+    allow_single_newline_as_paragraph: bool = False
+    fallback_mode: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prefer_heading_boundaries": self.prefer_heading_boundaries,
+            "prefer_paragraph_boundaries": self.prefer_paragraph_boundaries,
+            "allow_single_newline_as_paragraph": self.allow_single_newline_as_paragraph,
+            "fallback_mode": self.fallback_mode,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "StructureSplitPolicyHint":
+        return cls(
+            prefer_heading_boundaries=bool(payload.get("prefer_heading_boundaries", True)),
+            prefer_paragraph_boundaries=bool(payload.get("prefer_paragraph_boundaries", True)),
+            allow_single_newline_as_paragraph=bool(
+                payload.get("allow_single_newline_as_paragraph", False)
             ),
-            "appendix": None if self.appendix is None else self.appendix.to_dict(),
-            "back_matter": None if self.back_matter is None else self.back_matter.to_dict(),
-        }
-
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "StructureHeadingPatterns":
-        return cls(
-            chapter=_optional_heading_pattern(payload.get("chapter")),
-            section=_optional_heading_pattern(payload.get("section")),
-            front_matter=_optional_heading_pattern(payload.get("front_matter")),
-            appendix=_optional_heading_pattern(payload.get("appendix")),
-            back_matter=_optional_heading_pattern(payload.get("back_matter")),
-        )
-
-
-@dataclass(frozen=True)
-class StructureRegionHint:
-    exists: bool
-    count_estimate: int | None = None
-    examples: list[str] = field(default_factory=list)
-    confidence: float | None = None
-    notes: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "exists": self.exists,
-            "count_estimate": self.count_estimate,
-            "examples": list(self.examples),
-            "confidence": self.confidence,
-            "notes": self.notes,
-        }
-
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "StructureRegionHint":
-        return cls(
-            exists=bool(payload.get("exists")),
-            count_estimate=_optional_int(payload.get("count_estimate")),
-            examples=_string_list(payload.get("examples")),
-            confidence=_optional_confidence(payload.get("confidence")),
-            notes=_optional_text(payload.get("notes")),
-        )
-
-
-@dataclass(frozen=True)
-class StructureSpecialRegions:
-    toc: StructureRegionHint | None = None
-    front_matter: StructureRegionHint | None = None
-    appendix: StructureRegionHint | None = None
-    back_matter: StructureRegionHint | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "toc": None if self.toc is None else self.toc.to_dict(),
-            "front_matter": (
-                None if self.front_matter is None else self.front_matter.to_dict()
-            ),
-            "appendix": None if self.appendix is None else self.appendix.to_dict(),
-            "back_matter": None if self.back_matter is None else self.back_matter.to_dict(),
-        }
-
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "StructureSpecialRegions":
-        return cls(
-            toc=_optional_region_hint(payload.get("toc")),
-            front_matter=_optional_region_hint(payload.get("front_matter")),
-            appendix=_optional_region_hint(payload.get("appendix")),
-            back_matter=_optional_region_hint(payload.get("back_matter")),
-        )
-
-
-@dataclass(frozen=True)
-class StructureQualityHints:
-    quality_label: str | None = None
-    likely_single_blob: bool = False
-    likely_over_fragmented: bool = False
-    likely_chapter_only: bool = False
-    likely_chapter_section: bool = False
-    likely_essay: bool = False
-    likely_ocr_noisy: bool = False
-    confidence: float | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "quality_label": self.quality_label,
-            "likely_single_blob": self.likely_single_blob,
-            "likely_over_fragmented": self.likely_over_fragmented,
-            "likely_chapter_only": self.likely_chapter_only,
-            "likely_chapter_section": self.likely_chapter_section,
-            "likely_essay": self.likely_essay,
-            "likely_ocr_noisy": self.likely_ocr_noisy,
-            "confidence": self.confidence,
-        }
-
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "StructureQualityHints":
-        return cls(
-            quality_label=_optional_text(payload.get("quality_label")),
-            likely_single_blob=bool(payload.get("likely_single_blob")),
-            likely_over_fragmented=bool(payload.get("likely_over_fragmented")),
-            likely_chapter_only=bool(payload.get("likely_chapter_only")),
-            likely_chapter_section=bool(payload.get("likely_chapter_section")),
-            likely_essay=bool(payload.get("likely_essay")),
-            likely_ocr_noisy=bool(payload.get("likely_ocr_noisy")),
-            confidence=_optional_confidence(payload.get("confidence")),
-        )
-
-
-@dataclass(frozen=True)
-class StructureRecommendedStrategy:
-    structured_parser_mode: str | None = None
-    task_unit_split_mode: str | None = None
-    semantic_top_k_candidates: int | None = None
-    needs_enhanced_parse: bool = False
-    needs_manual_review: bool = False
-    reason: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "structured_parser_mode": self.structured_parser_mode,
-            "task_unit_split_mode": self.task_unit_split_mode,
-            "semantic_top_k_candidates": self.semantic_top_k_candidates,
-            "needs_enhanced_parse": self.needs_enhanced_parse,
-            "needs_manual_review": self.needs_manual_review,
-            "reason": self.reason,
-        }
-
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "StructureRecommendedStrategy":
-        return cls(
-            structured_parser_mode=_optional_text(payload.get("structured_parser_mode")),
-            task_unit_split_mode=_optional_text(payload.get("task_unit_split_mode")),
-            semantic_top_k_candidates=_optional_int(payload.get("semantic_top_k_candidates")),
-            needs_enhanced_parse=bool(payload.get("needs_enhanced_parse")),
-            needs_manual_review=bool(payload.get("needs_manual_review")),
-            reason=_optional_text(payload.get("reason")),
+            fallback_mode=_optional_text(payload.get("fallback_mode")),
         )
 
 
 @dataclass(frozen=True)
 class DocumentStructureProfile:
-    profile_version: str = "structure_profile_v1"
-    generated_by: str = "llm_profile_builder"
-    document_structure_type: str | None = None
+    profile_version: str = "parser_hints_v1"
+    document_language: str | None = None
+    structure_type: str | None = None
+    structure_level_count: int | None = None
+    parser_mode_hint: str | None = None
+    regions: StructureRegions | None = None
+    heading_rules: StructureHeadingRules | None = None
+    split_policy_hint: StructureSplitPolicyHint | None = None
     confidence: float | None = None
-    heading_patterns: StructureHeadingPatterns | None = None
-    special_regions: StructureSpecialRegions | None = None
-    quality_hints: StructureQualityHints | None = None
-    recommended_strategy: StructureRecommendedStrategy | None = None
-    risks: list[str] = field(default_factory=list)
-    evidence: list[str] = field(default_factory=list)
+
+    @property
+    def document_structure_type(self) -> str | None:
+        return self.structure_type
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "profile_version": self.profile_version,
-            "generated_by": self.generated_by,
-            "document_structure_type": self.document_structure_type,
-            "confidence": self.confidence,
-            "heading_patterns": (
-                None if self.heading_patterns is None else self.heading_patterns.to_dict()
+            "document_language": self.document_language,
+            "structure_type": self.structure_type,
+            "structure_level_count": self.structure_level_count,
+            "parser_mode_hint": self.parser_mode_hint,
+            "regions": None if self.regions is None else self.regions.to_dict(),
+            "heading_rules": (
+                None if self.heading_rules is None else self.heading_rules.to_dict()
             ),
-            "special_regions": (
-                None if self.special_regions is None else self.special_regions.to_dict()
-            ),
-            "quality_hints": (
-                None if self.quality_hints is None else self.quality_hints.to_dict()
-            ),
-            "recommended_strategy": (
+            "split_policy_hint": (
                 None
-                if self.recommended_strategy is None
-                else self.recommended_strategy.to_dict()
+                if self.split_policy_hint is None
+                else self.split_policy_hint.to_dict()
             ),
-            "risks": list(self.risks),
-            "evidence": list(self.evidence),
+            "confidence": self.confidence,
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "DocumentStructureProfile":
+        profile_version = _optional_text(payload.get("profile_version")) or "parser_hints_v1"
+        document_language = _optional_text(payload.get("document_language"))
+        structure_type = _optional_text(payload.get("structure_type"))
+        if structure_type is None:
+            structure_type = _optional_text(payload.get("document_structure_type"))
+        structure_level_count = _optional_structure_level_count(
+            payload.get("structure_level_count")
+        )
+        parser_mode_hint = _optional_text(payload.get("parser_mode_hint"))
+        if parser_mode_hint is None:
+            parser_mode_hint = _extract_legacy_parser_mode_hint(payload)
+        regions = _optional_regions(payload.get("regions"))
+        if regions is None:
+            regions = _regions_from_legacy_payload(payload.get("special_regions"))
+        heading_rules = _optional_heading_rules(payload.get("heading_rules"))
+        if heading_rules is None:
+            heading_rules = _heading_rules_from_legacy_payload(payload.get("heading_patterns"))
+        split_policy_hint = _optional_split_policy_hint(payload.get("split_policy_hint"))
+        if split_policy_hint is None:
+            split_policy_hint = _split_policy_from_legacy_payload(
+                payload.get("recommended_strategy")
+            )
         return cls(
-            profile_version=(
-                _optional_text(payload.get("profile_version")) or "structure_profile_v1"
-            ),
-            generated_by=_optional_text(payload.get("generated_by")) or "llm_profile_builder",
-            document_structure_type=_optional_text(payload.get("document_structure_type")),
+            profile_version=profile_version,
+            document_language=document_language,
+            structure_type=structure_type,
+            structure_level_count=structure_level_count,
+            parser_mode_hint=parser_mode_hint,
+            regions=regions,
+            heading_rules=heading_rules,
+            split_policy_hint=split_policy_hint,
             confidence=_optional_confidence(payload.get("confidence")),
-            heading_patterns=(
-                None
-                if not isinstance(payload.get("heading_patterns"), dict)
-                else StructureHeadingPatterns.from_dict(payload["heading_patterns"])
-            ),
-            special_regions=(
-                None
-                if not isinstance(payload.get("special_regions"), dict)
-                else StructureSpecialRegions.from_dict(payload["special_regions"])
-            ),
-            quality_hints=(
-                None
-                if not isinstance(payload.get("quality_hints"), dict)
-                else StructureQualityHints.from_dict(payload["quality_hints"])
-            ),
-            recommended_strategy=(
-                None
-                if not isinstance(payload.get("recommended_strategy"), dict)
-                else StructureRecommendedStrategy.from_dict(payload["recommended_strategy"])
-            ),
-            risks=_string_list(payload.get("risks")),
-            evidence=_string_list(payload.get("evidence")),
         )
 
 
 def _optional_text(value: Any) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _enum_value(value: StrEnum | None) -> str | None:
+    if value is None:
+        return None
+    return value.value
+
+
+def _optional_enum(
+    value: Any,
+    enum_type: type[StrEnum],
+    unknown_value: StrEnum | None = None,
+) -> StrEnum | None:
+    normalized = _optional_text(value)
+    if normalized is None:
+        return None
+    try:
+        return enum_type(normalized)
+    except ValueError:
+        return unknown_value
 
 
 def _optional_confidence(value: Any) -> float | None:
@@ -317,6 +519,17 @@ def _optional_int(value: Any) -> int | None:
         return None
 
 
+def _optional_structure_level_count(value: Any) -> int | None:
+    normalized = _optional_int(value)
+    if normalized is None:
+        return None
+    if normalized < 0:
+        return 0
+    if normalized > 2:
+        return 2
+    return normalized
+
+
 def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -328,13 +541,112 @@ def _string_list(value: Any) -> list[str]:
     return result
 
 
-def _optional_heading_pattern(value: Any) -> StructureHeadingPattern | None:
-    if not isinstance(value, dict):
-        return None
-    return StructureHeadingPattern.from_dict(value)
+def _int_list(value: Any) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    for item in value:
+        normalized = _optional_int(item)
+        if normalized is not None:
+            result.append(normalized)
+    return result
 
 
-def _optional_region_hint(value: Any) -> StructureRegionHint | None:
+def _optional_region_hints(value: Any) -> StructureRegionHints | None:
     if not isinstance(value, dict):
         return None
-    return StructureRegionHint.from_dict(value)
+    return StructureRegionHints.from_dict(value)
+
+
+def _optional_regions(value: Any) -> StructureRegions | None:
+    if not isinstance(value, dict):
+        return None
+    return StructureRegions.from_dict(value)
+
+
+def _optional_heading_rule(value: Any) -> StructureHeadingRule | None:
+    if not isinstance(value, dict):
+        return None
+    return StructureHeadingRule.from_dict(value)
+
+
+def _optional_heading_rules(value: Any) -> StructureHeadingRules | None:
+    if not isinstance(value, dict):
+        return None
+    return StructureHeadingRules.from_dict(value)
+
+
+def _optional_split_policy_hint(value: Any) -> StructureSplitPolicyHint | None:
+    if not isinstance(value, dict):
+        return None
+    return StructureSplitPolicyHint.from_dict(value)
+
+
+def _legacy_region_exists(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    return bool(payload.get("exists"))
+
+
+def _regions_from_legacy_payload(payload: Any) -> StructureRegions | None:
+    if not isinstance(payload, dict):
+        return None
+    front_payload = payload.get("front_matter")
+    appendix_payload = payload.get("appendix")
+    back_payload = payload.get("back_matter")
+    front = StructureRegionHints(exists=_legacy_region_exists(front_payload), ranges=[])
+    back = StructureRegionHints(
+        exists=_legacy_region_exists(back_payload)
+        or _legacy_region_exists(appendix_payload),
+        ranges=[],
+    )
+    if not front.exists and not back.exists:
+        return None
+    return StructureRegions(front_matter=front, back_matter=back)
+
+
+def _legacy_heading_rule(payload: Any) -> StructureHeadingRule | None:
+    if not isinstance(payload, dict):
+        return None
+    regex_candidates: list[str] = []
+    suggested_regex = _optional_text(payload.get("suggested_regex"))
+    if suggested_regex is not None:
+        regex_candidates.append(suggested_regex)
+    return StructureHeadingRule(
+        enabled=bool(payload.get("exists")),
+        keywords=[],
+        regex_candidates=regex_candidates,
+        positions=[],
+        line_anchor_window=0,
+    )
+
+
+def _heading_rules_from_legacy_payload(payload: Any) -> StructureHeadingRules | None:
+    if not isinstance(payload, dict):
+        return None
+    chapter = _legacy_heading_rule(payload.get("chapter"))
+    section = _legacy_heading_rule(payload.get("section"))
+    if chapter is None and section is None:
+        return None
+    return StructureHeadingRules(chapter=chapter, section=section)
+
+
+def _extract_legacy_parser_mode_hint(payload: dict[str, Any]) -> str | None:
+    recommended_strategy = payload.get("recommended_strategy")
+    if not isinstance(recommended_strategy, dict):
+        return None
+    return _optional_text(recommended_strategy.get("structured_parser_mode"))
+
+
+def _split_policy_from_legacy_payload(payload: Any) -> StructureSplitPolicyHint | None:
+    if not isinstance(payload, dict):
+        return None
+    fallback_mode = _optional_text(payload.get("task_unit_split_mode"))
+    if fallback_mode is None and not bool(payload.get("needs_enhanced_parse")):
+        return None
+    return StructureSplitPolicyHint(
+        prefer_heading_boundaries=True,
+        prefer_paragraph_boundaries=True,
+        allow_single_newline_as_paragraph=False,
+        fallback_mode=fallback_mode,
+    )

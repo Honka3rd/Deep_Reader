@@ -26,6 +26,7 @@ class OpenAILLMProvider(LLMProvider):
     model_name: OpenAIModelName
     model_capabilities: LLMModelCapabilities
     effective_output_budget: int
+    output_budget_floor_ratio: float
 
     MODEL_CAPABILITIES_BY_NAME: dict[OpenAIModelName, LLMModelCapabilities] = {
         OpenAIModelName.GPT_4_1: LLMModelCapabilities(
@@ -59,6 +60,7 @@ class OpenAILLMProvider(LLMProvider):
             max_output_tokens=16_384,
         ),
     }
+    OUTPUT_BUDGET_FLOOR_RATIO = 0.10
 
     @classmethod
     def _resolve_model_name(cls, model: OpenAIModelName | str) -> OpenAIModelName:
@@ -114,9 +116,14 @@ Args:
         self.model_capabilities = self._resolve_model_capabilities(self.model_name)
         if target_max_output_tokens <= 0:
             raise ValueError("target_max_output_tokens must be > 0")
+        self.output_budget_floor_ratio = self.OUTPUT_BUDGET_FLOOR_RATIO
+        capability_floor_budget = max(
+            1,
+            int(self.model_capabilities.max_output_tokens * self.output_budget_floor_ratio),
+        )
         self.effective_output_budget = min(
-            target_max_output_tokens,
             self.model_capabilities.max_output_tokens,
+            max(target_max_output_tokens, capability_floor_budget),
         )
 
         if self.model_capabilities.endpoint_kind == ENDPOINT_KIND_RESPONSES:
@@ -136,6 +143,8 @@ Args:
             f"endpoint_kind={self.model_capabilities.endpoint_kind}",
             f"max_input_tokens={self.model_capabilities.max_input_tokens}",
             f"max_output_tokens={self.model_capabilities.max_output_tokens}",
+            f"target_max_output_tokens={target_max_output_tokens}",
+            f"one_tenth_floor={capability_floor_budget}",
             f"effective_output_budget={self.effective_output_budget}",
         )
 

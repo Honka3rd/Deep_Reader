@@ -18,6 +18,7 @@ from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
 from document_structure.structured_document_store import StructuredDocumentStore
+from language.language_code import LanguageCode
 from profile.document_profile import DocumentProfile
 from section_tasks.section_task_result import SectionTaskResult
 from shared.task_artifacts import (
@@ -287,7 +288,7 @@ def test_artifact_availability_validity() -> None:
         profile = DocumentProfile(
             topic="topic",
             summary="summary",
-            document_language="zh",
+            document_language=LanguageCode.ZH,
         )
         summary_service = _FakeSummaryService()
         resolver = _FakeResolver()
