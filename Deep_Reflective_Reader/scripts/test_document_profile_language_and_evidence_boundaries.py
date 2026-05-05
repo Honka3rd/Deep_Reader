@@ -9,6 +9,7 @@ from language.language_code import LanguageCode
 from llm.llm_model_capabilities import ENDPOINT_KIND_RESPONSES, LLMModelCapabilities
 from llm.llm_provider import LLMProvider
 from profile.document_profile import DocumentProfile
+import profile.document_profile_builder as profile_builder_module
 from profile.document_profile_builder import DocumentProfileBuilder
 
 
@@ -131,23 +132,30 @@ def test_prompt_uses_language_code_string() -> None:
     prompt = fake_provider.prompts[0]
     _assert('"document_language": "zh"' in prompt, "prompt evidence should contain string language code")
     _assert("LanguageCode." not in prompt, "prompt should not leak enum representation")
-
-
-def test_heading_evidence_is_classification_only_helper() -> None:
-    fake_provider = _FakeLLMProvider(outputs=["{\"topic\":\"x\",\"summary\":\"y\",\"document_language\":\"en\"}"])
-    builder = _build_builder(fake_provider)
-    lines = builder._extract_profile_heading_evidence_lines(
-        text="Chapter 1\n第一章\nAppendix\nSome long body line that should not match as heading evidence.",
-        limit=10,
+    _assert('"candidate_lines":' in prompt, "prompt evidence should use candidate_lines")
+    _assert("candidate_heading_lines" not in prompt, "prompt should not use legacy candidate_heading_lines")
+    _assert(
+        "not authoritative headings or parser boundaries" in prompt,
+        "prompt should state evidence-only boundary",
     )
-    _assert(any("Chapter 1" in line for line in lines), "should capture Chapter 1 as evidence")
-    _assert(any("第一章" in line for line in lines), "should capture 第一章 as evidence")
-    _assert(any("Appendix" in line for line in lines), "should capture Appendix as evidence")
+    _assert("regex_candidates" not in prompt, "prompt evidence should not expose regex candidates")
+    _assert("\"pattern\":" not in prompt, "prompt evidence should not expose pattern internals")
+
+
+def test_builder_no_longer_owns_profile_regex_patterns() -> None:
+    _assert(
+        not hasattr(profile_builder_module, "_PROFILE_HEADING_EVIDENCE_PATTERNS"),
+        "builder module should not own profile evidence regex patterns",
+    )
+    _assert(
+        not hasattr(DocumentProfileBuilder, "_extract_profile_heading_evidence_lines"),
+        "builder should not own heading evidence extraction helper",
+    )
 
 
 if __name__ == "__main__":
     test_document_language_code_property()
     test_profile_json_compatibility()
     test_prompt_uses_language_code_string()
-    test_heading_evidence_is_classification_only_helper()
+    test_builder_no_longer_owns_profile_regex_patterns()
     print("test_document_profile_language_and_evidence_boundaries: ok")

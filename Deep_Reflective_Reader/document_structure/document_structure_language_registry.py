@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from typing import Pattern
 
-from language.language_code import LanguageCode
+from language.language_code import LanguageCode, LanguageCodeResolver
 
 
 def _ensure_all_language_entries(
@@ -43,6 +43,15 @@ class DocumentStructureLanguageRules:
     strong_heading_patterns: tuple[Pattern[str], ...]
     weak_heading_aliases: tuple[str, ...]
     weak_heading_signals: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ProfileEvidencePattern:
+    """Sampling-only regex pattern used for profile classification evidence."""
+
+    name: str
+    pattern: Pattern[str]
+    description: str | None = None
 
 
 def _build_language_rules(
@@ -953,6 +962,131 @@ class DocumentStructureLanguageRegistry:
         LanguageCode.VI: ("chương",),
         LanguageCode.TH: ("บทที่",),
     }
+    # Sampling-only markers/patterns for profile evidence. These are NOT parser boundaries.
+    _COMMON_PROFILE_EVIDENCE_PATTERNS: tuple[ProfileEvidencePattern, ...] = (
+        ProfileEvidencePattern(
+            name="english_chapter_heading",
+            pattern=re.compile(r"^\s*chapter\s+[ivxlcdm0-9]+\b", re.IGNORECASE),
+            description="Chapter heading in English with roman/digit number.",
+        ),
+        ProfileEvidencePattern(
+            name="english_part_heading",
+            pattern=re.compile(r"^\s*part\s+[ivxlcdm0-9]+\b", re.IGNORECASE),
+            description="Part heading in English with roman/digit number.",
+        ),
+        ProfileEvidencePattern(
+            name="english_preface_region",
+            pattern=re.compile(
+                r"^\s*(preface|foreword|contents|appendix|afterword|epilogue)\b",
+                re.IGNORECASE,
+            ),
+            description="Common English structural region heading.",
+        ),
+    )
+    _PROFILE_EVIDENCE_PATTERNS_BY_LANGUAGE: dict[
+        LanguageCode,
+        tuple[ProfileEvidencePattern, ...],
+    ] = _ensure_all_language_entries(
+        {
+            LanguageCode.ZH: (
+                ProfileEvidencePattern(
+                    name="zh_numbered_chapter",
+                    pattern=re.compile(
+                        r"^\s*第[一二三四五六七八九十百千万〇零两兩\d]+[章节節回部卷篇]\b"
+                    ),
+                    description="Chinese numbered chapter/section heading.",
+                ),
+                ProfileEvidencePattern(
+                    name="zh_numbered_point",
+                    pattern=re.compile(
+                        r"^\s*[（(]?[一二三四五六七八九十\d]+[）)]?[、.．]\s*"
+                    ),
+                    description="Chinese numbered point heading.",
+                ),
+                ProfileEvidencePattern(
+                    name="zh_region_heading",
+                    pattern=re.compile(r"^\s*(序|前言|目录|目錄|附录|附錄|后记|後記|跋)\s*$"),
+                    description="Chinese front/back/appendix region heading.",
+                ),
+            ),
+            LanguageCode.JA: (
+                ProfileEvidencePattern(
+                    name="ja_numbered_chapter",
+                    pattern=re.compile(r"^\s*第[一二三四五六七八九十百千万〇零\d]+章\b"),
+                    description="Japanese numbered chapter heading.",
+                ),
+                ProfileEvidencePattern(
+                    name="ja_region_heading",
+                    pattern=re.compile(r"^\s*(序|前書き|目次|付録|あとがき)\s*$"),
+                    description="Japanese region heading.",
+                ),
+            ),
+            LanguageCode.KO: (
+                ProfileEvidencePattern(
+                    name="ko_numbered_chapter",
+                    pattern=re.compile(r"^\s*제\s*\d+\s*장\b", re.IGNORECASE),
+                    description="Korean numbered chapter heading.",
+                ),
+                ProfileEvidencePattern(
+                    name="ko_region_heading",
+                    pattern=re.compile(r"^\s*(서문|목차|부록|후기)\s*$"),
+                    description="Korean region heading.",
+                ),
+            ),
+        }
+    )
+    _COMMON_PROFILE_EVIDENCE_KEYWORDS: tuple[str, ...] = (
+        "chapter",
+        "part",
+        "preface",
+        "foreword",
+        "contents",
+        "appendix",
+        "afterword",
+        "epilogue",
+    )
+    _PROFILE_EVIDENCE_KEYWORDS_BY_LANGUAGE: dict[LanguageCode, tuple[str, ...]] = (
+        _ensure_all_language_entries(
+            {
+                LanguageCode.ZH: (
+                    "第",
+                    "章",
+                    "节",
+                    "節",
+                    "回",
+                    "部",
+                    "卷",
+                    "篇",
+                    "序",
+                    "前言",
+                    "目录",
+                    "目錄",
+                    "附录",
+                    "附錄",
+                    "后记",
+                    "後記",
+                    "跋",
+                ),
+                LanguageCode.JA: (
+                    "第",
+                    "章",
+                    "序",
+                    "前書き",
+                    "目次",
+                    "付録",
+                    "あとがき",
+                ),
+                LanguageCode.KO: (
+                    "제",
+                    "장",
+                    "서문",
+                    "목차",
+                    "부록",
+                    "후기",
+                ),
+            }
+        )
+    )
     _EMPTY_RULES = DocumentStructureLanguageRules(
         strong_heading_patterns=tuple(),
         weak_heading_aliases=tuple(),
@@ -989,7 +1123,8 @@ class DocumentStructureLanguageRegistry:
     @classmethod
     def get_rules(cls, language: LanguageCode) -> DocumentStructureLanguageRules:
         """Return language-specific rules, or safe empty fallback rules."""
-        return cls._RULES_BY_LANGUAGE.get(language, cls._EMPTY_RULES)
+        normalized_language = cls._resolve_language_code(language)
+        return cls._RULES_BY_LANGUAGE.get(normalized_language, cls._EMPTY_RULES)
 
     @classmethod
     def get_strong_heading_patterns(
@@ -1013,7 +1148,7 @@ class DocumentStructureLanguageRegistry:
     def get_toc_markers(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return TOC markers used for body-start detection."""
         return cls._resolve_text_markers(
-            language=language,
+            language=cls._resolve_language_code(language),
             marker_map=cls._TOC_MARKERS_BY_LANGUAGE,
         )
 
@@ -1021,7 +1156,7 @@ class DocumentStructureLanguageRegistry:
     def get_front_matter_markers(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return front-matter markers used for body-start detection."""
         return cls._resolve_text_markers(
-            language=language,
+            language=cls._resolve_language_code(language),
             marker_map=cls._FRONT_MATTER_MARKERS_BY_LANGUAGE,
         )
 
@@ -1029,7 +1164,7 @@ class DocumentStructureLanguageRegistry:
     def get_appendix_markers(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return appendix markers used for region-aware section-role classification."""
         return cls._resolve_text_markers(
-            language=language,
+            language=cls._resolve_language_code(language),
             marker_map=cls._APPENDIX_MARKERS_BY_LANGUAGE,
         )
 
@@ -1037,7 +1172,7 @@ class DocumentStructureLanguageRegistry:
     def get_back_matter_markers(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return back-matter markers used for region-aware section-role classification."""
         return cls._resolve_text_markers(
-            language=language,
+            language=cls._resolve_language_code(language),
             marker_map=cls._BACK_MATTER_MARKERS_BY_LANGUAGE,
         )
 
@@ -1045,7 +1180,7 @@ class DocumentStructureLanguageRegistry:
     def get_body_start_heading_hints(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return heading hints that help identify TOC heading lists and body restarts."""
         return cls._resolve_text_markers(
-            language=language,
+            language=cls._resolve_language_code(language),
             marker_map=cls._BODY_START_HEADING_HINTS_BY_LANGUAGE,
         )
 
@@ -1053,7 +1188,7 @@ class DocumentStructureLanguageRegistry:
     def get_part_heading_hints(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return language hints used to identify part-level headings."""
         return cls._resolve_text_markers(
-            language=language,
+            language=cls._resolve_language_code(language),
             marker_map=cls._PART_HEADING_HINTS_BY_LANGUAGE,
         )
 
@@ -1061,9 +1196,35 @@ class DocumentStructureLanguageRegistry:
     def get_chapter_heading_hints(cls, language: LanguageCode) -> tuple[str, ...]:
         """Return language hints used to identify chapter-level headings."""
         return cls._resolve_text_markers(
-            language=language,
+            language=cls._resolve_language_code(language),
             marker_map=cls._CHAPTER_HEADING_HINTS_BY_LANGUAGE,
         )
+
+    @classmethod
+    def get_profile_evidence_patterns(
+        cls,
+        language: LanguageCode | str,
+    ) -> tuple[ProfileEvidencePattern, ...]:
+        """Return common + language-specific evidence patterns for profile sampling only."""
+        resolved_language = cls._resolve_language_code(language)
+        language_patterns = cls._PROFILE_EVIDENCE_PATTERNS_BY_LANGUAGE.get(
+            resolved_language,
+            tuple(),
+        )
+        return cls._COMMON_PROFILE_EVIDENCE_PATTERNS + language_patterns
+
+    @classmethod
+    def get_profile_evidence_keywords(
+        cls,
+        language: LanguageCode | str,
+    ) -> tuple[str, ...]:
+        """Return common + language-specific evidence keywords for profile sampling only."""
+        resolved_language = cls._resolve_language_code(language)
+        language_keywords = cls._PROFILE_EVIDENCE_KEYWORDS_BY_LANGUAGE.get(
+            resolved_language,
+            tuple(),
+        )
+        return cls._COMMON_PROFILE_EVIDENCE_KEYWORDS + language_keywords
 
     @classmethod
     def _resolve_text_markers(
@@ -1074,3 +1235,9 @@ class DocumentStructureLanguageRegistry:
     ) -> tuple[str, ...]:
         """Resolve language text-marker tuples with conservative fallback behavior."""
         return marker_map.get(language, tuple())
+
+    @staticmethod
+    def _resolve_language_code(language: LanguageCode | str) -> LanguageCode:
+        if isinstance(language, LanguageCode):
+            return language
+        return LanguageCodeResolver.resolve(language)

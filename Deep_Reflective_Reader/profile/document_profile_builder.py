@@ -4,22 +4,22 @@ import json
 import re
 from typing import Any
 
+from document_structure.document_structure_language_registry import (
+    DocumentStructureLanguageRegistry,
+)
 from llm.llm_provider import LLMProvider
 from language.language_code import LanguageCode, LanguageCodeResolver
 from profile.document_profile import (
-    DialogueDensity,
     DiscourseMode,
     DocumentProfile,
     DocumentStructureShape,
     HeadingStyle,
     LikelihoodLevel,
-    LineBreakQuality,
-    OCRNoiseLevel,
     ParserRelevantMetadata,
-    ScriptSystem,
     TextForm,
 )
 from profile.parser_metadata_extractor import ParserMetadataExtractor
+from profile.document_profile_evidence_builder import DocumentProfileEvidenceBuilder
 
 
 _FENCED_JSON_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
@@ -28,17 +28,6 @@ _DISCOURSE_MODE_ALLOWLIST = {item.value for item in DiscourseMode}
 _DOCUMENT_STRUCTURE_SHAPE_ALLOWLIST = {item.value for item in DocumentStructureShape}
 _LIKELY_HEADING_STYLE_ALLOWLIST = {item.value for item in HeadingStyle}
 _RISK_ALLOWLIST = {item.value for item in LikelihoodLevel}
-# These patterns are only used to build compact evidence for LLM-based
-# profile classification. They are not parser rules and must not be used
-# directly by CommonSectionSplitter.
-_PROFILE_HEADING_EVIDENCE_PATTERNS = [
-    re.compile(r"^\s*chapter\s+[ivxlcdm0-9]+\b", re.IGNORECASE),
-    re.compile(r"^\s*part\s+[ivxlcdm0-9]+\b", re.IGNORECASE),
-    re.compile(r"^\s*第[一二三四五六七八九十百千万〇零两\d]+[章节回部卷篇]\b"),
-    re.compile(r"^\s*[（(]?[一二三四五六七八九十\d]+[）)]?[、.．]\s*"),
-    re.compile(r"^\s*(preface|foreword|contents|appendix|afterword|epilogue)\b", re.IGNORECASE),
-    re.compile(r"^\s*(序|前言|目录|目錄|附录|附錄|后记|後記|跋)\s*$"),
-]
 
 
 class DocumentProfileBuilder:
@@ -48,17 +37,22 @@ class DocumentProfileBuilder:
     prompt_text_normalization: Any
     profile_prompt_policy: Any
     metadata_extractor: ParserMetadataExtractor
+    evidence_builder: DocumentProfileEvidenceBuilder
 
     def __init__(
         self,
         llm_provider: LLMProvider,
         prompt_text_normalization: Any,
         profile_prompt_policy: Any,
+        evidence_builder: DocumentProfileEvidenceBuilder | None = None,
     ):
         self.llm_provider = llm_provider
         self.prompt_text_normalization = prompt_text_normalization
         self.profile_prompt_policy = profile_prompt_policy
         self.metadata_extractor = ParserMetadataExtractor()
+        self.evidence_builder = evidence_builder or DocumentProfileEvidenceBuilder(
+            structure_language_registry=DocumentStructureLanguageRegistry(),
+        )
 
     def build(
         self,
@@ -291,6 +285,7 @@ class DocumentProfileBuilder:
             "You are a document profile classifier.\n"
             "Return ONLY one valid JSON object. No markdown. No explanations.\n"
             "Do not invent headings. Do not output regex. Do not output exact split locations.\n"
+            "candidate_lines are sampled evidence for classification only; they are not authoritative headings or parser boundaries.\n"
             "If uncertain, use 'unknown'.\n\n"
             "Return schema:\n"
             "{\n"
@@ -378,79 +373,13 @@ Document excerpt:
         text: str,
         document_language: str,
     ) -> dict[str, Any]:
-        normalized_text = text or ""
-        head_chars = max(200, int(self.profile_prompt_policy.evidence_head_chars))
-        tail_chars = max(200, int(self.profile_prompt_policy.evidence_tail_chars))
-        middle_chars = max(200, int(self.profile_prompt_policy.evidence_middle_chars))
-        heading_lines_limit = max(10, int(self.profile_prompt_policy.evidence_heading_lines_limit))
-
-        excerpt_for_classification = self._build_prompt_excerpt(
-            text=normalized_text,
-            prompt_overhead_tokens=self.profile_prompt_policy.structure_prompt_overhead_tokens,
-            token_utilization_ratio=self.profile_prompt_policy.structure_excerpt_token_utilization_ratio,
+        return self.evidence_builder.build(
+            text=text,
+            document_language=document_language,
+            profile_prompt_policy=self.profile_prompt_policy,
+            llm_provider=self.llm_provider,
+            prompt_text_normalization=self.prompt_text_normalization,
         )
-        head_excerpt = normalized_text[:head_chars]
-        tail_excerpt = (
-            normalized_text[-tail_chars:]
-            if len(normalized_text) > tail_chars
-            else normalized_text
-        )
-        middle_excerpt = ""
-        if len(normalized_text) > middle_chars:
-            mid_start = max(0, (len(normalized_text) // 2) - (middle_chars // 2))
-            middle_excerpt = normalized_text[mid_start : mid_start + middle_chars]
-
-        heading_like_lines = self._extract_profile_heading_evidence_lines(
-            text=normalized_text,
-            limit=heading_lines_limit,
-        )
-        return {
-            "document_language": document_language,
-            "raw_text_length": len(normalized_text),
-            "excerpt_for_classification": excerpt_for_classification,
-            "head_excerpt": head_excerpt,
-            "tail_excerpt": tail_excerpt,
-            "middle_excerpt": middle_excerpt,
-            "candidate_heading_lines": heading_like_lines,
-        }
-
-    def _extract_profile_heading_evidence_lines(
-        self,
-        *,
-        text: str,
-        limit: int,
-    ) -> list[str]:
-        """Extract heading-like lines for classification evidence only (not parser rules)."""
-        lines = text.splitlines()
-        candidates: list[str] = []
-        seen: set[str] = set()
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if len(stripped) > 90:
-                continue
-
-            is_upper_heading = (
-                len(stripped) <= 80
-                and stripped.upper() == stripped
-                and any(char.isalpha() for char in stripped)
-            )
-            matches_pattern = any(
-                pattern.search(stripped)
-                for pattern in _PROFILE_HEADING_EVIDENCE_PATTERNS
-            )
-            if not (is_upper_heading or matches_pattern):
-                continue
-
-            normalized_key = stripped.lower()
-            if normalized_key in seen:
-                continue
-            seen.add(normalized_key)
-            candidates.append(stripped)
-            if len(candidates) >= limit:
-                break
-        return candidates
 
     def _parse_json_object_payload(self, response_text: str) -> dict[str, Any] | None:
         stripped = (response_text or "").strip()

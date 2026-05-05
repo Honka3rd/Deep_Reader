@@ -11,6 +11,9 @@ from document_preparation.document_preparation_pipeline import DocumentPreparati
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerEvaluator,
 )
+from document_structure.document_structure_language_registry import (
+    DocumentStructureLanguageRegistry,
+)
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
@@ -34,6 +37,7 @@ from document_structure.structured_document_builder import StructuredDocumentBui
 from document_structure.structured_document_store import StructuredDocumentStore
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
+from profile.document_profile_evidence_builder import DocumentProfileEvidenceBuilder
 from profile.document_profile_store import DocumentProfileStore
 from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
@@ -129,11 +133,21 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         llm_provider=llm_provider,
     )
 
+    document_structure_language_registry = providers.Singleton(
+        DocumentStructureLanguageRegistry,
+    )
+
+    document_profile_evidence_builder = providers.Singleton(
+        DocumentProfileEvidenceBuilder,
+        structure_language_registry=document_structure_language_registry,
+    )
+
     document_profile_builder = providers.Singleton(
         DocumentProfileBuilder,
         llm_provider=llm_provider,
         prompt_text_normalization=config.prompt_text_normalization,
         profile_prompt_policy=config.profile_prompt_policy,
+        evidence_builder=document_profile_evidence_builder,
     )
 
     document_profile_store = providers.Singleton(
@@ -223,6 +237,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     common_section_splitter = providers.Singleton(
         CommonSectionSplitter,
         heading_normalizer=heading_normalizer,
+        language_registry=document_structure_language_registry,
     )
     llm_section_splitter = providers.Singleton(
         LLMSectionSplitter,

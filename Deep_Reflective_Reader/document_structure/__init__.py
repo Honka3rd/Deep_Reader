@@ -30,6 +30,7 @@ from document_structure.document_hierarchy_index import (
 from document_structure.document_structure_language_registry import (
     DocumentStructureLanguageRegistry,
     DocumentStructureLanguageRules,
+    ProfileEvidencePattern,
 )
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
@@ -57,12 +58,22 @@ from document_structure.section_splitter_dto import (
     LineInfo,
 )
 from document_structure.section_role import SectionRole
-from document_structure.llm_section_splitter import LLMSectionSplitter
-from document_structure.section_splitter_selector import (
-    SectionSplitterMode,
-    SectionSplitterSelector,
-)
-from document_structure.structured_document_builder import StructuredDocumentBuilder
+try:
+    from document_structure.llm_section_splitter import LLMSectionSplitter
+except ModuleNotFoundError:
+    LLMSectionSplitter = None
+try:
+    from document_structure.section_splitter_selector import (
+        SectionSplitterMode,
+        SectionSplitterSelector,
+    )
+except ModuleNotFoundError:
+    SectionSplitterMode = None
+    SectionSplitterSelector = None
+try:
+    from document_structure.structured_document_builder import StructuredDocumentBuilder
+except ModuleNotFoundError:
+    StructuredDocumentBuilder = None
 from document_structure.document_artifact_repository import DocumentArtifactRepository
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
@@ -93,6 +104,7 @@ __all__ = [
     "with_legacy_sections_synced_from_chapters",
     "DocumentStructureLanguageRegistry",
     "DocumentStructureLanguageRules",
+    "ProfileEvidencePattern",
     "EnhancedParseTriggerDecision",
     "EnhancedParseTriggerEvaluator",
     "AbstractSectionSplitter",
