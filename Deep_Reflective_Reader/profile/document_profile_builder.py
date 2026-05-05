@@ -28,7 +28,10 @@ _DISCOURSE_MODE_ALLOWLIST = {item.value for item in DiscourseMode}
 _DOCUMENT_STRUCTURE_SHAPE_ALLOWLIST = {item.value for item in DocumentStructureShape}
 _LIKELY_HEADING_STYLE_ALLOWLIST = {item.value for item in HeadingStyle}
 _RISK_ALLOWLIST = {item.value for item in LikelihoodLevel}
-_HEADING_LIKE_LINE_PATTERNS = [
+# These patterns are only used to build compact evidence for LLM-based
+# profile classification. They are not parser rules and must not be used
+# directly by CommonSectionSplitter.
+_PROFILE_HEADING_EVIDENCE_PATTERNS = [
     re.compile(r"^\s*chapter\s+[ivxlcdm0-9]+\b", re.IGNORECASE),
     re.compile(r"^\s*part\s+[ivxlcdm0-9]+\b", re.IGNORECASE),
     re.compile(r"^\s*第[一二三四五六七八九十百千万〇零两\d]+[章节回部卷篇]\b"),
@@ -397,7 +400,7 @@ Document excerpt:
             mid_start = max(0, (len(normalized_text) // 2) - (middle_chars // 2))
             middle_excerpt = normalized_text[mid_start : mid_start + middle_chars]
 
-        heading_like_lines = self._extract_heading_like_lines(
+        heading_like_lines = self._extract_profile_heading_evidence_lines(
             text=normalized_text,
             limit=heading_lines_limit,
         )
@@ -411,12 +414,13 @@ Document excerpt:
             "candidate_heading_lines": heading_like_lines,
         }
 
-    def _extract_heading_like_lines(
+    def _extract_profile_heading_evidence_lines(
         self,
         *,
         text: str,
         limit: int,
     ) -> list[str]:
+        """Extract heading-like lines for classification evidence only (not parser rules)."""
         lines = text.splitlines()
         candidates: list[str] = []
         seen: set[str] = set()
@@ -432,7 +436,10 @@ Document excerpt:
                 and stripped.upper() == stripped
                 and any(char.isalpha() for char in stripped)
             )
-            matches_pattern = any(pattern.search(stripped) for pattern in _HEADING_LIKE_LINE_PATTERNS)
+            matches_pattern = any(
+                pattern.search(stripped)
+                for pattern in _PROFILE_HEADING_EVIDENCE_PATTERNS
+            )
             if not (is_upper_heading or matches_pattern):
                 continue
 

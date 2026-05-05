@@ -217,11 +217,16 @@ class DocumentProfile:
     # legacy compatibility only
     structure_profile: "DocumentStructureProfile | None" = None
 
+    @property
+    def document_language_code(self) -> str:
+        """Return canonical language code string used by prompt/log/JSON paths."""
+        return self.document_language.value
+
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "topic": self.topic,
             "summary": self.summary,
-            "document_language": self.document_language.value,
+            "document_language": self.document_language_code,
         }
         if self.parser_metadata is not None:
             payload["parser_metadata"] = self.parser_metadata.to_dict()

@@ -1363,7 +1363,7 @@ class SectionTaskCoordinator:
         profile_language = (
             None
             if document_profile is None
-            else (document_profile.document_language or "").strip() or None
+            else (document_profile.document_language_code or "").strip() or None
         )
         if profile_language is not None:
             return profile_language

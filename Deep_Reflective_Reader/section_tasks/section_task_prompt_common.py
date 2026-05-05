@@ -106,7 +106,7 @@ class SectionTaskPromptCommon:
     def _extract_profile_language(document_profile: DocumentProfile | None) -> str | None:
         if document_profile is None:
             return None
-        text_value = str(document_profile.document_language).strip()
+        text_value = document_profile.document_language_code.strip()
         if text_value:
             return text_value
         return None
@@ -126,7 +126,7 @@ class SectionTaskPromptCommon:
     ) -> str:
         if document_profile is None:
             return "Chinese"
-        raw_language = str(document_profile.document_language).strip().lower()
+        raw_language = document_profile.document_language_code.strip().lower()
         if not raw_language:
             return "Chinese"
         if any(

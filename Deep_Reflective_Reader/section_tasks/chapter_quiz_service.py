@@ -122,7 +122,7 @@ class ChapterQuizService:
     ) -> LanguageCode:
         if document_profile is None:
             return LanguageCode.UNKNOWN
-        return LanguageCodeResolver.resolve(document_profile.document_language)
+        return LanguageCodeResolver.resolve(document_profile.document_language_code)
 
     def _resolve_task_unit_for_section(
         self,

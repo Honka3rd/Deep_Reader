@@ -18,11 +18,7 @@ class PromptAssembler:
         """
         topic: str = profile.topic.strip() if profile.topic else "unknown"
         summary: str = profile.summary.strip() if profile.summary else "No summary available."
-        document_language: str = (
-            profile.document_language.strip()
-            if profile.document_language
-            else "unknown"
-        )
+        document_language: str = profile.document_language_code or "unknown"
 
         return f"""Document topic:
 {topic}
