@@ -290,26 +290,3 @@ if __name__ == "__main__":
     test_malformed_llm_fallback_preserves_deterministic_metadata()
     test_builder_no_structure_profile_generated()
     print("test_document_profile_parser_metadata: ok")
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class _PromptTextNormalizationConfig:
-    default_excerpt_chars: int
-    min_excerpt_chars: int
-    max_excerpt_chars_hard_cap: int
-    chars_per_token: int
-
-
-@dataclass(frozen=True)
-class _ProfilePromptPolicyConfig:
-    topic_prompt_overhead_tokens: int
-    summary_prompt_overhead_tokens: int
-    structure_prompt_overhead_tokens: int
-    topic_excerpt_token_utilization_ratio: float
-    summary_excerpt_token_utilization_ratio: float
-    structure_excerpt_token_utilization_ratio: float
-    evidence_head_chars: int
-    evidence_tail_chars: int
-    evidence_middle_chars: int
-    evidence_heading_lines_limit: int

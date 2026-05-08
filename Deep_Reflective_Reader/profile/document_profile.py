@@ -13,6 +13,10 @@ class ScriptSystem(StrEnum):
     TRADITIONAL_CHINESE = "traditional_chinese"
     JAPANESE = "japanese"
     KOREAN = "korean"
+    CYRILLIC = "cyrillic"
+    ARABIC = "arabic"
+    DEVANAGARI = "devanagari"
+    THAI = "thai"
     MIXED = "mixed"
     UNKNOWN = "unknown"
 

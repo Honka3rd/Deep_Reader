@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from document_structure.document_structure_language_registry import (
@@ -98,7 +99,11 @@ class DocumentProfileEvidenceBuilder:
                 continue
 
             lowered = stripped.lower()
-            keyword_hit = any(keyword in lowered for keyword in keywords)
+            keyword_hit = self._matches_keyword_evidence_line(
+                stripped=stripped,
+                lowered=lowered,
+                keywords=keywords,
+            )
             pattern_hit = any(item.pattern.search(stripped) for item in patterns)
             if not (keyword_hit or pattern_hit):
                 continue
@@ -112,6 +117,95 @@ class DocumentProfileEvidenceBuilder:
                 break
 
         return candidates
+
+    def _matches_keyword_evidence_line(
+        self,
+        *,
+        stripped: str,
+        lowered: str,
+        keywords: tuple[str, ...],
+    ) -> bool:
+        # candidate_lines are sampled evidence for LLM profile classification only.
+        # They are not authoritative headings, parser boundaries, or split rules.
+        dedup_keywords = tuple(dict.fromkeys(keyword for keyword in keywords if keyword))
+        for keyword in dedup_keywords:
+            if self._is_latin_keyword(keyword):
+                if self._matches_latin_keyword_line(
+                    stripped=stripped,
+                    lowered=lowered,
+                    keyword=keyword.lower(),
+                ):
+                    return True
+            elif self._matches_cjk_keyword_line(
+                stripped=stripped,
+                keyword=keyword,
+            ):
+                return True
+        return False
+
+    def _matches_latin_keyword_line(
+        self,
+        *,
+        stripped: str,
+        lowered: str,
+        keyword: str,
+    ) -> bool:
+        if lowered == keyword:
+            return True
+        separators = (" ", ":", "：", "-", "–", "—", ".", "\t")
+        if any(lowered.startswith(f"{keyword}{separator}") for separator in separators):
+            return True
+        if self._has_numbered_prefix_before_keyword(
+            stripped=stripped,
+            keyword=keyword,
+            case_insensitive=True,
+        ):
+            return True
+        return False
+
+    def _matches_cjk_keyword_line(
+        self,
+        *,
+        stripped: str,
+        keyword: str,
+    ) -> bool:
+        if stripped == keyword:
+            return True
+        separators = (":", "：", " ", "\t", "-", "–", "—", "（", "(", "【", "[", ".", "。")
+        if any(stripped.startswith(f"{keyword}{separator}") for separator in separators):
+            return True
+        if self._has_numbered_prefix_before_keyword(
+            stripped=stripped,
+            keyword=keyword,
+            case_insensitive=False,
+        ):
+            return True
+
+        # Very short CJK keywords must be very conservative to avoid sequence-like false positives.
+        if len(keyword) <= 1:
+            return False
+        return False
+
+    def _has_numbered_prefix_before_keyword(
+        self,
+        *,
+        stripped: str,
+        keyword: str,
+        case_insensitive: bool,
+    ) -> bool:
+        escaped_keyword = re.escape(keyword)
+        prefix_pattern = (
+            r"^[\s　]*[（(]?(?:\d+|[ivxlcdmIVXLCDM]+|[一二三四五六七八九十百千万〇零两兩]+)[）)]?"
+            r"[、.．:：\-–—)\]]\s*"
+            + escaped_keyword
+            + r"(?:[\s:：\-–—\t（(【\[].*)?$"
+        )
+        flags = re.IGNORECASE if case_insensitive else 0
+        return re.match(prefix_pattern, stripped, flags) is not None
+
+    @staticmethod
+    def _is_latin_keyword(keyword: str) -> bool:
+        return any("a" <= char.lower() <= "z" for char in keyword)
 
     @staticmethod
     def _resolve_language(language: LanguageCode | str) -> LanguageCode:

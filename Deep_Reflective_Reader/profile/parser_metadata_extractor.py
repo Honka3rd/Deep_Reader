@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
-from language.language_code import LanguageCode, LanguageCodeResolver
+from language.language_code import LanguageCode
+from language.language_script_registry import LanguageScriptRegistry
 from profile.document_profile import (
     DialogueDensity,
     DiscourseMode,
@@ -18,17 +19,14 @@ from profile.document_profile import (
 )
 
 
-_LATIN_CHAR_RE = re.compile(r"[A-Za-z]")
-_CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
-_HIRAGANA_KATAKANA_RE = re.compile(r"[\u3040-\u30ff]")
-_HANGUL_RE = re.compile(r"[\uac00-\ud7af]")
-_TRADITIONAL_HINT_CHARS = set("學體國說與為這來開會後臺萬點應變氣實數據語錄")
-_SIMPLIFIED_HINT_CHARS = set("学体国说与为这来开会后台万点应变气实数据语录")
 _DIALOGUE_QUOTES = set('“”「」『』"')
 
 
 class ParserMetadataExtractor:
     """Deterministic extractor for high-confidence parser-relevant metadata."""
+
+    def __init__(self, script_registry: LanguageScriptRegistry | None = None):
+        self._script_registry = script_registry or LanguageScriptRegistry()
 
     def extract(
         self,
@@ -103,42 +101,10 @@ class ParserMetadataExtractor:
         text: str,
         document_language: LanguageCode | str,
     ) -> ScriptSystem:
-        latin_count = len(_LATIN_CHAR_RE.findall(text))
-        cjk_count = len(_CJK_CHAR_RE.findall(text))
-        kana_count = len(_HIRAGANA_KATAKANA_RE.findall(text))
-        hangul_count = len(_HANGUL_RE.findall(text))
-        total = latin_count + cjk_count + kana_count + hangul_count
-        if total == 0:
-            return ScriptSystem.UNKNOWN
-
-        ratios = {
-            "latin": latin_count / total,
-            "cjk": cjk_count / total,
-            "japanese": (cjk_count + kana_count) / total,
-            "korean": hangul_count / total,
-        }
-        dominant_name = max(ratios, key=ratios.get)
-        dominant_ratio = ratios[dominant_name]
-        second_ratio = sorted(ratios.values(), reverse=True)[1]
-        if dominant_ratio < 0.45 or second_ratio > 0.28:
-            return ScriptSystem.MIXED
-
-        resolved_language = LanguageCodeResolver.resolve(document_language)
-        if dominant_name == "latin":
-            return ScriptSystem.LATIN
-        if dominant_name == "korean":
-            return ScriptSystem.KOREAN
-        if dominant_name == "japanese":
-            return ScriptSystem.JAPANESE
-        if dominant_name == "cjk":
-            if resolved_language != LanguageCode.ZH:
-                return ScriptSystem.MIXED
-            trad_hits = sum(char in _TRADITIONAL_HINT_CHARS for char in text[:5000])
-            simp_hits = sum(char in _SIMPLIFIED_HINT_CHARS for char in text[:5000])
-            if trad_hits > simp_hits * 1.3 and trad_hits >= 5:
-                return ScriptSystem.TRADITIONAL_CHINESE
-            return ScriptSystem.SIMPLIFIED_CHINESE
-        return ScriptSystem.UNKNOWN
+        return self._script_registry.detect_script_system(
+            text=text,
+            language=document_language,
+        )
 
     def _detect_line_break_quality(self, text: str) -> LineBreakQuality:
         if not text:
