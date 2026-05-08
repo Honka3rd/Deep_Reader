@@ -3,7 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
-from language.language_code import LanguageCode
+from document_structure.document_structure_language_registry import (
+    DocumentStructureLanguageRegistry,
+)
+from language.language_code import LanguageCode, LanguageCodeResolver
+from language.language_discourse_registry import LanguageDiscourseRegistry
 from language.language_script_registry import LanguageScriptRegistry
 from profile.document_profile import (
     DialogueDensity,
@@ -19,14 +23,18 @@ from profile.document_profile import (
 )
 
 
-_DIALOGUE_QUOTES = set('“”「」『』"')
-
-
 class ParserMetadataExtractor:
     """Deterministic extractor for high-confidence parser-relevant metadata."""
 
-    def __init__(self, script_registry: LanguageScriptRegistry | None = None):
+    def __init__(
+        self,
+        script_registry: LanguageScriptRegistry | None = None,
+        structure_registry: DocumentStructureLanguageRegistry | None = None,
+        discourse_registry: LanguageDiscourseRegistry | None = None,
+    ):
         self._script_registry = script_registry or LanguageScriptRegistry()
+        self._structure_registry = structure_registry or DocumentStructureLanguageRegistry()
+        self._discourse_registry = discourse_registry or LanguageDiscourseRegistry()
 
     def extract(
         self,
@@ -35,16 +43,29 @@ class ParserMetadataExtractor:
         document_language: LanguageCode | str,
     ) -> ParserRelevantMetadata:
         normalized_text = text or ""
+        resolved_language = LanguageCodeResolver.resolve(document_language)
         script_system = self._detect_script_system(
             text=normalized_text,
-            document_language=document_language,
+            document_language=resolved_language,
         )
         line_break_quality = self._detect_line_break_quality(normalized_text)
         ocr_noise_level = self._detect_ocr_noise_level(normalized_text)
-        dialogue_density = self._detect_dialogue_density(normalized_text)
-        toc_likelihood = self._detect_toc_likelihood(normalized_text)
-        front_matter_likelihood = self._detect_front_matter_likelihood(normalized_text)
-        terminal_region_likelihood = self._detect_terminal_region_likelihood(normalized_text)
+        dialogue_density = self._detect_dialogue_density(
+            text=normalized_text,
+            document_language=resolved_language,
+        )
+        toc_likelihood = self._detect_toc_likelihood(
+            text=normalized_text,
+            document_language=resolved_language,
+        )
+        front_matter_likelihood = self._detect_front_matter_likelihood(
+            text=normalized_text,
+            document_language=resolved_language,
+        )
+        terminal_region_likelihood = self._detect_terminal_region_likelihood(
+            text=normalized_text,
+            document_language=resolved_language,
+        )
 
         return ParserRelevantMetadata(
             script_system=script_system,
@@ -172,30 +193,119 @@ class ParserMetadataExtractor:
             return OCRNoiseLevel.LOW
         return OCRNoiseLevel.NONE
 
-    def _detect_dialogue_density(self, text: str) -> DialogueDensity:
+    def _detect_dialogue_density(
+        self,
+        text: str,
+        document_language: LanguageCode | str,
+    ) -> DialogueDensity:
         if not text:
             return DialogueDensity.UNKNOWN
+        dialogue_cues = self._discourse_registry.get_dialogue_cues(document_language)
+        quote_chars = tuple(dialogue_cues.quote_chars)
         sample = text[:12000]
-        quote_count = sum(1 for char in sample if char in _DIALOGUE_QUOTES)
-        dash_dialogue_lines = sum(
-            1
-            for line in sample.splitlines()
-            if line.strip().startswith(("-", "—", "–"))
+        non_empty_lines = [line.strip() for line in sample.splitlines() if line.strip()]
+        line_count = max(1, len(non_empty_lines))
+        quote_count = sum(1 for char in sample if char in quote_chars)
+        dash_dialogue_lines = self._count_dash_dialogue_lines(
+            lines=non_empty_lines,
+            dash_prefixes=dialogue_cues.dialogue_dash_prefixes,
         )
-        density = (quote_count + dash_dialogue_lines * 2) / max(1, len(sample))
-        if density >= 0.020:
+        quote_like_short_lines = self._count_quote_like_short_lines(
+            lines=non_empty_lines,
+            quote_chars=quote_chars,
+        )
+        speech_verb_lines = self._count_speech_verb_lines(
+            lines=non_empty_lines,
+            speech_verb_hints=dialogue_cues.speech_verb_hints,
+        )
+        quote_char_density = quote_count / max(1, len(sample))
+        dash_ratio = dash_dialogue_lines / line_count
+        quote_short_ratio = quote_like_short_lines / line_count
+
+        # Conservative rule: quote chars alone cannot escalate to HIGH.
+        if (
+            dash_dialogue_lines >= 4
+            or dash_ratio >= 0.18
+            or (
+                quote_like_short_lines >= 8
+                and quote_short_ratio >= 0.25
+                and speech_verb_lines >= 3
+            )
+            or (
+                dash_dialogue_lines >= 2
+                and quote_like_short_lines >= 3
+            )
+        ):
             return DialogueDensity.HIGH
-        if density >= 0.006:
+        if (
+            dash_dialogue_lines >= 1
+            or quote_like_short_lines >= 3
+            or quote_short_ratio >= 0.10
+            or speech_verb_lines >= 2
+            or quote_char_density >= 0.012
+        ):
             return DialogueDensity.MEDIUM
         return DialogueDensity.LOW
 
-    def _detect_toc_likelihood(self, text: str) -> LikelihoodLevel:
+    def _count_dash_dialogue_lines(
+        self,
+        *,
+        lines: list[str],
+        dash_prefixes: tuple[str, ...],
+    ) -> int:
+        return sum(
+            1
+            for line in lines
+            if (
+                line.startswith(dash_prefixes)
+                and len(line) <= 50
+                and line.endswith(("。", "！", "？", ".", "!", "?"))
+            )
+        )
+
+    def _count_quote_like_short_lines(
+        self,
+        *,
+        lines: list[str],
+        quote_chars: tuple[str, ...],
+    ) -> int:
+        quote_like_count = 0
+        for line in lines:
+            if len(line) > 90:
+                continue
+            quote_hits = sum(1 for char in line if char in quote_chars)
+            starts_with_quote = line.startswith(quote_chars)
+            if starts_with_quote and quote_hits >= 2:
+                quote_like_count += 1
+                continue
+            if quote_hits >= 4 and len(line) <= 60:
+                quote_like_count += 1
+        return quote_like_count
+
+    def _count_speech_verb_lines(
+        self,
+        *,
+        lines: list[str],
+        speech_verb_hints: tuple[str, ...],
+    ) -> int:
+        if not speech_verb_hints:
+            return 0
+        count = 0
+        for line in lines:
+            lowered = f" {line.lower()} "
+            if any(hint in lowered for hint in speech_verb_hints):
+                count += 1
+        return count
+
+    def _detect_toc_likelihood(
+        self,
+        *,
+        text: str,
+        document_language: LanguageCode | str,
+    ) -> LikelihoodLevel:
         head = text[:5000].lower()
-        hits = 0
-        toc_terms = ("table of contents", "contents", "目录", "目錄")
-        for term in toc_terms:
-            if term in head:
-                hits += 1
+        toc_markers = self._structure_registry.get_toc_markers(document_language)
+        hits = sum(1 for marker in toc_markers if marker and marker.lower() in head)
         dotted_leaders = len(re.findall(r"\.{3,}\s*\d{1,4}", head))
         if hits >= 2 or dotted_leaders >= 4:
             return LikelihoodLevel.HIGH
@@ -205,25 +315,15 @@ class ParserMetadataExtractor:
             return LikelihoodLevel.LOW
         return LikelihoodLevel.NONE
 
-    def _detect_front_matter_likelihood(self, text: str) -> LikelihoodLevel:
+    def _detect_front_matter_likelihood(
+        self,
+        *,
+        text: str,
+        document_language: LanguageCode | str,
+    ) -> LikelihoodLevel:
         head = text[:8000].lower()
-        hits = 0
-        patterns = (
-            "preface",
-            "foreword",
-            "introduction",
-            "序",
-            "前言",
-            "自序",
-            "译序",
-            "譯序",
-            "作者序",
-            "编者序",
-            "編者序",
-        )
-        for pattern in patterns:
-            if pattern in head:
-                hits += 1
+        markers = self._structure_registry.get_front_matter_markers(document_language)
+        hits = sum(1 for marker in markers if marker and marker.lower() in head)
         if hits >= 3:
             return LikelihoodLevel.HIGH
         if hits == 2:
@@ -232,27 +332,19 @@ class ParserMetadataExtractor:
             return LikelihoodLevel.LOW
         return LikelihoodLevel.NONE
 
-    def _detect_terminal_region_likelihood(self, text: str) -> LikelihoodLevel:
+    def _detect_terminal_region_likelihood(
+        self,
+        *,
+        text: str,
+        document_language: LanguageCode | str,
+    ) -> LikelihoodLevel:
         tail = text[-9000:].lower()
-        hits = 0
-        patterns = (
-            "appendix",
-            "references",
-            "bibliography",
-            "afterword",
-            "epilogue",
-            "index",
-            "附录",
-            "附錄",
-            "参考文献",
-            "參考文獻",
-            "后记",
-            "後記",
-            "跋",
+        appendix_markers = self._structure_registry.get_appendix_markers(document_language)
+        back_matter_markers = self._structure_registry.get_back_matter_markers(
+            document_language
         )
-        for pattern in patterns:
-            if pattern in tail:
-                hits += 1
+        markers = appendix_markers + back_matter_markers
+        hits = sum(1 for marker in markers if marker and marker.lower() in tail)
         if hits >= 3:
             return LikelihoodLevel.HIGH
         if hits == 2:
