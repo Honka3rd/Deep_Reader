@@ -16,6 +16,7 @@ from language.language_code import LanguageCodeResolver, LanguageCode
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile import DocumentProfile
 from profile.document_profile_store import DocumentProfileStore
+from profile.post_structure_metadata_enricher import PostStructureMetadataEnricher
 from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
 from retrieval.node_provider import NodeProvider
@@ -37,6 +38,7 @@ class DocumentPreparationPipeline:
         profile_builder: DocumentProfileBuilder,
         profile_store: DocumentProfileStore,
         bundle_provider: BundleProvider,
+        post_structure_enricher: PostStructureMetadataEnricher | None = None,
     ):
         """Initialize pipeline with explicit dependencies for preparation steps."""
         self.loader_factory = loader_factory
@@ -50,6 +52,9 @@ class DocumentPreparationPipeline:
         self.profile_builder = profile_builder
         self.profile_store = profile_store
         self.bundle_provider = bundle_provider
+        self.post_structure_enricher = (
+            post_structure_enricher or PostStructureMetadataEnricher()
+        )
 
     def prepare(
         self,
@@ -118,6 +123,22 @@ class DocumentPreparationPipeline:
             force_rebuild=force_rebuild,
             parser_mode=parser_mode,
         )
+
+        # Step 4.5 Enrich profile with hierarchy-grounded structured metadata.
+        if (
+            assets.profile_ready
+            and prepared_profile is not None
+            and assets.structured_document_ready
+            and assets.structured_document_path is not None
+        ):
+            enriched_profile = self._enrich_profile_with_structured_document(
+                doc_name=doc_name,
+                profile=prepared_profile,
+                structured_document_path=assets.structured_document_path,
+                assets=assets,
+            )
+            if enriched_profile is not None:
+                prepared_profile = enriched_profile
 
         if preparation_mode == PreparationMode.BASE:
             return assets
@@ -305,6 +326,51 @@ class DocumentPreparationPipeline:
         except Exception as error:
             assets.errors.append(f"prepare_structured_document_failed:{error}")
             return False, None
+
+    def _enrich_profile_with_structured_document(
+        self,
+        *,
+        doc_name: str,
+        profile: DocumentProfile,
+        structured_document_path: str,
+        assets: PreparedDocumentAssets,
+    ) -> DocumentProfile | None:
+        """Enrich profile with post-structure metadata without blocking prepare."""
+        try:
+            structured_path = Path(structured_document_path)
+            if not structured_path.exists():
+                assets.errors.append(
+                    f"post_structure_enrichment_missing_structured:{structured_document_path}"
+                )
+                return None
+
+            structured_document = self.structured_document_store.load(
+                str(structured_path)
+            )
+            enriched_profile = self.post_structure_enricher.enrich(
+                profile=profile,
+                structured_document=structured_document,
+            )
+            self.profile_store.save(
+                enriched_profile,
+                FaissStorageConfig(namespace=doc_name),
+            )
+            print(
+                "DocumentPreparationPipeline#post_structure_enrichment_success",
+                f"doc={doc_name}",
+                f"has_post_structure_metadata={enriched_profile.post_structure_metadata is not None}",
+            )
+            return enriched_profile
+        except Exception as error:
+            print(
+                "DocumentPreparationPipeline#post_structure_enrichment_failed",
+                f"doc={doc_name}",
+                f"error={error}",
+            )
+            assets.errors.append(
+                f"post_structure_enrichment_failed:{doc_name}:{error}"
+            )
+            return None
 
     def _save_structured_document_atomically(
         self,

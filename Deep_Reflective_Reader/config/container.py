@@ -39,6 +39,7 @@ from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile_evidence_builder import DocumentProfileEvidenceBuilder
 from profile.document_profile_store import DocumentProfileStore
+from profile.post_structure_metadata_enricher import PostStructureMetadataEnricher
 from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
 from fingerprint_handler import FingerprintHandler
@@ -152,6 +153,9 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
 
     document_profile_store = providers.Singleton(
         DocumentProfileStore,
+    )
+    post_structure_metadata_enricher = providers.Singleton(
+        PostStructureMetadataEnricher,
     )
 
     sentence_splitter = providers.Factory(
@@ -287,6 +291,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         profile_builder=document_profile_builder,
         profile_store=document_profile_store,
         bundle_provider=bundle_provider,
+        post_structure_enricher=post_structure_metadata_enricher,
     )
 
     session_manager = providers.Singleton(

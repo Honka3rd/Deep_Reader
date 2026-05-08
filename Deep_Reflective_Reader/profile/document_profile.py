@@ -211,6 +211,116 @@ class ParserRelevantMetadata:
 
 
 @dataclass(frozen=True)
+class PostStructureMetadata:
+    metadata_version: str = "post_structure_metadata_v1"
+    chapter_count: int = 0
+    section_count: int = 0
+    task_unit_count: int = 0
+    front_matter_chapter_count: int = 0
+    main_body_chapter_count: int = 0
+    appendix_chapter_count: int = 0
+    back_matter_chapter_count: int = 0
+    unknown_region_chapter_count: int = 0
+    implicit_section_count: int = 0
+    explicit_section_count: int = 0
+    duplicate_chapter_titles: list[str] = field(default_factory=list)
+    duplicate_section_titles: list[str] = field(default_factory=list)
+    repeated_local_chapter_titles: list[str] = field(default_factory=list)
+    title_uniqueness_risk: LikelihoodLevel | None = None
+    actual_structure_shape: DocumentStructureShape | None = None
+    title_coverage: float | None = None
+    avg_sections_per_chapter: float | None = None
+    avg_task_units_per_section: float | None = None
+    max_section_char_length: int | None = None
+    avg_section_char_length: float | None = None
+    notes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "metadata_version": self.metadata_version,
+            "chapter_count": self.chapter_count,
+            "section_count": self.section_count,
+            "task_unit_count": self.task_unit_count,
+            "front_matter_chapter_count": self.front_matter_chapter_count,
+            "main_body_chapter_count": self.main_body_chapter_count,
+            "appendix_chapter_count": self.appendix_chapter_count,
+            "back_matter_chapter_count": self.back_matter_chapter_count,
+            "unknown_region_chapter_count": self.unknown_region_chapter_count,
+            "implicit_section_count": self.implicit_section_count,
+            "explicit_section_count": self.explicit_section_count,
+            "duplicate_chapter_titles": list(self.duplicate_chapter_titles),
+            "duplicate_section_titles": list(self.duplicate_section_titles),
+            "repeated_local_chapter_titles": list(self.repeated_local_chapter_titles),
+            "title_uniqueness_risk": _enum_value(self.title_uniqueness_risk),
+            "actual_structure_shape": _enum_value(self.actual_structure_shape),
+            "title_coverage": self.title_coverage,
+            "avg_sections_per_chapter": self.avg_sections_per_chapter,
+            "avg_task_units_per_section": self.avg_task_units_per_section,
+            "max_section_char_length": self.max_section_char_length,
+            "avg_section_char_length": self.avg_section_char_length,
+            "notes": list(self.notes),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PostStructureMetadata":
+        return cls(
+            metadata_version=(
+                _optional_text(payload.get("metadata_version"))
+                or "post_structure_metadata_v1"
+            ),
+            chapter_count=max(0, _optional_int(payload.get("chapter_count")) or 0),
+            section_count=max(0, _optional_int(payload.get("section_count")) or 0),
+            task_unit_count=max(0, _optional_int(payload.get("task_unit_count")) or 0),
+            front_matter_chapter_count=max(
+                0, _optional_int(payload.get("front_matter_chapter_count")) or 0
+            ),
+            main_body_chapter_count=max(
+                0, _optional_int(payload.get("main_body_chapter_count")) or 0
+            ),
+            appendix_chapter_count=max(
+                0, _optional_int(payload.get("appendix_chapter_count")) or 0
+            ),
+            back_matter_chapter_count=max(
+                0, _optional_int(payload.get("back_matter_chapter_count")) or 0
+            ),
+            unknown_region_chapter_count=max(
+                0, _optional_int(payload.get("unknown_region_chapter_count")) or 0
+            ),
+            implicit_section_count=max(
+                0, _optional_int(payload.get("implicit_section_count")) or 0
+            ),
+            explicit_section_count=max(
+                0, _optional_int(payload.get("explicit_section_count")) or 0
+            ),
+            duplicate_chapter_titles=_string_list(payload.get("duplicate_chapter_titles")),
+            duplicate_section_titles=_string_list(payload.get("duplicate_section_titles")),
+            repeated_local_chapter_titles=_string_list(
+                payload.get("repeated_local_chapter_titles")
+            ),
+            title_uniqueness_risk=_optional_enum(
+                payload.get("title_uniqueness_risk"),
+                LikelihoodLevel,
+                LikelihoodLevel.UNKNOWN,
+            ),
+            actual_structure_shape=_optional_enum(
+                payload.get("actual_structure_shape"),
+                DocumentStructureShape,
+                DocumentStructureShape.UNKNOWN,
+            ),
+            title_coverage=_optional_float(payload.get("title_coverage")),
+            avg_sections_per_chapter=_optional_float(
+                payload.get("avg_sections_per_chapter")
+            ),
+            avg_task_units_per_section=_optional_float(
+                payload.get("avg_task_units_per_section")
+            ),
+            max_section_char_length=_optional_int(payload.get("max_section_char_length")),
+            avg_section_char_length=_optional_float(payload.get("avg_section_char_length")),
+            notes=_string_list(payload.get("notes")),
+        )
+
+
+@dataclass(frozen=True)
 class DocumentProfile:
     """Document profile data used for prompt conditioning."""
 
@@ -218,6 +328,7 @@ class DocumentProfile:
     summary: str
     document_language: LanguageCode
     parser_metadata: ParserRelevantMetadata | None = None
+    post_structure_metadata: PostStructureMetadata | None = None
     # legacy compatibility only
     structure_profile: "DocumentStructureProfile | None" = None
 
@@ -234,6 +345,8 @@ class DocumentProfile:
         }
         if self.parser_metadata is not None:
             payload["parser_metadata"] = self.parser_metadata.to_dict()
+        if self.post_structure_metadata is not None:
+            payload["post_structure_metadata"] = self.post_structure_metadata.to_dict()
         if self.structure_profile is not None:
             payload["structure_profile"] = self.structure_profile.to_dict()
         return payload
@@ -241,11 +354,17 @@ class DocumentProfile:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "DocumentProfile":
         parser_metadata_payload = payload.get("parser_metadata")
+        post_structure_metadata_payload = payload.get("post_structure_metadata")
         structure_profile_payload = payload.get("structure_profile")
         parser_metadata = (
             None
             if not isinstance(parser_metadata_payload, dict)
             else ParserRelevantMetadata.from_dict(parser_metadata_payload)
+        )
+        post_structure_metadata = (
+            None
+            if not isinstance(post_structure_metadata_payload, dict)
+            else PostStructureMetadata.from_dict(post_structure_metadata_payload)
         )
         structure_profile = (
             None
@@ -257,6 +376,7 @@ class DocumentProfile:
             summary=str(payload.get("summary") or "").strip(),
             document_language=LanguageCodeResolver.resolve(payload.get("document_language")),
             parser_metadata=parser_metadata,
+            post_structure_metadata=post_structure_metadata,
             structure_profile=structure_profile,
         )
 
@@ -517,6 +637,15 @@ def _optional_confidence(value: Any) -> float | None:
     if confidence < 0.0 or confidence > 1.0:
         return None
     return confidence
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _optional_int(value: Any) -> int | None:
