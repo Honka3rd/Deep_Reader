@@ -216,6 +216,7 @@ class PostStructureMetadata:
     chapter_count: int = 0
     section_count: int = 0
     task_unit_count: int = 0
+    task_unit_stats_available: bool = False
     front_matter_chapter_count: int = 0
     main_body_chapter_count: int = 0
     appendix_chapter_count: int = 0
@@ -228,6 +229,8 @@ class PostStructureMetadata:
     repeated_local_chapter_titles: list[str] = field(default_factory=list)
     title_uniqueness_risk: LikelihoodLevel | None = None
     actual_structure_shape: DocumentStructureShape | None = None
+    chapter_title_coverage: float | None = None
+    section_title_coverage: float | None = None
     title_coverage: float | None = None
     avg_sections_per_chapter: float | None = None
     avg_task_units_per_section: float | None = None
@@ -241,6 +244,7 @@ class PostStructureMetadata:
             "chapter_count": self.chapter_count,
             "section_count": self.section_count,
             "task_unit_count": self.task_unit_count,
+            "task_unit_stats_available": self.task_unit_stats_available,
             "front_matter_chapter_count": self.front_matter_chapter_count,
             "main_body_chapter_count": self.main_body_chapter_count,
             "appendix_chapter_count": self.appendix_chapter_count,
@@ -253,6 +257,8 @@ class PostStructureMetadata:
             "repeated_local_chapter_titles": list(self.repeated_local_chapter_titles),
             "title_uniqueness_risk": _enum_value(self.title_uniqueness_risk),
             "actual_structure_shape": _enum_value(self.actual_structure_shape),
+            "chapter_title_coverage": self.chapter_title_coverage,
+            "section_title_coverage": self.section_title_coverage,
             "title_coverage": self.title_coverage,
             "avg_sections_per_chapter": self.avg_sections_per_chapter,
             "avg_task_units_per_section": self.avg_task_units_per_section,
@@ -271,6 +277,9 @@ class PostStructureMetadata:
             chapter_count=max(0, _optional_int(payload.get("chapter_count")) or 0),
             section_count=max(0, _optional_int(payload.get("section_count")) or 0),
             task_unit_count=max(0, _optional_int(payload.get("task_unit_count")) or 0),
+            task_unit_stats_available=bool(
+                payload.get("task_unit_stats_available", False)
+            ),
             front_matter_chapter_count=max(
                 0, _optional_int(payload.get("front_matter_chapter_count")) or 0
             ),
@@ -307,6 +316,8 @@ class PostStructureMetadata:
                 DocumentStructureShape,
                 DocumentStructureShape.UNKNOWN,
             ),
+            chapter_title_coverage=_optional_float(payload.get("chapter_title_coverage")),
+            section_title_coverage=_optional_float(payload.get("section_title_coverage")),
             title_coverage=_optional_float(payload.get("title_coverage")),
             avg_sections_per_chapter=_optional_float(
                 payload.get("avg_sections_per_chapter")

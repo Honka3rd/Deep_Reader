@@ -249,8 +249,11 @@ def test_profile_round_trip_with_post_metadata() -> None:
         post_structure_metadata=PostStructureMetadata(
             chapter_count=2,
             section_count=3,
+            task_unit_stats_available=True,
             title_uniqueness_risk=LikelihoodLevel.HIGH,
             actual_structure_shape=DocumentStructureShape.CHAPTER_ONLY,
+            chapter_title_coverage=1.0,
+            section_title_coverage=0.66,
         ),
     )
     payload = profile.to_dict()
@@ -300,11 +303,168 @@ def test_basic_counts_and_duplicate_risk() -> None:
     _assert(metadata.chapter_count == 2, "chapter_count should be 2")
     _assert(metadata.section_count == 2, "section_count should be 2")
     _assert(metadata.task_unit_count == 4, "task_unit_count should be 4")
+    _assert(metadata.task_unit_stats_available is True, "task unit stats should be marked available")
     _assert("Chapter One" in metadata.duplicate_chapter_titles, "duplicate chapter title should be detected")
     _assert(metadata.title_uniqueness_risk == LikelihoodLevel.HIGH, "duplicate chapter titles should be high risk")
 
 
+def test_task_unit_stats_availability() -> None:
+    no_units_doc = _document(
+        [
+            _chapter(
+                "c1",
+                title="Chapter One",
+                sections=[_section("s1", title="Chapter One", parent_chapter_id="c1", task_unit_count=0)],
+            )
+        ]
+    )
+    no_units_meta = PostStructureMetadataEnricher().enrich(
+        profile=_profile(),
+        structured_document=no_units_doc,
+    ).post_structure_metadata
+    _assert(no_units_meta is not None, "metadata should exist")
+    _assert(no_units_meta.task_unit_stats_available is False, "task unit stats should be unavailable")
+    _assert(no_units_meta.avg_task_units_per_section is None, "avg task units should be None when unavailable")
+    _assert(
+        "task_units_not_available_at_enrichment_time" in no_units_meta.notes,
+        "missing task units note should be emitted",
+    )
+
+    with_units_doc = _document(
+        [
+            _chapter(
+                "c2",
+                title="Chapter Two",
+                sections=[_section("s2", title="Chapter Two", parent_chapter_id="c2", task_unit_count=3)],
+            )
+        ]
+    )
+    with_units_meta = PostStructureMetadataEnricher().enrich(
+        profile=_profile(),
+        structured_document=with_units_doc,
+    ).post_structure_metadata
+    _assert(with_units_meta is not None, "metadata should exist")
+    _assert(with_units_meta.task_unit_stats_available is True, "task unit stats should be available")
+    _assert(with_units_meta.avg_task_units_per_section == 3.0, "avg task units should be computed")
+
+
+def test_duplicate_section_title_noise_filtering() -> None:
+    implicit_mirror_doc = _document(
+        [
+            _chapter(
+                "c1",
+                title="Chapter One",
+                sections=[_section("s1", title="Chapter One", parent_chapter_id="c1", is_implicit_section=True)],
+            ),
+            _chapter(
+                "c2",
+                title="Chapter One",
+                sections=[_section("s2", title="Chapter One", parent_chapter_id="c2", is_implicit_section=True)],
+            ),
+        ]
+    )
+    mirror_meta = PostStructureMetadataEnricher().enrich(
+        profile=_profile(),
+        structured_document=implicit_mirror_doc,
+    ).post_structure_metadata
+    _assert(mirror_meta is not None, "metadata should exist")
+    _assert("Chapter One" in mirror_meta.duplicate_chapter_titles, "chapter duplicate should remain")
+    _assert(
+        "Chapter One" not in mirror_meta.duplicate_section_titles,
+        "implicit mirror section duplicates should be excluded",
+    )
+
+    explicit_dup_doc = _document(
+        [
+            _chapter(
+                "c3",
+                title="Chapter Three",
+                sections=[
+                    _section(
+                        "s3",
+                        title="Background",
+                        parent_chapter_id="c3",
+                        is_implicit_section=False,
+                        section_kind="subsection",
+                    ),
+                    _section(
+                        "s4",
+                        title="Background",
+                        parent_chapter_id="c3",
+                        is_implicit_section=False,
+                        section_kind="subsection",
+                    ),
+                ],
+            )
+        ]
+    )
+    explicit_meta = PostStructureMetadataEnricher().enrich(
+        profile=_profile(),
+        structured_document=explicit_dup_doc,
+    ).post_structure_metadata
+    _assert(explicit_meta is not None, "metadata should exist")
+    _assert(
+        "Background" in explicit_meta.duplicate_section_titles,
+        "explicit section duplicate should be detected",
+    )
+
+
 def test_shape_detection_cases() -> None:
+    madame_like_doc = _document(
+        [
+            _chapter(
+                "c1",
+                title="Chapter One",
+                sections=[_section("s1", title="Chapter One", parent_chapter_id="c1", is_implicit_section=True)],
+            ),
+            _chapter(
+                "c2",
+                title="Chapter Two",
+                sections=[_section("s2", title="Chapter Two", parent_chapter_id="c2", is_implicit_section=True)],
+            ),
+            _chapter(
+                "c3",
+                title="Chapter One",
+                sections=[_section("s3", title="Chapter One", parent_chapter_id="c3", is_implicit_section=True)],
+            ),
+            _chapter(
+                "c4",
+                title="Chapter Two",
+                sections=[_section("s4", title="Chapter Two", parent_chapter_id="c4", is_implicit_section=True)],
+            ),
+            _chapter(
+                "c5",
+                title="Chapter Three",
+                sections=[_section("s5", title="Chapter Three", parent_chapter_id="c5", is_implicit_section=True)],
+            ),
+            _chapter(
+                "c6",
+                title="Chapter Three",
+                sections=[_section("s6", title="Chapter Three", parent_chapter_id="c6", is_implicit_section=True)],
+            ),
+        ]
+    )
+    madame_like_meta = PostStructureMetadataEnricher().enrich(
+        profile=_profile(),
+        structured_document=madame_like_doc,
+    ).post_structure_metadata
+    _assert(madame_like_meta is not None, "madame-like metadata should exist")
+    _assert(
+        madame_like_meta.actual_structure_shape in {
+            DocumentStructureShape.PART_CHAPTER,
+            DocumentStructureShape.MIXED,
+        },
+        "madame-like duplicate local chapter titles should avoid chapter_only",
+    )
+    _assert(
+        madame_like_meta.title_uniqueness_risk == LikelihoodLevel.HIGH,
+        "madame-like duplicate titles should be high risk",
+    )
+    _assert(
+        "possible_part_chapter_repeated_local_titles" in madame_like_meta.notes,
+        "madame-like structure should carry repeated-local-title note",
+    )
+
     chapter_only_doc = _document(
         [
             _chapter(
@@ -331,6 +491,10 @@ def test_shape_detection_cases() -> None:
     _assert(
         chapter_only_meta.actual_structure_shape == DocumentStructureShape.CHAPTER_ONLY,
         "chapter_only shape should be detected",
+    )
+    _assert(
+        chapter_only_meta.title_uniqueness_risk in {LikelihoodLevel.LOW, LikelihoodLevel.NONE},
+        "xu-sanguan-like unique titles should be low/none risk",
     )
 
     essay_doc = _document(
@@ -457,6 +621,8 @@ def test_pipeline_enrichment_non_blocking_and_base_mode_save() -> None:
 def main() -> None:
     test_profile_round_trip_with_post_metadata()
     test_basic_counts_and_duplicate_risk()
+    test_task_unit_stats_availability()
+    test_duplicate_section_title_noise_filtering()
     test_shape_detection_cases()
     test_pipeline_enrichment_non_blocking_and_base_mode_save()
     print(
@@ -466,6 +632,8 @@ def main() -> None:
                 "tests": [
                     "post_structure_round_trip",
                     "counts_and_duplicate_risk",
+                    "task_unit_stats_availability",
+                    "duplicate_section_title_noise_filtering",
                     "shape_detection",
                     "pipeline_non_blocking_and_base_mode_save",
                 ],

@@ -53,6 +53,7 @@ class PostStructureMetadataEnricher:
 
         chapter_titles: list[str] = []
         section_titles: list[str] = []
+        explicit_section_titles: list[str] = []
         section_char_lengths: list[int] = []
         notes: list[str] = []
 
@@ -85,6 +86,8 @@ class PostStructureMetadataEnricher:
                     implicit_section_count += 1
                 else:
                     explicit_section_count += 1
+                    if section_title:
+                        explicit_section_titles.append(section_title)
 
                 content = section.content or ""
                 section_char_lengths.append(len(content))
@@ -92,20 +95,37 @@ class PostStructureMetadataEnricher:
                     notes.append(f"section_content_missing:{section.section_id}")
 
         duplicate_chapter_titles = self._duplicate_titles(chapter_titles)
-        duplicate_section_titles = self._duplicate_titles(section_titles)
+        # Avoid implicit chapter-body mirror noise in section duplicate statistics.
+        duplicate_section_titles = self._duplicate_titles(explicit_section_titles)
         repeated_local_chapter_titles = list(duplicate_chapter_titles)
 
+        chapter_title_coverage = (
+            None
+            if chapter_count == 0
+            else round(len(chapter_titles) / chapter_count, 4)
+        )
+        section_title_coverage = (
+            None
+            if section_count == 0
+            else round(len(section_titles) / section_count, 4)
+        )
         titled_nodes = len(chapter_titles) + len(section_titles)
         total_nodes = chapter_count + section_count
         title_coverage = (
             None if total_nodes == 0 else round(titled_nodes / total_nodes, 4)
         )
+        notes.append("title_coverage_combined_chapter_and_section")
+        task_unit_stats_available = task_unit_count > 0
         avg_sections_per_chapter = (
             None if chapter_count == 0 else round(section_count / chapter_count, 4)
         )
         avg_task_units_per_section = (
-            None if section_count == 0 else round(task_unit_count / section_count, 4)
+            None
+            if section_count == 0 or not task_unit_stats_available
+            else round(task_unit_count / section_count, 4)
         )
+        if section_count > 0 and not task_unit_stats_available:
+            notes.append("task_units_not_available_at_enrichment_time")
         max_section_char_length = (
             None if not section_char_lengths else max(section_char_lengths)
         )
@@ -153,6 +173,9 @@ class PostStructureMetadataEnricher:
             repeated_local_chapter_titles=repeated_local_chapter_titles,
             title_uniqueness_risk=title_uniqueness_risk,
             actual_structure_shape=actual_structure_shape,
+            task_unit_stats_available=task_unit_stats_available,
+            chapter_title_coverage=chapter_title_coverage,
+            section_title_coverage=section_title_coverage,
             title_coverage=title_coverage,
             avg_sections_per_chapter=avg_sections_per_chapter,
             avg_task_units_per_section=avg_task_units_per_section,
@@ -231,6 +254,15 @@ class PostStructureMetadataEnricher:
             return DocumentStructureShape.OVER_FRAGMENTED, notes
 
         if (
+            duplicate_chapter_titles
+            and chapter_count >= 6
+            and avg_sections_per_chapter is not None
+            and avg_sections_per_chapter <= 1.2
+        ):
+            notes.append("possible_part_chapter_repeated_local_titles")
+            return DocumentStructureShape.PART_CHAPTER, notes
+
+        if (
             main_body_chapter_count >= 5
             and avg_sections_per_chapter is not None
             and avg_sections_per_chapter <= 1.2
@@ -250,7 +282,6 @@ class PostStructureMetadataEnricher:
 
         if duplicate_chapter_titles and main_body_chapter_count >= 4:
             notes.append("possible_part_chapter_repeated_local_titles")
-            return DocumentStructureShape.PART_CHAPTER, notes
+            return DocumentStructureShape.MIXED, notes
 
         return DocumentStructureShape.MIXED, notes
-
