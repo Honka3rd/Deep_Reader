@@ -97,45 +97,79 @@ class _FakePipeline:
         )
 
 
-def _build_cached_document() -> StructuredDocument:
-    section = StructuredSection(
-        section_id="section-1",
+def _build_section(
+    *,
+    section_id: str,
+    parent_chapter_id: str,
+    title: str,
+    with_task_units: bool,
+) -> StructuredSection:
+    return StructuredSection(
+        section_id=section_id,
         section_index=0,
-        title="Chapter One",
+        title=title,
         level=1,
         content="Body content",
         char_start=0,
         char_end=12,
         section_role=SectionRole.MAIN_BODY,
-        parent_chapter_id="chapter-1",
+        parent_chapter_id=parent_chapter_id,
         section_kind="chapter_body",
         is_implicit_section=True,
-        task_units=[
-            TaskUnit(
-                unit_id="task-unit-1",
-                title="Unit 1",
-                container_title=None,
-                content="Unit content",
-                source_section_ids=["section-1"],
-                is_fallback_generated=False,
-                parent_section_id="section-1",
+        task_units=(
+            []
+            if not with_task_units
+            else [
+                TaskUnit(
+                    unit_id=f"task-unit-{section_id}",
+                    title=f"Unit {section_id}",
+                    container_title=None,
+                    content="Unit content",
+                    source_section_ids=[section_id],
+                    is_fallback_generated=False,
+                    parent_section_id=section_id,
+                )
+            ]
+        ),
+    )
+
+
+def _build_cached_document(
+    *,
+    sections_with_units: list[bool] | None = None,
+) -> StructuredDocument:
+    unit_flags = sections_with_units or [True]
+    sections: list[StructuredSection] = []
+    for index, has_units in enumerate(unit_flags, start=1):
+        section_id = f"section-{index}"
+        chapter_id = f"chapter-{index}"
+        sections.append(
+            _build_section(
+                section_id=section_id,
+                parent_chapter_id=chapter_id,
+                title=f"Chapter {index}",
+                with_task_units=has_units,
             )
-        ],
-    )
-    chapter = StructuredChapter(
-        chapter_id="chapter-1",
-        title="Chapter One",
-        level=1,
-        chapter_role="main_body",
-        sections=[section],
-    )
+        )
+
+    chapters = [
+        StructuredChapter(
+            chapter_id=f"chapter-{index}",
+            title=f"Chapter {index}",
+            level=1,
+            chapter_role="main_body",
+            sections=[section],
+        )
+        for index, section in enumerate(sections, start=1)
+    ]
+
     document = StructuredDocument(
         document_id="doc",
         title="Doc",
         source_path=None,
         language="en",
         raw_text="Body content",
-        chapters=[chapter],
+        chapters=chapters,
         sections=[],
         structure_nodes=[],
     )
@@ -192,6 +226,7 @@ def _profile(
 
 def test_title_target_requires_id_and_shape_mismatch() -> None:
     coordinator = _build_coordinator(_build_cached_document())
+    sections = [section for chapter in coordinator.document_preparation_pipeline.document.chapters for section in chapter.sections]
     diagnostics = coordinator._build_profile_structure_diagnostics(
         document_profile=_profile(
             parser_shape=DocumentStructureShape.CHAPTER_SECTION,
@@ -199,7 +234,8 @@ def test_title_target_requires_id_and_shape_mismatch() -> None:
             title_risk=LikelihoodLevel.HIGH,
             task_stats_available=False,
             coverage=0.5,
-        )
+        ),
+        sections=sections,
     )
     _assert(diagnostics is not None, "diagnostics should exist")
     _assert(diagnostics.title_target_requires_id, "high title uniqueness risk should require id target")
@@ -213,8 +249,85 @@ def test_title_target_requires_id_and_shape_mismatch() -> None:
         "shape mismatch warning should be present",
     )
     _assert(
+        "task_unit_stats_not_available_or_incomplete" not in diagnostics.warnings,
+        "task-unit warning should follow current layout state (full coverage here)",
+    )
+
+
+def test_current_layout_overrides_stale_post_metadata() -> None:
+    document = _build_cached_document(sections_with_units=[True, True, True])
+    coordinator = _build_coordinator(document)
+    sections = [section for chapter in document.chapters for section in chapter.sections]
+    diagnostics = coordinator._build_profile_structure_diagnostics(
+        document_profile=_profile(
+            parser_shape=DocumentStructureShape.PART_CHAPTER,
+            post_shape=DocumentStructureShape.PART_CHAPTER,
+            title_risk=LikelihoodLevel.HIGH,
+            task_stats_available=False,
+            coverage=0.0,
+        ),
+        sections=sections,
+    )
+    _assert(diagnostics is not None, "diagnostics should exist")
+    _assert(diagnostics.task_unit_stats_available is True, "current layout should override stale post metadata")
+    _assert(diagnostics.task_unit_section_coverage == 1.0, "full current coverage should be 1.0")
+    _assert(
+        "task_unit_stats_not_available_or_incomplete" not in diagnostics.warnings,
+        "incomplete warning should be absent for full current coverage",
+    )
+
+
+def test_current_layout_no_task_units() -> None:
+    document = _build_cached_document(sections_with_units=[False, False, False])
+    coordinator = _build_coordinator(document)
+    sections = [section for chapter in document.chapters for section in chapter.sections]
+    diagnostics = coordinator._build_profile_structure_diagnostics(
+        document_profile=_profile(
+            parser_shape=DocumentStructureShape.CHAPTER_ONLY,
+            post_shape=DocumentStructureShape.CHAPTER_ONLY,
+            title_risk=LikelihoodLevel.LOW,
+            task_stats_available=True,
+            coverage=1.0,
+        ),
+        sections=sections,
+    )
+    _assert(diagnostics is not None, "diagnostics should exist")
+    _assert(diagnostics.task_unit_stats_available is False, "no task units should be unavailable")
+    _assert(diagnostics.task_unit_section_coverage == 0.0, "coverage should be 0.0")
+    _assert(
+        "task_unit_stats_not_available_or_incomplete" in diagnostics.warnings,
+        "incomplete warning should be present",
+    )
+    _assert(
+        "task_unit_stats_partially_available" not in diagnostics.warnings,
+        "partial warning should be absent for 0.0 coverage",
+    )
+
+
+def test_current_layout_partial_task_units() -> None:
+    document = _build_cached_document(sections_with_units=[True, True, False, False])
+    coordinator = _build_coordinator(document)
+    sections = [section for chapter in document.chapters for section in chapter.sections]
+    diagnostics = coordinator._build_profile_structure_diagnostics(
+        document_profile=_profile(
+            parser_shape=DocumentStructureShape.CHAPTER_SECTION,
+            post_shape=DocumentStructureShape.CHAPTER_SECTION,
+            title_risk=LikelihoodLevel.NONE,
+            task_stats_available=True,
+            coverage=1.0,
+        ),
+        sections=sections,
+    )
+    _assert(diagnostics is not None, "diagnostics should exist")
+    _assert(diagnostics.task_unit_stats_available is False, "partial coverage should be unavailable")
+    _assert(diagnostics.task_unit_section_coverage == 0.5, "partial coverage should be 0.5")
+    _assert(
+        "task_unit_stats_not_available_or_incomplete" in diagnostics.warnings,
+        "incomplete warning should be present",
+    )
+    _assert(
         "task_unit_stats_partially_available" in diagnostics.warnings,
-        "partial task-unit stats warning should be present",
+        "partial warning should be present",
     )
 
 
@@ -231,6 +344,9 @@ def test_missing_profile_non_blocking_task_layout() -> None:
 
 def main() -> None:
     test_title_target_requires_id_and_shape_mismatch()
+    test_current_layout_overrides_stale_post_metadata()
+    test_current_layout_no_task_units()
+    test_current_layout_partial_task_units()
     test_missing_profile_non_blocking_task_layout()
     print(
         json.dumps(
@@ -239,6 +355,9 @@ def main() -> None:
                 "tests": [
                     "diagnostics_title_target_requires_id",
                     "diagnostics_shape_mismatch",
+                    "diagnostics_current_layout_overrides_stale_post_metadata",
+                    "diagnostics_current_layout_no_task_units",
+                    "diagnostics_current_layout_partial_task_units",
                     "task_layout_missing_profile_non_blocking",
                     "task_layout_no_heavy_payload",
                 ],

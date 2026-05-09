@@ -686,14 +686,34 @@ class SectionTaskCoordinator:
                 metrics=dict(trigger_decision.metrics),
             ),
             profile_diagnostics=self._build_profile_structure_diagnostics(
-                document_profile=document_profile
+                document_profile=document_profile,
+                sections=effective_sections,
             ),
         )
+
+    def _compute_current_task_unit_coverage(
+        self,
+        *,
+        sections: list[StructuredSection],
+    ) -> tuple[bool, float | None, int]:
+        """Compute current layout task-unit coverage from effective sections."""
+        section_count = len(sections)
+        sections_with_task_units_count = sum(
+            1 for section in sections if len(section.task_units) > 0
+        )
+        if section_count == 0:
+            return False, None, sections_with_task_units_count
+        coverage = round(sections_with_task_units_count / section_count, 4)
+        available = (
+            coverage >= self._TASK_UNIT_STATS_AVAILABLE_COVERAGE_THRESHOLD
+        )
+        return available, coverage, sections_with_task_units_count
 
     def _build_profile_structure_diagnostics(
         self,
         *,
         document_profile: DocumentProfile | None,
+        sections: list[StructuredSection],
     ) -> ProfileStructureDiagnosticsDTO | None:
         """Build lightweight diagnostics from pre/post profile metadata."""
         if document_profile is None:
@@ -720,16 +740,11 @@ class SectionTaskCoordinator:
         )
         title_target_requires_id = title_uniqueness_risk in {"medium", "high"}
 
-        task_unit_stats_available = (
-            False
-            if post_metadata is None
-            else bool(post_metadata.task_unit_stats_available)
-        )
-        task_unit_section_coverage = (
-            None
-            if post_metadata is None
-            else post_metadata.task_unit_section_coverage
-        )
+        (
+            task_unit_stats_available,
+            task_unit_section_coverage,
+            _sections_with_task_units_count,
+        ) = self._compute_current_task_unit_coverage(sections=sections)
         task_unit_stats_incomplete = not task_unit_stats_available
 
         parser_post_shape_mismatch = (
