@@ -341,6 +341,20 @@ class EnhancedParseRecommendationResponse(BaseModel):
     metrics: dict[str, float | int]
 
 
+class ProfileStructureDiagnosticsResponse(BaseModel):
+    """Lightweight profile diagnostics for target-safety and observability."""
+
+    parser_metadata_shape: str | None = None
+    post_actual_structure_shape: str | None = None
+    title_uniqueness_risk: str | None = None
+    title_target_requires_id: bool = False
+    task_unit_stats_available: bool = False
+    task_unit_section_coverage: float | None = None
+    parser_post_shape_mismatch: bool = False
+    enhanced_parse_hint: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DocumentTaskLayoutResponse(BaseModel):
     """Response payload for reading current effective task-layout snapshot."""
 
@@ -349,6 +363,7 @@ class DocumentTaskLayoutResponse(BaseModel):
     language: str | None
     chapters: list[DocumentTaskLayoutChapterResponse]
     enhanced_parse_recommendation: EnhancedParseRecommendationResponse | None
+    profile_diagnostics: ProfileStructureDiagnosticsResponse | None = None
 
 
 class ReparseDocumentStructureRequest(BaseModel):

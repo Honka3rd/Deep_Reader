@@ -16,6 +16,7 @@ from api_schemas import (
     DocumentTaskLayoutResponse,
     EnhancedParseRecommendationResponse,
     GetDocumentTaskLayoutRequest,
+    ProfileStructureDiagnosticsResponse,
     QuizQuestionResponse,
     ReparseDocumentStructureRequest,
     ReparseDocumentStructureResponse,
@@ -428,6 +429,21 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
             language=layout.language,
             chapters=chapters,
             enhanced_parse_recommendation=recommendation,
+            profile_diagnostics=(
+                None
+                if layout.profile_diagnostics is None
+                else ProfileStructureDiagnosticsResponse(
+                    parser_metadata_shape=layout.profile_diagnostics.parser_metadata_shape,
+                    post_actual_structure_shape=layout.profile_diagnostics.post_actual_structure_shape,
+                    title_uniqueness_risk=layout.profile_diagnostics.title_uniqueness_risk,
+                    title_target_requires_id=layout.profile_diagnostics.title_target_requires_id,
+                    task_unit_stats_available=layout.profile_diagnostics.task_unit_stats_available,
+                    task_unit_section_coverage=layout.profile_diagnostics.task_unit_section_coverage,
+                    parser_post_shape_mismatch=layout.profile_diagnostics.parser_post_shape_mismatch,
+                    enhanced_parse_hint=layout.profile_diagnostics.enhanced_parse_hint,
+                    warnings=list(layout.profile_diagnostics.warnings),
+                )
+            ),
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))

@@ -37,6 +37,7 @@ from section_tasks.document_task_layout import (
     DocumentTaskLayout,
     DocumentTaskLayoutSectionDTO,
     EnhancedParseRecommendationDTO,
+    ProfileStructureDiagnosticsDTO,
     SectionTaskMode,
     TaskUnitDTO,
 )
@@ -80,6 +81,7 @@ class SectionTaskCoordinator:
     _QUIZ_SCHEMA_VERSION = "quiz_schema_v1"
     _CHAPTER_ARTIFACT_KEY_PREFIX = "chapter::"
     _CHAPTER_ARTIFACT_KEY_BY_ID_PREFIX = "chapter_id::"
+    _TASK_UNIT_STATS_AVAILABLE_COVERAGE_THRESHOLD = 0.95
     def __init__(
         self,
         document_preparation_pipeline: DocumentPreparationPipeline,
@@ -683,6 +685,99 @@ class SectionTaskCoordinator:
                 reasons=list(trigger_decision.reasons),
                 metrics=dict(trigger_decision.metrics),
             ),
+            profile_diagnostics=self._build_profile_structure_diagnostics(
+                document_profile=document_profile
+            ),
+        )
+
+    def _build_profile_structure_diagnostics(
+        self,
+        *,
+        document_profile: DocumentProfile | None,
+    ) -> ProfileStructureDiagnosticsDTO | None:
+        """Build lightweight diagnostics from pre/post profile metadata."""
+        if document_profile is None:
+            return None
+        parser_metadata = document_profile.parser_metadata
+        post_metadata = document_profile.post_structure_metadata
+        if parser_metadata is None and post_metadata is None:
+            return None
+
+        parser_shape = (
+            None
+            if parser_metadata is None or parser_metadata.document_structure_shape is None
+            else parser_metadata.document_structure_shape.value
+        )
+        post_shape = (
+            None
+            if post_metadata is None or post_metadata.actual_structure_shape is None
+            else post_metadata.actual_structure_shape.value
+        )
+        title_uniqueness_risk = (
+            None
+            if post_metadata is None or post_metadata.title_uniqueness_risk is None
+            else post_metadata.title_uniqueness_risk.value
+        )
+        title_target_requires_id = title_uniqueness_risk in {"medium", "high"}
+
+        task_unit_stats_available = (
+            False
+            if post_metadata is None
+            else bool(post_metadata.task_unit_stats_available)
+        )
+        task_unit_section_coverage = (
+            None
+            if post_metadata is None
+            else post_metadata.task_unit_section_coverage
+        )
+        task_unit_stats_incomplete = not task_unit_stats_available
+
+        parser_post_shape_mismatch = (
+            parser_shape is not None
+            and post_shape is not None
+            and parser_shape not in {"unknown", "mixed"}
+            and post_shape not in {"unknown", "mixed"}
+            and parser_shape != post_shape
+        )
+
+        warnings: list[str] = []
+        if title_target_requires_id:
+            warnings.append("chapter_or_section_titles_are_not_unique_use_id_targets")
+        if task_unit_stats_incomplete:
+            warnings.append("task_unit_stats_not_available_or_incomplete")
+            if (
+                task_unit_section_coverage is not None
+                and task_unit_section_coverage > 0.0
+                and task_unit_section_coverage
+                < self._TASK_UNIT_STATS_AVAILABLE_COVERAGE_THRESHOLD
+            ):
+                warnings.append("task_unit_stats_partially_available")
+        if parser_post_shape_mismatch:
+            warnings.append("pre_structure_shape_differs_from_post_structure_shape")
+
+        enhanced_parse_hint: str | None = None
+        post_notes = [] if post_metadata is None else list(post_metadata.notes)
+        if (
+            post_shape == "flat_long_text"
+            and parser_shape in {"essay_sections", "chapter_section", "part_chapter"}
+        ):
+            enhanced_parse_hint = "common_parser_may_undersegment"
+        elif (
+            post_shape == "part_chapter"
+            and "possible_part_chapter_repeated_local_titles" in post_notes
+        ):
+            enhanced_parse_hint = "common_parser_may_have_flattened_parent_grouping"
+
+        return ProfileStructureDiagnosticsDTO(
+            parser_metadata_shape=parser_shape,
+            post_actual_structure_shape=post_shape,
+            title_uniqueness_risk=title_uniqueness_risk,
+            title_target_requires_id=title_target_requires_id,
+            task_unit_stats_available=task_unit_stats_available,
+            task_unit_section_coverage=task_unit_section_coverage,
+            parser_post_shape_mismatch=parser_post_shape_mismatch,
+            enhanced_parse_hint=enhanced_parse_hint,
+            warnings=warnings,
         )
 
     def _build_chapter_layouts(

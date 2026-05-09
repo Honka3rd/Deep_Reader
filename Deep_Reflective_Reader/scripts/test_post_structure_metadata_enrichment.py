@@ -303,6 +303,14 @@ def test_basic_counts_and_duplicate_risk() -> None:
     _assert(metadata.chapter_count == 2, "chapter_count should be 2")
     _assert(metadata.section_count == 2, "section_count should be 2")
     _assert(metadata.task_unit_count == 4, "task_unit_count should be 4")
+    _assert(
+        metadata.sections_with_task_units_count == 2,
+        "sections_with_task_units_count should be 2",
+    )
+    _assert(
+        metadata.task_unit_section_coverage == 1.0,
+        "task_unit_section_coverage should be 1.0",
+    )
     _assert(metadata.task_unit_stats_available is True, "task unit stats should be marked available")
     _assert("Chapter One" in metadata.duplicate_chapter_titles, "duplicate chapter title should be detected")
     _assert(metadata.title_uniqueness_risk == LikelihoodLevel.HIGH, "duplicate chapter titles should be high risk")
@@ -323,6 +331,8 @@ def test_task_unit_stats_availability() -> None:
         structured_document=no_units_doc,
     ).post_structure_metadata
     _assert(no_units_meta is not None, "metadata should exist")
+    _assert(no_units_meta.sections_with_task_units_count == 0, "sections with task units should be 0")
+    _assert(no_units_meta.task_unit_section_coverage == 0.0, "coverage should be 0.0")
     _assert(no_units_meta.task_unit_stats_available is False, "task unit stats should be unavailable")
     _assert(no_units_meta.avg_task_units_per_section is None, "avg task units should be None when unavailable")
     _assert(
@@ -344,8 +354,39 @@ def test_task_unit_stats_availability() -> None:
         structured_document=with_units_doc,
     ).post_structure_metadata
     _assert(with_units_meta is not None, "metadata should exist")
+    _assert(with_units_meta.sections_with_task_units_count == 1, "sections with task units should be 1")
+    _assert(with_units_meta.task_unit_section_coverage == 1.0, "coverage should be 1.0")
     _assert(with_units_meta.task_unit_stats_available is True, "task unit stats should be available")
     _assert(with_units_meta.avg_task_units_per_section == 3.0, "avg task units should be computed")
+
+    partial_doc = _document(
+        [
+            _chapter(
+                "c3",
+                title="Chapter Three",
+                sections=[
+                    _section("s3", title="Chapter Three", parent_chapter_id="c3", task_unit_count=2),
+                    _section("s4", title="Section Four", parent_chapter_id="c3", is_implicit_section=False, task_unit_count=0),
+                ],
+            )
+        ]
+    )
+    partial_meta = PostStructureMetadataEnricher().enrich(
+        profile=_profile(),
+        structured_document=partial_doc,
+    ).post_structure_metadata
+    _assert(partial_meta is not None, "partial metadata should exist")
+    _assert(partial_meta.sections_with_task_units_count == 1, "partial sections-with-units count should be 1")
+    _assert(partial_meta.task_unit_section_coverage == 0.5, "partial coverage should be 0.5")
+    _assert(partial_meta.task_unit_stats_available is False, "partial coverage should be unavailable")
+    _assert(
+        partial_meta.avg_task_units_per_section is None,
+        "avg should be None when coverage threshold not met",
+    )
+    _assert(
+        "task_units_partially_available_at_enrichment_time" in partial_meta.notes,
+        "partial availability note should be emitted",
+    )
 
 
 def test_duplicate_section_title_noise_filtering() -> None:

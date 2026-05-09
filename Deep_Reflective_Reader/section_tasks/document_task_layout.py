@@ -151,6 +151,35 @@ class EnhancedParseRecommendationDTO:
 
 
 @dataclass(frozen=True)
+class ProfileStructureDiagnosticsDTO:
+    """Lightweight profile diagnostics for hierarchy/read-target safety hints."""
+
+    parser_metadata_shape: str | None = None
+    post_actual_structure_shape: str | None = None
+    title_uniqueness_risk: str | None = None
+    title_target_requires_id: bool = False
+    task_unit_stats_available: bool = False
+    task_unit_section_coverage: float | None = None
+    parser_post_shape_mismatch: bool = False
+    enhanced_parse_hint: str | None = None
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize profile diagnostics into JSON-friendly dictionary."""
+        return {
+            "parser_metadata_shape": self.parser_metadata_shape,
+            "post_actual_structure_shape": self.post_actual_structure_shape,
+            "title_uniqueness_risk": self.title_uniqueness_risk,
+            "title_target_requires_id": self.title_target_requires_id,
+            "task_unit_stats_available": self.task_unit_stats_available,
+            "task_unit_section_coverage": self.task_unit_section_coverage,
+            "parser_post_shape_mismatch": self.parser_post_shape_mismatch,
+            "enhanced_parse_hint": self.enhanced_parse_hint,
+            "warnings": list(self.warnings),
+        }
+
+
+@dataclass(frozen=True)
 class DocumentTaskLayout:
     """Frontend-consumable layout with hierarchy-first chapters tree.
 
@@ -166,6 +195,7 @@ class DocumentTaskLayout:
     task_units: list[TaskUnitDTO] = field(default_factory=list)
     chapter_artifacts: dict[str, ArtifactAvailabilityDTO] = field(default_factory=dict)
     enhanced_parse_recommendation: EnhancedParseRecommendationDTO | None = None
+    profile_diagnostics: ProfileStructureDiagnosticsDTO | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize layout into JSON-friendly dictionary."""
@@ -184,5 +214,10 @@ class DocumentTaskLayout:
                 None
                 if self.enhanced_parse_recommendation is None
                 else self.enhanced_parse_recommendation.to_dict()
+            ),
+            "profile_diagnostics": (
+                None
+                if self.profile_diagnostics is None
+                else self.profile_diagnostics.to_dict()
             ),
         }

@@ -216,6 +216,8 @@ class PostStructureMetadata:
     chapter_count: int = 0
     section_count: int = 0
     task_unit_count: int = 0
+    sections_with_task_units_count: int = 0
+    task_unit_section_coverage: float | None = None
     task_unit_stats_available: bool = False
     front_matter_chapter_count: int = 0
     main_body_chapter_count: int = 0
@@ -244,6 +246,8 @@ class PostStructureMetadata:
             "chapter_count": self.chapter_count,
             "section_count": self.section_count,
             "task_unit_count": self.task_unit_count,
+            "sections_with_task_units_count": self.sections_with_task_units_count,
+            "task_unit_section_coverage": self.task_unit_section_coverage,
             "task_unit_stats_available": self.task_unit_stats_available,
             "front_matter_chapter_count": self.front_matter_chapter_count,
             "main_body_chapter_count": self.main_body_chapter_count,
@@ -277,6 +281,12 @@ class PostStructureMetadata:
             chapter_count=max(0, _optional_int(payload.get("chapter_count")) or 0),
             section_count=max(0, _optional_int(payload.get("section_count")) or 0),
             task_unit_count=max(0, _optional_int(payload.get("task_unit_count")) or 0),
+            sections_with_task_units_count=max(
+                0, _optional_int(payload.get("sections_with_task_units_count")) or 0
+            ),
+            task_unit_section_coverage=_optional_float(
+                payload.get("task_unit_section_coverage")
+            ),
             task_unit_stats_available=bool(
                 payload.get("task_unit_stats_available", False)
             ),

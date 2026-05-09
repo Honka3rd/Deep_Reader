@@ -13,6 +13,7 @@ from profile.document_profile import (
 
 class PostStructureMetadataEnricher:
     """Compute hierarchy-grounded profile metadata after structured parsing."""
+    _TASK_UNIT_STATS_AVAILABLE_COVERAGE_THRESHOLD = 0.95
 
     def enrich(
         self,
@@ -42,6 +43,7 @@ class PostStructureMetadataEnricher:
         chapter_count = len(chapters)
         section_count = 0
         task_unit_count = 0
+        sections_with_task_units_count = 0
         implicit_section_count = 0
         explicit_section_count = 0
 
@@ -76,7 +78,10 @@ class PostStructureMetadataEnricher:
 
             for section in chapter.sections:
                 section_count += 1
-                task_unit_count += len(section.task_units)
+                section_task_units_count = len(section.task_units)
+                task_unit_count += section_task_units_count
+                if section_task_units_count > 0:
+                    sections_with_task_units_count += 1
 
                 section_title = (section.title or "").strip()
                 if section_title:
@@ -115,7 +120,18 @@ class PostStructureMetadataEnricher:
             None if total_nodes == 0 else round(titled_nodes / total_nodes, 4)
         )
         notes.append("title_coverage_combined_chapter_and_section")
-        task_unit_stats_available = task_unit_count > 0
+        if section_count == 0:
+            task_unit_section_coverage = None
+            task_unit_stats_available = False
+        else:
+            task_unit_section_coverage = round(
+                sections_with_task_units_count / section_count,
+                4,
+            )
+            task_unit_stats_available = (
+                task_unit_section_coverage
+                >= self._TASK_UNIT_STATS_AVAILABLE_COVERAGE_THRESHOLD
+            )
         avg_sections_per_chapter = (
             None if chapter_count == 0 else round(section_count / chapter_count, 4)
         )
@@ -124,8 +140,10 @@ class PostStructureMetadataEnricher:
             if section_count == 0 or not task_unit_stats_available
             else round(task_unit_count / section_count, 4)
         )
-        if section_count > 0 and not task_unit_stats_available:
+        if section_count > 0 and sections_with_task_units_count == 0:
             notes.append("task_units_not_available_at_enrichment_time")
+        elif section_count > 0 and not task_unit_stats_available:
+            notes.append("task_units_partially_available_at_enrichment_time")
         max_section_char_length = (
             None if not section_char_lengths else max(section_char_lengths)
         )
@@ -161,6 +179,8 @@ class PostStructureMetadataEnricher:
             chapter_count=chapter_count,
             section_count=section_count,
             task_unit_count=task_unit_count,
+            sections_with_task_units_count=sections_with_task_units_count,
+            task_unit_section_coverage=task_unit_section_coverage,
             front_matter_chapter_count=front_matter_chapter_count,
             main_body_chapter_count=main_body_chapter_count,
             appendix_chapter_count=appendix_chapter_count,
