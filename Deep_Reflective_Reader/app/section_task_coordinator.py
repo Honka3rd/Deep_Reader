@@ -1373,16 +1373,10 @@ class SectionTaskCoordinator:
             if not warning.startswith("duplicate_task_unit_id:")
         ]
         if blocking_warnings:
-            print(
-                "SectionTaskCoordinator#task_layout_hierarchy_fallback_legacy:",
-                f"context={context}",
-                f"severe_warnings={blocking_warnings}",
+            raise ValueError(
+                f"{context}: severe hierarchy inconsistency; legacy sections fallback disabled; "
+                f"warnings={blocking_warnings}"
             )
-            if not document.sections:
-                raise ValueError(
-                    f"{context}: hierarchy is inconsistent and no legacy sections are available"
-                )
-            return list(document.sections)
 
         if repairable_warnings:
             print(
