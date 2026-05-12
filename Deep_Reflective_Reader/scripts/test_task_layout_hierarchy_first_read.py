@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import json
-import io
 import tempfile
-from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -645,7 +643,7 @@ def test_task_layout_hierarchy_first_read() -> None:
             )
 
 
-def test_legacy_ordering_fallback_resolves_and_emits_diagnostic() -> None:
+def test_legacy_ordering_fallback_removed() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         store = StructuredDocumentStore()
         repository = StructuredDocumentArtifactRepository(store=store, base_dir=temp_dir)
@@ -668,85 +666,27 @@ def test_legacy_ordering_fallback_resolves_and_emits_diagnostic() -> None:
             coordinator,
             SectionTaskCoordinator,
         )
-        log_buffer = io.StringIO()
         try:
-            with redirect_stdout(log_buffer):
-                resolved = coordinator._resolve_task_unit_for_section_id_from_persisted_layout(
+            try:
+                coordinator._resolve_task_unit_for_section_id_from_persisted_layout(
                     document=document,
                     section_id="section-target",
-                    allow_legacy_ordering_fallback=True,
+                )
+                raise AssertionError(
+                    "expected fail-fast because legacy ordering fallback has been removed"
+                )
+            except ValueError as error:
+                _assert(
+                    "task units are not aligned with effective task-layout ordering" in str(error),
+                    "stale ordering scenario should now fail-fast without legacy fallback",
                 )
         finally:
             coordinator._resolve_task_layout_sections = original_resolve_sections
-        logs = log_buffer.getvalue()
-
-        _assert(
-            resolved.task_unit.unit_id == "task-unit-target",
-            "legacy ordering fallback should resolve selected task unit when hierarchy ordering misses it",
-        )
-        _assert(
-            resolved.task_unit_index == 1,
-            "legacy task unit should be appended after stale hierarchy ordering",
-        )
-        _assert(
-            "SectionTaskCoordinator#legacy_section_ordering_fallback_hit" in logs,
-            "legacy fallback diagnostic should be emitted when compatibility path is hit",
-        )
-
-
-def test_legacy_ordering_fallback_disabled_by_default() -> None:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        store = StructuredDocumentStore()
-        repository = StructuredDocumentArtifactRepository(store=store, base_dir=temp_dir)
-        resolver = _FakeTaskUnitResolver()
-        coordinator = _build_coordinator(repository, resolver)
-
-        document = _build_legacy_ordering_fallback_doc()
-        original_resolve_sections = coordinator._resolve_task_layout_sections
-
-        def _stale_ordering_only_seed(
-            self,
-            *,
-            document: StructuredDocument,
-            context: str,
-        ) -> list[StructuredSection]:
-            _ = context
-            return [document.chapters[0].sections[0]]
-
-        coordinator._resolve_task_layout_sections = _stale_ordering_only_seed.__get__(
-            coordinator,
-            SectionTaskCoordinator,
-        )
-        log_buffer = io.StringIO()
-        try:
-            with redirect_stdout(log_buffer):
-                try:
-                    coordinator._resolve_task_unit_for_section_id_from_persisted_layout(
-                        document=document,
-                        section_id="section-target",
-                    )
-                    raise AssertionError(
-                        "expected no implicit legacy ordering fallback when flag is not enabled"
-                    )
-                except ValueError as error:
-                    _assert(
-                        "task units are not aligned with effective task-layout ordering" in str(error),
-                        "default path should fail with ordering-misaligned error",
-                    )
-        finally:
-            coordinator._resolve_task_layout_sections = original_resolve_sections
-        logs = log_buffer.getvalue()
-
-        _assert(
-            "SectionTaskCoordinator#legacy_section_ordering_fallback_hit" not in logs,
-            "legacy fallback diagnostic should not appear when fallback is disabled",
-        )
 
 
 def main() -> None:
     test_task_layout_hierarchy_first_read()
-    test_legacy_ordering_fallback_resolves_and_emits_diagnostic()
-    test_legacy_ordering_fallback_disabled_by_default()
+    test_legacy_ordering_fallback_removed()
     print(
         json.dumps(
             {
@@ -757,8 +697,7 @@ def main() -> None:
                     "cache_validity_uses_effective_sections",
                     "inconsistent_hierarchy_fails_fast_without_legacy_fallback",
                     "inconsistent_hierarchy_with_legacy_sections_still_fails_fast",
-                    "legacy_ordering_fallback_resolves_and_emits_diagnostic",
-                    "legacy_ordering_fallback_disabled_by_default",
+                    "legacy_ordering_fallback_removed",
                     "chapters_schema_exposed",
                 ],
             },
