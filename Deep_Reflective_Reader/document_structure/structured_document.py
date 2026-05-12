@@ -181,7 +181,7 @@ class StructuredDocument:
                 else self.document_task_artifacts.to_dict()
             ),
         }
-        if include_legacy_sections or not self.chapters:
+        if include_legacy_sections:
             payload["sections"] = [section.to_dict() for section in self.sections]
         if include_legacy_structure_nodes:
             payload["structure_nodes"] = [

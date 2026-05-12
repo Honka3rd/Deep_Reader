@@ -7,6 +7,7 @@ import json
 import tempfile
 from pathlib import Path
 
+from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.structured_document import StructuredDocument, StructuredSection
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
@@ -190,7 +191,10 @@ def test_repository_atomic_save_smoke() -> None:
                 )
             ],
         )
-        target_path.write_text(base_document.to_json(), encoding="utf-8")
+        target_path.write_text(
+            base_document.to_json(include_legacy_sections=True),
+            encoding="utf-8",
+        )
 
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
         artifacts = TaskArtifacts(
@@ -205,19 +209,21 @@ def test_repository_atomic_save_smoke() -> None:
             section_id="section-0",
             artifacts=artifacts,
         )
+        updated_sections = get_effective_sections(updated_document)
         _assert(
-            updated_document.sections[0].task_artifacts is not None,
+            updated_sections[0].task_artifacts is not None,
             "updated document should contain section artifacts",
         )
 
         reloaded = repository.load_document("artifact-doc")
+        reloaded_sections = get_effective_sections(reloaded)
         _assert(
-            reloaded.sections[0].task_artifacts is not None,
+            reloaded_sections[0].task_artifacts is not None,
             "reloaded document should persist section artifacts",
         )
         _assert(
-            reloaded.sections[0].task_artifacts.summary is not None
-            and reloaded.sections[0].task_artifacts.summary.content == "atomic summary",
+            reloaded_sections[0].task_artifacts.summary is not None
+            and reloaded_sections[0].task_artifacts.summary.content == "atomic summary",
             "persisted artifact content mismatch",
         )
 
@@ -245,7 +251,10 @@ def test_repository_update_section_task_units() -> None:
             ],
         )
         target_path = Path(temp_dir) / "artifact-doc.structured.json"
-        target_path.write_text(base_document.to_json(), encoding="utf-8")
+        target_path.write_text(
+            base_document.to_json(include_legacy_sections=True),
+            encoding="utf-8",
+        )
 
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
         persisted_units = [
@@ -273,9 +282,10 @@ def test_repository_update_section_task_units() -> None:
         )
 
         reloaded = repository.load_document("artifact-doc")
-        _assert(len(reloaded.sections[0].task_units) == 2, "section task_units should persist")
+        reloaded_sections = get_effective_sections(reloaded)
+        _assert(len(reloaded_sections[0].task_units) == 2, "section task_units should persist")
         _assert(
-            reloaded.sections[0].task_units[0].unit_id == "task-unit-0",
+            reloaded_sections[0].task_units[0].unit_id == "task-unit-0",
             "persisted task unit id mismatch",
         )
 
@@ -321,7 +331,10 @@ def test_repository_update_task_unit_artifacts() -> None:
             ],
         )
         target_path = Path(temp_dir) / "artifact-doc.structured.json"
-        target_path.write_text(base_document.to_json(), encoding="utf-8")
+        target_path.write_text(
+            base_document.to_json(include_legacy_sections=True),
+            encoding="utf-8",
+        )
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
 
         repository.update_task_unit_artifacts(
@@ -333,8 +346,9 @@ def test_repository_update_task_unit_artifacts() -> None:
         )
 
         reloaded = repository.load_document("artifact-doc")
-        unit0 = reloaded.sections[0].task_units[0]
-        unit1 = reloaded.sections[0].task_units[1]
+        reloaded_sections = get_effective_sections(reloaded)
+        unit0 = reloaded_sections[0].task_units[0]
+        unit1 = reloaded_sections[0].task_units[1]
         _assert(unit0.task_artifacts is None, "other task unit should remain unchanged")
         _assert(
             unit1.task_artifacts is not None
@@ -377,7 +391,10 @@ def test_repository_update_task_unit_artifacts_unknown_id() -> None:
             ],
         )
         target_path = Path(temp_dir) / "artifact-doc.structured.json"
-        target_path.write_text(base_document.to_json(), encoding="utf-8")
+        target_path.write_text(
+            base_document.to_json(include_legacy_sections=True),
+            encoding="utf-8",
+        )
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
         try:
             repository.update_task_unit_artifacts(
@@ -443,7 +460,10 @@ def test_repository_update_task_unit_artifacts_duplicate_id() -> None:
             ],
         )
         target_path = Path(temp_dir) / "artifact-doc.structured.json"
-        target_path.write_text(base_document.to_json(), encoding="utf-8")
+        target_path.write_text(
+            base_document.to_json(include_legacy_sections=True),
+            encoding="utf-8",
+        )
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
 
         try:
@@ -457,10 +477,11 @@ def test_repository_update_task_unit_artifacts_duplicate_id() -> None:
             _assert("duplicate task_unit_id" in message, "error should mention duplicate id")
             _assert("match_count=2" in message, "error should include duplicate match count")
             reloaded = repository.load_document("artifact-doc")
+            reloaded_sections = get_effective_sections(reloaded)
             _assert(
                 all(
                     task_unit.task_artifacts is None
-                    for section in reloaded.sections
+                    for section in reloaded_sections
                     for task_unit in section.task_units
                 ),
                 "duplicate-id defensive failure should not update any task unit",

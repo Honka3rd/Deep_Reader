@@ -174,6 +174,65 @@ def test_new_json_has_no_legacy_mirror() -> None:
     _assert(serialized.get("chapters"), "new JSON should contain chapters")
 
 
+def test_to_dict_omits_root_sections_even_when_chapters_empty_by_default() -> None:
+    legacy_only_document = _build_legacy_sections_only_document()
+    serialized = legacy_only_document.to_dict()
+    _assert(
+        "sections" not in serialized,
+        "to_dict default should not emit root sections even when chapters are empty",
+    )
+
+
+def test_to_dict_includes_root_sections_when_explicitly_enabled() -> None:
+    legacy_only_document = _build_legacy_sections_only_document()
+    serialized = legacy_only_document.to_dict(include_legacy_sections=True)
+    _assert(
+        "sections" in serialized,
+        "to_dict should emit root sections when include_legacy_sections=True",
+    )
+    _assert(
+        len(serialized["sections"]) == 2,
+        "explicit legacy serialization should keep legacy sections payload",
+    )
+
+
+def test_from_dict_loads_legacy_sections_only_payload() -> None:
+    legacy_payload = {
+        "document_id": "legacy-sections-payload-doc",
+        "title": "Legacy Sections Payload",
+        "source_path": None,
+        "language": "zh",
+        "raw_text": "前言\\n文本",
+        "sections": [
+            {
+                "section_id": "section-legacy-0",
+                "section_index": 0,
+                "title": "前言",
+                "level": 1,
+                "content": "前言\\n文本",
+                "char_start": 0,
+                "char_end": 5,
+                "container_title": None,
+                "section_role": "front_matter",
+                "parent_chapter_id": None,
+                "section_kind": None,
+                "is_implicit_section": False,
+                "task_units": [],
+                "task_artifacts": None,
+            }
+        ],
+    }
+    document = StructuredDocument.from_dict(legacy_payload)
+    _assert(
+        len(document.sections) == 1,
+        "from_dict should keep reading legacy sections-only payloads",
+    )
+    _assert(
+        document.sections[0].section_id == "section-legacy-0",
+        "legacy section id should be preserved when loading old payload",
+    )
+
+
 def test_structure_nodes_legacy_load_compatibility() -> None:
     payload = {
         "document_id": "legacy-node-doc",
@@ -404,6 +463,9 @@ def test_real_document_smoke() -> None:
 
 def main() -> None:
     test_new_json_has_no_legacy_mirror()
+    test_to_dict_omits_root_sections_even_when_chapters_empty_by_default()
+    test_to_dict_includes_root_sections_when_explicitly_enabled()
+    test_from_dict_loads_legacy_sections_only_payload()
     test_structure_nodes_legacy_load_compatibility()
     test_builder_does_not_generate_structure_nodes()
     test_task_unit_object_only_under_chapters()
@@ -416,6 +478,9 @@ def main() -> None:
                 "status": "ok",
                 "tests": [
                     "no_root_sections_or_structure_nodes",
+                    "to_dict_omits_root_sections_even_when_chapters_empty_by_default",
+                    "to_dict_includes_root_sections_when_explicitly_enabled",
+                    "from_dict_loads_legacy_sections_only_payload",
                     "old_structure_nodes_load_compatible",
                     "builder_no_structure_nodes",
                     "task_units_only_under_chapters",
