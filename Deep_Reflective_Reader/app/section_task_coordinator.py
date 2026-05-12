@@ -2286,6 +2286,7 @@ class SectionTaskCoordinator:
         *,
         document: StructuredDocument,
         section_id: str,
+        allow_legacy_ordering_fallback: bool = False,
     ) -> ResolvedTaskUnit:
         """Resolve one task unit from persisted section.task_units without recomputing resolver."""
         normalized_section_id = section_id.strip()
@@ -2322,7 +2323,7 @@ class SectionTaskCoordinator:
 
         selected_task_unit = target_section.task_units[0]
         selected_index = task_unit_index_by_id.get(selected_task_unit.unit_id)
-        if selected_index is None:
+        if selected_index is None and allow_legacy_ordering_fallback:
             selected_index = self._resolve_legacy_section_ordering_fallback(
                 document=document,
                 selected_task_unit_id=selected_task_unit.unit_id,
@@ -2330,11 +2331,11 @@ class SectionTaskCoordinator:
                 ordered_task_units=ordered_task_units,
                 context="SectionTaskCoordinator#resolve_task_unit_for_section_id_from_persisted_layout",
             )
-            if selected_index is None:
-                raise ValueError(
-                    f"section_id '{normalized_section_id}' task units are not aligned with effective "
-                    f"task-layout ordering for document '{document.document_id}'"
-                )
+        if selected_index is None:
+            raise ValueError(
+                f"section_id '{normalized_section_id}' task units are not aligned with effective "
+                f"task-layout ordering for document '{document.document_id}'"
+            )
 
         return ResolvedTaskUnit(
             task_unit=selected_task_unit,

@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import io
 import tempfile
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -402,6 +404,91 @@ def _build_hierarchy_inconsistent_doc() -> StructuredDocument:
     )
 
 
+def _build_legacy_ordering_fallback_doc() -> StructuredDocument:
+    ordering_seed_section = StructuredSection(
+        section_id="section-h1",
+        section_index=0,
+        title="Hierarchy One",
+        level=1,
+        content="hierarchy body",
+        char_start=0,
+        char_end=14,
+        section_role=SectionRole.MAIN_BODY,
+        parent_chapter_id="chapter-0",
+        task_units=[
+            TaskUnit(
+                unit_id="task-unit-h1",
+                title="h1",
+                container_title=None,
+                content="hierarchy body",
+                source_section_ids=["section-h1"],
+                is_fallback_generated=False,
+                parent_section_id="section-h1",
+            )
+        ],
+    )
+    hierarchy_target_section = StructuredSection(
+        section_id="section-target",
+        section_index=1,
+        title="Hierarchy Target",
+        level=1,
+        content="target body",
+        char_start=15,
+        char_end=26,
+        section_role=SectionRole.MAIN_BODY,
+        task_units=[
+            TaskUnit(
+                unit_id="task-unit-target",
+                title="target",
+                container_title=None,
+                content="target body",
+                source_section_ids=["section-target"],
+                is_fallback_generated=False,
+                parent_section_id="section-target",
+            )
+        ],
+        parent_chapter_id="chapter-0",
+    )
+    legacy_mirror_section = StructuredSection(
+        section_id="section-target",
+        section_index=0,
+        title="Legacy Target",
+        level=1,
+        content="target body",
+        char_start=0,
+        char_end=11,
+        section_role=SectionRole.MAIN_BODY,
+        task_units=[
+            TaskUnit(
+                unit_id="task-unit-target",
+                title="target",
+                container_title=None,
+                content="target body",
+                source_section_ids=["section-target"],
+                is_fallback_generated=False,
+                parent_section_id="section-target",
+            )
+        ],
+    )
+    return StructuredDocument(
+        document_id="legacy-ordering-doc",
+        title="Legacy Ordering Doc",
+        source_path=None,
+        language="en",
+        raw_text="hierarchy body\ntarget body",
+        sections=[legacy_mirror_section],
+        chapters=[
+            StructuredChapter(
+                chapter_id="chapter-0",
+                title="Chapter 1",
+                level=1,
+                chapter_role="main_body",
+                sections=[ordering_seed_section, hierarchy_target_section],
+            )
+        ],
+    )
+
+
 def _build_coordinator(
     repository: StructuredDocumentArtifactRepository,
     resolver: _FakeTaskUnitResolver,
@@ -514,8 +601,108 @@ def test_task_layout_hierarchy_first_read() -> None:
             )
 
 
+def test_legacy_ordering_fallback_resolves_and_emits_diagnostic() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        store = StructuredDocumentStore()
+        repository = StructuredDocumentArtifactRepository(store=store, base_dir=temp_dir)
+        resolver = _FakeTaskUnitResolver()
+        coordinator = _build_coordinator(repository, resolver)
+
+        document = _build_legacy_ordering_fallback_doc()
+        original_resolve_sections = coordinator._resolve_task_layout_sections
+
+        def _stale_ordering_only_seed(
+            self,
+            *,
+            document: StructuredDocument,
+            context: str,
+        ) -> list[StructuredSection]:
+            _ = context
+            return [document.chapters[0].sections[0]]
+
+        coordinator._resolve_task_layout_sections = _stale_ordering_only_seed.__get__(
+            coordinator,
+            SectionTaskCoordinator,
+        )
+        log_buffer = io.StringIO()
+        try:
+            with redirect_stdout(log_buffer):
+                resolved = coordinator._resolve_task_unit_for_section_id_from_persisted_layout(
+                    document=document,
+                    section_id="section-target",
+                    allow_legacy_ordering_fallback=True,
+                )
+        finally:
+            coordinator._resolve_task_layout_sections = original_resolve_sections
+        logs = log_buffer.getvalue()
+
+        _assert(
+            resolved.task_unit.unit_id == "task-unit-target",
+            "legacy ordering fallback should resolve selected task unit when hierarchy ordering misses it",
+        )
+        _assert(
+            resolved.task_unit_index == 1,
+            "legacy task unit should be appended after stale hierarchy ordering",
+        )
+        _assert(
+            "SectionTaskCoordinator#legacy_section_ordering_fallback_hit" in logs,
+            "legacy fallback diagnostic should be emitted when compatibility path is hit",
+        )
+
+
+def test_legacy_ordering_fallback_disabled_by_default() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        store = StructuredDocumentStore()
+        repository = StructuredDocumentArtifactRepository(store=store, base_dir=temp_dir)
+        resolver = _FakeTaskUnitResolver()
+        coordinator = _build_coordinator(repository, resolver)
+
+        document = _build_legacy_ordering_fallback_doc()
+        original_resolve_sections = coordinator._resolve_task_layout_sections
+
+        def _stale_ordering_only_seed(
+            self,
+            *,
+            document: StructuredDocument,
+            context: str,
+        ) -> list[StructuredSection]:
+            _ = context
+            return [document.chapters[0].sections[0]]
+
+        coordinator._resolve_task_layout_sections = _stale_ordering_only_seed.__get__(
+            coordinator,
+            SectionTaskCoordinator,
+        )
+        log_buffer = io.StringIO()
+        try:
+            with redirect_stdout(log_buffer):
+                try:
+                    coordinator._resolve_task_unit_for_section_id_from_persisted_layout(
+                        document=document,
+                        section_id="section-target",
+                    )
+                    raise AssertionError(
+                        "expected no implicit legacy ordering fallback when flag is not enabled"
+                    )
+                except ValueError as error:
+                    _assert(
+                        "task units are not aligned with effective task-layout ordering" in str(error),
+                        "default path should fail with ordering-misaligned error",
+                    )
+        finally:
+            coordinator._resolve_task_layout_sections = original_resolve_sections
+        logs = log_buffer.getvalue()
+
+        _assert(
+            "SectionTaskCoordinator#legacy_section_ordering_fallback_hit" not in logs,
+            "legacy fallback diagnostic should not appear when fallback is disabled",
+        )
+
+
 def main() -> None:
     test_task_layout_hierarchy_first_read()
+    test_legacy_ordering_fallback_resolves_and_emits_diagnostic()
+    test_legacy_ordering_fallback_disabled_by_default()
     print(
         json.dumps(
             {
@@ -525,6 +712,8 @@ def main() -> None:
                     "legacy_fallback",
                     "cache_validity_uses_effective_sections",
                     "inconsistent_hierarchy_without_legacy_fails_fast",
+                    "legacy_ordering_fallback_resolves_and_emits_diagnostic",
+                    "legacy_ordering_fallback_disabled_by_default",
                     "chapters_schema_exposed",
                 ],
             },
