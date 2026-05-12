@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from document_structure.document_hierarchy_index import find_section_by_id_effective
 from document_structure.structured_document import StructuredDocument, StructuredSection
 from section_tasks.task_unit import TaskUnit
 
@@ -165,11 +166,12 @@ class SectionTaskContextBuilder:
         document: StructuredDocument,
         section_id: str,
     ) -> StructuredSection | None:
-        """Find one section by stable section id inside structured document."""
-        for section in document.sections:
-            if section.section_id == section_id:
-                return section
-        return None
+        """Find one section by id with hierarchy-first + legacy fallback semantics."""
+        return find_section_by_id_effective(
+            document,
+            section_id,
+            allow_legacy_fallback=True,
+        )
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:
