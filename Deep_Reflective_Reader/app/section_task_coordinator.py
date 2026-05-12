@@ -1352,7 +1352,9 @@ class SectionTaskCoordinator:
     ) -> list[StructuredSection]:
         """Resolve section list for task-layout read path with hierarchy-first fallback."""
         if not document.chapters:
-            return list(document.sections)
+            raise ValueError(
+                f"{context}: legacy sections-only document requires migration"
+            )
 
         warnings = validate_chapter_hierarchy_consistency(document)
         severe_warnings = [

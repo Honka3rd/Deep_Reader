@@ -541,25 +541,26 @@ def test_task_layout_hierarchy_first_read() -> None:
             "task-layout schema should now expose chapters field",
         )
 
-        # B. legacy fallback when chapters empty
+        # B. legacy sections-only now fails fast (runtime hierarchy required)
         legacy_doc = _build_legacy_only_doc()
         Path(temp_dir, "legacy-doc.structured.json").write_text(
             legacy_doc.to_json(),
             encoding="utf-8",
         )
-        legacy_layout = coordinator.get_document_task_layout(
-            doc_name="legacy-doc",
-            task_unit_split_mode="semantic_safe",
-            semantic_top_k_candidates=3,
-        )
-        _assert(
-            [chapter.chapter_id for chapter in legacy_layout.chapters] == ["chapter-legacy-0"],
-            "layout should provide synthetic chapter fallback when chapters are missing",
-        )
-        _assert(
-            [section.section_id for section in legacy_layout.chapters[0].sections] == ["section-legacy"],
-            "synthetic chapter should wrap legacy sections",
-        )
+        try:
+            coordinator.get_document_task_layout(
+                doc_name="legacy-doc",
+                task_unit_split_mode="semantic_safe",
+                semantic_top_k_candidates=3,
+            )
+            raise AssertionError(
+                "expected failure when runtime receives legacy sections-only document"
+            )
+        except ValueError as error:
+            _assert(
+                "legacy sections-only document requires migration" in str(error),
+                "legacy sections-only document should fail-fast with migration guidance",
+            )
 
         # C. cache validity checks effective(hierarchy) sections
         invalid_doc = _build_hierarchy_cache_invalid_doc()
@@ -709,7 +710,7 @@ def main() -> None:
                 "status": "ok",
                 "tests": [
                     "hierarchy_first_read",
-                    "legacy_fallback",
+                    "legacy_sections_only_hierarchy_required",
                     "cache_validity_uses_effective_sections",
                     "inconsistent_hierarchy_without_legacy_fails_fast",
                     "legacy_ordering_fallback_resolves_and_emits_diagnostic",

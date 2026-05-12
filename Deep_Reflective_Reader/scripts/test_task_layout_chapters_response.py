@@ -376,7 +376,7 @@ def test_chapter_only_novel_shape() -> None:
             )
 
 
-def test_missing_chapters_synthetic_fallback() -> None:
+def test_missing_chapters_hierarchy_required() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repo = StructuredDocumentArtifactRepository(
             store=StructuredDocumentStore(),
@@ -384,20 +384,20 @@ def test_missing_chapters_synthetic_fallback() -> None:
         )
         doc = _build_layout_ready_document(with_chapters=False)
         (Path(temp_dir) / "layout-doc.structured.json").write_text(
-            doc.to_json(),
+            doc.to_json(include_legacy_sections=True),
             encoding="utf-8",
         )
         coordinator = _build_coordinator(repo)
-        layout = coordinator.get_document_task_layout(doc_name="layout-doc")
-        _assert(len(layout.chapters) == 2, "legacy flat document should migrate to two real hierarchy chapters")
-        _assert(
-            all(not chapter.metadata.get("synthetic") for chapter in layout.chapters),
-            "migrated hierarchy chapters should not be synthetic",
-        )
-        _assert(
-            [chapter.title for chapter in layout.chapters] == ["第一章", "第二章"],
-            "legacy flat sections should be promoted into real chapter titles",
-        )
+        try:
+            coordinator.get_document_task_layout(doc_name="layout-doc")
+            raise AssertionError(
+                "expected failure when task-layout runtime receives legacy sections-only document"
+            )
+        except ValueError as error:
+            _assert(
+                "legacy sections-only document requires migration" in str(error),
+                "missing-chapters document should fail-fast with migration guidance",
+            )
 
 
 def test_artifact_availability_and_no_heavy_payload_and_recommendation() -> None:
@@ -442,7 +442,7 @@ def test_artifact_availability_and_no_heavy_payload_and_recommendation() -> None
 def main() -> None:
     test_hierarchy_response_shape()
     test_chapter_only_novel_shape()
-    test_missing_chapters_synthetic_fallback()
+    test_missing_chapters_hierarchy_required()
     test_artifact_availability_and_no_heavy_payload_and_recommendation()
     print(
         json.dumps(
@@ -451,7 +451,7 @@ def main() -> None:
                 "tests": [
                     "hierarchy_response_shape",
                     "chapter_only_novel_shape",
-                    "synthetic_fallback",
+                    "missing_chapters_hierarchy_required",
                     "artifact_availability_no_heavy_payload_recommendation",
                 ],
             },
