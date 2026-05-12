@@ -2323,15 +2323,13 @@ class SectionTaskCoordinator:
         selected_task_unit = target_section.task_units[0]
         selected_index = task_unit_index_by_id.get(selected_task_unit.unit_id)
         if selected_index is None:
-            if document.sections:
-                # Backward-compatible extension path for old sections-only payloads.
-                for section in document.sections:
-                    for task_unit in section.task_units:
-                        if task_unit.unit_id in task_unit_index_by_id:
-                            continue
-                        task_unit_index_by_id[task_unit.unit_id] = len(ordered_task_units)
-                        ordered_task_units.append(task_unit)
-                selected_index = task_unit_index_by_id.get(selected_task_unit.unit_id)
+            selected_index = self._resolve_legacy_section_ordering_fallback(
+                document=document,
+                selected_task_unit_id=selected_task_unit.unit_id,
+                task_unit_index_by_id=task_unit_index_by_id,
+                ordered_task_units=ordered_task_units,
+                context="SectionTaskCoordinator#resolve_task_unit_for_section_id_from_persisted_layout",
+            )
             if selected_index is None:
                 raise ValueError(
                     f"section_id '{normalized_section_id}' task units are not aligned with effective "
@@ -2342,6 +2340,41 @@ class SectionTaskCoordinator:
             task_unit=selected_task_unit,
             task_unit_index=selected_index,
         )
+
+    @staticmethod
+    def _resolve_legacy_section_ordering_fallback(
+        *,
+        document: StructuredDocument,
+        selected_task_unit_id: str,
+        task_unit_index_by_id: dict[str, int],
+        ordered_task_units: list[TaskUnit],
+        context: str,
+    ) -> int | None:
+        """Legacy compatibility fallback for ordering alignment only.
+
+        This path is intentionally not hierarchy-first: it scans root legacy
+        `document.sections` to align stale persisted task-unit ordering for old
+        payloads. It should remain compatibility-only and can be replaced by
+        fail-fast once runtime legacy fallback is retired.
+        """
+        if not document.sections:
+            return None
+        for section in document.sections:
+            for task_unit in section.task_units:
+                if task_unit.unit_id in task_unit_index_by_id:
+                    continue
+                task_unit_index_by_id[task_unit.unit_id] = len(ordered_task_units)
+                ordered_task_units.append(task_unit)
+
+        selected_index = task_unit_index_by_id.get(selected_task_unit_id)
+        if selected_index is not None:
+            print(
+                "SectionTaskCoordinator#legacy_section_ordering_fallback_hit:",
+                f"context={context}",
+                f"document_id={document.document_id}",
+                f"task_unit_id={selected_task_unit_id}",
+            )
+        return selected_index
 
     def _resolve_task_unit_for_section_id(
         self,
