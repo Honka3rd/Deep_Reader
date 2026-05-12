@@ -166,11 +166,13 @@ class SectionTaskContextBuilder:
         document: StructuredDocument,
         section_id: str,
     ) -> StructuredSection | None:
-        """Find one section by id with hierarchy-first + legacy fallback semantics."""
+        """Find one section by id with hierarchy-first semantics only."""
+        if not document.chapters:
+            return None
         return find_section_by_id_effective(
             document,
             section_id,
-            allow_legacy_fallback=True,
+            allow_legacy_fallback=False,
         )
 
     @staticmethod

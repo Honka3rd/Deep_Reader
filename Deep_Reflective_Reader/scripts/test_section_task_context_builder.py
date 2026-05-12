@@ -98,18 +98,19 @@ def main() -> None:
     )
 
     legacy_doc = _build_legacy_only_document()
-    legacy_context = builder.build_from_document(
-        document=legacy_doc,
-        section_id="section-legacy",
-    )
-    _assert(
-        legacy_context.section_title == "Legacy Section",
-        "legacy-only document should still resolve section by id",
-    )
-    _assert(
-        legacy_context.section_content == "legacy only content",
-        "legacy-only fallback should still return section content",
-    )
+    try:
+        builder.build_from_document(
+            document=legacy_doc,
+            section_id="section-legacy",
+        )
+        raise AssertionError(
+            "legacy sections-only document should fail when legacy fallback is disabled"
+        )
+    except ValueError as error:
+        _assert(
+            "not found in document 'doc-legacy-only'" in str(error),
+            "legacy-only lookup should fail with section-not-found error",
+        )
 
     print(
         json.dumps(
@@ -117,7 +118,7 @@ def main() -> None:
                 "status": "ok",
                 "tests": [
                     "hierarchy_first_preferred_when_drift_exists",
-                    "legacy_sections_only_fallback",
+                    "legacy_sections_only_fallback_disabled",
                 ],
             },
             ensure_ascii=False,
