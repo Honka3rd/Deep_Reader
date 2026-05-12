@@ -1,4 +1,5 @@
 from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.document_hierarchy_index import get_effective_sections
 from language.language_code import LanguageCodeResolver
 from section_tasks.abstract_task_unit_split_resolver import AbstractTaskUnitSplitResolver
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
@@ -35,7 +36,8 @@ class TaskUnitResolver:
         semantic_top_k_candidates: int | None = None,
     ) -> list[TaskUnit]:
         """Resolve task units with optional request-time split-mode overrides."""
-        if not document.sections:
+        effective_sections = get_effective_sections(document)
+        if not effective_sections:
             return []
         resolved_document_language = LanguageCodeResolver.resolve(document.language)
 
@@ -45,8 +47,8 @@ class TaskUnitResolver:
             else TaskUnitSplitMode.resolve(split_mode)
         )
 
-        if self._should_split_single_huge_section(document):
-            only_section = document.sections[0]
+        if self._should_split_single_huge_section(effective_sections):
+            only_section = effective_sections[0]
             return self._split_single_huge_section(
                 only_section,
                 split_mode=resolved_split_mode,
@@ -55,17 +57,20 @@ class TaskUnitResolver:
             )
 
         return self._merge_short_adjacent_sections(
-            document.sections,
+            effective_sections,
             split_mode=resolved_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
             language_code=resolved_document_language,
         )
 
-    def _should_split_single_huge_section(self, document: StructuredDocument) -> bool:
+    def _should_split_single_huge_section(
+        self,
+        sections: list[StructuredSection],
+    ) -> bool:
         """Return True when single-section document needs fallback split."""
-        if len(document.sections) != 1:
+        if len(sections) != 1:
             return False
-        section = document.sections[0]
+        section = sections[0]
         return len(section.content.strip()) > self.task_unit_max_chars
 
     def _split_single_huge_section(

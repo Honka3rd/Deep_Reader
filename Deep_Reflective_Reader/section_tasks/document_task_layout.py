@@ -152,7 +152,13 @@ class EnhancedParseRecommendationDTO:
 
 @dataclass(frozen=True)
 class ProfileStructureDiagnosticsDTO:
-    """Lightweight profile diagnostics for hierarchy/read-target safety hints."""
+    """Lightweight mixed-source diagnostics for task-layout observability.
+
+    Source-of-truth split:
+    - parser/post shape and title risk fields come from persisted profile metadata.
+    - task-unit availability/coverage fields come from *current* layout sections.
+    This DTO is projection-only and must not be treated as persisted profile state.
+    """
 
     parser_metadata_shape: str | None = None
     post_actual_structure_shape: str | None = None
@@ -183,8 +189,9 @@ class ProfileStructureDiagnosticsDTO:
 class DocumentTaskLayout:
     """Frontend-consumable layout with hierarchy-first chapters tree.
 
-    `sections` / `task_units` / `chapter_artifacts` are transitional legacy
-    fields kept for backward compatibility in current tests and mappers.
+    `sections` / `task_units` / `chapter_artifacts` are internal transitional
+    DTO fields for backward-compatible tests/mappers. Public REST response is
+    chapters-first and should not rely on those top-level legacy mirrors.
     """
 
     document_id: str

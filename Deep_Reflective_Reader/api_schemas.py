@@ -342,7 +342,12 @@ class EnhancedParseRecommendationResponse(BaseModel):
 
 
 class ProfileStructureDiagnosticsResponse(BaseModel):
-    """Lightweight profile diagnostics for target-safety and observability."""
+    """Lightweight diagnostics for target-safety and observability.
+
+    Mixed-source semantics:
+    - shape/risk hints are profile-derived snapshot signals;
+    - task-unit availability/coverage reflects current task-layout state.
+    """
 
     parser_metadata_shape: str | None = None
     post_actual_structure_shape: str | None = None

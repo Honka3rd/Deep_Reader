@@ -696,7 +696,11 @@ class SectionTaskCoordinator:
         *,
         sections: list[StructuredSection],
     ) -> tuple[bool, float | None, int]:
-        """Compute current layout task-unit coverage from effective sections."""
+        """Compute task-unit coverage from current effective layout sections.
+
+        This is intentionally request-time projection state and should not be
+        conflated with prepare-time post_structure_metadata snapshot fields.
+        """
         section_count = len(sections)
         sections_with_task_units_count = sum(
             1 for section in sections if len(section.task_units) > 0
@@ -715,7 +719,11 @@ class SectionTaskCoordinator:
         document_profile: DocumentProfile | None,
         sections: list[StructuredSection],
     ) -> ProfileStructureDiagnosticsDTO | None:
-        """Build lightweight diagnostics from pre/post profile metadata."""
+        """Build mixed-source diagnostics for task-layout response.
+
+        Persisted profile contributes shape/risk hints, while task-unit stats
+        are derived from the *current* section list used for this layout.
+        """
         if document_profile is None:
             return None
         parser_metadata = document_profile.parser_metadata

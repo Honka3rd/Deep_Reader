@@ -65,6 +65,27 @@ class _MissingProfileStore:
         raise RuntimeError("profile should be missing")
 
 
+class _SpyProfileStore:
+    def __init__(self, profile: DocumentProfile) -> None:
+        self.profile = profile
+        self.load_calls = 0
+        self.save_calls = 0
+
+    @staticmethod
+    def exists(config) -> bool:
+        _ = config
+        return True
+
+    def load(self, config) -> DocumentProfile:
+        _ = config
+        self.load_calls += 1
+        return self.profile
+
+    def save(self, profile, config) -> None:  # pragma: no cover - must not be called
+        _ = (profile, config)
+        self.save_calls += 1
+
+
 class _FakeRepository:
     @staticmethod
     def update_task_layout(doc_name, sections, task_layout_metadata):
@@ -193,6 +214,21 @@ def _build_coordinator(document: StructuredDocument) -> SectionTaskCoordinator:
         document_preparation_pipeline=_FakePipeline(document),
         document_artifact_repository=_FakeRepository(),
         document_profile_store=_MissingProfileStore(),
+        chapter_summary_service=_NoopSummaryService(),
+        chapter_quiz_service=_NoopQuizService(),
+        task_unit_resolver=_FakeTaskUnitResolver(),
+        enhanced_parse_trigger_evaluator=EnhancedParseTriggerEvaluator(),
+    )
+
+
+def _build_coordinator_with_profile_store(
+    document: StructuredDocument,
+    profile_store,
+) -> SectionTaskCoordinator:
+    return SectionTaskCoordinator(
+        document_preparation_pipeline=_FakePipeline(document),
+        document_artifact_repository=_FakeRepository(),
+        document_profile_store=profile_store,
         chapter_summary_service=_NoopSummaryService(),
         chapter_quiz_service=_NoopQuizService(),
         task_unit_resolver=_FakeTaskUnitResolver(),
@@ -342,12 +378,34 @@ def test_missing_profile_non_blocking_task_layout() -> None:
     _assert("\"items\":" not in serialized, "layout payload should not expose quiz items")
 
 
+def test_task_layout_diagnostics_does_not_save_profile() -> None:
+    document = _build_cached_document(sections_with_units=[True, True])
+    spy_store = _SpyProfileStore(
+        _profile(
+            parser_shape=DocumentStructureShape.CHAPTER_ONLY,
+            post_shape=DocumentStructureShape.CHAPTER_ONLY,
+            title_risk=LikelihoodLevel.LOW,
+            task_stats_available=False,
+            coverage=0.0,
+        )
+    )
+    coordinator = _build_coordinator_with_profile_store(
+        document=document,
+        profile_store=spy_store,
+    )
+    layout = coordinator.get_document_task_layout(doc_name="doc")
+    _assert(layout.profile_diagnostics is not None, "diagnostics should be produced when profile exists")
+    _assert(spy_store.load_calls > 0, "profile load should be called")
+    _assert(spy_store.save_calls == 0, "task-layout diagnostics must not save/mutate profile artifact")
+
+
 def main() -> None:
     test_title_target_requires_id_and_shape_mismatch()
     test_current_layout_overrides_stale_post_metadata()
     test_current_layout_no_task_units()
     test_current_layout_partial_task_units()
     test_missing_profile_non_blocking_task_layout()
+    test_task_layout_diagnostics_does_not_save_profile()
     print(
         json.dumps(
             {
@@ -359,6 +417,7 @@ def main() -> None:
                     "diagnostics_current_layout_no_task_units",
                     "diagnostics_current_layout_partial_task_units",
                     "task_layout_missing_profile_non_blocking",
+                    "task_layout_diagnostics_no_profile_save",
                     "task_layout_no_heavy_payload",
                 ],
             },

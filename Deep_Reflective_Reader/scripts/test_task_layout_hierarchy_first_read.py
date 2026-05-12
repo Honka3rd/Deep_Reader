@@ -370,34 +370,13 @@ def _build_hierarchy_inconsistent_doc() -> StructuredDocument:
         parent_chapter_id="chapter-1",
         task_units=[],
     )
-    legacy = StructuredSection(
-        section_id="section-legacy",
-        section_index=9,
-        title="Legacy",
-        level=1,
-        content="legacy",
-        char_start=0,
-        char_end=6,
-        section_role=SectionRole.MAIN_BODY,
-        task_units=[
-            TaskUnit(
-                unit_id="task-unit-legacy",
-                title="legacy",
-                container_title=None,
-                content="legacy",
-                source_section_ids=["section-legacy"],
-                is_fallback_generated=False,
-                parent_section_id="section-legacy",
-            )
-        ],
-    )
     doc = StructuredDocument(
         document_id="inconsistent-doc",
         title="Inconsistent",
         source_path=None,
         language="zh",
         raw_text="legacy",
-        sections=[legacy],
+        sections=[],
         chapters=[
             StructuredChapter("chapter-0", "第一章", 1, "main_body", [dup_a]),
             StructuredChapter("chapter-1", "第二章", 1, "main_body", [dup_b]),
@@ -512,21 +491,27 @@ def test_task_layout_hierarchy_first_read() -> None:
             "missing task_units on hierarchy sections should invalidate cache and trigger resolver",
         )
 
-        # D. hierarchy inconsistency fallback to legacy sections
+        # D. hierarchy inconsistency without legacy fallback fails fast (pure hierarchy)
         inconsistent_doc = _build_hierarchy_inconsistent_doc()
         Path(temp_dir, "inconsistent-doc.structured.json").write_text(
             inconsistent_doc.to_json(),
             encoding="utf-8",
         )
-        inconsistent_layout = coordinator.get_document_task_layout(
-            doc_name="inconsistent-doc",
-            task_unit_split_mode="semantic_safe",
-            semantic_top_k_candidates=3,
-        )
-        _assert(
-            [section.section_id for section in inconsistent_layout.chapters[0].sections] == ["section-legacy"],
-            "severe hierarchy inconsistency should fallback to legacy sections",
-        )
+        try:
+            coordinator.get_document_task_layout(
+                doc_name="inconsistent-doc",
+                task_unit_split_mode="semantic_safe",
+                semantic_top_k_candidates=3,
+            )
+            raise AssertionError(
+                "expected failure when hierarchy is inconsistent and no legacy sections exist"
+            )
+        except ValueError as error:
+            _assert(
+                "hierarchy is inconsistent and no legacy sections are available"
+                in str(error),
+                "should fail-fast with explicit pure-hierarchy error",
+            )
 
 
 def main() -> None:
@@ -539,7 +524,7 @@ def main() -> None:
                     "hierarchy_first_read",
                     "legacy_fallback",
                     "cache_validity_uses_effective_sections",
-                    "hierarchy_inconsistency_fallback",
+                    "inconsistent_hierarchy_without_legacy_fails_fast",
                     "chapters_schema_exposed",
                 ],
             },
