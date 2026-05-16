@@ -114,7 +114,7 @@
 | sections-only payload migration | Yes | Converted to hierarchy on save path | No |
 | root artifact mirror | N/A | No | No |
 
-說明：`find_*_effective(...allow_legacy_fallback=...)` 部分 helper 仍保留 compatibility-only 分支；不得描述為 runtime primary path。 **[Code-Confirmed] + [Maintainer-Confirmed] + [Needs Confirmation]**
+說明：`find_*_effective(...allow_legacy_fallback=...)` 已收斂為 compatibility-only 行為：僅 sections-only legacy 文檔可啟用；當 hierarchy chapters 存在時，即使旗標為 True 也不回退 root sections。 **[Code-Confirmed] + [Test-Confirmed] + [Maintainer-Confirmed]**
 
 ## 13. Terminology Governance Audit
 

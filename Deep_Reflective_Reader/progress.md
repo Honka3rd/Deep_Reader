@@ -38,7 +38,7 @@ It is used to:
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 7 | 1 | Needs Confirmation |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 8 | 1 | Needs Confirmation |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -172,7 +172,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
 - Status: `Needs Confirmation`
-- Completed item count: `7`
+- Completed item count: `8`
 - Needs confirmation count: `1`
 
 #### Completed Work
@@ -184,10 +184,11 @@ No unresolved confirmation items identified in module checklist.
 - [x] Synchronized unresolved confirmation status after governance cleanup across detailed-design/checklist/progress.
 - [x] Clarified artifact governance and hierarchy persistence boundary (truth/output/projection ownership split).
 - [x] Closed governance terminology inconsistency by deprecating `mirror` contract wording and enforcing compatibility-only fallback wording.
+- [x] Completed allow_legacy_fallback retirement audit with compatibility-only isolation (hierarchy-first runtime no longer depends on fallback success).
 
 #### Needs Confirmation
 
-- [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支是否有正式退場時程。
+- [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支的「完全刪除」時程與條件。
 
 ### `embeddings/`
 
@@ -555,7 +556,7 @@ No unresolved confirmation items identified in module checklist.
 
 | Module | Item | Reason | Needed Confirmation |
 |---|---|---|---|
-| `document_structure/` | `allow_legacy_fallback` 兼容分支是否有正式退場時程 | detailed design 已保留 `Needs Confirmation`，程式碼仍保留可選 fallback 參數 | maintainer 是否提供 deprecation phase/date |
+| `document_structure/` | `allow_legacy_fallback` compatibility 分支完整退場條件 | 已完成 compatibility-only isolation，但仍存在一個 legacy chapter-title call site 需與 old JSON 相容策略一起決策 | maintainer 是否接受 fail-fast 替代並提供 deprecation phase/date |
 ## 9. Missing or Weak Checklists
 
 - No checklist files are missing in this pass.

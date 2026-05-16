@@ -55,11 +55,15 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Known Legacy / Compatibility Behavior, Terminology Governance Audit, Terminology Validation Notes)`; maintainer-confirmed governance direction in current task; `Deep_Reflective_Reader/progress.md`
   Notes: `mirror` 已退出正式 architecture terminology，統一改為 `legacy compatibility fields` / `compatibility-only fields`；`allow_legacy_fallback` 明確標記為 compatibility-only，且不得暗示 runtime primary path。
 
+- [x] Audit and retire allow_legacy_fallback legacy helper path
+  Evidence: `Deep_Reflective_Reader/document_structure/document_hierarchy_index.py`; `Deep_Reflective_Reader/scripts/test_chapter_hierarchy_primary_model.py`; `Deep_Reflective_Reader/document_structure/module-detailed-design.md`; `Deep_Reflective_Reader/progress.md`
+  Notes: 已完成 narrow retirement isolation：當 chapters 存在時 fallback 永不啟用；僅 sections-only legacy 文檔允許 compatibility fallback。runtime primary path 已 hierarchy-only，不再依賴 fallback 成功。
+
 ## Needs Confirmation
 
-- [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支是否有正式退場時程。  
-  Reason: detailed design 仍標註 `Needs Confirmation`；程式碼仍保留可選 fallback 參數。  
-  Needed confirmation: maintainer 是否提供明確 deprecation phase/date。
+- [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支的「完全刪除」時程與條件。  
+  Reason: 已完成 compatibility-only isolation，但 `app/section_task_coordinator.py` 仍有一個顯式 `allow_legacy_fallback=True` 的 legacy chapter-title compatibility call site，需確認是否可與 old JSON sections-only 相容策略同步退場。  
+  Needed confirmation: maintainer 是否接受以 fail-fast 取代該 legacy chapter-title compatibility path，並指定 deprecation phase/date。
 
 ## Future Task Policy
 

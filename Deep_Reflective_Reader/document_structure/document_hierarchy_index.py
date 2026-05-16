@@ -65,7 +65,11 @@ def find_section_by_id_effective(
     *,
     allow_legacy_fallback: bool = False,
 ) -> StructuredSection | None:
-    """Find section by id with hierarchy as primary source."""
+    """Find section by id with hierarchy as primary source.
+
+    Legacy fallback is compatibility-only and is allowed only for sections-only
+    documents (chapters are empty).
+    """
     normalized_section_id = section_id.strip()
     if not normalized_section_id:
         return None
@@ -83,8 +87,12 @@ def find_section_by_id_effective(
             )
         if len(hierarchy_matches) == 1:
             return hierarchy_matches[0]
-        if not allow_legacy_fallback:
-            return None
+        # Even if allow_legacy_fallback is requested, do not fall back to root
+        # legacy sections when hierarchy chapters exist.
+        return None
+
+    if not allow_legacy_fallback:
+        return None
 
     legacy_matches = [
         section for section in document.sections if section.section_id == normalized_section_id
@@ -105,7 +113,11 @@ def find_sections_by_title_effective(
     *,
     allow_legacy_fallback: bool = False,
 ) -> list[StructuredSection]:
-    """Find sections by exact normalized title with hierarchy-first preference."""
+    """Find sections by exact normalized title with hierarchy-first preference.
+
+    Legacy fallback is compatibility-only and is allowed only for sections-only
+    documents (chapters are empty).
+    """
     normalized_title = title.strip()
     if not normalized_title:
         return []
@@ -118,8 +130,12 @@ def find_sections_by_title_effective(
         ]
         if hierarchy_matches:
             return hierarchy_matches
-        if not allow_legacy_fallback:
-            return []
+        # Keep hierarchy-first strictness: when chapters exist, do not consult
+        # root legacy sections as a fallback title source.
+        return []
+
+    if not allow_legacy_fallback:
+        return []
 
     return [
         section
@@ -134,7 +150,11 @@ def find_section_by_chapter_title_effective(
     *,
     allow_legacy_fallback: bool = False,
 ) -> StructuredSection | None:
-    """Resolve chapter title into section with chapter-aware hierarchy-first semantics."""
+    """Resolve chapter title into section with chapter-aware hierarchy-first semantics.
+
+    Legacy fallback is compatibility-only and is allowed only for sections-only
+    documents (chapters are empty).
+    """
     normalized_chapter_title = chapter_title.strip()
     if not normalized_chapter_title:
         return None
@@ -165,8 +185,12 @@ def find_section_by_chapter_title_effective(
             if chapter_body_sections:
                 return chapter_body_sections[0]
             return chapter.sections[0]
-        if not allow_legacy_fallback:
-            return None
+        # Do not fall back to root legacy sections when hierarchy chapters
+        # already exist in the document.
+        return None
+
+    if not allow_legacy_fallback:
+        return None
 
     legacy_title_matches = [
         section

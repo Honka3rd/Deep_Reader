@@ -8,6 +8,9 @@ import json
 from document_structure.document_hierarchy_index import (
     assert_chapter_hierarchy_consistency,
     build_section_index_from_chapters,
+    find_section_by_chapter_title_effective,
+    find_section_by_id_effective,
+    find_sections_by_title_effective,
     flatten_sections_from_chapters,
     get_effective_sections,
     validate_chapter_hierarchy_consistency,
@@ -316,6 +319,124 @@ def test_structure_nodes_backward_compatibility() -> None:
     )
 
 
+def test_legacy_fallback_is_disabled_when_hierarchy_exists() -> None:
+    hierarchy_section = StructuredSection(
+        **{**_make_section("section-1", "Chapter One").__dict__, "parent_chapter_id": "chapter-0"}
+    )
+    legacy_only_section = _make_section("section-legacy", "Legacy Chapter")
+    doc = StructuredDocument(
+        document_id="doc-hierarchy-first",
+        title="DocHierarchyFirst",
+        source_path=None,
+        language="en",
+        raw_text="x",
+        sections=[legacy_only_section],
+        chapters=[
+            StructuredChapter(
+                chapter_id="chapter-0",
+                title="Chapter One",
+                level=2,
+                chapter_role="main_body",
+                sections=[hierarchy_section],
+            )
+        ],
+    )
+
+    _assert(
+        find_section_by_id_effective(
+            doc,
+            "section-legacy",
+            allow_legacy_fallback=True,
+        ) is None,
+        "legacy id fallback should be disabled when hierarchy chapters exist",
+    )
+    _assert(
+        find_sections_by_title_effective(
+            doc,
+            "Legacy Chapter",
+            allow_legacy_fallback=True,
+        ) == [],
+        "legacy title fallback should be disabled when hierarchy chapters exist",
+    )
+    _assert(
+        find_section_by_chapter_title_effective(
+            doc,
+            "Legacy Chapter",
+            allow_legacy_fallback=True,
+        ) is None,
+        "legacy chapter-title fallback should be disabled when hierarchy chapters exist",
+    )
+
+
+def test_legacy_fallback_remains_compatibility_only_for_sections_only_docs() -> None:
+    legacy_section = _make_section("section-legacy", "Legacy Chapter")
+    doc = StructuredDocument(
+        document_id="doc-legacy-only",
+        title="DocLegacyOnly",
+        source_path=None,
+        language="en",
+        raw_text="x",
+        sections=[legacy_section],
+        chapters=[],
+    )
+
+    _assert(
+        find_section_by_id_effective(
+            doc,
+            "section-legacy",
+            allow_legacy_fallback=False,
+        ) is None,
+        "without compatibility flag, sections-only lookup should fail fast",
+    )
+    resolved_by_id = find_section_by_id_effective(
+        doc,
+        "section-legacy",
+        allow_legacy_fallback=True,
+    )
+    _assert(resolved_by_id is not None, "compatibility fallback should resolve by id")
+    _assert(
+        resolved_by_id.section_id == "section-legacy",
+        "compatibility fallback should return legacy section by id",
+    )
+
+    _assert(
+        find_sections_by_title_effective(
+            doc,
+            "Legacy Chapter",
+            allow_legacy_fallback=False,
+        ) == [],
+        "without compatibility flag, title lookup should fail for sections-only docs",
+    )
+    legacy_title_matches = find_sections_by_title_effective(
+        doc,
+        "Legacy Chapter",
+        allow_legacy_fallback=True,
+    )
+    _assert(
+        len(legacy_title_matches) == 1 and legacy_title_matches[0].section_id == "section-legacy",
+        "compatibility title fallback should resolve legacy section",
+    )
+
+    _assert(
+        find_section_by_chapter_title_effective(
+            doc,
+            "Legacy Chapter",
+            allow_legacy_fallback=False,
+        ) is None,
+        "without compatibility flag, chapter-title lookup should fail for sections-only docs",
+    )
+    resolved_by_chapter_title = find_section_by_chapter_title_effective(
+        doc,
+        "Legacy Chapter",
+        allow_legacy_fallback=True,
+    )
+    _assert(
+        resolved_by_chapter_title is not None
+        and resolved_by_chapter_title.section_id == "section-legacy",
+        "compatibility chapter-title fallback should resolve legacy section",
+    )
+
+
 def main() -> None:
     test_flatten_sections_from_chapters()
     test_get_effective_sections()
@@ -325,6 +446,8 @@ def main() -> None:
     test_task_unit_parent_mismatch_invalid()
     test_sync_legacy_sections_from_chapters()
     test_structure_nodes_backward_compatibility()
+    test_legacy_fallback_is_disabled_when_hierarchy_exists()
+    test_legacy_fallback_remains_compatibility_only_for_sections_only_docs()
     # Also verify strict duplicate detection helper.
     duplicate_doc = StructuredDocument(
         document_id="doc-h",
@@ -370,6 +493,8 @@ def main() -> None:
                     "task_unit_parent_mismatch_invalid",
                     "sync_legacy_sections_from_chapters",
                     "structure_nodes_backward_compatibility",
+                    "legacy_fallback_disabled_when_hierarchy_exists",
+                    "legacy_fallback_compatibility_for_sections_only_docs",
                 ],
             },
             ensure_ascii=False,
