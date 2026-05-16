@@ -47,11 +47,13 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Artifact Governance and Projection Boundary, Terminology Governance Audit, Persistence / Side Effects)`; `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/progress.md`
   Notes: 明確分離 persisted hierarchy truth、artifact persistence write path、runtime availability projection、diagnostics projection 與 API DTO shape，並保持 no hidden mutation/no profile write-back。
 
+- [x] Close terminology governance item: deprecate `artifact mirror` as formal contract wording
+  Evidence: `Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Terminology Governance Audit, Terminology Validation Notes)`; maintainer decision in current documentation-governance task; `Deep_Reflective_Reader/progress.md`
+  Notes: `artifact mirror` 僅保留為 historical/migration/compatibility reference；正式術語統一為 `transitional internal field`，並明確非 persistence authority/non-public-contract terminology。
+
 ## Needs Confirmation
 
-- [ ] 是否要在 section_tasks 文檔中全面淘汰 `artifact mirror` 用語，統一改為 `transitional internal field`。  
-  Reason: `module-detailed-design.md` 已將其標註為歷史語境，但全專案術語尚未完全統一。  
-  Needed confirmation: maintainer 是否要在下一輪做全局術語替換策略。
+No unresolved confirmation items identified in this pass.
 
 ## Future Task Policy
 

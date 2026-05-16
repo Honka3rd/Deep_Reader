@@ -140,7 +140,7 @@
 | availability cache / artifact validity | 僅可觀測 cache-validity 訊號，不改 hierarchy identity | **[Code-Confirmed]** | 避免被誤讀為 hierarchy source |
 | top-level legacy mirrors（用語） | 歷史/文檔語境用詞，非新 architecture contract 名稱 | **[Doc-Confirmed]** | 建議在 module 文件統一替換為 `transitional internal fields` |
 | flat task_units | historical/compatibility語境，非 hierarchy persistence truth | **[Code-Confirmed] + [From HLD]** | 禁止重新引入 flat persisted semantics |
-| artifact mirror | 若指 top-level mirror fields，僅 compatibility 語境 | **[Inferred] + [Needs Confirmation]** | 不作新主流程來源 |
+| artifact mirror（deprecated wording） | 僅 historical/migration 搜尋關鍵字；正式術語改為 `transitional internal field` | **[Maintainer-Confirmed] + [Doc-Confirmed]** | 不得作為現行 contract terminology、persistence authority 或 hierarchy truth 描述 |
 | write-back / mutation | task-layout request path 應視為 projection/read；artifact write path 需顯式呼叫 repository update | **[Code-Confirmed] + [From HLD]** | 禁止 hidden mutation |
 | profile diagnostics | runtime mixed-source projection，非 persisted profile body | **[Code-Confirmed]** | 禁止描述為 profile snapshot overwrite |
 | root sections mirror | 不屬 section_tasks contract；不得在本模組文件暗示可回退為主路徑 | **[Code-Confirmed] + [From HLD]** | 維持 hierarchy-first contract 邊界 |
@@ -151,7 +151,7 @@
 1. 本模組文檔已明確區分 internal transitional DTO fields 與 public chapters-first API contract。  
 2. task-layout 與 diagnostics 皆定義為 runtime projection；不承擔 profile write-back。  
 3. section/task-unit/chapter artifact availability 的讀取語義固定為 hierarchy-aware path（read-side observability）。  
-4. `artifact mirror` 一詞在本模組僅能作歷史語境，後續是否完全去詞仍屬 **[Needs Confirmation]**。  
+4. `artifact mirror` 一詞已降級為 deprecated terminology；正式 contract 用語統一為 `transitional internal field`。 **[Maintainer-Confirmed]**  
 5. API response shape 已與 persistence schema 語義分離，避免 DTO 漂移成 artifact truth source。  
 
 ## 16. Current Risks
@@ -178,7 +178,7 @@
 2. summary/quiz prompt builder contract 是否需要獨立文檔（非實作細節）？
 3. task-unit split mode 對外可觀測性是否需統一 reason code？
 4. `DocumentTaskLayout` internal transitional fields 是否需要在類註解中加 deprecation horizon（版本或階段）？
-5. `artifact mirror` 用詞是否要在全專案文檔統一替換為「transitional internal field」？
+5. 是否要補一份全專案 deprecated terminology alias list（`artifact mirror` -> `transitional internal field`）供搜尋遷移使用？ **[Doc-Confirmed]**
 
 ## 18. Suggested Next Documentation Improvements
 

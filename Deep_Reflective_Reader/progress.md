@@ -48,7 +48,7 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 5 | 1 | Needs Confirmation |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 6 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -357,9 +357,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
-- Status: `Needs Confirmation`
-- Completed item count: `5`
-- Needs confirmation count: `1`
+- Status: `Completed Baseline Captured`
+- Completed item count: `6`
+- Needs confirmation count: `0`
 
 #### Completed Work
 
@@ -368,10 +368,11 @@ No unresolved confirmation items identified in module checklist.
 - [x] Implements section task context lookup with hierarchy-only section resolution behavior.
 - [x] Completed documentation governance cleanup for hierarchy-first task-layout semantics and projection/write boundary wording.
 - [x] Clarified artifact availability projection vs artifact persistence truth boundary for task-layout/read path semantics.
+- [x] Closed terminology governance item by deprecating `artifact mirror` as formal contract wording.
 
 #### Needs Confirmation
 
-- [ ] 是否要在 section_tasks 文檔中全面淘汰 `artifact mirror` 用語，統一改為 `transitional internal field`。
+No unresolved confirmation items identified in module checklist.
 
 ### `session/`
 
@@ -556,8 +557,6 @@ No unresolved confirmation items identified in module checklist.
 |---|---|---|---|
 | `document_structure/` | `allow_legacy_fallback` 兼容分支是否有正式退場時程 | detailed design 已保留 `Needs Confirmation`，程式碼仍保留可選 fallback 參數 | maintainer 是否提供 deprecation phase/date |
 | `document_structure/` | `mirror` 用詞是否全面替換為更精準術語 | terminology audit 仍標註 `Inferred + Needs Confirmation` | maintainer 是否啟動全局術語替換策略 |
-| `section_tasks/` | 是否要全面淘汰 `artifact mirror` 用語 | 目前已標註為歷史語境，但全專案術語未完全統一 | maintainer 是否要啟動全局術語替換策略 |
-
 ## 9. Missing or Weak Checklists
 
 - No checklist files are missing in this pass.
@@ -587,7 +586,7 @@ No unresolved confirmation items identified in module checklist.
 ## 12. Current Global Status
 
 - Documentation baseline has been captured across all listed package and root modules via checklist files.
-- Most aggregated module checklists report completed baseline items; `document_structure/` and `section_tasks/` currently retain terminology/fallback governance confirmation items.
+- Most aggregated module checklists report completed baseline items; `document_structure/` currently retains terminology/fallback governance confirmation items.
 - Global status currently reflects checklist aggregation, not roadmap completion.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.
