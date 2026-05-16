@@ -39,6 +39,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/profile/post_structure_metadata_enricher.py; Deep_Reflective_Reader/profile/document_profile_store.py; Deep_Reflective_Reader/profile/module-detailed-design.md (Main Responsibilities)`
   Notes: Post snapshot is hierarchy-grounded and used as advisory diagnostics source.
 
+- [x] Audit and clean profile governance documentation boundaries
+  Evidence: `Deep_Reflective_Reader/profile/module-detailed-design.md (Non-Responsibilities, Metadata Semantics Boundary, Terminology Governance Audit)`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/progress.md`
+  Notes: 已明確 advisory-only metadata、snapshot semantics、runtime diagnostics projection no-write-back，以及 profile 非 hierarchy/artifact persistence authority。
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

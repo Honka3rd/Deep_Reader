@@ -38,17 +38,17 @@ It is used to:
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `llm/` | package | `llm/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `profile/` | package | `profile/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `profile/` | package | `profile/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 4 | 1 | Needs Confirmation |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -172,7 +172,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -180,6 +180,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Implements hierarchy-first structured model contracts (`StructuredDocument`, chapter, section) with pure-hierarchy write defaults.
 - [x] Implements hierarchy-first effective indexing helpers and section lookup paths.
 - [x] Implements hierarchy-aware artifact repository with compatibility migration support on load paths.
+- [x] Completed document governance cleanup for hierarchy-first persistence terminology and legacy wording boundary separation.
 
 #### Needs Confirmation
 
@@ -262,7 +263,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `profile/module-checklist.md`
 - Detailed Design: `profile/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -270,6 +271,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines `DocumentProfile` contract with `parser_metadata` and `post_structure_metadata` plus legacy compatibility fields.
 - [x] Builds pre-structure profile via deterministic extraction plus lightweight LLM classification/fallback.
 - [x] Implements post-structure metadata enrichment and profile persistence store operations.
+- [x] Completed documentation governance cleanup for advisory-only profile semantics and diagnostics projection boundaries.
 
 #### Needs Confirmation
 
@@ -351,19 +353,20 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
-- Needs confirmation count: `0`
+- Status: `Needs Confirmation`
+- Completed item count: `4`
+- Needs confirmation count: `1`
 
 #### Completed Work
 
 - [x] Implements chapters-first task-layout DTO contracts and diagnostics DTO types.
 - [x] Implements hierarchy-first task unit resolution entry using effective hierarchy sections.
 - [x] Implements section task context lookup with hierarchy-only section resolution behavior.
+- [x] Completed documentation governance cleanup for hierarchy-first task-layout semantics and projection/write boundary wording.
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+- [ ] 是否要在 section_tasks 文檔中全面淘汰 `artifact mirror` 用語，統一改為 `transitional internal field`。
 
 ### `session/`
 
@@ -540,7 +543,9 @@ No unresolved confirmation items identified in module checklist.
 
 ## 8. Cross-Module Needs Confirmation
 
-No cross-module confirmation items identified in this pass.
+| Module | Item | Reason | Needed Confirmation |
+|---|---|---|---|
+| `section_tasks/` | 是否要全面淘汰 `artifact mirror` 用語 | 目前已標註為歷史語境，但全專案術語未完全統一 | maintainer 是否要啟動全局術語替換策略 |
 
 ## 9. Missing or Weak Checklists
 
@@ -571,7 +576,7 @@ No cross-module confirmation items identified in this pass.
 ## 12. Current Global Status
 
 - Documentation baseline has been captured across all listed package and root modules via checklist files.
-- All currently aggregated module checklists report completed baseline items and no open module-level confirmation items.
+- Most aggregated module checklists report completed baseline items; `section_tasks/` currently retains one terminology governance confirmation item.
 - Global status currently reflects checklist aggregation, not roadmap completion.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.

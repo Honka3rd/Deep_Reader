@@ -39,6 +39,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/document_structure/structured_document_artifact_repository.py; Deep_Reflective_Reader/document_structure/module-detailed-design.md (Known Legacy / Compatibility Behavior)`
   Notes: Repository remains write-boundary for section/chapter/task-unit artifacts.
 
+- [x] document governance cleanup for hierarchy-first persistence terminology
+  Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Non-Responsibilities, Architecture Constraints, Terminology Governance Audit)`; `Deep_Reflective_Reader/document_structure/structured_document.py`; `Deep_Reflective_Reader/progress.md`
+  Notes: 明確分離 primary hierarchy contract 與 legacy compatibility wording，並補齊 task-layout/diagnostics ownership 邊界描述。
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

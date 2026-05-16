@@ -39,9 +39,15 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/section_task_context_builder.py; Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Known Legacy / Compatibility Behavior)`
   Notes: Legacy section fallback is disabled by default at context-builder path.
 
+- [x] Documentation governance cleanup for hierarchy-first task-layout semantics
+  Evidence: `Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Read/Write Boundary Matrix, Public API Boundary Clarification, Terminology Governance Audit)`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/progress.md`
+  Notes: 已明確分離 task-layout projection/read path 與 artifact persistence write path，並固定 public chapters-first contract 與 diagnostics no-write-back 邊界。
+
 ## Needs Confirmation
 
-No unresolved confirmation items identified in this pass.
+- [ ] 是否要在 section_tasks 文檔中全面淘汰 `artifact mirror` 用語，統一改為 `transitional internal field`。  
+  Reason: `module-detailed-design.md` 已將其標註為歷史語境，但全專案術語尚未完全統一。  
+  Needed confirmation: maintainer 是否要在下一輪做全局術語替換策略。
 
 ## Future Task Policy
 

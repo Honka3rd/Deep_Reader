@@ -38,6 +38,8 @@
 1. 不應直接承擔 API request/response mapping。 **[From HLD]**
 2. 不應讓 profile metadata 直接硬控制 parser 切分規則。 **[From HLD]**
 3. 不應在 task-layout read path 做隱性寫回。 **[From HLD]**
+4. 不承擔 task-layout projection contract 本身（該責任屬 `section_tasks/` + `app/`；此 module 僅提供 hierarchy helper 與 persistence primitives）。 **[Code-Confirmed] + [From HLD]**
+5. 不承擔 profile diagnostics 組裝與 response 投影責任。 **[Code-Confirmed] + [From HLD]**
 
 ## 6. Important Data Structures / Contracts
 
@@ -56,6 +58,7 @@
 2. 不重新引入 root `sections` mirror 作新寫入來源。 **[Code-Confirmed] + [From HLD]**
 3. `structure_nodes` 不作主流程結構來源。 **[Code-Confirmed] + [From HLD]**
 4. parser metadata 屬 advisory，不是 parser authority。 **[From HLD]**
+5. `StructuredDocument.to_dict()` 預設不輸出 root `sections[]`/`structure_nodes[]`，僅在 legacy include 旗標顯式開啟時輸出。 **[Code-Confirmed]**
 
 ## 8. Module Relationships
 
@@ -78,7 +81,7 @@
 1. prepare flow：`structured_document_builder` build + `structured_document_store` save。 **[Code-Confirmed]**
 2. hierarchy build flow：flat sections -> hierarchy chapters/sections。 **[Code-Confirmed]**
 3. artifact write flow：repository 更新 section/chapter/task-unit artifacts。 **[Code-Confirmed]**
-4. task-layout projection supporting flow：提供 `get_effective_sections` 與 find helpers。 **[Code-Confirmed]**
+4. hierarchy helper flow（被 task-layout/runtime 使用）：提供 `get_effective_sections` 與 find helpers；不等同於擁有 task-layout projection contract。 **[Code-Confirmed] + [From HLD]**
 5. enhanced recommendation flow：evaluator 輸出 should_recommend/score/reasons。 **[Code-Confirmed]**
 
 ## 10. Failure Semantics Matrix
@@ -109,7 +112,26 @@
 
 說明：`find_*_effective(...allow_legacy_fallback=...)` 部分 helper 仍保留 compatibility 分支。 **[Code-Confirmed] + [Needs Confirmation]**
 
-## 13. Current Risks
+## 13. Terminology Governance Audit
+
+| Term | Current Meaning in This Module | Classification | Governance Decision |
+|---|---|---|---|
+| root `sections[]` | legacy compatibility input field on `StructuredDocument`; not default write output | **[Code-Confirmed]** | 不得描述為 primary persistence source |
+| top-level sections | 若指 root `sections[]`，僅 compatibility 語境可用；正式契約應改稱 `chapters[].sections[]` hierarchy | **[Doc-Confirmed] + [Code-Confirmed]** | 在 module 文檔中避免作 current contract 用語 |
+| `structure_nodes[]` | legacy experimental hierarchy field，可讀；預設不寫 | **[Code-Confirmed]** | 僅保留 old JSON / round-trip compatibility 語義 |
+| `StructuredDocumentNode` | compatibility type，非主流程 hierarchy source | **[Code-Confirmed]** | 不得在架構圖描述為 active main flow |
+| flat `task_units` | 非 persistence truth；task units 應掛載於 section (`chapters[].sections[].task_units[]`) | **[Code-Confirmed] + [From HLD]** | 禁止作新 write contract |
+| mirror | 若指 root legacy mirrors（`sections[]`/`structure_nodes[]`）僅 compatibility | **[Inferred] + [Needs Confirmation]** | 禁止重新引入 mirror 作主流程來源 |
+| legacy | 指可讀相容，不代表 runtime primary path | **[Doc-Confirmed] + [Code-Confirmed]** | 文檔必須顯式區分 compatibility vs primary contract |
+
+### Terminology Validation Notes
+
+1. 本 module 文檔現已將 `root sections[]` 與 `structure_nodes[]` 固定為 compatibility 語義，不再暗示主流程來源。  
+2. task-layout 與 diagnostics ownership 已明確放在 module boundary 外，避免責任漂移。  
+3. metadata / LLM classification 被明確標記為 advisory，非 parser authority。  
+4. `find_*_effective(...allow_legacy_fallback=...)` 是否最終完全退場仍屬 **[Needs Confirmation]**。  
+
+## 14. Current Risks
 
 1. risk：helper 層 legacy fallback 若被 runtime 誤用
 - why：會破壞 hierarchy-only 路徑一致性
@@ -127,13 +149,13 @@
 - why：後續開發者可能重引入多層 persistence
 - guardrail：在 module docs/non-goals 明確固定 current scope **[From Proposal] + [From HLD]**
 
-## 14. Open Questions for Maintainer
+## 15. Open Questions for Maintainer
 
 1. `find_*_effective` 的 legacy fallback 參數是否設定退場時間表？
 2. `llm_section_splitter` 的輸出契約是否要加入更明確 schema guard（僅文檔層）？
 3. enhanced recommendation 的 score threshold 調整責任層級在哪（config 或 evaluator 固化）？
 
-## 15. Suggested Next Documentation Improvements
+## 16. Suggested Next Documentation Improvements
 
 1. 增加「common vs llm enhanced parser lifecycle」sequence diagram。
 2. 增加 artifact repository write boundary 狀態圖（section/chapter/task-unit/document-level）。
