@@ -2055,7 +2055,7 @@ class SectionTaskCoordinator:
         document: StructuredDocument,
         section_id: str,
     ) -> StructuredSection | None:
-        """Find section by id using hierarchy-first lookup with legacy fallback."""
+        """Find section by id using hierarchy-only effective lookup."""
         return find_section_by_id_effective(document, section_id)
 
     def _validate_task_unit_summary_artifact(
@@ -2230,29 +2230,6 @@ class SectionTaskCoordinator:
             )
         if len(matched_chapters) == 1:
             return matched_chapters[0]
-
-        resolved_section = find_section_by_chapter_title_effective(
-            document,
-            normalized_chapter_title,
-            allow_legacy_fallback=True,
-        )
-        if resolved_section is not None:
-            synthetic_chapter_id = (
-                (resolved_section.parent_chapter_id or "").strip()
-                or f"legacy::{resolved_section.section_id}"
-            )
-            return StructuredChapter(
-                chapter_id=synthetic_chapter_id,
-                title=resolved_section.title,
-                level=max(1, int(resolved_section.level)),
-                chapter_role=(
-                    None
-                    if resolved_section.section_role is None
-                    else resolved_section.section_role.value
-                ),
-                sections=[resolved_section],
-                metadata={"synthetic_from_legacy": True},
-            )
 
         raise ValueError(
             f"chapter_title '{normalized_chapter_title}' not found in document '{document.title}'"

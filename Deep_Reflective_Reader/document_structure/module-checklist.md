@@ -45,7 +45,7 @@ It is used to:
 
 - [x] synchronize unresolved confirmation status after governance cleanup
   Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Known Legacy / Compatibility Behavior, Terminology Governance Audit, Terminology Validation Notes)`; `Deep_Reflective_Reader/document_structure/document_hierarchy_index.py`; `Deep_Reflective_Reader/progress.md`
-  Notes: 已同步 detailed-design/checklist/progress 的 Needs Confirmation 狀態，保留仍未拍板的 fallback 退場時程與 mirror 用詞治理項目。
+  Notes: 已同步 detailed-design/checklist/progress 的 Needs Confirmation 狀態；本輪後 mirror terminology 與 allow_legacy_fallback 退場項目已完成收斂。
 
 - [x] Clarify artifact governance and hierarchy persistence boundary
   Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Architecture Constraints, Artifact Governance Boundary, Known Legacy / Compatibility Behavior)`; `Deep_Reflective_Reader/document_structure/document_artifact_repository.py`; `Deep_Reflective_Reader/document_structure/structured_document_artifact_repository.py`; `Deep_Reflective_Reader/progress.md`
@@ -57,13 +57,15 @@ It is used to:
 
 - [x] Audit and retire allow_legacy_fallback legacy helper path
   Evidence: `Deep_Reflective_Reader/document_structure/document_hierarchy_index.py`; `Deep_Reflective_Reader/scripts/test_chapter_hierarchy_primary_model.py`; `Deep_Reflective_Reader/document_structure/module-detailed-design.md`; `Deep_Reflective_Reader/progress.md`
-  Notes: 已完成 narrow retirement isolation：當 chapters 存在時 fallback 永不啟用；僅 sections-only legacy 文檔允許 compatibility fallback。runtime primary path 已 hierarchy-only，不再依賴 fallback 成功。
+  Notes: 已完成 narrow removal：`find_*_effective` 普通 helper API surface 不再暴露 `allow_legacy_fallback`，lookup 全面 hierarchy-only；sections-only legacy 文檔在 effective helper 路徑不再被解析。
+
+- [x] Remove allow_legacy_fallback API surface and enforce hierarchy-only runtime lookup
+  Evidence: `Deep_Reflective_Reader/document_structure/document_hierarchy_index.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_chapter_hierarchy_primary_model.py`; `Deep_Reflective_Reader/scripts/test_hierarchy_first_task_target_resolution.py`
+  Notes: helper signatures 已移除 `allow_legacy_fallback`，app chapter-title runtime lookup 不再回退 root sections，也不再合成 legacy chapter。
 
 ## Needs Confirmation
 
-- [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支的「完全刪除」時程與條件。  
-  Reason: 已完成 compatibility-only isolation，但 `app/section_task_coordinator.py` 仍有一個顯式 `allow_legacy_fallback=True` 的 legacy chapter-title compatibility call site，需確認是否可與 old JSON sections-only 相容策略同步退場。  
-  Needed confirmation: maintainer 是否接受以 fail-fast 取代該 legacy chapter-title compatibility path，並指定 deprecation phase/date。
+No unresolved confirmation items identified in this pass.
 
 ## Future Task Policy
 

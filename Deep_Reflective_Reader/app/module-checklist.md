@@ -39,6 +39,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py; Deep_Reflective_Reader/app/module-detailed-design.md (Error Semantics)`
   Notes: Legacy masking fallbacks are tightened in runtime coordinator paths.
 
+- [x] Replace legacy chapter-title fallback with fail-fast hierarchy lookup behavior.
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_hierarchy_first_task_target_resolution.py`
+  Notes: chapter_title 查找僅接受 hierarchy chapter；缺失/歧義均 fail-fast，不再回退 root sections 或合成 chapter。
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

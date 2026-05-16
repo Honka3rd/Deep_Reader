@@ -592,10 +592,88 @@ def test_front_matter_hierarchy_resolution_and_order_index() -> None:
         )
 
 
+def test_chapter_title_missing_does_not_fallback_to_legacy_root_sections() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = StructuredDocumentArtifactRepository(
+            store=StructuredDocumentStore(),
+            base_dir=temp_dir,
+        )
+        hierarchy_section = StructuredSection(
+            section_id="section-hierarchy",
+            section_index=0,
+            title="Hierarchy Chapter",
+            level=1,
+            content="hierarchy-content",
+            char_start=0,
+            char_end=20,
+            section_role=SectionRole.MAIN_BODY,
+            parent_chapter_id="chapter-0",
+            section_kind="chapter_body",
+            is_implicit_section=True,
+            task_units=[
+                TaskUnit(
+                    unit_id="task-unit-hierarchy",
+                    title="H",
+                    container_title=None,
+                    content="hierarchy-content",
+                    source_section_ids=["section-hierarchy"],
+                    is_fallback_generated=False,
+                    parent_section_id="section-hierarchy",
+                )
+            ],
+        )
+        legacy_root_section = StructuredSection(
+            section_id="section-legacy-root",
+            section_index=1,
+            title="Legacy Root Only",
+            level=1,
+            content="legacy-root-content",
+            char_start=20,
+            char_end=40,
+            section_role=SectionRole.MAIN_BODY,
+        )
+        doc = StructuredDocument(
+            document_id="chapter-title-no-legacy-fallback-doc",
+            title="Chapter Title No Legacy Fallback",
+            source_path=None,
+            language="en",
+            raw_text="Hierarchy Chapter\nhierarchy-content\nLegacy Root Only\nlegacy-root-content",
+            sections=[legacy_root_section],
+            chapters=[
+                StructuredChapter(
+                    chapter_id="chapter-0",
+                    title="Hierarchy Chapter",
+                    level=1,
+                    chapter_role="main_body",
+                    sections=[hierarchy_section],
+                )
+            ],
+        )
+        Path(temp_dir, "chapter-title-no-legacy-fallback-doc.structured.json").write_text(
+            doc.to_json(include_legacy_sections=True),
+            encoding="utf-8",
+        )
+
+        coordinator, _, _, _ = _build_coordinator(repo)
+        result = coordinator.summarize_chapter(
+            doc_name="chapter-title-no-legacy-fallback-doc",
+            chapter_title="Legacy Root Only",
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=3,
+            refresh_summary=False,
+        )
+        _assert(not result.success, "chapter title not present in hierarchy should fail fast")
+        _assert(
+            "not found" in (result.reason or "").lower(),
+            "failure reason should indicate hierarchy chapter title not found",
+        )
+
+
 def main() -> None:
     test_section_summary_and_quiz_use_hierarchy_section()
     test_chapter_resolution_hierarchy_and_ambiguity()
     test_front_matter_hierarchy_resolution_and_order_index()
+    test_chapter_title_missing_does_not_fallback_to_legacy_root_sections()
     print(
         json.dumps(
             {
@@ -608,6 +686,7 @@ def main() -> None:
                     "front_matter_hierarchy_resolution",
                     "task_unit_index_hierarchy_order",
                     "persisted_layout_resolution_hierarchy_first",
+                    "chapter_title_missing_no_legacy_root_fallback",
                 ],
             },
             ensure_ascii=False,

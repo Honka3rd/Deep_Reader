@@ -32,13 +32,13 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `app/` | package | `app/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 8 | 1 | Needs Confirmation |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -64,7 +64,7 @@ It is used to:
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -72,6 +72,7 @@ It is used to:
 - [x] Implements QA orchestration via `QACoordinator` across prepare, retrieval, prompt, and session update paths.
 - [x] Implements section/chapter task orchestration via `SectionTaskCoordinator`, including task-layout projection assembly.
 - [x] Maintains hierarchy-required fail-fast behavior for incompatible runtime structure states.
+- [x] Replaced legacy chapter-title fallback with fail-fast hierarchy lookup behavior.
 
 #### Needs Confirmation
 
@@ -171,9 +172,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `Needs Confirmation`
-- Completed item count: `8`
-- Needs confirmation count: `1`
+- Status: `Completed Baseline Captured`
+- Completed item count: `9`
+- Needs confirmation count: `0`
 
 #### Completed Work
 
@@ -185,10 +186,11 @@ No unresolved confirmation items identified in module checklist.
 - [x] Clarified artifact governance and hierarchy persistence boundary (truth/output/projection ownership split).
 - [x] Closed governance terminology inconsistency by deprecating `mirror` contract wording and enforcing compatibility-only fallback wording.
 - [x] Completed allow_legacy_fallback retirement audit with compatibility-only isolation (hierarchy-first runtime no longer depends on fallback success).
+- [x] Removed `allow_legacy_fallback` API surface and enforced hierarchy-only runtime lookup.
 
 #### Needs Confirmation
 
-- [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支的「完全刪除」時程與條件。
+No unresolved confirmation items identified in module checklist.
 
 ### `embeddings/`
 
@@ -554,9 +556,7 @@ No unresolved confirmation items identified in module checklist.
 
 ## 8. Cross-Module Needs Confirmation
 
-| Module | Item | Reason | Needed Confirmation |
-|---|---|---|---|
-| `document_structure/` | `allow_legacy_fallback` compatibility 分支完整退場條件 | 已完成 compatibility-only isolation，但仍存在一個 legacy chapter-title call site 需與 old JSON 相容策略一起決策 | maintainer 是否接受 fail-fast 替代並提供 deprecation phase/date |
+No cross-module confirmation items identified in this pass.
 ## 9. Missing or Weak Checklists
 
 - No checklist files are missing in this pass.
@@ -586,7 +586,7 @@ No unresolved confirmation items identified in module checklist.
 ## 12. Current Global Status
 
 - Documentation baseline has been captured across all listed package and root modules via checklist files.
-- Most aggregated module checklists report completed baseline items; `document_structure/` currently retains one fallback-governance confirmation item.
+- Most aggregated module checklists report completed baseline items with no unresolved confirmation items in this aggregation pass.
 - Global status currently reflects checklist aggregation, not roadmap completion.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.

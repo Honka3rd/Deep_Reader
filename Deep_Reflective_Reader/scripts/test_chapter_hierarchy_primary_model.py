@@ -346,29 +346,26 @@ def test_legacy_fallback_is_disabled_when_hierarchy_exists() -> None:
         find_section_by_id_effective(
             doc,
             "section-legacy",
-            allow_legacy_fallback=True,
         ) is None,
-        "legacy id fallback should be disabled when hierarchy chapters exist",
+        "hierarchy-only lookup should ignore root legacy section ids",
     )
     _assert(
         find_sections_by_title_effective(
             doc,
             "Legacy Chapter",
-            allow_legacy_fallback=True,
         ) == [],
-        "legacy title fallback should be disabled when hierarchy chapters exist",
+        "hierarchy-only title lookup should ignore root legacy section titles",
     )
     _assert(
         find_section_by_chapter_title_effective(
             doc,
             "Legacy Chapter",
-            allow_legacy_fallback=True,
         ) is None,
-        "legacy chapter-title fallback should be disabled when hierarchy chapters exist",
+        "hierarchy-only chapter-title lookup should ignore root legacy sections",
     )
 
 
-def test_legacy_fallback_remains_compatibility_only_for_sections_only_docs() -> None:
+def test_sections_only_document_has_no_effective_lookup() -> None:
     legacy_section = _make_section("section-legacy", "Legacy Chapter")
     doc = StructuredDocument(
         document_id="doc-legacy-only",
@@ -384,56 +381,24 @@ def test_legacy_fallback_remains_compatibility_only_for_sections_only_docs() -> 
         find_section_by_id_effective(
             doc,
             "section-legacy",
-            allow_legacy_fallback=False,
         ) is None,
-        "without compatibility flag, sections-only lookup should fail fast",
-    )
-    resolved_by_id = find_section_by_id_effective(
-        doc,
-        "section-legacy",
-        allow_legacy_fallback=True,
-    )
-    _assert(resolved_by_id is not None, "compatibility fallback should resolve by id")
-    _assert(
-        resolved_by_id.section_id == "section-legacy",
-        "compatibility fallback should return legacy section by id",
+        "sections-only documents should not resolve section id in hierarchy-only lookup",
     )
 
     _assert(
         find_sections_by_title_effective(
             doc,
             "Legacy Chapter",
-            allow_legacy_fallback=False,
         ) == [],
-        "without compatibility flag, title lookup should fail for sections-only docs",
-    )
-    legacy_title_matches = find_sections_by_title_effective(
-        doc,
-        "Legacy Chapter",
-        allow_legacy_fallback=True,
-    )
-    _assert(
-        len(legacy_title_matches) == 1 and legacy_title_matches[0].section_id == "section-legacy",
-        "compatibility title fallback should resolve legacy section",
+        "sections-only documents should not resolve title in hierarchy-only lookup",
     )
 
     _assert(
         find_section_by_chapter_title_effective(
             doc,
             "Legacy Chapter",
-            allow_legacy_fallback=False,
         ) is None,
-        "without compatibility flag, chapter-title lookup should fail for sections-only docs",
-    )
-    resolved_by_chapter_title = find_section_by_chapter_title_effective(
-        doc,
-        "Legacy Chapter",
-        allow_legacy_fallback=True,
-    )
-    _assert(
-        resolved_by_chapter_title is not None
-        and resolved_by_chapter_title.section_id == "section-legacy",
-        "compatibility chapter-title fallback should resolve legacy section",
+        "sections-only documents should not resolve chapter title in hierarchy-only lookup",
     )
 
 
@@ -447,7 +412,7 @@ def main() -> None:
     test_sync_legacy_sections_from_chapters()
     test_structure_nodes_backward_compatibility()
     test_legacy_fallback_is_disabled_when_hierarchy_exists()
-    test_legacy_fallback_remains_compatibility_only_for_sections_only_docs()
+    test_sections_only_document_has_no_effective_lookup()
     # Also verify strict duplicate detection helper.
     duplicate_doc = StructuredDocument(
         document_id="doc-h",
@@ -494,7 +459,7 @@ def main() -> None:
                     "sync_legacy_sections_from_chapters",
                     "structure_nodes_backward_compatibility",
                     "legacy_fallback_disabled_when_hierarchy_exists",
-                    "legacy_fallback_compatibility_for_sections_only_docs",
+                    "sections_only_no_effective_lookup",
                 ],
             },
             ensure_ascii=False,

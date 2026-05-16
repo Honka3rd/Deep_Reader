@@ -114,7 +114,7 @@
 | sections-only payload migration | Yes | Converted to hierarchy on save path | No |
 | root artifact mirror | N/A | No | No |
 
-說明：`find_*_effective(...allow_legacy_fallback=...)` 已收斂為 compatibility-only 行為：僅 sections-only legacy 文檔可啟用；當 hierarchy chapters 存在時，即使旗標為 True 也不回退 root sections。 **[Code-Confirmed] + [Test-Confirmed] + [Maintainer-Confirmed]**
+說明：`find_*_effective(...allow_legacy_fallback=...)` 已完成退場；普通 helper API surface 不再暴露該參數，effective lookup 現為 hierarchy-only，sections-only legacy 文檔不再經由 effective helper 解析。 **[Code-Confirmed] + [Test-Confirmed] + [Maintainer-Confirmed]**
 
 ## 13. Terminology Governance Audit
 
@@ -134,7 +134,7 @@
 2. task-layout 與 diagnostics ownership 已明確放在 module boundary 外，避免責任漂移。  
 3. metadata / LLM classification 被明確標記為 advisory，非 parser authority。  
 4. `mirror` 已退出正式 contract wording；文檔統一以 `legacy compatibility fields` / `compatibility-only fields` 表述。 **[Maintainer-Confirmed]**  
-5. `find_*_effective(...allow_legacy_fallback=...)` 是否最終完全退場仍屬 **[Needs Confirmation]**。  
+5. `allow_legacy_fallback` 已從普通 helper API surface 移除；runtime primary lookup 已不依賴 legacy fallback。 **[Code-Confirmed] + [Test-Confirmed]**  
 
 ## 14. Artifact Governance Boundary
 
@@ -162,9 +162,9 @@
 
 ## 15. Current Risks
 
-1. risk：helper 層 legacy fallback 若被 runtime 誤用
+1. risk：新 helper/feature 誤把 legacy sections 重新引入 runtime lookup
 - why：會破壞 hierarchy-only 路徑一致性
-- guardrail：維持 fail-fast regression + 明確 allow_legacy_fallback 使用邊界
+- guardrail：維持 effective lookup hierarchy-only regression + coordinator fail-fast regression
 
 2. risk：common/llm parser mode decision 無統一契約
 - why：可能出現 recommendation 與實際行為落差
@@ -180,11 +180,10 @@
 
 ## 16. Open Questions for Maintainer
 
-1. `find_*_effective` 的 legacy fallback 參數是否設定退場時間表？
-2. `llm_section_splitter` 的輸出契約是否要加入更明確 schema guard（僅文檔層）？
-3. enhanced recommendation 的 score threshold 調整責任層級在哪（config 或 evaluator 固化）？
-4. chapter summary/quiz artifact 長期是否固定以 `document_task_artifacts.chapter_artifacts` 為唯一寫入權威（chapter node `task_artifacts` 僅作投影輔助）？
-5. `legacy compatibility fields`（原 historical mirror wording）是否需在全專案文檔補一份 alias 對照表以利遷移搜尋？
+1. `llm_section_splitter` 的輸出契約是否要加入更明確 schema guard（僅文檔層）？
+2. enhanced recommendation 的 score threshold 調整責任層級在哪（config 或 evaluator 固化）？
+3. chapter summary/quiz artifact 長期是否固定以 `document_task_artifacts.chapter_artifacts` 為唯一寫入權威（chapter node `task_artifacts` 僅作投影輔助）？
+4. `legacy compatibility fields`（原 historical mirror wording）是否需在全專案文檔補一份 alias 對照表以利遷移搜尋？
 
 ## 17. Suggested Next Documentation Improvements
 

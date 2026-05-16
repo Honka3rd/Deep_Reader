@@ -172,7 +172,6 @@ class SectionTaskContextBuilder:
         return find_section_by_id_effective(
             document,
             section_id,
-            allow_legacy_fallback=False,
         )
 
     @staticmethod
