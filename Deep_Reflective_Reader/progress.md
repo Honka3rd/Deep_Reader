@@ -38,7 +38,7 @@ It is used to:
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 6 | 2 | Needs Confirmation |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 7 | 1 | Needs Confirmation |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -172,8 +172,8 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
 - Status: `Needs Confirmation`
-- Completed item count: `6`
-- Needs confirmation count: `2`
+- Completed item count: `7`
+- Needs confirmation count: `1`
 
 #### Completed Work
 
@@ -183,11 +183,11 @@ No unresolved confirmation items identified in module checklist.
 - [x] Completed document governance cleanup for hierarchy-first persistence terminology and legacy wording boundary separation.
 - [x] Synchronized unresolved confirmation status after governance cleanup across detailed-design/checklist/progress.
 - [x] Clarified artifact governance and hierarchy persistence boundary (truth/output/projection ownership split).
+- [x] Closed governance terminology inconsistency by deprecating `mirror` contract wording and enforcing compatibility-only fallback wording.
 
 #### Needs Confirmation
 
 - [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支是否有正式退場時程。
-- [ ] `mirror` 用詞是否在 document_structure 文檔中全面替換為 `legacy compatibility fields`。
 
 ### `embeddings/`
 
@@ -556,7 +556,6 @@ No unresolved confirmation items identified in module checklist.
 | Module | Item | Reason | Needed Confirmation |
 |---|---|---|---|
 | `document_structure/` | `allow_legacy_fallback` 兼容分支是否有正式退場時程 | detailed design 已保留 `Needs Confirmation`，程式碼仍保留可選 fallback 參數 | maintainer 是否提供 deprecation phase/date |
-| `document_structure/` | `mirror` 用詞是否全面替換為更精準術語 | terminology audit 仍標註 `Inferred + Needs Confirmation` | maintainer 是否啟動全局術語替換策略 |
 ## 9. Missing or Weak Checklists
 
 - No checklist files are missing in this pass.
@@ -586,7 +585,7 @@ No unresolved confirmation items identified in module checklist.
 ## 12. Current Global Status
 
 - Documentation baseline has been captured across all listed package and root modules via checklist files.
-- Most aggregated module checklists report completed baseline items; `document_structure/` currently retains terminology/fallback governance confirmation items.
+- Most aggregated module checklists report completed baseline items; `document_structure/` currently retains one fallback-governance confirmation item.
 - Global status currently reflects checklist aggregation, not roadmap completion.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.

@@ -114,7 +114,7 @@
 | sections-only payload migration | Yes | Converted to hierarchy on save path | No |
 | root artifact mirror | N/A | No | No |
 
-說明：`find_*_effective(...allow_legacy_fallback=...)` 部分 helper 仍保留 compatibility 分支。 **[Code-Confirmed] + [Needs Confirmation]**
+說明：`find_*_effective(...allow_legacy_fallback=...)` 部分 helper 仍保留 compatibility-only 分支；不得描述為 runtime primary path。 **[Code-Confirmed] + [Maintainer-Confirmed] + [Needs Confirmation]**
 
 ## 13. Terminology Governance Audit
 
@@ -125,7 +125,7 @@
 | `structure_nodes[]` | legacy experimental hierarchy field，可讀；預設不寫 | **[Code-Confirmed]** | 僅保留 old JSON / round-trip compatibility 語義 |
 | `StructuredDocumentNode` | compatibility type，非主流程 hierarchy source | **[Code-Confirmed]** | 不得在架構圖描述為 active main flow |
 | flat `task_units` | 非 persistence truth；task units 應掛載於 section (`chapters[].sections[].task_units[]`) | **[Code-Confirmed] + [From HLD]** | 禁止作新 write contract |
-| mirror | 若指 root legacy mirrors（`sections[]`/`structure_nodes[]`）僅 compatibility | **[Inferred] + [Needs Confirmation]** | 禁止重新引入 mirror 作主流程來源 |
+| mirror（deprecated terminology） | 僅 historical/compatibility 搜尋語境；正式術語改為 `legacy compatibility fields` / `compatibility-only fields` | **[Maintainer-Confirmed] + [Doc-Confirmed]** | 不得作為現行 architecture contract/persistence authority/runtime primary path 術語 |
 | legacy | 指可讀相容，不代表 runtime primary path | **[Doc-Confirmed] + [Code-Confirmed]** | 文檔必須顯式區分 compatibility vs primary contract |
 
 ### Terminology Validation Notes
@@ -133,7 +133,8 @@
 1. 本 module 文檔現已將 `root sections[]` 與 `structure_nodes[]` 固定為 compatibility 語義，不再暗示主流程來源。  
 2. task-layout 與 diagnostics ownership 已明確放在 module boundary 外，避免責任漂移。  
 3. metadata / LLM classification 被明確標記為 advisory，非 parser authority。  
-4. `find_*_effective(...allow_legacy_fallback=...)` 是否最終完全退場仍屬 **[Needs Confirmation]**。  
+4. `mirror` 已退出正式 contract wording；文檔統一以 `legacy compatibility fields` / `compatibility-only fields` 表述。 **[Maintainer-Confirmed]**  
+5. `find_*_effective(...allow_legacy_fallback=...)` 是否最終完全退場仍屬 **[Needs Confirmation]**。  
 
 ## 14. Artifact Governance Boundary
 
@@ -183,7 +184,7 @@
 2. `llm_section_splitter` 的輸出契約是否要加入更明確 schema guard（僅文檔層）？
 3. enhanced recommendation 的 score threshold 調整責任層級在哪（config 或 evaluator 固化）？
 4. chapter summary/quiz artifact 長期是否固定以 `document_task_artifacts.chapter_artifacts` 為唯一寫入權威（chapter node `task_artifacts` 僅作投影輔助）？
-5. `root artifact mirror` 是否需在全專案文檔定義為明確 non-goal 詞彙？
+5. `legacy compatibility fields`（原 historical mirror wording）是否需在全專案文檔補一份 alias 對照表以利遷移搜尋？
 
 ## 17. Suggested Next Documentation Improvements
 

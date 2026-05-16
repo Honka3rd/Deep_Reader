@@ -51,15 +51,15 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Architecture Constraints, Artifact Governance Boundary, Known Legacy / Compatibility Behavior)`; `Deep_Reflective_Reader/document_structure/document_artifact_repository.py`; `Deep_Reflective_Reader/document_structure/structured_document_artifact_repository.py`; `Deep_Reflective_Reader/progress.md`
   Notes: 已明確分離 hierarchy truth / artifact output / runtime projection ownership，並固定 artifact 不可反向改寫 hierarchy identity。
 
+- [x] governance consistency closure for compatibility terminology and fallback wording
+  Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Known Legacy / Compatibility Behavior, Terminology Governance Audit, Terminology Validation Notes)`; maintainer-confirmed governance direction in current task; `Deep_Reflective_Reader/progress.md`
+  Notes: `mirror` 已退出正式 architecture terminology，統一改為 `legacy compatibility fields` / `compatibility-only fields`；`allow_legacy_fallback` 明確標記為 compatibility-only，且不得暗示 runtime primary path。
+
 ## Needs Confirmation
 
 - [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支是否有正式退場時程。  
   Reason: detailed design 仍標註 `Needs Confirmation`；程式碼仍保留可選 fallback 參數。  
   Needed confirmation: maintainer 是否提供明確 deprecation phase/date。
-
-- [ ] `mirror` 用詞是否在 document_structure 文檔中全面替換為更精準術語（如 `legacy compatibility fields`）。  
-  Reason: 目前已限制語境，但 terminology audit 仍標為 `Inferred + Needs Confirmation`。  
-  Needed confirmation: maintainer 是否啟動全局術語替換策略。
 
 ## Future Task Policy
 

@@ -138,7 +138,7 @@
 | artifact persistence | write path 在 coordinator + repository，不在 task-layout projection DTO | **[Code-Confirmed]** | 不得把 projection path 描述為 write authority |
 | artifact availability | runtime/projection state（has_summary/has_quiz/cache_valid/invalid_reason） | **[Code-Confirmed]** | 不得描述為 persistence snapshot overwrite |
 | availability cache / artifact validity | 僅可觀測 cache-validity 訊號，不改 hierarchy identity | **[Code-Confirmed]** | 避免被誤讀為 hierarchy source |
-| top-level legacy mirrors（用語） | 歷史/文檔語境用詞，非新 architecture contract 名稱 | **[Doc-Confirmed]** | 建議在 module 文件統一替換為 `transitional internal fields` |
+| top-level legacy mirrors（deprecated wording） | 歷史/文檔語境用詞，正式術語已收斂為 `transitional internal field` / `compatibility-only field` | **[Maintainer-Confirmed] + [Doc-Confirmed]** | 僅允許 historical/deprecated/compatibility 說明，不得作現行 contract terminology |
 | flat task_units | historical/compatibility語境，非 hierarchy persistence truth | **[Code-Confirmed] + [From HLD]** | 禁止重新引入 flat persisted semantics |
 | artifact mirror（deprecated wording） | 僅 historical/migration 搜尋關鍵字；正式術語改為 `transitional internal field` | **[Maintainer-Confirmed] + [Doc-Confirmed]** | 不得作為現行 contract terminology、persistence authority 或 hierarchy truth 描述 |
 | write-back / mutation | task-layout request path 應視為 projection/read；artifact write path 需顯式呼叫 repository update | **[Code-Confirmed] + [From HLD]** | 禁止 hidden mutation |
@@ -178,7 +178,6 @@
 2. summary/quiz prompt builder contract 是否需要獨立文檔（非實作細節）？
 3. task-unit split mode 對外可觀測性是否需統一 reason code？
 4. `DocumentTaskLayout` internal transitional fields 是否需要在類註解中加 deprecation horizon（版本或階段）？
-5. 是否要補一份全專案 deprecated terminology alias list（`artifact mirror` -> `transitional internal field`）供搜尋遷移使用？ **[Doc-Confirmed]**
 
 ## 18. Suggested Next Documentation Improvements
 
