@@ -7,6 +7,7 @@
 - task layout DTO/projection model
 - summary/quiz 任務 prompt/service
 - cache validity 相關輔助
+- artifact availability runtime projection（供 task-layout/read path 可觀測）
 
 **[Code-Confirmed]**
 
@@ -43,6 +44,7 @@
 2. 不應在 read-only task-layout endpoint 直接做 persistence write（由 coordinator/repository 管控）。 **[From HLD]**
 3. 不應把 profile metadata 直接當 parser rule。 **[From HLD]**
 4. 不應污染 `StructuredDocument` persistence contract（不得重新引入 root sections mirror / flat task_units 作 persisted truth）。 **[Code-Confirmed] + [From HLD]**
+5. 不負責 artifact persistence truth 定義；artifact source-of-truth 與 hierarchy persistence 邊界由 `document_structure` + repository 層承載。 **[Code-Confirmed] + [From HLD]**
 
 ## 6. Important Data Structures / Contracts
 
@@ -59,9 +61,10 @@
 | Path | Responsibility | Mutation Allowed |
 |---|---|---:|
 | task-layout projection | assemble chapters/sections/task_units DTO | No |
+| artifact availability projection | expose has_summary/has_quiz/cache_valid/invalid_reason as runtime view | No |
 | task-unit resolve/split | compute runtime/refresh units | Depends on caller path |
 | section/chapter summary/quiz service | generate content payload | No direct store write |
-| artifact persistence | handled by coordinator + repository | Yes |
+| artifact persistence | handled by coordinator + repository (`document_structure` boundary) | Yes |
 
 補充：`/documents/task-layout` 是 projection/read path，不應 hidden mutation。 **[From HLD] + [Code-Confirmed]**
 
@@ -72,13 +75,21 @@
 3. `profile_diagnostics` 是 runtime projection；task-unit coverage 取自 current layout sections，不是 persisted profile snapshot overwrite。 **[Code-Confirmed]**
 4. diagnostics projection 不應回寫 profile artifact。 **[Code-Confirmed] + [From HLD]**
 
-## 9. Target Resolution Priority
+## 9. Artifact Governance and Projection Boundary
+
+1. persisted hierarchy truth 來自 `StructuredDocument` 的 hierarchy path（`chapters[].sections[].task_units[]`）；section_tasks 不定義 hierarchy truth。 **[Code-Confirmed] + [From HLD]**
+2. section/chapter/task-unit artifacts 是 interaction output（summary/quiz 等），不是 hierarchy identity source。 **[Code-Confirmed] + [From HLD]**
+3. section_tasks 負責的是 artifact availability 的 runtime projection，不是 artifact persistence authority。 **[Code-Confirmed]**
+4. task-layout diagnostics/availability 不得寫回 profile，不得覆寫 persisted profile snapshot。 **[Code-Confirmed]**
+5. API response DTO shape 是 transport contract，不等於 persistence schema。 **[Code-Confirmed]**
+
+## 10. Target Resolution Priority
 
 1. chapter-level target：`chapter_id` 優先。 **[Code-Confirmed]**
 2. `chapter_title` 只作相容路徑；ambiguous 時應 fail-fast。 **[Code-Confirmed]**
 3. section-level target：以 hierarchy section id 為核心。 **[Code-Confirmed]**
 
-## 10. Module Relationships
+## 11. Module Relationships
 
 - depends on:
   - `document_structure/`
@@ -88,11 +99,11 @@
 - used by:
   - `app/section_task_coordinator.py`
 - projection relationship:
-  - `document_task_layout.py` 是 projection DTO contract
+  - `document_task_layout.py` 是 projection DTO contract（含 artifact availability/runtime diagnostics 投影）
 - advisory relationship:
   - consume profile/document metadata，但非 parser authority
 
-## 11. Main Flows Involving This Module
+## 12. Main Flows Involving This Module
 
 1. task-unit resolution flow（split mode dependent）。 **[Code-Confirmed]**
 2. section/chapter summary flow。 **[Code-Confirmed]**
@@ -100,7 +111,7 @@
 4. task-layout projection data contract flow（供 coordinator/API mapping）。 **[Code-Confirmed]**
 5. artifact validity flow（cache_valid + invalid_reason）。 **[Code-Confirmed]**
 
-## 12. Persistence / Side Effects
+## 13. Persistence / Side Effects
 
 - read persistence：間接（由 coordinator/repository 提供 document/artifacts）
 - write persistence：否（本 package service 層本身通常不直接落盤）
@@ -108,35 +119,42 @@
 - generate runtime projection：是（DTO contract）
 - call LLM：是（summary/quiz/some split resolvers）
 - diagnostics only：部分（artifact validity / DTO）
+- artifact availability state：runtime projection（非 persisted truth）
 
-## 13. Known Legacy / Compatibility Behavior
+## 14. Known Legacy / Compatibility Behavior
 
 1. `DocumentTaskLayout` 仍保留內部 transitional top-level fields（sections/task_units/chapter_artifacts）供 backward-compatible 測試/mapper。 **[Code-Confirmed]**
 2. public API 已 chapters-first，不應依賴 transitional fields。 **[Code-Confirmed]**
 3. `section_task_context_builder` 已 hierarchy-only，不再默認 legacy root sections fallback。 **[Code-Confirmed]**
 
-## 14. Terminology Governance Audit
+## 15. Terminology Governance Audit
 
 | Term | Current Meaning in This Module | Classification | Governance Decision |
 |---|---|---|---|
 | top-level sections | 僅 internal transitional DTO field (`DocumentTaskLayout.sections`)，非 public API contract | **[Code-Confirmed]** | 不得描述為 `/documents/task-layout` response source of truth |
 | top-level task_units | 僅 internal transitional DTO field (`DocumentTaskLayout.task_units`) | **[Code-Confirmed]** | 不得描述為 persistence contract 或 public API main path |
 | chapter_artifacts (top-level) | internal transitional map；chapter artifact availability public path 走 `chapters[].artifacts` | **[Code-Confirmed]** | 不得在文檔描述為 public response required field |
+| artifact source of truth | 本模組不定義 artifact truth；僅消費 repository/hierarchy-aware 結果做可觀測投影 | **[Code-Confirmed] + [From HLD]** | 不得描述為由 task-layout DTO 決定 persisted truth |
+| artifact persistence | write path 在 coordinator + repository，不在 task-layout projection DTO | **[Code-Confirmed]** | 不得把 projection path 描述為 write authority |
+| artifact availability | runtime/projection state（has_summary/has_quiz/cache_valid/invalid_reason） | **[Code-Confirmed]** | 不得描述為 persistence snapshot overwrite |
+| availability cache / artifact validity | 僅可觀測 cache-validity 訊號，不改 hierarchy identity | **[Code-Confirmed]** | 避免被誤讀為 hierarchy source |
 | top-level legacy mirrors（用語） | 歷史/文檔語境用詞，非新 architecture contract 名稱 | **[Doc-Confirmed]** | 建議在 module 文件統一替換為 `transitional internal fields` |
 | flat task_units | historical/compatibility語境，非 hierarchy persistence truth | **[Code-Confirmed] + [From HLD]** | 禁止重新引入 flat persisted semantics |
 | artifact mirror | 若指 top-level mirror fields，僅 compatibility 語境 | **[Inferred] + [Needs Confirmation]** | 不作新主流程來源 |
 | write-back / mutation | task-layout request path 應視為 projection/read；artifact write path 需顯式呼叫 repository update | **[Code-Confirmed] + [From HLD]** | 禁止 hidden mutation |
 | profile diagnostics | runtime mixed-source projection，非 persisted profile body | **[Code-Confirmed]** | 禁止描述為 profile snapshot overwrite |
 | root sections mirror | 不屬 section_tasks contract；不得在本模組文件暗示可回退為主路徑 | **[Code-Confirmed] + [From HLD]** | 維持 hierarchy-first contract 邊界 |
+| API response shape | transport DTO（chapters-first） | **[Code-Confirmed]** | 不等於 persistence schema |
 
 ### Terminology Validation Notes
 
 1. 本模組文檔已明確區分 internal transitional DTO fields 與 public chapters-first API contract。  
 2. task-layout 與 diagnostics 皆定義為 runtime projection；不承擔 profile write-back。  
-3. section/task-unit/chapter artifact availability 的讀取語義固定為 hierarchy-aware path。  
+3. section/task-unit/chapter artifact availability 的讀取語義固定為 hierarchy-aware path（read-side observability）。  
 4. `artifact mirror` 一詞在本模組僅能作歷史語境，後續是否完全去詞仍屬 **[Needs Confirmation]**。  
+5. API response shape 已與 persistence schema 語義分離，避免 DTO 漂移成 artifact truth source。  
 
-## 15. Current Risks
+## 16. Current Risks
 
 1. risk：task unit split mode 行為差異造成結果波動
 - why：同文檔在不同 mode 下結構變化可能大
@@ -154,7 +172,7 @@
 - why：cache validity/target resolution 錯位
 - guardrail：document-scope unique id tests + parent_section_id checks
 
-## 16. Open Questions for Maintainer
+## 17. Open Questions for Maintainer
 
 1. transitional DTO fields 何時可正式標記為 deprecated-for-removal？
 2. summary/quiz prompt builder contract 是否需要獨立文檔（非實作細節）？
@@ -162,7 +180,7 @@
 4. `DocumentTaskLayout` internal transitional fields 是否需要在類註解中加 deprecation horizon（版本或階段）？
 5. `artifact mirror` 用詞是否要在全專案文檔統一替換為「transitional internal field」？
 
-## 17. Suggested Next Documentation Improvements
+## 18. Suggested Next Documentation Improvements
 
 1. 增加 task-unit split mode behavior matrix。
 2. 增加 task-layout DTO public/internal field boundary表。

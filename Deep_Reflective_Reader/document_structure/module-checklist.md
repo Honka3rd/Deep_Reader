@@ -43,9 +43,23 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Non-Responsibilities, Architecture Constraints, Terminology Governance Audit)`; `Deep_Reflective_Reader/document_structure/structured_document.py`; `Deep_Reflective_Reader/progress.md`
   Notes: 明確分離 primary hierarchy contract 與 legacy compatibility wording，並補齊 task-layout/diagnostics ownership 邊界描述。
 
+- [x] synchronize unresolved confirmation status after governance cleanup
+  Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Known Legacy / Compatibility Behavior, Terminology Governance Audit, Terminology Validation Notes)`; `Deep_Reflective_Reader/document_structure/document_hierarchy_index.py`; `Deep_Reflective_Reader/progress.md`
+  Notes: 已同步 detailed-design/checklist/progress 的 Needs Confirmation 狀態，保留仍未拍板的 fallback 退場時程與 mirror 用詞治理項目。
+
+- [x] Clarify artifact governance and hierarchy persistence boundary
+  Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Architecture Constraints, Artifact Governance Boundary, Known Legacy / Compatibility Behavior)`; `Deep_Reflective_Reader/document_structure/document_artifact_repository.py`; `Deep_Reflective_Reader/document_structure/structured_document_artifact_repository.py`; `Deep_Reflective_Reader/progress.md`
+  Notes: 已明確分離 hierarchy truth / artifact output / runtime projection ownership，並固定 artifact 不可反向改寫 hierarchy identity。
+
 ## Needs Confirmation
 
-No unresolved confirmation items identified in this pass.
+- [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支是否有正式退場時程。  
+  Reason: detailed design 仍標註 `Needs Confirmation`；程式碼仍保留可選 fallback 參數。  
+  Needed confirmation: maintainer 是否提供明確 deprecation phase/date。
+
+- [ ] `mirror` 用詞是否在 document_structure 文檔中全面替換為更精準術語（如 `legacy compatibility fields`）。  
+  Reason: 目前已限制語境，但 terminology audit 仍標為 `Inferred + Needs Confirmation`。  
+  Needed confirmation: maintainer 是否啟動全局術語替換策略。
 
 ## Future Task Policy
 

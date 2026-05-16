@@ -59,6 +59,9 @@
 3. `structure_nodes` 不作主流程結構來源。 **[Code-Confirmed] + [From HLD]**
 4. parser metadata 屬 advisory，不是 parser authority。 **[From HLD]**
 5. `StructuredDocument.to_dict()` 預設不輸出 root `sections[]`/`structure_nodes[]`，僅在 legacy include 旗標顯式開啟時輸出。 **[Code-Confirmed]**
+6. artifact 是 interaction output/support material，不是 hierarchy truth source。 **[Code-Confirmed] + [From HLD]**
+7. artifact write path 必須以 hierarchy-aware targeting 為前提，不得反向改寫 chapter/section/task-unit identity。 **[Code-Confirmed]**
+8. artifact availability projection ownership 不在本 module（屬 task-layout/coordinator DTO 層）。 **[Code-Confirmed] + [From HLD]**
 
 ## 8. Module Relationships
 
@@ -109,6 +112,7 @@
 | root `sections[]` | Yes | No (default) | No |
 | `structure_nodes[]` | Yes | No (default) | No |
 | sections-only payload migration | Yes | Converted to hierarchy on save path | No |
+| root artifact mirror | N/A | No | No |
 
 說明：`find_*_effective(...allow_legacy_fallback=...)` 部分 helper 仍保留 compatibility 分支。 **[Code-Confirmed] + [Needs Confirmation]**
 
@@ -131,7 +135,31 @@
 3. metadata / LLM classification 被明確標記為 advisory，非 parser authority。  
 4. `find_*_effective(...allow_legacy_fallback=...)` 是否最終完全退場仍屬 **[Needs Confirmation]**。  
 
-## 14. Current Risks
+## 14. Artifact Governance Boundary
+
+### 14.1 Hierarchy Truth vs Artifact Output
+
+1. hierarchy truth source 固定為 `chapters[].sections[].task_units[]`；artifact payload 不得成為 hierarchy truth source。 **[Code-Confirmed] + [From HLD]**  
+2. section/task-unit artifact 僅作 interaction output，依既有 hierarchy target 更新，不可反向創建/重命名 hierarchy identity。 **[Code-Confirmed]**  
+3. chapter summary/quiz artifact 目前持久化於 `document_task_artifacts.chapter_artifacts`（id-first key + legacy key candidate），屬內容輸出索引，不是 hierarchy identity source。 **[Code-Confirmed]**
+
+### 14.2 Persistence Ownership
+
+1. `document_structure` 擁有 artifact persistence primitives（repository contract + atomic save + hierarchy consistency guard）。 **[Code-Confirmed]**  
+2. `document_structure` 不擁有 artifact availability projection contract；availability/validity 展示屬 coordinator + task-layout DTO。 **[Code-Confirmed] + [From HLD]**  
+3. `document_structure` 不擁有 profile diagnostics projection contract。 **[Code-Confirmed] + [From HLD]**
+
+### 14.3 Runtime Projection Boundary
+
+1. availability（`has_summary/has_quiz/cache_valid`）是 runtime projection concern，不是 persisted hierarchy truth。 **[Code-Confirmed]**  
+2. task-layout 讀路徑應消費 repository 已持久化 artifact 與 hierarchy，並做當次可用性判斷；該投影邏輯不在本 module。 **[Code-Confirmed] + [Inferred]**
+
+### 14.4 Compatibility Boundary
+
+1. legacy 可讀/migration 可保留，但不得重新引入 root sections mirror 或 flat task_units 作新 artifact write contract。 **[Code-Confirmed] + [From HLD]**  
+2. `structure_nodes` compatibility 不延伸到 artifact truth contract。 **[Code-Confirmed]**
+
+## 15. Current Risks
 
 1. risk：helper 層 legacy fallback 若被 runtime 誤用
 - why：會破壞 hierarchy-only 路徑一致性
@@ -149,13 +177,15 @@
 - why：後續開發者可能重引入多層 persistence
 - guardrail：在 module docs/non-goals 明確固定 current scope **[From Proposal] + [From HLD]**
 
-## 15. Open Questions for Maintainer
+## 16. Open Questions for Maintainer
 
 1. `find_*_effective` 的 legacy fallback 參數是否設定退場時間表？
 2. `llm_section_splitter` 的輸出契約是否要加入更明確 schema guard（僅文檔層）？
 3. enhanced recommendation 的 score threshold 調整責任層級在哪（config 或 evaluator 固化）？
+4. chapter summary/quiz artifact 長期是否固定以 `document_task_artifacts.chapter_artifacts` 為唯一寫入權威（chapter node `task_artifacts` 僅作投影輔助）？
+5. `root artifact mirror` 是否需在全專案文檔定義為明確 non-goal 詞彙？
 
-## 16. Suggested Next Documentation Improvements
+## 17. Suggested Next Documentation Improvements
 
 1. 增加「common vs llm enhanced parser lifecycle」sequence diagram。
 2. 增加 artifact repository write boundary 狀態圖（section/chapter/task-unit/document-level）。

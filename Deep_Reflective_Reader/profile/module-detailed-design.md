@@ -60,7 +60,15 @@
 
 **[Code-Confirmed] + [From HLD]**
 
-## 8. Module Relationships
+## 8. Artifact Governance Boundary
+
+1. profile module 不擁有 artifact persistence contract；section/chapter/task-unit artifact 的 write authority 在 coordinator + repository。 **[Code-Confirmed] + [From HLD]**
+2. `parser_metadata` / `post_structure_metadata` 是 metadata signals，不是 artifact availability truth source。 **[Code-Confirmed]**
+3. `post_structure_metadata` 是 prepare/reparse 時點 snapshot，不代表 task-layout request-time 的即時 artifact 狀態。 **[Code-Confirmed]**
+4. task-layout diagnostics / availability projection 不應回寫 profile artifact。 **[Code-Confirmed] + [From HLD]**
+5. LLM classification 僅能輔助 metadata 生成，不具 artifact write/read authority。 **[Code-Confirmed] + [From HLD]**
+
+## 9. Module Relationships
 
 - depends on:
   - `language/` registries
@@ -75,7 +83,7 @@
 - advisory relationship:
   - 對 parser 與 task layout 提供 advisory signals（非 authority） **[From HLD]**
 
-## 9. Main Flows Involving This Module
+## 10. Main Flows Involving This Module
 
 1. pre-structure profile generation flow。 **[Code-Confirmed]**
 2. deterministic metadata extraction flow。 **[Code-Confirmed]**
@@ -83,7 +91,7 @@
 4. post-structure enrichment flow。 **[Code-Confirmed]**
 5. diagnostics source flow（被 coordinator 消費；profile module 不負責 runtime diagnostics projection 組裝）。 **[Code-Confirmed]**
 
-## 10. Cache-First and Invalidation Contract (Draft)
+## 11. Cache-First and Invalidation Contract (Draft)
 
 1. profile 層支援 cache-first（優先重用既有 profile）。 **[Code-Confirmed] + [From Proposal]**
 2. manual reparse/force rebuild 是必要手動刷新機制。 **[From Proposal] + [From HLD]**
@@ -91,7 +99,7 @@
 4. 最終 cache key / invalidation contract 尚待定案。 **[Needs Confirmation]**
 5. API 是否回傳可觀測 invalidation reason code：已確認「有價值，保留方向」。 **[From Proposal] + [Needs Confirmation]**
 
-## 11. Persistence / Side Effects
+## 12. Persistence / Side Effects
 
 - read persistence：是（profile store load）
 - write persistence：是（profile store save）
@@ -99,15 +107,16 @@
 - generate runtime projection：否（提供資料來源）
 - call LLM：是（builder classification）
 - diagnostics only：否（同時有持久化責任；且不負責 task-layout diagnostics write-back）
+- artifact availability projection：否（該責任在 task-layout/coordinator response projection） **[Code-Confirmed]**
 
-## 12. Known Legacy / Compatibility Behavior
+## 13. Known Legacy / Compatibility Behavior
 
 1. `DocumentProfile` 保留 legacy `structure_profile` 欄位與解析。 **[Code-Confirmed]**
 2. 舊 profile JSON 可讀（缺 parser/post fields）。 **[Code-Confirmed]**
 3. 新 profile 以 `parser_metadata` / `post_structure_metadata` 為主。 **[Code-Confirmed]**
 4. `structure_profile` 為 compatibility-only，非主流程 authority。 **[Code-Confirmed] + [From HLD]**
 
-## 13. Terminology Governance Audit
+## 14. Terminology Governance Audit
 
 | Term | Current Meaning in This Module | Classification | Governance Decision |
 |---|---|---|---|
@@ -121,6 +130,10 @@
 | `structure_nodes` | profile module 不擁有其主流程語義 | **[Code-Confirmed] + [Inferred]** | 避免在 profile 文檔暗示其為結構真值來源 |
 | hierarchy persistence | 不屬 profile module 主要契約 | **[Code-Confirmed] + [From HLD]** | 由 `document_structure/` 持有 |
 | artifact persistence | 不屬 profile module 主要契約 | **[Code-Confirmed] + [From HLD]** | 由 coordinator/repository 持有 |
+| artifact availability | runtime projection 狀態，非 profile snapshot truth | **[Code-Confirmed]** | 不得描述為由 profile metadata 定義 |
+| artifact lifecycle | 由 artifact write/read path 控制，非 profile metadata controller | **[Code-Confirmed] + [Inferred]** | 禁止 profile authority creep |
+| artifact authority | profile 不具 artifact write/read authority | **[Code-Confirmed] + [From HLD]** | metadata 僅 advisory |
+| availability truth | task-layout request-time projection truth，不等於 profile post snapshot | **[Code-Confirmed]** | 禁止 snapshot/runtime 混淆 |
 | parser strategy | profile 提供 advisory signal，策略決策不在 profile module | **[Code-Confirmed] + [From HLD]** | 防止 authority creep |
 | runtime projection | `profile_diagnostics` 屬 task-layout runtime projection | **[Code-Confirmed]** | profile 僅提供 source material，不組裝 projection |
 | snapshot semantics | pre/post metadata 均為 snapshot，非即時 runtime state | **[Code-Confirmed]** | 文檔需固定 snapshot 語義 |
@@ -131,8 +144,9 @@
 2. pre/post metadata 均以 snapshot 語義呈現，避免與 runtime projection 混淆。  
 3. diagnostics 已固定為 runtime projection，且禁止 write-back profile。  
 4. `structure_profile` 已固定為 compatibility-only，避免 legacy revival。  
+5. artifact governance 已明確：profile 不擁有 artifact persistence/availability authority。  
 
-## 14. Current Risks
+## 15. Current Risks
 
 1. risk：metadata 被誤當 parser authority
 - why：會造成 parser 行為不穩、循環依賴
@@ -150,13 +164,13 @@
 - why：schema 解釋成本高
 - guardrail：維持 compatibility-only 標註並設退場策略
 
-## 15. Open Questions for Maintainer
+## 16. Open Questions for Maintainer
 
 1. `structure_profile` compatibility 欄位目前採短期保留策略（先不作為當前阻塞項）；待 runtime legacy fallback 收斂後再評估退場時程。 **[From Proposal]**
 2. parser metadata cache-first policy 是否要在 profile schema 加入顯式 cache contract 欄位？ **[Needs Confirmation]**
 3. cache invalidation reason code 的對外語義是否放在 profile diagnostics 還是 recommendation metadata？ **[Needs Confirmation]**
 
-## 16. Suggested Next Documentation Improvements
+## 17. Suggested Next Documentation Improvements
 
 1. 增加 pre/post metadata lifecycle 圖。
 2. 增加 enum glossary（script/shape/risk）專章。

@@ -43,6 +43,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/profile/module-detailed-design.md (Non-Responsibilities, Metadata Semantics Boundary, Terminology Governance Audit)`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/progress.md`
   Notes: 已明確 advisory-only metadata、snapshot semantics、runtime diagnostics projection no-write-back，以及 profile 非 hierarchy/artifact persistence authority。
 
+- [x] Clarify artifact governance and profile metadata boundary
+  Evidence: `Deep_Reflective_Reader/profile/module-detailed-design.md (Artifact Governance Boundary, Persistence / Side Effects, Terminology Governance Audit)`; `Deep_Reflective_Reader/profile/document_profile.py`; `Deep_Reflective_Reader/profile/post_structure_metadata_enricher.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/progress.md`
+  Notes: 已固定 profile metadata advisory-only、post-structure snapshot 非 runtime availability truth、diagnostics/runtime projection 不回寫 profile，並明確 profile 不承擔 artifact persistence/availability authority。
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

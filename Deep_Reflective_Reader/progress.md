@@ -38,17 +38,17 @@ It is used to:
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 6 | 2 | Needs Confirmation |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `llm/` | package | `llm/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `profile/` | package | `profile/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
+| `profile/` | package | `profile/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 4 | 1 | Needs Confirmation |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 5 | 1 | Needs Confirmation |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -171,9 +171,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `4`
-- Needs confirmation count: `0`
+- Status: `Needs Confirmation`
+- Completed item count: `6`
+- Needs confirmation count: `2`
 
 #### Completed Work
 
@@ -181,10 +181,13 @@ No unresolved confirmation items identified in module checklist.
 - [x] Implements hierarchy-first effective indexing helpers and section lookup paths.
 - [x] Implements hierarchy-aware artifact repository with compatibility migration support on load paths.
 - [x] Completed document governance cleanup for hierarchy-first persistence terminology and legacy wording boundary separation.
+- [x] Synchronized unresolved confirmation status after governance cleanup across detailed-design/checklist/progress.
+- [x] Clarified artifact governance and hierarchy persistence boundary (truth/output/projection ownership split).
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+- [ ] `find_*_effective(...allow_legacy_fallback=...)` compatibility 分支是否有正式退場時程。
+- [ ] `mirror` 用詞是否在 document_structure 文檔中全面替換為 `legacy compatibility fields`。
 
 ### `embeddings/`
 
@@ -263,7 +266,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `profile/module-checklist.md`
 - Detailed Design: `profile/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `4`
+- Completed item count: `5`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -272,6 +275,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Builds pre-structure profile via deterministic extraction plus lightweight LLM classification/fallback.
 - [x] Implements post-structure metadata enrichment and profile persistence store operations.
 - [x] Completed documentation governance cleanup for advisory-only profile semantics and diagnostics projection boundaries.
+- [x] Clarified artifact governance vs profile metadata boundary and fixed snapshot/projection semantics wording.
 
 #### Needs Confirmation
 
@@ -354,7 +358,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
 - Status: `Needs Confirmation`
-- Completed item count: `4`
+- Completed item count: `5`
 - Needs confirmation count: `1`
 
 #### Completed Work
@@ -363,6 +367,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Implements hierarchy-first task unit resolution entry using effective hierarchy sections.
 - [x] Implements section task context lookup with hierarchy-only section resolution behavior.
 - [x] Completed documentation governance cleanup for hierarchy-first task-layout semantics and projection/write boundary wording.
+- [x] Clarified artifact availability projection vs artifact persistence truth boundary for task-layout/read path semantics.
 
 #### Needs Confirmation
 
@@ -515,6 +520,8 @@ No unresolved confirmation items identified in module checklist.
   Modules: `profile`, `document_preparation`, `app`
 - [x] Metadata advisory boundary (non-authority) documented across layers.
   Modules: `profile`, `document_structure`, `app`, `main.py`
+- [x] Artifact governance boundary documented: profile metadata is advisory and not artifact persistence/availability authority.
+  Modules: `profile`, `section_tasks`, `document_structure`, `app`
 
 ### 7.3 Task Layout and Artifacts
 
@@ -524,6 +531,8 @@ No unresolved confirmation items identified in module checklist.
   Modules: `section_tasks`, `document_structure`, `app`
 - [x] Summary/quiz generation and artifact persistence path captured.
   Modules: `section_tasks`, `app`, `document_structure`, `shared`
+- [x] Artifact availability projection boundary documented as runtime/read-side observability (not persistence truth source).
+  Modules: `section_tasks`, `app`, `document_structure`, `api_schemas.py`
 
 ### 7.4 API and Application Entry
 
@@ -545,6 +554,8 @@ No unresolved confirmation items identified in module checklist.
 
 | Module | Item | Reason | Needed Confirmation |
 |---|---|---|---|
+| `document_structure/` | `allow_legacy_fallback` 兼容分支是否有正式退場時程 | detailed design 已保留 `Needs Confirmation`，程式碼仍保留可選 fallback 參數 | maintainer 是否提供 deprecation phase/date |
+| `document_structure/` | `mirror` 用詞是否全面替換為更精準術語 | terminology audit 仍標註 `Inferred + Needs Confirmation` | maintainer 是否啟動全局術語替換策略 |
 | `section_tasks/` | 是否要全面淘汰 `artifact mirror` 用語 | 目前已標註為歷史語境，但全專案術語未完全統一 | maintainer 是否要啟動全局術語替換策略 |
 
 ## 9. Missing or Weak Checklists
@@ -576,7 +587,7 @@ No unresolved confirmation items identified in module checklist.
 ## 12. Current Global Status
 
 - Documentation baseline has been captured across all listed package and root modules via checklist files.
-- Most aggregated module checklists report completed baseline items; `section_tasks/` currently retains one terminology governance confirmation item.
+- Most aggregated module checklists report completed baseline items; `document_structure/` and `section_tasks/` currently retain terminology/fallback governance confirmation items.
 - Global status currently reflects checklist aggregation, not roadmap completion.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.
