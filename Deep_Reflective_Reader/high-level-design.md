@@ -124,13 +124,19 @@ Raw Document
 - meaning：`DocumentProfile.parser_metadata` 可作為 common parser 的快取輔助訊號；在 `force_rebuild=false` 且 source hash 未變時，優先重用既有 common parser 結果。
 - why it matters：減少重複計算，保留前一次 profile/LLM 分析上下文，為後續 enhanced parser 決策提供穩定背景。
 - affected modules：`document_preparation/`, `profile/`, `document_structure/`（策略層）。
-- 標註：**[From Proposal]** + **[Needs Confirmation]**（需對齊最終 cache key/hash contract）
+- finalized cache contract（目前決策）：
+  - cache key 建議至少包含：`doc_name + raw_text_hash + common_parser_version + structure_schema_version`
+  - invalidation 條件：`force_rebuild=true`、`raw_text_hash changed`、`common_parser_version changed`、`structure_schema_version changed`、cache missing/corrupted
+  - 欄位命名策略：先在設計文件採語義化標準命名；實作命名遷移延後至後期維護階段
+  - 可觀測性策略：保留 cache invalidation reason code（先可內部可觀測，後續再 API 契約化）
+  - `parser_metadata` 不作為 common parser 規則控制因子，只可用於省算與輔助其他模組，避免循環依賴
+- 標註：**[From Proposal]**（maintainer policy accepted）
 
 ### 4.10 Two-layer normalized hierarchy as current scope
 - meaning：目前高層結構固定為 `chapter -> section`；不在本期引入 `Part -> Chapter` 持久化層級。
 - why it matters：聚焦普遍文檔型態，避免為少數多層案例提前擴大 schema 複雜度。
 - affected modules：`document_structure/`, `section_tasks/`, `profile/`（主要是 contract 與 metadata 表達）。
-- 標註：**[From Proposal]**（maintainer決策）+ **[Needs Confirmation]**（是否凍結為本期 non-goal）
+- 標註：**[From Proposal]**（maintainer policy accepted）
 
 ---
 
@@ -218,7 +224,7 @@ flowchart TD
 - Raw document 載入後，先做 language detection 與 profile。
 - 接著建 structured hierarchy，再做 post-structure enrichment。
 - common parser 結果在 cache 可用（且未 force rebuild / hash 未變）時可重用，避免重算。
-- 標註：**[Code-Confirmed]**
+- 標註：**[Code-Confirmed]**（pipeline 順序）+ **[From Proposal]**（cache-first policy 已定案）
 
 ### 7.2 Task Layout Flow
 - 由 structured document 讀取有效 hierarchy sections，組成 chapters-first layout projection。
@@ -236,7 +242,7 @@ flowchart TD
 ### 7.5 Enhanced Parser Recommendation Flow
 - 由 evaluator 產生 score/reasons/metrics，於 task-layout response 暴露 recommendation。
 - 目前預期流程是「提示用戶分數與理由，由用戶手動觸發 reparse」，不做自動 rerun。
-- 標註：**[Code-Confirmed]**（recommendation）+ **[From Proposal]**（manual reparse policy）
+- 標註：**[Code-Confirmed]**（recommendation exists）+ **[From Proposal]**（manual reparse policy 已定案）
 
 ### 7.6 Document shape normalization flow (current policy)
 - flat 長文：可走 llm parser 拆成多章，chapter 名稱可由 LLM 產生。**[From Proposal]**
@@ -273,7 +279,7 @@ flowchart TD
 Parser：
 - 建立 structured hierarchy（chapters/sections）。**[Code-Confirmed]**
 - 不應被 metadata 直接硬控制。**[Code-Confirmed]**
-- 目前 `parser_metadata` 對 common parser 的角色是 cache/省算輔助，不是切分規則約束。**[From Proposal]**
+- 目前 `parser_metadata` 對 common parser 的角色是 cache/省算輔助，不是切分規則約束。**[From Proposal]**（maintainer policy accepted）
 
 Profile：
 - 保存 pre-structure `parser_metadata` 與 post-structure snapshot。**[Code-Confirmed]**
@@ -303,9 +309,9 @@ Diagnostics：
 | post_structure_metadata enrichment | Implemented | `profile/post_structure_metadata_enricher.py`, pipeline | Step 4.5 |
 | diagnostics projection | Implemented | `section_tasks/document_task_layout.py`, coordinator | mixed-source, read-only projection |
 | enhanced parse recommendation | Implemented | `document_structure/enhanced_parse_trigger_evaluator.py` | score/reasons/metrics |
-| parser metadata guided parsing | Partially Implemented | pipeline TODO + maintainer policy | 目前僅允許 cache 可用性/省算輔助，不約束 common parser 規則 |
-| auto parser switching | Planned | recommendation exists only | 現階段 policy 為「提示 + 使用者手動重觸發」 |
-| Part -> Chapter nested hierarchy | Not Planned (Current Scope) | maintainer policy | 目前明確聚焦兩層模型，不做 persistence-level Part 層 |
+| parser metadata guided parsing | Partially Implemented | pipeline TODO + maintainer policy | 已定案「僅 cache/省算輔助，不約束 common parser 規則」；完整接線仍待實作 |
+| auto parser switching | Planned | recommendation exists only | 現階段 policy 固定為「提示 + 使用者手動重觸發」 |
+| Part -> Chapter nested hierarchy | Not Planned (Current Scope) | maintainer policy | 目前明確放棄 Part->Chapter persistence-level schema |
 
 ---
 
@@ -332,7 +338,7 @@ Diagnostics：
 - guardrail：to_dict 預設輸出契約測試。
 
 5. LLM enhanced recommendation 與 parser 切換責任不清
-- why risky：若未固定「僅提示、手動重觸發」契約，後續可能出現隱性 auto-switch 或策略分歧。
+- why risky：若策略未落地到一致 contract / 測試，後續仍可能出現隱性 auto-switch 或策略分歧。
 - affected modules：evaluator、coordinator、API。
 - guardrail：先 formalize decision contract，再談自動化。
 
@@ -356,9 +362,9 @@ Diagnostics：
 ## 12. Open Questions for Maintainer
 
 1. 本 high-level-design.md 主要讀者是 maintainer 本人、協作者，還是未來開源讀者？
-2. 是否將「兩層模型（chapter-section）且 Part->Chapter 非本期目標」正式寫入 non-goals？
-3. common parser cache 重用的最終判斷鍵是否固定為 `source_hash + parser_mode + profile_version`（或其他組合）？
-4. cache 失效策略是否需要明確區分：`force_rebuild`、raw hash 變更、parser version 變更、profile schema 變更？
+2. 是否要把「兩層模型（chapter-section）且 Part->Chapter 非本期目標」提升到對外文件（README/API docs）的正式 non-goals？
+3. （已決策）cache key 命名先在設計文件標準化，實作命名遷移延後到後期維護。
+4. （已決策）保留 cache invalidation reason code 能力；API 契約化時機待排程。
 5. `profile_diagnostics` 是否需要正式文件化為 API contract？
 6. `proposal.md` 中 maintainer-provided 實測結論，哪些需要再補 code-confirmed 或可重現 smoke 證據？
 7. 下一版是否需要加入 sequence diagrams（prepare / task-layout / artifact write）？
@@ -380,3 +386,4 @@ Diagnostics：
 4. 若 maintainer同意，新增 roadmap section（僅 high-level milestone）。
 5. 若 maintainer同意，補 API contract section（特別是 diagnostics/ recommendation）。
 6. 若 maintainer同意，補 migration history 與 non-goals。
+7. README 與對外說明文件延後到後期維護階段，不作為本輪交付範圍。
