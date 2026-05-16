@@ -5,6 +5,8 @@
 本目錄用於從**現有實作**反向整理 Deep_Reflective_Reader 的 module-level design，作為維護、交接、與後續演進的技術地圖。  
 本目錄不是重構提案，也不是重新設計文件。
 
+Global Progress: [progress.md](../../progress.md)
+
 ## Source of Truth
 
 1. `proposal.md`
