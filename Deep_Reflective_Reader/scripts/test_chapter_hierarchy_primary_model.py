@@ -138,8 +138,8 @@ def test_get_effective_sections() -> None:
     )
     effective_fallback = get_effective_sections(doc_legacy_only)
     _assert(
-        [section.section_id for section in effective_fallback] == ["section-legacy"],
-        "when chapters are empty, effective sections should fallback to legacy sections",
+        effective_fallback == [],
+        "when chapters are empty, effective sections should be empty in pure hierarchy mode",
     )
 
 
@@ -158,7 +158,7 @@ def test_consistency_valid() -> None:
         source_path=None,
         language="zh",
         raw_text="x",
-        sections=[section],
+        sections=[],
         chapters=[chapter],
     )
     warnings = validate_chapter_hierarchy_consistency(doc)
@@ -310,7 +310,10 @@ def test_structure_nodes_backward_compatibility() -> None:
     }
     doc = StructuredDocument.from_dict(payload)
     _assert(len(doc.structure_nodes) == 1, "legacy structure_nodes should still load")
-    _assert(get_effective_sections(doc)[0].section_id == "section-0", "new helpers should not depend on structure_nodes")
+    _assert(
+        get_effective_sections(doc) == [],
+        "effective sections should come only from chapters, not root sections/structure_nodes",
+    )
 
 
 def main() -> None:
@@ -360,7 +363,7 @@ def main() -> None:
                 "status": "ok",
                 "tests": [
                     "flatten_sections_from_chapters",
-                    "get_effective_sections_fallback",
+                    "get_effective_sections_hierarchy_only",
                     "consistency_valid",
                     "duplicate_section_id_invalid",
                     "parent_mismatch_invalid",

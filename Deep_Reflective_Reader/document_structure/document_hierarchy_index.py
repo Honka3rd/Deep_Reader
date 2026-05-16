@@ -55,10 +55,8 @@ def build_section_index_from_chapters(
 def get_effective_sections(
     document: StructuredDocument,
 ) -> list[StructuredSection]:
-    """Read sections through primary hierarchy first, then legacy fallback."""
-    if document.chapters:
-        return flatten_sections_from_chapters(document)
-    return list(document.sections)
+    """Read sections from hierarchy only (chapters[].sections[])."""
+    return flatten_sections_from_chapters(document)
 
 
 def find_section_by_id_effective(

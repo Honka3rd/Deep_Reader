@@ -62,7 +62,7 @@ def build_hierarchy_first_document() -> StructuredDocument:
 
 
 def build_legacy_sections_only_document() -> StructuredDocument:
-    """Build legacy sections-only document for backward-compatible fallback."""
+    """Build legacy sections-only document for pure-hierarchy behavior checks."""
     legacy_content = "Legacy-only section content. " * 8
     sections = [
         StructuredSection(
@@ -103,10 +103,10 @@ def main() -> None:
 
     legacy_doc = build_legacy_sections_only_document()
     legacy_units = resolver.resolve(legacy_doc)
-    _assert(len(legacy_units) == 1, "legacy sections-only doc should resolve one task unit")
+    _assert(len(legacy_units) == 0, "legacy sections-only doc should resolve zero task units")
     _assert(
-        legacy_units[0].source_section_ids == ["section-legacy"],
-        "legacy sections-only fallback should remain available",
+        legacy_units == [],
+        "resolver should not fallback to root sections when chapters are missing",
     )
 
     payload = {
