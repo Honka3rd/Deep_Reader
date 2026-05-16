@@ -1,0 +1,140 @@
+# document_structure Detailed Design
+
+## 1. Module Purpose
+
+`document_structure/` 是結構化閱讀核心，負責把原文切分並收斂為 hierarchy-first 的 `StructuredDocument`，並提供結構一致性與結構相關持久化邊界。 **[Code-Confirmed]**
+
+## 2. Position in Overall Architecture
+
+- Document Structure Core
+
+## 3. Key Files
+
+| File | Responsibility | Notes |
+|---|---|---|
+| `document_structure/structured_document.py` | 定義 `StructuredDocument/StructuredChapter/StructuredSection` 契約與序列化 | 新 JSON 預設不輸出 root `sections`/`structure_nodes` **[Code-Confirmed]** |
+| `document_structure/structured_document_builder.py` | 以 splitter 建立 structured document，錯誤時 fallback doc | 支援 parser mode 選擇入口 **[Code-Confirmed]** |
+| `document_structure/structured_hierarchy_builder.py` | 將 flat sections 收斂成 chapter->section hierarchy | 主流程不再生成 structure_nodes mirror **[Code-Confirmed]** |
+| `document_structure/document_hierarchy_index.py` | hierarchy-first 查找/flatten/一致性校驗 helper | `get_effective_sections` 已 hierarchy-only **[Code-Confirmed]** |
+| `document_structure/section_splitter.py` | common parser split 實作 | 受 language registry 支持 **[Code-Confirmed]** |
+| `document_structure/llm_section_splitter.py` | llm enhanced parser split 實作 | 作為 selector 另一條路徑 **[Code-Confirmed]** |
+| `document_structure/section_splitter_selector.py` | common/llm split mode 選擇 | parser mode contract 中樞 **[Code-Confirmed]** |
+| `document_structure/structured_document_store.py` | structured JSON load/save | persistence store **[Code-Confirmed]** |
+| `document_structure/document_artifact_repository.py` | artifact repository 抽象介面 | section/chapter/task-unit/document-level methods **[Code-Confirmed]** |
+| `document_structure/structured_document_artifact_repository.py` | 具體 artifact repository（hierarchy-aware） | 含 legacy load-time migration **[Code-Confirmed]** |
+| `document_structure/enhanced_parse_trigger_evaluator.py` | enhanced parse recommendation 評估器 | recommendation only，非 auto-switch **[Code-Confirmed] + [From HLD]** |
+| `document_structure/document_structure_language_registry.py` | parser/regional/profile-evidence 用語言標記 registry | multi-consumer registry **[Code-Confirmed]** |
+
+## 4. Main Responsibilities
+
+1. 定義 hierarchy 主契約（Document -> Chapter -> Section）。 **[Code-Confirmed]**
+2. 實現 common/llm enhanced 結構切分入口與 fallback 產物。 **[Code-Confirmed]**
+3. 提供 hierarchy-first 查找與一致性檢查 helper。 **[Code-Confirmed]**
+4. 管理 structured artifact 讀寫與 hierarchy-aware artifact 更新。 **[Code-Confirmed]**
+5. 提供 enhanced parse recommendation 訊號。 **[Code-Confirmed]**
+
+## 5. Non-Responsibilities
+
+1. 不應直接承擔 API request/response mapping。 **[From HLD]**
+2. 不應讓 profile metadata 直接硬控制 parser 切分規則。 **[From HLD]**
+3. 不應在 task-layout read path 做隱性寫回。 **[From HLD]**
+
+## 6. Important Data Structures / Contracts
+
+- `StructuredDocument`
+- `StructuredChapter`
+- `StructuredSection`
+- `SectionSplitterMode`
+- `DocumentArtifactRepository` (interface)
+- `EnhancedParseTriggerDecision`
+
+以上是本 module 的高層契約代表。 **[Code-Confirmed]**
+
+## 7. Architecture Constraints
+
+1. persisted source of truth 是 `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [From HLD]**
+2. 不重新引入 root `sections` mirror 作新寫入來源。 **[Code-Confirmed] + [From HLD]**
+3. `structure_nodes` 不作主流程結構來源。 **[Code-Confirmed] + [From HLD]**
+4. parser metadata 屬 advisory，不是 parser authority。 **[From HLD]**
+
+## 8. Module Relationships
+
+- depends on:
+  - `language/`（language code + structure language registry）
+  - `shared/`（task artifacts / task unit model）
+- used by:
+  - `document_preparation/`
+  - `app/section_task_coordinator.py`
+  - `section_tasks/`
+- reads from:
+  - structured JSON artifact
+- writes to:
+  - structured JSON artifact（store/repository）
+- advisory relationship:
+  - 與 `profile/` 是弱耦合（metadata advisory，不是 parser authority） **[From HLD]**
+
+## 9. Main Flows Involving This Module
+
+1. prepare flow：`structured_document_builder` build + `structured_document_store` save。 **[Code-Confirmed]**
+2. hierarchy build flow：flat sections -> hierarchy chapters/sections。 **[Code-Confirmed]**
+3. artifact write flow：repository 更新 section/chapter/task-unit artifacts。 **[Code-Confirmed]**
+4. task-layout projection supporting flow：提供 `get_effective_sections` 與 find helpers。 **[Code-Confirmed]**
+5. enhanced recommendation flow：evaluator 輸出 should_recommend/score/reasons。 **[Code-Confirmed]**
+
+## 10. Failure Semantics Matrix
+
+| Scenario | Current Behavior | Notes |
+|---|---|---|
+| `StructuredDocument` 載入含舊 `sections` | 可讀（compatibility） | 讀取相容，非新寫入來源 **[Code-Confirmed]** |
+| 無 chapters 的 runtime 結構查找 | 上層多為 fail-fast | helper 層逐步收斂 **[Code-Confirmed]** |
+| severe hierarchy inconsistency | 上層 coordinator fail-fast | 不以 legacy fallback 掩蓋 **[Code-Confirmed]** |
+| parser mode invalid | selector/上層拋錯 | 依 route/coordinator 轉 HTTP **[Code-Confirmed]** |
+
+## 11. Persistence / Side Effects
+
+- read persistence：是（structured store/repository）
+- write persistence：是（structured store/repository）
+- mutate structured document：是（builder/repository update）
+- generate runtime projection：否（主要由 coordinator/task_layout DTO 層完成）
+- call LLM：部分（`llm_section_splitter`）
+- diagnostics only：否（同時有寫入/建模責任）
+
+## 12. Known Legacy / Compatibility Behavior
+
+| Legacy Item | Can Read | New Write | Runtime Primary Path |
+|---|---:|---:|---:|
+| root `sections[]` | Yes | No (default) | No |
+| `structure_nodes[]` | Yes | No (default) | No |
+| sections-only payload migration | Yes | Converted to hierarchy on save path | No |
+
+說明：`find_*_effective(...allow_legacy_fallback=...)` 部分 helper 仍保留 compatibility 分支。 **[Code-Confirmed] + [Needs Confirmation]**
+
+## 13. Current Risks
+
+1. risk：helper 層 legacy fallback 若被 runtime 誤用
+- why：會破壞 hierarchy-only 路徑一致性
+- guardrail：維持 fail-fast regression + 明確 allow_legacy_fallback 使用邊界
+
+2. risk：common/llm parser mode decision 無統一契約
+- why：可能出現 recommendation 與實際行為落差
+- guardrail：補 recommendation decision contract 文檔
+
+3. risk：artifact 寫入若偏離 hierarchy source
+- why：可能再度形成 dual representation drift
+- guardrail：維持 repository hierarchy-aware write tests
+
+4. risk：Part->Chapter 非目標若未清晰文件化
+- why：後續開發者可能重引入多層 persistence
+- guardrail：在 module docs/non-goals 明確固定 current scope **[From Proposal] + [From HLD]**
+
+## 14. Open Questions for Maintainer
+
+1. `find_*_effective` 的 legacy fallback 參數是否設定退場時間表？
+2. `llm_section_splitter` 的輸出契約是否要加入更明確 schema guard（僅文檔層）？
+3. enhanced recommendation 的 score threshold 調整責任層級在哪（config 或 evaluator 固化）？
+
+## 15. Suggested Next Documentation Improvements
+
+1. 增加「common vs llm enhanced parser lifecycle」sequence diagram。
+2. 增加 artifact repository write boundary 狀態圖（section/chapter/task-unit/document-level）。
+3. 補 `document_structure_language_registry` 的 consumer matrix。
