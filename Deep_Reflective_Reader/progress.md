@@ -423,7 +423,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -496,7 +496,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
