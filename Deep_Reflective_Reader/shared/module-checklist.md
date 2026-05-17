@@ -47,7 +47,9 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Design shared rich task-unit content block model
+- [ ] Define content-block identity and artifact attachment semantics
+- [ ] Define backward compatibility adapter from string content to single content block
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

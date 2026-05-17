@@ -1,260 +1,202 @@
 # Deep Reflective Reader Proposal
 
-> 文件定位：本 proposal 是「基於目前 codebase 已完成狀態」的階段性提案，不是假設從零開始。
+> 文件定位：本 proposal 是「基於目前 codebase 狀態」的架構定位與下一階段規劃文件。  
 > 事實標註規則：
-> - **[Code-Confirmed]**：已從程式碼直接確認
-> - **[Maintainer-Provided]**：由維護者提供的實測背景
-> - **[Inferred]**：依程式邏輯推論，仍需確認
+> - **[Code-Confirmed]**：可由目前 source code 直接確認
+> - **[Maintainer-Provided]**：由 maintainer 明確提供的需求或決策
+> - **[Inferred]**：由多份文檔/模組關係合理推論
+> - **[Future Direction]**：尚未實作，僅作下一階段提案
 
 ## 1. Project Purpose
 
-Deep_Reflective_Reader 的目標不是單純做 parser，而是提供一個可持久化、可回讀、可診斷的深度閱讀系統：
+Deep_Reflective_Reader 不是普通 parser。它是面向深度閱讀互動的 hierarchy-aware 系統：
 
-- 長文結構解析（Hierarchy-First）
-- 結構化互動（Section/Chapter/TaskUnit）
-- 任務化輸出（summary / quiz）
-- Artifact persistence 與 cache validity
-- parser quality diagnostics 與 recommendation
+`Document -> Structured Hierarchy -> Task Layout Projection -> Task-Unit Interaction -> Artifact Interaction -> Summary/Quiz Workflow`
 
-核心互動模型：
-
-`Document -> Chapter -> Section -> TaskUnit`
+核心目標：
+- 穩定結構化閱讀互動（chapter/section/task-unit） **[Code-Confirmed]**
+- 明確 read/write boundary，避免 hidden mutation **[Code-Confirmed]**
+- 以 metadata/diagnostics 提升可觀測性（advisory-only） **[Code-Confirmed]**
 
 ## 2. Current Architecture Snapshot
 
-### 2.1 資料流（當前）
+### 2.1 Current Data Flow
 
 ```text
 Raw Document
   -> Document Preparation Pipeline
   -> Pre-structure Profile (parser_metadata)
-  -> Structured Hierarchy Build (chapters[].sections[])
-  -> Post-structure Metadata Enrichment
+  -> Structured Hierarchy (chapters[].sections[].task_units[])
+  -> Post-structure Metadata
   -> Task Layout Projection (read path)
-  -> Summary / Quiz / TaskUnit Artifacts
-  -> Diagnostics / Enhanced Parse Recommendation
+  -> Task-Unit Content On-demand API
+  -> Summary / Quiz / Artifacts
+  -> Diagnostics / Recommendation
 ```
 
-### 2.2 主要模組責任（摘要）
+### 2.2 Runtime Contract
 
-- Preparation orchestration：`document_preparation/document_preparation_pipeline.py` **[Code-Confirmed]**
-- Structured model / serialization：`document_structure/structured_document.py` **[Code-Confirmed]**
-- Hierarchy helper/index：`document_structure/document_hierarchy_index.py` **[Code-Confirmed]**
-- Hierarchy build：`document_structure/structured_document_builder.py`, `document_structure/structured_hierarchy_builder.py` **[Code-Confirmed]**
-- Task layout + coordinator：`app/section_task_coordinator.py`, `section_tasks/document_task_layout.py` **[Code-Confirmed]**
-- Artifact persistence：`document_structure/structured_document_artifact_repository.py` **[Code-Confirmed]**
-- Profile + metadata：`profile/document_profile.py`, `profile/document_profile_builder.py`, `profile/parser_metadata_extractor.py`, `profile/post_structure_metadata_enricher.py` **[Code-Confirmed]**
-- API surface：`main.py`, `api_schemas.py` **[Code-Confirmed]**
+- Runtime hierarchy source：`chapters[].sections[].task_units[]` **[Code-Confirmed]**
+- Runtime lookup：hierarchy-only + fail-fast **[Code-Confirmed]**
+- Task-layout：metadata/projection read path，不承載 heavy content **[Code-Confirmed]**
+- Task-unit content：透過獨立 read-only API 按需讀取 **[Code-Confirmed]**
 
 ## 3. Confirmed Implemented Capabilities
 
-以下僅列 codebase 可直接確認項目。
+1. **Hierarchy-first runtime contract 已收斂**  
+- `get_effective_sections` 與 runtime lookup 使用 hierarchy path。 **[Code-Confirmed]**
 
-1. **Hierarchy-first StructuredDocument contract** **[Code-Confirmed]**
-- `StructuredDocument` 保留 `chapters / sections / structure_nodes`，但 docstring 已明確 `chapters` 為 primary source。
-- 路徑：`document_structure/structured_document.py`
+2. **Pure hierarchy persistence defaults 已落地**  
+- 新 JSON 預設不輸出 root `sections[]` / `structure_nodes[]` mirror。 **[Code-Confirmed]**
 
-2. **新 JSON 預設不輸出 root sections / structure_nodes** **[Code-Confirmed]**
-- `to_dict()` 需顯式 `include_legacy_sections=True` 才輸出 `sections`。
-- `to_dict()` 需顯式 `include_legacy_structure_nodes=True` 才輸出 `structure_nodes`。
-- 路徑：`document_structure/structured_document.py`
+3. **Runtime legacy fallback 已退場**  
+- `allow_legacy_fallback` ordinary runtime surface 已移除。 **[Code-Confirmed]**
+- runtime 不再默默 fallback 到 root `sections` / `structure_nodes`。 **[Code-Confirmed]**
 
-3. **Legacy payload 仍可讀（相容讀取）** **[Code-Confirmed]**
-- `from_dict()` 仍可讀 `sections` 與 `structure_nodes`。
-- 路徑：`document_structure/structured_document.py`
+4. **Legacy compatibility 已隔離**  
+- normal `StructuredDocument.from_dict/from_json` 不再接受 legacy-only 作 runtime path。 **[Code-Confirmed]**
+- legacy 僅保留 explicit migration-only loader 路徑。 **[Code-Confirmed]**
 
-4. **`get_effective_sections(document)` 已收斂為 hierarchy-only** **[Code-Confirmed]**
-- 只 flatten `chapters[].sections[]`，不再 fallback root `document.sections`。
-- 路徑：`document_structure/document_hierarchy_index.py`
+5. **Task-layout contract 已固定**  
+- `/documents/task-layout` 維持 chapters-first projection；不回傳 top-level legacy mirrors。 **[Code-Confirmed]**
 
-5. **Artifact repository 已 hierarchy-aware，含 load-time migration** **[Code-Confirmed]**
-- 寫入前 load 路徑：`chapters` 空且 `sections` 有值時，先 `migrate_legacy_sections_to_chapters(...)`。
-- Section/chapter/task-layout 更新皆以 hierarchy 為主要寫入路徑。
-- 路徑：`document_structure/structured_document_artifact_repository.py`
+6. **Task-unit content lookup API 已存在**  
+- `GET /documents/{doc_name}/task-units/{task_unit_id}/content`。 **[Code-Confirmed]**
 
-6. **Task-layout API 為 chapters-only public response** **[Code-Confirmed]**
-- `/documents/task-layout` response model 僅對外 `chapters`（另有 recommendation/diagnostics），無 top-level public `sections/task_units/chapter_artifacts`。
-- 路徑：`api_schemas.py`, `main.py`
+7. **Profile/metadata 邊界已固定為 advisory**  
+- `parser_metadata`（pre）+ `post_structure_metadata`（snapshot）已接入。 **[Code-Confirmed]**
+- diagnostics 為 runtime projection，不回寫 profile。 **[Code-Confirmed]**
 
-7. **Chapter API 支援 `chapter_id`，解決 title ambiguity** **[Code-Confirmed]**
-- `SummarizeChapterRequest` / `ChapterQuizRequest`：`chapter_id` 可選，與 `chapter_title` 同時提供時 `chapter_id` 優先。
-- 路徑：`api_schemas.py`, `main.py`, `app/section_task_coordinator.py`
+8. **Recommendation exists, manual reparse policy**  
+- enhanced parse recommendation 有 score/reasons/metrics。 **[Code-Confirmed]**
+- 目前策略為提示用戶手動 reparse，不自動觸發。 **[Maintainer-Provided]**
 
-8. **Chapter artifact key 已有 id-based key** **[Code-Confirmed]**
-- `chapter_id::` key 前綴存在，並有 legacy key candidate 機制。
-- 路徑：`app/section_task_coordinator.py`
+## 4. Legacy Retirement Status (Refreshed)
 
-9. **Profile 已具 pre + post metadata 能力** **[Code-Confirmed]**
-- pre：`parser_metadata`
-- post：`post_structure_metadata`
-- 並保留 `structure_profile` 相容欄位。
-- 路徑：`profile/document_profile.py`
+### 4.1 Obsolete Wording Removed
 
-10. **Post-structure enrichment 已在 pipeline Step 4.5 接入** **[Code-Confirmed]**
-- profile 在 structured build 後 enrichment；失敗不阻塞 prepare。
-- 路徑：`document_preparation/document_preparation_pipeline.py`
+以下舊語意已不再適用：
+- 「normal `StructuredDocument.from_dict()` 可直接以 legacy `sections` / `structure_nodes` 作 runtime path」→ 已過時 **[Code-Confirmed]**
+- 「`allow_legacy_fallback` 尚未決定退場」→ 已過時 **[Code-Confirmed]**
 
-11. **Diagnostics 已作為 task-layout runtime projection** **[Code-Confirmed]**
-- DTO docstring 明確 mixed-source；task-unit coverage 來自「當前 layout sections」，不是 prepare-time snapshot。
-- 路徑：`section_tasks/document_task_layout.py`, `app/section_task_coordinator.py`
+### 4.2 Current Position
 
-12. **Enhanced parse recommendation evaluator 已存在** **[Code-Confirmed]**
-- 有 deterministic score/reasons/metrics。
-- 路徑：`document_structure/enhanced_parse_trigger_evaluator.py`
+- runtime lookup 已 hierarchy-only **[Code-Confirmed]**
+- legacy compatibility 已隔離為 explicit migration-only path **[Code-Confirmed]**
+- compatibility 不是 runtime primary path，也不是 primary contract **[Inferred]**
 
-## 4. Deprecated / Legacy Compatibility
+## 5. Task Layout + On-demand Content Philosophy
 
-### 4.1 root `sections[]`
-- **可讀**：是（`StructuredDocument.from_dict`）**[Code-Confirmed]**
-- **預設會寫**：否（需 `include_legacy_sections=True`）**[Code-Confirmed]**
-- **主流程使用**：
-  - `get_effective_sections`：否（已移除 fallback）**[Code-Confirmed]**
-  - 少數 helper 仍可選 legacy fallback（例如 `find_section_by_id_effective(..., allow_legacy_fallback=True)`）**[Code-Confirmed]**
+1. `/documents/task-layout`：只做 metadata/projection read **[Code-Confirmed]**
+2. 不做 hidden mutation，不寫回 profile **[Code-Confirmed]**
+3. 前端互動路徑：
 
-### 4.2 `structure_nodes`
-- **可讀**：是（legacy compatibility）**[Code-Confirmed]**
-- **預設會寫**：否（需 `include_legacy_structure_nodes=True`）**[Code-Confirmed]**
-- **主流程使用**：否（未見 runtime 主線依賴）**[Code-Confirmed]**
+```text
+task-layout
+  -> task_unit_id
+    -> on-demand task-unit content API
+```
 
-### 4.3 flat top-level `task_units` / `chapter_artifacts`
-- 在 `DocumentTaskLayout` 內部 DTO 仍有 transitional 欄位註記（internal/backward compatible）。
-- 對外 API response 已 chapters-first。**[Code-Confirmed]**
-- 路徑：`section_tasks/document_task_layout.py`, `main.py`, `api_schemas.py`
+4. task-layout 不回傳 heavy full content；content lookup API 負責內容取回 **[Code-Confirmed]**
+5. task-unit content endpoint 是 read-only，不承擔 persistence mutation **[Code-Confirmed]**
 
-### 4.4 legacy `structure_profile`
-- `DocumentProfile` 仍保留欄位與舊 schema 反序列化能力。
-- 新 builder 主流程不主動產生它（`structure_profile=None`）。**[Code-Confirmed]**
-- 路徑：`profile/document_profile.py`, `profile/document_profile_builder.py`
+## 6. Artifact Governance Boundary
 
-## 5. Current Design Principles
+- artifact 是 interaction output，不是 hierarchy truth source **[Code-Confirmed]**
+- artifact 不控制 parser authority，不控制 runtime hierarchy source **[Code-Confirmed]**
+- hierarchy truth / artifact persistence / runtime projection 三者分離 **[Code-Confirmed]**
 
-以下原則已在 codebase 中可觀察：
+ownership split：
+- hierarchy truth：`document_structure` contract **[Code-Confirmed]**
+- artifact write path：coordinator + repository **[Code-Confirmed]**
+- availability/diagnostics projection：task-layout/coordinator response **[Code-Confirmed]**
 
-1. **Hierarchy Purity（持久化來源單一化）** **[Code-Confirmed]**
-- 新輸出避免 root mirror，主資料源在 `chapters[].sections[].task_units[]`。
+## 7. Next-Phase Proposal: Task Unit Rich Content Model
 
-2. **Metadata Advisory（metadata 不是 parser authority）** **[Code-Confirmed]**
-- pipeline 仍有 TODO：尚未把 `parser_metadata` hints 接入 structured parser。
-- 路徑：`document_preparation/document_preparation_pipeline.py`
+> 本節是下一階段規劃，不代表已落地。
 
-3. **Diagnostics Read-Only Projection** **[Code-Confirmed]**
-- task-layout diagnostics 使用 runtime state 計算，不回寫 profile。
-- 路徑：`app/section_task_coordinator.py`
+### 7.1 Proposal Statement
 
-4. **LLM Helper, Not Authority** **[Code-Confirmed]**
-- profile builder：deterministic + lightweight LLM classification + fallback。
-- 路徑：`profile/document_profile_builder.py`, `profile/parser_metadata_extractor.py`
+`TaskUnit.content` 不應長期停留在 simple string。未來應演進為可定位、可互動、可掛 artifact 的 rich content model。 **[Maintainer-Provided]** + **[Future Direction]**
 
-5. **Backward Compatibility Without New Legacy Writes** **[Code-Confirmed]**
-- 可讀舊 payload，但新 artifact 預設不再寫回完整 legacy mirror。
+### 7.2 Suggested Terminology
 
-## 6. Known Real-Document Findings
+- `TaskUnit`：reading interaction container **[Future Direction]**
+- `TaskUnitContent` / `ContentBlock`：task unit 內可渲染內容單元 **[Future Direction]**
+- `content_block_id` / `content_segment_id`：句子/段落/區塊級 stable id **[Future Direction]**
+- `content`：內容字串本體 **[Future Direction]**
+- `artifacts`：可掛載於 content block 的 interaction output（非 hierarchy truth） **[Future Direction]**
 
-> 本節資料來源混合：程式碼可證 + 維護者提供之實測脈絡。
+### 7.3 Why This Matters
 
-1. **《许三观卖血记》**
-- 「common parser 對 chapter-only 表現穩定」：**[Maintainer-Provided]**
-- codebase 可見 chapter-only shape 與 metadata/diagnostics 有相應規則：**[Code-Confirmed]**
-  - 路徑：`profile/post_structure_metadata_enricher.py`, `document_structure/structured_hierarchy_builder.py`
+- 前端需要句子/段落級選取與提問能力 **[Maintainer-Provided]**
+- LLM 回答需要能引用具體 segment target **[Maintainer-Provided]**
+- artifact 需要 finer-grained target，而不只 chapter/section/task-unit **[Maintainer-Provided]**
+- 未來 note/annotation/evidence quote 需要 stable segment id **[Inferred]**
+- task_unit_id 只能定位閱讀單元，不足以定位句子級互動 **[Inferred]**
 
-2. **Madame Bovary**
-- 「Chapter One 在不同 Part 重複，title target 會 ambiguous」：**[Maintainer-Provided]**
-- chapter_id-first target resolution 與 ambiguous title fail 行為存在測試與實作：**[Code-Confirmed]**
-  - 路徑：`app/section_task_coordinator.py`, `api_schemas.py`, `scripts/test_chapter_id_target_resolution.py`
+### 7.4 Boundary Rules
 
-3. **《中式思维》**
-- 「common parser 可能偏 flat / fallback，llm_enhanced 可改善成 essay_sections」：**[Maintainer-Provided]**
-- enhanced recommendation evaluator 與 profile shape 診斷機制存在：**[Code-Confirmed]**
-  - 路徑：`document_structure/enhanced_parse_trigger_evaluator.py`, `profile/post_structure_metadata_enricher.py`
+- content segment 不是新的 persisted hierarchy level **[Future Direction]**
+- 不引入 `Document -> Chapter -> Section -> TaskUnit -> Sentence` 的持久化層級 **[Future Direction]**
+- `chapters[].sections[].task_units[]` 仍是 hierarchy source **[Code-Confirmed]**
+- rich content 屬 task-unit internal render/interaction model **[Future Direction]**
+- content-block artifact 是 interaction output，不是 hierarchy truth **[Future Direction]**
+- 不把 LLM answer/artifact 當 parser authority **[Future Direction]**
+- 不破壞 task-layout projection contract **[Code-Confirmed]** + **[Future Direction]**
+- task-layout 仍不回傳 heavy full content payload **[Code-Confirmed]**
+- on-demand content API 可演進為 rich payload **[Future Direction]**
 
-## 7. Current Gaps
+## 8. Phased Rollout Plan (Proposal)
 
-1. **parser_metadata 尚未進入 parser strategy**
-- 證據：pipeline TODO 註解。**[Code-Confirmed]**
-- 影響：metadata 目前主要供 diagnostics/recommendation，不直接影響 parse。
+### Phase 1 — Proposal / Architecture Documentation Only
+- 更新 proposal，固定方向與邊界
+- 不改 code
 
-2. **尚未 auto parser switching**
-- recommendation 存在，但未見自動 reparse 切換主流程。**[Code-Confirmed]**
+### Phase 2 — Child-agent Checklist Preparation
+- 更新相關 checklist（shared/document_structure/section_tasks/api_schemas/app/question/evaluated_answer）
+- 視需要納入 retrieval/context
 
-3. **post_structure_metadata 不反向修改 structured_document**
-- enrichment 只更新 profile。**[Code-Confirmed]**
+### Phase 3 — Model Design
+- 在 shared 或 document_structure 設計 `TaskUnitContent` / `ContentBlock` DTO
+- 提供 backward adapter：simple string content -> single content block
 
-4. **文件形態正規化策略尚未文件化為固定契約**
-- 目前實作已具備 common / llm_enhanced 與 recommendation，但「何時單章、何時多章、何時 chapter-only」仍需在設計文件明確寫死。**[Code-Confirmed]**
+### Phase 4 — API Evolution
+- 擴展 task-unit content endpoint 返回 rich content blocks
+- 保持 task-layout heavy payload policy 不變
 
-5. **runtime helper 仍有局部 legacy fallback 參數**
-- 例：`find_section_by_id_effective(..., allow_legacy_fallback)`；`_find_chapter_or_raise` 內仍有 legacy title fallback 分支。
-- 是否完全退場需政策決定。**[Code-Confirmed]**
+### Phase 5 — Artifact Targeting
+- 支援 content-block-level artifact target
+- target scope 可表達：document/chapter/section/task_unit/content_block
 
-6. **Diagnostics contract 雖已有實作，但外部文件化仍可加強**
-- mixed-source 語義已在 DTO docstring，但缺統一維護文檔。**[Code-Confirmed]**
+### Phase 6 — LLM / QA Integration
+- question/evaluated_answer 支援 `content_block_id` 引用
+- answer 可綁定 evidence/quote/artifact
 
-## 8. Proposed Next Phase
+> 上述各 phase 均屬 **[Future Direction]**。
 
-> 以下是「小步可執行」方向，不是大重構。
+## 9. Explicit Non-goals (This Round)
 
-### A. Parser Strategy Recommendation Formalization
-- **Goal**：把 recommendation 從「分散訊號」整理成明確決策契約（提示/人工確認/手動 rerun）。
-- **Why now**：已有 evaluator + diagnostics，但產品決策規則未定。
-- **Affected modules**：`document_structure/enhanced_parse_trigger_evaluator.py`, `app/section_task_coordinator.py`, `api_schemas.py`（若只補文檔可先不動 schema）。
-- **Risk**：過早自動化可能誤切 parser。
-- **First small task**：先寫 recommendation decision table（文檔 + 測試 fixture），不改 runtime。
+- 本輪不 coding **[Maintainer-Provided]**
+- 本輪不改 API behavior **[Maintainer-Provided]**
+- 本輪不改 persistence schema **[Maintainer-Provided]**
+- 本輪不引入 sentence parser **[Maintainer-Provided]**
+- 本輪不做 automatic LLM answer grounding **[Maintainer-Provided]**
+- 本輪不改 task-layout response contract **[Maintainer-Provided]**
+- 本輪不引入 retrieval dependency **[Maintainer-Provided]**
 
-### B. ParserHints Advisory DTO（Read-only）
-- **Goal**：把 parser_metadata/post_metadata 的可用欄位整理成穩定 advisory DTO。
-- **Why now**：目前 diagnostics 已 mixed-source，適合固定對外語義。
-- **Affected modules**：`profile/document_profile.py`, `section_tasks/document_task_layout.py`, 文件。
-- **Risk**：欄位語義鎖定後調整成本上升。
-- **First small task**：新增「欄位語義矩陣」文件（來源、更新時機、是否可持久化）。
+## 10. Open Questions for Maintainer
 
-### C. Enhanced Parse Trigger Evaluator Documentation + Calibration
-- **Goal**：把 score/reason/metrics 的門檻做可追蹤校準。
-- **Why now**：實際已有多文檔案例，適合建立 calibration baseline。
-- **Affected modules**：`document_structure/enhanced_parse_trigger_evaluator.py`, `scripts/*smoke*`。
-- **Risk**：過度 overfit 少量文檔。
-- **First small task**：增加 3~5 個固定 regression fixture 的評分期望。
+1. rich content model 的最小 segment granularity（句子/段落/混合）偏好？ **[Future Direction]**
+2. content_block_id 是否需要跨 reparse 穩定，還是只需單次 version 穩定？ **[Future Direction]**
+3. content-block-level artifact 的最小 metadata contract（source_hash/version/trace）是否先行定義？ **[Future Direction]**
+4. rich content endpoint 是否要分版本（例如 `/v2/task-units/.../content`）？ **[Future Direction]**
 
-### D. Document Shape Normalization Policy（固定兩層主模型）
-- **Goal**：明確採用通用兩層結構 `chapter -> section`，不引入 `Part -> Chapter` persistence schema。
-- **Why now**：目前維護方向已確認「優先覆蓋普遍文檔」，避免過早引入罕見多層級 schema 複雜度。
-- **Affected modules**：`document_structure/`, `section_tasks/`, `profile/`（主要是 contract 與 metadata 語義）。
-- **Risk**：若沒有明確規則，平面長文、章節文、多層碎片文在 parser 路徑會產生不一致。
-- **First small task**：新增「Document Shape Normalization Contract」文件，明確如下策略（不改 API）：
-  - flat 長文：優先允許 llm parser 產生多章；chapter title 可由 LLM 提供。
-  - flat 短文：若僅足夠單一 task unit（或 LLM 判定不足以分章），固定單章。
-  - chapter-only 文檔：尊重章級結構；每章仍持有唯一 section（同名、不同 id）。
-  - 標準文檔：先 common，不佳再 llm_enhanced。
-  - 多層細碎文檔：持續收斂為 `chapter-section`；更細粒度下沉到 task units，並把原層級線索記入 metadata 供未來擴展。
+## 11. Status Summary
 
-### E. Diagnostics Contract Documentation
-- **Goal**：明文化「projection-only / no hidden mutation / no heavy payload」契約。
-- **Why now**：避免後續開發把 diagnostics 當 persisted truth。
-- **Affected modules**：`section_tasks/document_task_layout.py`, `api_schemas.py`, `main.py`, docs。
-- **Risk**：低。
-- **First small task**：補一份 `docs/diagnostics_contract.md`（或 proposal 附錄）。
-
-## 9. Questions for Maintainer
-
-1. 你確認目前階段把 `Part -> Chapter nested persistence` 定義為明確 non-goal，並固定兩層主模型（chapter-section）嗎？
-2. `parser_metadata` 未來是否只做 recommendation，還是允許進入 common parser 的 heuristic path？
-3. 若要 metadata-guided parsing，是否接受 feature flag 漸進啟用？
-4. enhanced parser recommendation 是「只提示使用者」還是允許「一鍵/自動 rerun」？
-5. `title_uniqueness_risk` 最終權威來源是否應固定為 post-structure metadata（而非 pre-structure LLM）？
-6. `find_*_effective(... allow_legacy_fallback)` 這類 helper 是否要進入明確退場時程？
-7. `structure_profile` legacy 相容欄位要保留到哪個版本節點？
-8. proposal 的主要受眾是「維護者內部」還是「未來協作者/開源讀者」？
-9. 是否需要在 proposal 加入 API contract 專章（含 no-heavy-payload 保證）？
-10. 是否需要加 migration history（從 dual-representation 到 pure hierarchy 的階段記錄）？
-11. `post_structure_metadata` 是否需要獨立 refresh 機制（非 prepare 路徑）？
-12. 對於中式 essay 類文檔，是否要把 common→enhanced 推薦規則納入正式產品策略（而非僅 diagnostics）？
-
----
-
-## Needs Maintainer Confirmation
-
-以下事項目前只可推論，需 maintainer 明確拍板：
-
-- 兩層主模型（chapter-section）是否作為本期穩定契約，且明確不做 Part->Chapter persistence-level schema。
-- `allow_legacy_fallback` 參數族群的最終退場時點。
-- recommendation 是否可在 UX 層觸發半自動 reparse。
-- diagnostics 欄位是否要凍結為公開契約。
+- hierarchy-first runtime contract：已落地 **[Code-Confirmed]**
+- pure hierarchy persistence defaults：已落地 **[Code-Confirmed]**
+- runtime legacy fallback retirement：已落地 **[Code-Confirmed]**
+- task-layout projection/read boundary：已固定 **[Code-Confirmed]**
+- task-unit on-demand content API：已落地 **[Code-Confirmed]**
+- rich task-unit content model：下一階段提案 **[Maintainer-Provided]** + **[Future Direction]**

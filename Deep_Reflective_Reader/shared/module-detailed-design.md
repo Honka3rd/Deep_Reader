@@ -73,3 +73,13 @@
 ## 13. Suggested Next Documentation Improvements
 
 1. 補 artifact metadata field glossary。
+
+## 14. Future Direction Note: Rich Task-Unit Content Model Preparation
+
+> 本節屬未來方向說明，非當前 implementation。 **[Inferred]**
+
+1. `TaskUnit.content` 未來可由 simple string 演進為 content block / content segment model；shared 層僅承擔 caller-neutral 的 low-level model/helper preparation。 **[Inferred]**
+2. content block 的定位是 task-unit 內部的 content segmentation / evidence target，不是 chapter/section/task_unit 之外的新 hierarchy level。 **[Inferred]**
+3. content block 不得成為 parser authority；artifact 掛載於 content block 也不得成為 hierarchy truth。 **[Inferred]**
+4. `TaskUnit` 仍是 interaction container；hierarchy-first persistence 仍以 `chapters[].sections[].task_units[]` 為可信來源。 **[Code-Confirmed] + [Inferred]**
+5. backward compatibility 方向可考慮 `string content -> single content block` adapter，但本輪不實作。 **[Inferred]**
