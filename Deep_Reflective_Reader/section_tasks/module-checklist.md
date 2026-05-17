@@ -63,7 +63,10 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Extend task-unit content endpoint for rich content blocks
+- [ ] Support content-block-level interaction targeting
+- [ ] Define content-block artifact availability projection
+- [ ] Preserve lightweight task-layout metadata contract
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

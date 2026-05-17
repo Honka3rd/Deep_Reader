@@ -184,3 +184,15 @@
 1. 增加 task-unit split mode behavior matrix。
 2. 增加 task-layout DTO public/internal field boundary表。
 3. 補 artifact validity reason taxonomy 文檔。
+
+## 19. Future Direction Note: Rich Content Interaction Preparation
+
+> 本節為 future-direction preparation，非當前 implementation。  
+> 目的僅為收斂邊界，不代表已實作 runtime/API/schema 變更。 **[Doc-Confirmed]**
+
+1. `task-layout` 維持 lightweight metadata/projection contract；large content 不回流至 task-layout DTO。 **[Code-Confirmed] + [Future Direction]**
+2. rich content 應維持 on-demand read model，透過 task-unit content lookup path 演進，不改 task-layout read-path定位。 **[Code-Confirmed] + [Future Direction]**
+3. future content blocks 可成為 sentence/paragraph/block-level interaction target，但不應形成新的 hierarchy level。 **[Maintainer-Confirmed] + [Future Direction]**
+4. future content-block artifact targeting/availability projection 屬 interaction 層語義，不得污染 hierarchy persistence truth source。 **[Future Direction]**
+5. interaction targeting 應維持 id-based deterministic path，不得回退為 title-only lookup。 **[Code-Confirmed] + [Future Direction]**
+6. richer interaction state 不得 hidden write-back profile；diagnostics/projection 與 persisted profile 需保持邊界分離。 **[Code-Confirmed] + [Future Direction]**
