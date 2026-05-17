@@ -191,3 +191,14 @@
 1. 增加「common vs llm enhanced parser lifecycle」sequence diagram。
 2. 增加 artifact repository write boundary 狀態圖（section/chapter/task-unit/document-level）。
 3. 補 `document_structure_language_registry` 的 consumer matrix。
+
+## 18. Future Direction Note: Rich Task-Unit Content Governance Preparation
+
+> 本節屬 future-direction governance preparation，非當前 implementation。 **[Inferred]**
+
+1. rich content content-block/segment model 的定位是 `task_unit` 內部 render/interaction segmentation，不是新的 hierarchy level。 **[Inferred]**
+2. hierarchy source 仍固定為 `chapters[].sections[].task_units[]`，content block 不得成為 persisted hierarchy source。 **[Code-Confirmed] + [Inferred]**
+3. content block 不是 section replacement、不是 task_unit replacement，也不是 runtime navigation hierarchy。 **[Inferred]**
+4. rich content governance 需避免 dual hierarchy representation（例如把 content block 漂移為 structure authority）。 **[Inferred]**
+5. future content-block artifacts 可作 interaction/annotation/evidence target，但不得反向改寫 chapter/section/task_unit identity。 **[Inferred]**
+6. `task_unit.content: string` 的兼容遷移方向可規劃 `string -> single content block` adapter；本輪不實作 schema、migration algorithm 或 runtime API。 **[Inferred]**

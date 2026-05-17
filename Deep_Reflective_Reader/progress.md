@@ -194,6 +194,12 @@ No unresolved confirmation items identified in module checklist.
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Rich task-unit content governance preparation is captured as unchecked future work in `document_structure/module-checklist.md`.
+- [ ] Future preparation includes hierarchy-boundary rules to keep content blocks out of persisted hierarchy truth.
+- [ ] `document_structure/module-detailed-design.md` now includes `Future Direction Note: Rich Task-Unit Content Governance Preparation` for boundary clarification only.
+
 ### `embeddings/`
 
 - Checklist: `embeddings/module-checklist.md`
@@ -415,6 +421,12 @@ No unresolved confirmation items identified in module checklist.
 #### Needs Confirmation
 
 No unresolved confirmation items identified in module checklist.
+
+#### Future Direction Preparation
+
+- [ ] Shared rich task-unit content model documentation/checklist preparation is captured as unchecked future work in `shared/module-checklist.md`.
+- [ ] Prepared future tasks include content-block model design, content-block identity + artifact attachment semantics, and string-to-single-block backward adapter planning.
+- [ ] `shared/module-detailed-design.md` now includes `Future Direction Note: Rich Task-Unit Content Model Preparation` to document boundaries without implementation changes.
 
 ## 6. Root Python Module Progress
 

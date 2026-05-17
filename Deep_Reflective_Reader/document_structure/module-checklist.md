@@ -75,7 +75,10 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Define hierarchy boundary for rich task-unit content model
+- [ ] Prevent content-block model from becoming persisted hierarchy source
+- [ ] Define migration strategy for string content compatibility
+- [ ] Clarify content-block artifact targeting boundary without mutating chapter/section/task_unit identity
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 
