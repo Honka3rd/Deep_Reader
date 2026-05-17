@@ -77,3 +77,14 @@
 ## 13. Suggested Next Documentation Improvements
 
 1. 補 scope decision flowchart（lexical -> semantic -> llm fallback -> local）。
+
+## 14. Future Direction Note: Rich Content Question Interaction Preparation
+
+> 本節屬 future-direction documentation/preparation，非當前 implementation。 **[Doc-Confirmed]**
+
+1. future question interaction 可能擴展到 content-block-level references（含 sentence/paragraph-level evidence 或 quote target），不再僅限 section/task_unit 粒度。 **[Inferred]**
+2. content block reference 是 interaction targeting semantics，不等於 hierarchy ownership；content block 不是新的 persisted hierarchy level。 **[Code-Confirmed] + [Inferred]**
+3. question targeting 應維持 id-based hierarchy context（chapter/section/task_unit/content_block ids），不得以 title-only path 取代 deterministic targeting。 **[Code-Confirmed] + [Inferred]**
+4. question module 不擁有 content persistence，也不應成為 document truth source 或 artifact persistence owner。 **[Code-Confirmed] + [Inferred]**
+5. question/evidence references 不得隱式 override source document truth，亦不得隱式觸發 artifact/persistence write-back。 **[Inferred]**
+6. 後續若實作 rich-content QA targeting，需與 `section_tasks`、`document_structure`、`evaluated_answer`、`prompts` 協調 reference contract 與 fail-fast error semantics。 **[Inferred]**

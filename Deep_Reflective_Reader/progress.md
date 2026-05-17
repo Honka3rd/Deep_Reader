@@ -334,6 +334,12 @@ No unresolved confirmation items identified in module checklist.
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Added unchecked future tasks for rich-content question targeting preparation in `question/module-checklist.md`.
+- [ ] Future direction keeps question targeting id-based and hierarchy-context-aware while treating content-block references as interaction semantics (not hierarchy ownership).
+- [ ] This synchronization is documentation/checklist preparation only; no runtime/retrieval/persistence behavior changed.
+
 ### `retrieval/`
 
 - Checklist: `retrieval/module-checklist.md`

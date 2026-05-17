@@ -47,7 +47,10 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Support content-block-level question targeting
+- [ ] Define evidence/content-block reference semantics
+- [ ] Define sentence/paragraph-level interaction flow
+- [ ] Preserve id-based hierarchy context when resolving fine-grained question targets
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 
