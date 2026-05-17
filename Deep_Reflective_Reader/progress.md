@@ -228,7 +228,7 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `evaluated_answer/module-checklist.md`
 - Detailed Design: `evaluated_answer/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
+- Status: `Needs Confirmation`
 - Completed item count: `3`
 - Needs confirmation count: `2`
 

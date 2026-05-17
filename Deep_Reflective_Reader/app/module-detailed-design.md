@@ -100,8 +100,9 @@
 ## 12. Known Legacy / Compatibility Behavior
 
 1. `app/coordinator.py` 保留 alias compatibility。 **[Code-Confirmed]**
-2. `_find_chapter_or_raise` 仍保留 title path 下的 legacy section fallback 分支。 **[Code-Confirmed] + [Needs Confirmation]**
-3. `_resolve_task_layout_sections` 已對 legacy sections-only / severe inconsistency 做 fail-fast。 **[Code-Confirmed]**
+2. `_find_chapter_or_raise` 為 hierarchy-only chapter target resolver：`chapter_id` 優先，`chapter_title` 僅作 hierarchy 內 secondary lookup；缺失/歧義皆 fail-fast。 **[Code-Confirmed]**
+3. runtime path 不再回退 root `sections`、不再合成 legacy chapter、不再使用 legacy title/section fallback 掩蓋 hierarchy 問題。 **[Code-Confirmed]**
+4. `_resolve_task_layout_sections` 對 legacy sections-only / severe inconsistency 皆採 fail-fast。 **[Code-Confirmed]**
 
 ## 13. Current Risks
 
@@ -110,8 +111,8 @@
 - guardrail：保持 module contract 文檔與測試邊界
 
 2. risk：runtime fallback 收斂不完全
-- why：局部 legacy compatibility path 仍存在
-- guardrail：標註 compatibility-only + 退場計畫
+- why：若未持續維持 hierarchy-only fail-fast，可能在後續維護時回退為隱性 compatibility path
+- guardrail：保留 hierarchy-required 測試與文檔邊界，避免重新引入 root-sections/title fallback runtime 行為
 
 3. risk：diagnostics 與 recommendation 混用
 - why：可能誤把 advisory 當 control signal
@@ -124,8 +125,7 @@
 ## 14. Open Questions for Maintainer
 
 1. `section_task_coordinator` 是否需要拆分成 read/write/application service 子層文檔（先文檔化，不改程式）？
-2. `_find_chapter_or_raise` 的 legacy title fallback 是否要列入下一步退場？
-3. recommendation 與 diagnostics 是否要在 API 語義層分離文件？
+2. recommendation 與 diagnostics 是否要在 API 語義層分離文件？
 
 ## 15. Suggested Next Documentation Improvements
 
