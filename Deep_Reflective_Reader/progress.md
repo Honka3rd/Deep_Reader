@@ -40,7 +40,7 @@ It is used to:
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 10 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 2 | Needs Confirmation |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `llm/` | package | `llm/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `profile/` | package | `profile/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
@@ -230,7 +230,7 @@ No unresolved confirmation items identified in module checklist.
 - Detailed Design: `evaluated_answer/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
 - Completed item count: `3`
-- Needs confirmation count: `0`
+- Needs confirmation count: `2`
 
 #### Completed Work
 
@@ -240,7 +240,13 @@ No unresolved confirmation items identified in module checklist.
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+- [ ] Define minimum deterministic contract for quote/evidence validation.
+  Reason: Unresolved by design documentation; baseline validation rule not fixed.
+  Needed confirmation: Choose strict span match or semantic match as deterministic baseline.
+
+- [ ] Decide whether content-block-level evidence needs persisted trace metadata or runtime projection only.
+  Reason: Evidence trace ownership and durability boundary is still open.
+  Needed confirmation: Confirm persistence requirement at evaluation boundary.
 
 #### Future Direction Preparation
 
