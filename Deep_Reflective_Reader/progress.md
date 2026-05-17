@@ -385,7 +385,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `session/module-checklist.md`
 - Detailed Design: `session/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `4`
+- Completed item count: `3`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -442,7 +442,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `bundle_factory.module-checklist.md`
 - Detailed Design: `bundle_factory.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `4`
+- Completed item count: `3`
 - Needs confirmation count: `0`
 
 #### Completed Work
