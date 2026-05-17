@@ -55,7 +55,11 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Support content-block-level lookup/read API orchestration
+- [ ] Support fine-grained interaction target resolution (sentence/paragraph/content-block)
+- [ ] Preserve fail-fast hierarchy lookup semantics for content-block interactions
+- [ ] Keep task-layout API lightweight and separate from on-demand rich-content read API
+- [ ] Route future content-block interactions through explicit id-based targeting and service boundaries
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

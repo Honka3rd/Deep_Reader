@@ -79,6 +79,12 @@ It is used to:
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Added unchecked future tasks for app-layer rich content interaction API preparation in `app/module-checklist.md`.
+- [ ] App-layer future direction keeps task-layout lightweight and separates on-demand rich-content read path from task-layout projection path.
+- [ ] This update is documentation/checklist preparation only; no runtime/API/schema behavior was changed.
+
 ### `auth/`
 
 - Checklist: `auth/module-checklist.md`

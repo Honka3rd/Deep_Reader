@@ -132,3 +132,14 @@
 1. 增加 coordinator flow sequence diagrams（QA ask / task-layout / summary）。
 2. 增加 fail-fast error taxonomy（migration required / inconsistency / cache stale）。
 3. 補 runtime read-path vs write-path 邊界圖。
+
+## 16. Future Direction Note: Rich Content Interaction API Preparation
+
+> 本節為 future-task documentation/preparation，非當前 implementation。 **[Doc-Confirmed]**
+
+1. app layer 未來可暴露 content-block lookup/read API orchestration，但本輪僅記錄 future tasks。 **[Inferred]**
+2. `task-layout` API 仍應保持 lightweight metadata/projection read path，不承載完整 rich content body。 **[Code-Confirmed] + [Inferred]**
+3. rich content body 應維持 on-demand read model；task-layout 與 rich-content read path 必須分離。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+4. sentence/paragraph/content-block interaction targeting 應以 stable ids（如 chapter_id/section_id/task_unit_id/content_block_id）解析；找不到或歧義時應 fail-fast。 **[Inferred]**
+5. app layer 不應自行實作 rich content construction、artifact persistence internals、parser authority、或 diagnostics write-back。 **[Code-Confirmed] + [Inferred]**
+6. future interaction targeting 不得回退為 title-only path 取代 id-based deterministic path。 **[Code-Confirmed] + [Maintainer-Confirmed]**
