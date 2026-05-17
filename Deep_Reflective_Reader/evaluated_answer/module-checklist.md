@@ -47,7 +47,12 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Support content-block-linked answer evidence
+- [ ] Define content-block reference validation semantics
+- [ ] Define artifact-linked evaluation flow
+- [ ] Define quote/evidence validation boundaries
+- [ ] Clarify evaluation evidence persistence boundaries
+- [ ] Define hierarchy-aware evidence targeting semantics
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

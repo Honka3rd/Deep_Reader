@@ -242,6 +242,12 @@ No unresolved confirmation items identified in module checklist.
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Added unchecked future tasks for rich-content-aware evaluation preparation in `evaluated_answer/module-checklist.md`.
+- [ ] Preparation scope records content-block evidence/reference semantics and hierarchy-aware targeting boundaries only.
+- [ ] This update is documentation/checklist preparation only; no runtime behavior, scoring logic, LLM evaluation implementation, or API/schema behavior was changed.
+
 ### `language/`
 
 - Checklist: `language/module-checklist.md`

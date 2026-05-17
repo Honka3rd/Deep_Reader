@@ -63,3 +63,19 @@ No known legacy compatibility responsibility.
 ## 13. Suggested Next Documentation Improvements
 
 1. 補 answer level calibration 指南。
+
+## 14. Future Direction Note: Rich Content-Aware Evaluation Preparation
+
+> 本節屬 future-direction documentation/preparation，非當前 implementation。 **[Doc-Confirmed]**
+
+1. evaluated_answer 未來可能擴展為 content-block-aware answer evaluation，支援 content-block reference、quote target、sentence/paragraph-level evidence mapping。 **[Inferred]**
+2. `content_block_id` 僅作 interaction/evidence targeting，不等於 hierarchy ownership；content block 不是新的 persisted hierarchy level。 **[Code-Confirmed] + [Inferred]**
+3. evaluation result 是 downstream quality signal，不得成為 document hierarchy truth source，也不得覆蓋 chapter/section/task_unit identity。 **[Code-Confirmed] + [Inferred]**
+4. evidence linkage 或 quote validation 不得隱式觸發 artifact persistence mutation；artifact-linked evaluation 不等於 artifact persistence ownership。 **[Code-Confirmed] + [Inferred]**
+5. future evidence targeting 應保持 hierarchy-aware（chapter/section/task_unit context）並優先 id-based reference semantics。 **[Inferred]**
+6. evaluated_answer 未來若與 question/section_tasks/shared 協作 rich content reference，需保持 deterministic boundary：evaluation 不得成為 parser authority、不得重引入 root sections mirror 或 structure_nodes 主流程語意。 **[Code-Confirmed] + [Inferred]**
+
+### 14.1 Needs Confirmation
+
+1. quote/evidence validation 的最小 deterministic contract（例如 strict span match vs semantic match）是否需先固定？ **[Needs Confirmation]**
+2. content-block-level evidence 是否需要 persisted trace metadata，或僅 runtime projection 即可？ **[Needs Confirmation]**
