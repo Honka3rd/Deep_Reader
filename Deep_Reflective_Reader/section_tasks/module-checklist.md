@@ -70,8 +70,6 @@ New future tasks for this module must be added here first as unchecked items:
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 
-- [x] <completed task>
-
 No coding task should be considered complete unless the corresponding module checklist is updated.
 
 ## Maintenance Notes

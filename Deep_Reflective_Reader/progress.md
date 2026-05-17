@@ -386,6 +386,12 @@ No unresolved confirmation items identified in module checklist.
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Added unchecked future preparation tasks for rich content interaction planning in `section_tasks/module-checklist.md`.
+- [ ] Task-layout remains lightweight metadata/projection contract; rich content is future-direction-only and remains on-demand API oriented.
+- [ ] This synchronization introduced no runtime/API/schema behavior changes.
+
 ### `session/`
 
 - Checklist: `session/module-checklist.md`
