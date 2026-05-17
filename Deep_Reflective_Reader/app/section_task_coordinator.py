@@ -40,6 +40,7 @@ from section_tasks.document_task_layout import (
     ProfileStructureDiagnosticsDTO,
     SectionTaskMode,
     TaskUnitDTO,
+    TaskUnitContentDTO,
 )
 from section_tasks.artifact_validity import ArtifactValidityResult
 from section_tasks.quiz_question import QuizQuestion
@@ -689,6 +690,75 @@ class SectionTaskCoordinator:
                 document_profile=document_profile,
                 sections=effective_sections,
             ),
+        )
+
+    def get_task_unit_content(
+        self,
+        *,
+        doc_name: str,
+        task_unit_id: str,
+    ) -> TaskUnitContentDTO:
+        """Read one task-unit content payload by stable task_unit_id."""
+        normalized_task_unit_id = task_unit_id.strip()
+        if not normalized_task_unit_id:
+            raise ValueError("task_unit_id cannot be empty")
+
+        preparation_result = self.document_preparation_pipeline.prepare_and_load(
+            doc_name=doc_name,
+            mode=PreparationMode.BASE,
+        )
+        structured_document = preparation_result.structured_document
+        if structured_document is None:
+            detail = " | ".join(preparation_result.assets.errors)
+            raise ValueError(
+                f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
+            )
+
+        sections = self._resolve_task_layout_sections(
+            document=structured_document,
+            context="SectionTaskCoordinator#get_task_unit_content",
+        )
+
+        chapter_by_id = {
+            chapter.chapter_id: chapter
+            for chapter in structured_document.chapters
+        }
+        matches: list[tuple[TaskUnit, StructuredSection, StructuredChapter | None]] = []
+        for section in sections:
+            parent_chapter = chapter_by_id.get((section.parent_chapter_id or "").strip())
+            for task_unit in section.task_units:
+                if task_unit.unit_id == normalized_task_unit_id:
+                    matches.append((task_unit, section, parent_chapter))
+
+        if not matches:
+            raise ValueError(
+                f"task_unit_id '{normalized_task_unit_id}' not found in document '{structured_document.document_id}'"
+            )
+        if len(matches) > 1:
+            raise ValueError(
+                f"duplicate task_unit_id detected: '{normalized_task_unit_id}' matched {len(matches)} task units"
+            )
+
+        selected_task_unit, selected_section, selected_chapter = matches[0]
+        if not selected_task_unit.content.strip():
+            raise ValueError(
+                f"task_unit_id '{normalized_task_unit_id}' has empty content and cannot be rendered"
+            )
+
+        return TaskUnitContentDTO(
+            document_id=structured_document.document_id,
+            document_title=structured_document.title,
+            task_unit_id=selected_task_unit.unit_id,
+            title=selected_task_unit.title,
+            container_title=selected_task_unit.container_title,
+            content=selected_task_unit.content,
+            source_section_ids=list(selected_task_unit.source_section_ids),
+            parent_section_id=selected_task_unit.parent_section_id,
+            section_id=selected_section.section_id,
+            section_title=selected_section.title,
+            chapter_id=(None if selected_chapter is None else selected_chapter.chapter_id),
+            chapter_title=(None if selected_chapter is None else selected_chapter.title),
+            is_fallback_generated=selected_task_unit.is_fallback_generated,
         )
 
     def _compute_current_task_unit_coverage(

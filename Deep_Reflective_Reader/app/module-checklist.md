@@ -27,6 +27,10 @@ It is used to:
 
 ## Completed Checklist
 
+- [x] Expose task-unit content lookup through coordinator boundary
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: 新增 `get_task_unit_content(doc_name, task_unit_id)`，只讀 hierarchy sections/task_units，不走 title/root sections/structure_nodes fallback。
+
 - [x] Implements QA orchestration via `QACoordinator` across prepare, retrieval, prompt, and session update paths.
   Evidence: `Deep_Reflective_Reader/app/qa_coordinator.py; Deep_Reflective_Reader/app/module-detailed-design.md (Main Responsibilities)`
   Notes: Coordinator layer exists as application orchestration, not API schema code.

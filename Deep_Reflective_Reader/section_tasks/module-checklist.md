@@ -27,6 +27,10 @@ It is used to:
 
 ## Completed Checklist
 
+- [x] Add task-unit content lookup support for frontend rendering
+  Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: 新增 `TaskUnitContentDTO` 與 hierarchy-only `task_unit_id` 查詢能力；missing/duplicate 明確 fail-fast；未修改 task-layout DTO 的 content contract。
+
 - [x] Implements chapters-first task-layout DTO contracts and diagnostics DTO types.
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py; Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Important Data Structures / Contracts)`
   Notes: Task-layout contract is explicit at module level.

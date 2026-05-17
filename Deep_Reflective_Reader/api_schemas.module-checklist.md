@@ -27,6 +27,10 @@ It is used to:
 
 ## Completed Checklist
 
+- [x] Define task-unit content API request/response schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: 新增 `TaskUnitContentResponse`，支援 frontend 按需讀取 render content，且不回填 task-layout heavy payload。
+
 - [x] Defines external API schemas used by request and response boundaries.
   Evidence: `Deep_Reflective_Reader/api_schemas.py; Deep_Reflective_Reader/api_schemas.module-detailed-design.md (Main Responsibilities)`
   Notes: Root Python module documented as an API contract boundary.

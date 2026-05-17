@@ -16,6 +16,7 @@ from api_schemas import (
     DocumentTaskLayoutResponse,
     EnhancedParseRecommendationResponse,
     GetDocumentTaskLayoutRequest,
+    GetTaskUnitContentRequest,
     ProfileStructureDiagnosticsResponse,
     QuizQuestionResponse,
     ReparseDocumentStructureRequest,
@@ -26,6 +27,7 @@ from api_schemas import (
     SectionTaskResponse,
     SummarizeChapterRequest,
     SummarizeChapterResponse,
+    TaskUnitContentResponse,
     TaskUnitMetadataResponse,
     StatusResponse,
 )
@@ -76,6 +78,15 @@ def _resolve_reparse_failure_status(error: str) -> int:
     ):
         return 400
     return 500
+
+
+def _resolve_task_unit_content_failure_status(reason: str) -> int:
+    """Convert task-unit content lookup failures into HTTP status code."""
+    normalized_reason = reason.strip() or "task unit content lookup failed"
+    lowered = normalized_reason.lower()
+    if "not found" in lowered:
+        return 404
+    return 400
 
 # ---------------------------
 # Health Check
@@ -447,6 +458,50 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get(
+    "/documents/{doc_name}/task-units/{task_unit_id}/content",
+    response_model=TaskUnitContentResponse,
+)
+def get_task_unit_content(
+    doc_name: str,
+    task_unit_id: str,
+):
+    """Read one task-unit render content payload on demand by task_unit_id."""
+    try:
+        request = GetTaskUnitContentRequest(
+            doc_name=doc_name,
+            task_unit_id=task_unit_id,
+        )
+        payload = section_task_coordinator.get_task_unit_content(
+            doc_name=request.doc_name,
+            task_unit_id=request.task_unit_id,
+        )
+        return TaskUnitContentResponse(
+            document_id=payload.document_id,
+            document_title=payload.document_title,
+            task_unit_id=payload.task_unit_id,
+            title=payload.title,
+            container_title=payload.container_title,
+            content=payload.content,
+            source_section_ids=list(payload.source_section_ids),
+            parent_section_id=payload.parent_section_id,
+            section_id=payload.section_id,
+            section_title=payload.section_title,
+            chapter_id=payload.chapter_id,
+            chapter_title=payload.chapter_title,
+            is_fallback_generated=payload.is_fallback_generated,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=_resolve_task_unit_content_failure_status(str(error)),
+            detail=str(error),
+        )
     except FileNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error))
     except Exception as error:

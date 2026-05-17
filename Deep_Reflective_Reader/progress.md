@@ -32,7 +32,7 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
+| `app/` | package | `app/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -48,14 +48,14 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 6 | 0 | Completed Baseline Captured |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 7 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 4 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `main.py` | root-python-module | `main.module-checklist.md` | 4 | 0 | Completed Baseline Captured |
 
 ## 5. Package Module Progress
 
@@ -64,7 +64,7 @@ It is used to:
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `4`
+- Completed item count: `5`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -73,6 +73,7 @@ It is used to:
 - [x] Implements section/chapter task orchestration via `SectionTaskCoordinator`, including task-layout projection assembly.
 - [x] Maintains hierarchy-required fail-fast behavior for incompatible runtime structure states.
 - [x] Replaced legacy chapter-title fallback with fail-fast hierarchy lookup behavior.
+- [x] Exposes task-unit content lookup through coordinator boundary with hierarchy-only id resolution.
 
 #### Needs Confirmation
 
@@ -362,7 +363,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `6`
+- Completed item count: `7`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -373,6 +374,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Completed documentation governance cleanup for hierarchy-first task-layout semantics and projection/write boundary wording.
 - [x] Clarified artifact availability projection vs artifact persistence truth boundary for task-layout/read path semantics.
 - [x] Closed terminology governance item by deprecating `artifact mirror` as formal contract wording.
+- [x] Adds on-demand task-unit content lookup support via stable `task_unit_id` without expanding task-layout payload.
 
 #### Needs Confirmation
 
@@ -383,7 +385,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `session/module-checklist.md`
 - Detailed Design: `session/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -429,6 +431,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines external API schemas used by request and response boundaries.
 - [x] Defines task-layout response contract with chapters-first projection fields and diagnostics response model.
 - [x] Defines chapter summary/quiz request validation boundary for id/title target fields.
+- [x] Defines dedicated task-unit content response schema for on-demand frontend rendering.
 
 #### Needs Confirmation
 
@@ -439,7 +442,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `bundle_factory.module-checklist.md`
 - Detailed Design: `bundle_factory.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -501,6 +504,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines FastAPI entrypoint and route registration for prepare/ask/task-layout/summary/quiz/reparse endpoints.
 - [x] Maps API schemas to coordinator execution paths and response payload construction.
 - [x] Implements explicit projection/mutation route boundary including manual reparse endpoint.
+- [x] Adds read-only task-unit content endpoint resolved by `doc_name + task_unit_id`.
 
 #### Needs Confirmation
 
@@ -538,6 +542,8 @@ No unresolved confirmation items identified in module checklist.
   Modules: `section_tasks`, `app`, `document_structure`, `shared`
 - [x] Artifact availability projection boundary documented as runtime/read-side observability (not persistence truth source).
   Modules: `section_tasks`, `app`, `document_structure`, `api_schemas.py`
+- [x] On-demand task-unit content read path exposed as separate API, preserving task-layout metadata-only contract.
+  Modules: `section_tasks`, `app`, `api_schemas.py`, `main.py`
 
 ### 7.4 API and Application Entry
 

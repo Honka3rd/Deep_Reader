@@ -294,6 +294,16 @@ class GetDocumentTaskLayoutRequest(BaseModel):
     )
 
 
+class GetTaskUnitContentRequest(BaseModel):
+    """Path-parameter request contract for on-demand task-unit content lookup."""
+
+    doc_name: str = Field(..., description="Document name")
+    task_unit_id: str = Field(
+        ...,
+        description="Stable task unit id from task-layout response",
+    )
+
+
 class TaskUnitMetadataResponse(BaseModel):
     """Task-unit metadata payload for frontend layout rendering."""
 
@@ -303,6 +313,24 @@ class TaskUnitMetadataResponse(BaseModel):
     source_section_ids: list[str]
     is_fallback_generated: bool
     artifacts: ArtifactAvailabilityResponse | None = None
+
+
+class TaskUnitContentResponse(BaseModel):
+    """On-demand task-unit content response payload for frontend rendering."""
+
+    document_id: str
+    document_title: str
+    task_unit_id: str
+    title: str | None
+    container_title: str | None
+    content: str
+    source_section_ids: list[str]
+    parent_section_id: str | None
+    section_id: str | None
+    section_title: str | None
+    chapter_id: str | None
+    chapter_title: str | None
+    is_fallback_generated: bool
 
 
 class SectionTaskLayoutResponse(BaseModel):

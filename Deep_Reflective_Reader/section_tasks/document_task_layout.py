@@ -41,6 +41,43 @@ class TaskUnitDTO:
 
 
 @dataclass(frozen=True)
+class TaskUnitContentDTO:
+    """On-demand task-unit content payload for dedicated content endpoint."""
+
+    document_id: str
+    document_title: str
+    task_unit_id: str
+    title: str | None
+    container_title: str | None
+    content: str
+    source_section_ids: list[str]
+    parent_section_id: str | None
+    section_id: str | None
+    section_title: str | None
+    chapter_id: str | None
+    chapter_title: str | None
+    is_fallback_generated: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize task-unit content payload into JSON-friendly dictionary."""
+        return {
+            "document_id": self.document_id,
+            "document_title": self.document_title,
+            "task_unit_id": self.task_unit_id,
+            "title": self.title,
+            "container_title": self.container_title,
+            "content": self.content,
+            "source_section_ids": list(self.source_section_ids),
+            "parent_section_id": self.parent_section_id,
+            "section_id": self.section_id,
+            "section_title": self.section_title,
+            "chapter_id": self.chapter_id,
+            "chapter_title": self.chapter_title,
+            "is_fallback_generated": self.is_fallback_generated,
+        }
+
+
+@dataclass(frozen=True)
 class ArtifactAvailabilityDTO:
     """Lightweight artifact availability metadata for UI cache awareness."""
 
