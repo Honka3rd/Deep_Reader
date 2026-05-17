@@ -106,3 +106,16 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 1. 增加 endpoint-to-schema mapping 表。
 2. 增加 error status mapping 表（validation/business/runtime）。
 3. 補 no-heavy-payload 保證清單。
+
+## 16. Future Direction Note: Rich Task-Unit Content Schema Evolution
+
+> 本節屬 future-direction documentation，非當前 implementation。  
+> 本輪不新增/修改 `api_schemas.py` DTO，也不引入 API breaking change。 **[Doc-Confirmed]**
+
+1. future `TaskUnitContentResponse` 可由 simple `content: str` 演進為 structured content blocks / segments。 **[From Proposal] + [Inferred]**
+2. content blocks 屬 API interaction target，不是 persisted hierarchy level；hierarchy-first contract 仍以 `chapters[].sections[].task_units[]` 為核心。 **[Code-Confirmed] + [From HLD]**
+3. `content_block_id` 應支持 id-based targeting（避免 title-only targeting 漂移回主路徑）。 **[Code-Confirmed] + [Inferred]**
+4. future block-level artifact metadata 應支持 discovery/availability 表達，但不得暴露 repository internal implementation details。 **[Inferred]**
+5. future evidence metadata 應支持 sentence/paragraph-level answer grounding，但不等同於 parser authority 或 persistence truth source。 **[From HLD] + [Inferred]**
+6. response evolution 需保留 backward compatibility（existing clients 仍可安全消費 simple-string content contract）。 **[Inferred]**
+7. 後續若進入實作，需與 `app` routes、`section_tasks` projection contract、`shared` models、`retrieval/evidence` flows 及 artifact APIs 協調版本化策略。 **[Inferred]**

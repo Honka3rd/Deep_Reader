@@ -461,6 +461,12 @@ No unresolved confirmation items identified in module checklist.
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Added unchecked future tasks for rich task-unit content schema evolution in `api_schemas.module-checklist.md`.
+- [ ] API schema future direction keeps hierarchy-first contract and id-based targeting while preserving task-layout lightweight response boundary.
+- [ ] This synchronization is documentation/checklist preparation only; no endpoint/schema/runtime behavior changed.
+
 ### `bundle_factory.py`
 
 - Checklist: `bundle_factory.module-checklist.md`

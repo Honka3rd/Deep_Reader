@@ -51,7 +51,9 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Design rich task-unit content response schema (future direction, not implemented)
+- [ ] Define content-block artifact metadata schema (future direction, not implemented)
+- [ ] Define backward-compatible content response evolution strategy (future direction, not implemented)
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 
