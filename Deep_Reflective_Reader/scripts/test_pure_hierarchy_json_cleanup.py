@@ -196,7 +196,7 @@ def test_to_dict_includes_root_sections_when_explicitly_enabled() -> None:
     )
 
 
-def test_from_dict_loads_legacy_sections_only_payload() -> None:
+def test_from_dict_fails_for_legacy_sections_only_payload() -> None:
     legacy_payload = {
         "document_id": "legacy-sections-payload-doc",
         "title": "Legacy Sections Payload",
@@ -222,10 +222,18 @@ def test_from_dict_loads_legacy_sections_only_payload() -> None:
             }
         ],
     }
-    document = StructuredDocument.from_dict(legacy_payload)
+    try:
+        StructuredDocument.from_dict(legacy_payload)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(
+            "normal from_dict should fail-fast for legacy sections-only payloads"
+        )
+    document = StructuredDocument.from_legacy_dict_for_migration(legacy_payload)
     _assert(
         len(document.sections) == 1,
-        "from_dict should keep reading legacy sections-only payloads",
+        "legacy migration loader should keep reading sections-only payloads",
     )
     _assert(
         document.sections[0].section_id == "section-legacy-0",
@@ -268,7 +276,11 @@ def test_structure_nodes_legacy_load_compatibility() -> None:
         "document_task_artifacts": None,
     }
     document = StructuredDocument.from_json(json.dumps(payload, ensure_ascii=False))
-    _assert(len(document.structure_nodes) == 1, "old structure_nodes payload should still load")
+    _assert(document.structure_nodes == [], "normal from_json should ignore legacy structure_nodes")
+    legacy_loaded = StructuredDocument.from_legacy_json_for_migration(
+        json.dumps(payload, ensure_ascii=False)
+    )
+    _assert(len(legacy_loaded.structure_nodes) == 1, "migration loader should keep old structure_nodes payload")
     persisted = json.loads(document.to_json())
     _assert(
         "structure_nodes" not in persisted,
@@ -330,7 +342,7 @@ def test_repository_fills_parent_section_id_on_section_update() -> None:
         )
 
 
-def test_old_sections_only_migration_saves_pure_hierarchy() -> None:
+def test_repository_write_fails_fast_for_legacy_sections_only_document() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repository = StructuredDocumentArtifactRepository(
             store=StructuredDocumentStore(),
@@ -348,46 +360,31 @@ def test_old_sections_only_migration_saves_pure_hierarchy() -> None:
             ),
             encoding="utf-8",
         )
-        repository.update_section_task_units(
-            doc_name="legacy-only-doc",
-            section_id="section-1",
-            task_units=[
-                TaskUnit(
-                    unit_id="migrated-u0",
-                    title="migrated",
-                    container_title=None,
-                    content="第一章\n正文",
-                    source_section_ids=["section-1"],
-                    is_fallback_generated=False,
-                    parent_section_id=None,
-                )
-            ],
-        )
-        saved_payload = json.loads(
-            Path(temp_dir, "legacy-only-doc.structured.json").read_text(encoding="utf-8")
-        )
-        _assert(saved_payload.get("chapters"), "migrated document should contain chapters")
-        _assert("sections" not in saved_payload, "migrated save should remove root sections")
-        _assert(
-            "structure_nodes" not in saved_payload,
-            "migrated save should remove root structure_nodes",
-        )
-        chapter_units = [
-            unit
-            for chapter in saved_payload.get("chapters", [])
-            for section in chapter.get("sections", [])
-            for unit in section.get("task_units", [])
-        ]
-        _assert(chapter_units, "migrated document should persist task units under chapters")
-        _assert(
-            all(
-                unit.get("parent_section_id") == section.get("section_id")
-                for chapter in saved_payload.get("chapters", [])
-                for section in chapter.get("sections", [])
-                for unit in section.get("task_units", [])
-            ),
-            "migrated document task units should have parent_section_id",
-        )
+        try:
+            repository.update_section_task_units(
+                doc_name="legacy-only-doc",
+                section_id="section-1",
+                task_units=[
+                    TaskUnit(
+                        unit_id="migrated-u0",
+                        title="migrated",
+                        container_title=None,
+                        content="第一章\n正文",
+                        source_section_ids=["section-1"],
+                        is_fallback_generated=False,
+                        parent_section_id=None,
+                    )
+                ],
+            )
+        except ValueError as error:
+            _assert(
+                "requires explicit migration" in str(error),
+                "legacy sections-only repository write should fail-fast with migration guidance",
+            )
+        else:
+            raise AssertionError(
+                "legacy sections-only repository write should fail-fast in normal path"
+            )
 
 
 def test_real_document_smoke() -> None:
@@ -465,12 +462,12 @@ def main() -> None:
     test_new_json_has_no_legacy_mirror()
     test_to_dict_omits_root_sections_even_when_chapters_empty_by_default()
     test_to_dict_includes_root_sections_when_explicitly_enabled()
-    test_from_dict_loads_legacy_sections_only_payload()
+    test_from_dict_fails_for_legacy_sections_only_payload()
     test_structure_nodes_legacy_load_compatibility()
     test_builder_does_not_generate_structure_nodes()
     test_task_unit_object_only_under_chapters()
     test_repository_fills_parent_section_id_on_section_update()
-    test_old_sections_only_migration_saves_pure_hierarchy()
+    test_repository_write_fails_fast_for_legacy_sections_only_document()
     test_real_document_smoke()
     print(
         json.dumps(
@@ -480,12 +477,12 @@ def main() -> None:
                     "no_root_sections_or_structure_nodes",
                     "to_dict_omits_root_sections_even_when_chapters_empty_by_default",
                     "to_dict_includes_root_sections_when_explicitly_enabled",
-                    "from_dict_loads_legacy_sections_only_payload",
+                    "from_dict_fails_for_legacy_sections_only_payload",
                     "old_structure_nodes_load_compatible",
                     "builder_no_structure_nodes",
                     "task_units_only_under_chapters",
                     "update_section_task_units_fills_parent",
-                    "sections_only_migration_to_pure_hierarchy",
+                    "repository_write_fails_fast_for_legacy_sections_only",
                     "real_document_smoke_optional",
                 ],
             },

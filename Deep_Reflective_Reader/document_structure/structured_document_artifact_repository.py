@@ -11,7 +11,6 @@ from document_structure.document_hierarchy_index import (
     flatten_sections_from_chapters,
     get_effective_sections,
     is_severe_hierarchy_warning,
-    migrate_legacy_sections_to_chapters,
     validate_chapter_hierarchy_consistency,
     with_sections_replaced_in_hierarchy,
 )
@@ -44,15 +43,20 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         path = self._resolve_document_path(doc_name)
         return self.store.load(str(path))
 
+    def _load_document_for_legacy_migration(self, doc_name: str) -> StructuredDocument:
+        """Compatibility-only loader for explicit legacy JSON migration flows."""
+        path = self._resolve_document_path(doc_name)
+        payload = path.read_text(encoding="utf-8")
+        return StructuredDocument.from_legacy_json_for_migration(payload)
+
     def _load_document_for_write(self, doc_name: str) -> StructuredDocument:
-        """Load one document and migrate legacy sections-only payloads to hierarchy."""
+        """Load one document for write with strict hierarchy requirement."""
         document = self.load_document(doc_name)
         if document.chapters:
             return document
-        if document.sections:
-            return migrate_legacy_sections_to_chapters(document)
         raise ValueError(
-            f"load_document_for_write: document '{doc_name}' has neither chapters nor sections"
+            f"load_document_for_write: document '{doc_name}' missing hierarchy chapters; "
+            "legacy sections-only document requires explicit migration"
         )
 
     def save_document(
@@ -217,11 +221,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Update one persisted task-unit artifact payload and persist document."""
         document = self._load_document_for_write(doc_name)
-        section_source = (
-            flatten_sections_from_chapters(document)
-            if document.chapters
-            else list(document.sections)
-        )
+        section_source = flatten_sections_from_chapters(document)
         matching_paths: list[tuple[str, int]] = []
         for section in section_source:
             for task_unit_index, task_unit in enumerate(section.task_units):
@@ -467,56 +467,39 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         context: str,
         doc_name: str,
     ) -> StructuredDocument:
-        if document.chapters:
-            build_section_index_from_chapters(document)
-            hierarchy_sections = flatten_sections_from_chapters(document)
-            hierarchy_target = next(
-                (section for section in hierarchy_sections if section.section_id == section_id),
-                None,
+        if not document.chapters:
+            raise ValueError(
+                f"{context}: document '{doc_name}' missing hierarchy chapters; "
+                "legacy sections-only write path is disabled"
             )
-            if hierarchy_target is None:
-                raise ValueError(
-                    f"{context}: unknown section_id='{section_id}' for doc_name='{doc_name}'"
-                )
-            updated_sections_by_id = {
-                section.section_id: (
-                    update_fn(section)
-                    if section.section_id == section_id
-                    else section
-                )
-                for section in hierarchy_sections
-            }
-            updated_document = with_sections_replaced_in_hierarchy(
-                document=document,
-                sections_by_id=updated_sections_by_id,
-            )
-            updated_document = replace(updated_document, sections=[])
-            self._assert_hierarchy_save_consistency(
-                document=updated_document,
-                doc_name=doc_name,
-                context=context,
-            )
-            self._assert_unique_task_unit_ids(
-                document=updated_document,
-                context=f"{context} doc_name='{doc_name}'",
-            )
-            return updated_document
 
-        legacy_target = next(
-            (section for section in document.sections if section.section_id == section_id),
+        build_section_index_from_chapters(document)
+        hierarchy_sections = flatten_sections_from_chapters(document)
+        hierarchy_target = next(
+            (section for section in hierarchy_sections if section.section_id == section_id),
             None,
         )
-        if legacy_target is None:
+        if hierarchy_target is None:
             raise ValueError(
                 f"{context}: unknown section_id='{section_id}' for doc_name='{doc_name}'"
             )
-        updated_sections = [
-            update_fn(section) if section.section_id == section_id else section
-            for section in document.sections
-        ]
-        updated_document = replace(
-            document,
-            sections=updated_sections,
+        updated_sections_by_id = {
+            section.section_id: (
+                update_fn(section)
+                if section.section_id == section_id
+                else section
+            )
+            for section in hierarchy_sections
+        }
+        updated_document = with_sections_replaced_in_hierarchy(
+            document=document,
+            sections_by_id=updated_sections_by_id,
+        )
+        updated_document = replace(updated_document, sections=[])
+        self._assert_hierarchy_save_consistency(
+            document=updated_document,
+            doc_name=doc_name,
+            context=context,
         )
         self._assert_unique_task_unit_ids(
             document=updated_document,

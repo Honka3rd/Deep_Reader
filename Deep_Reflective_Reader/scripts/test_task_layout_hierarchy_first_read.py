@@ -575,7 +575,7 @@ def test_task_layout_hierarchy_first_read() -> None:
             )
         except ValueError as error:
             _assert(
-                "legacy sections-only document requires migration" in str(error),
+                "requires explicit migration" in str(error),
                 "legacy sections-only document should fail-fast with migration guidance",
             )
 

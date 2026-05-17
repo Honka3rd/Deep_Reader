@@ -208,8 +208,20 @@ def test_old_json_compatibility() -> None:
             }
         ],
     }
-    doc = StructuredDocument.from_dict(payload)
-    _assert(doc.chapters == [], "legacy payload without chapters should load chapters as empty list")
+    try:
+        StructuredDocument.from_dict(payload)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(
+            "normal from_dict should fail-fast for legacy sections-only payloads"
+        )
+
+    migrated_source = StructuredDocument.from_legacy_dict_for_migration(payload)
+    _assert(
+        len(migrated_source.sections) == 1 and migrated_source.chapters == [],
+        "explicit legacy migration loader should keep legacy sections for migration-only flows",
+    )
 
 
 def test_nested_roundtrip() -> None:

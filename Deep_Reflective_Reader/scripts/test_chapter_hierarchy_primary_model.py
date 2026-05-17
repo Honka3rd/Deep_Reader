@@ -282,16 +282,25 @@ def test_structure_nodes_backward_compatibility() -> None:
         "source_path": None,
         "language": "zh",
         "raw_text": "第一章\n正文",
-        "sections": [
+        "chapters": [
             {
-                "section_id": "section-0",
-                "section_index": 0,
+                "chapter_id": "chapter-0",
                 "title": "第一章",
                 "level": 2,
-                "content": "第一章正文",
-                "char_start": 0,
-                "char_end": 5,
-                "section_role": "main_body",
+                "chapter_role": "main_body",
+                "sections": [
+                    {
+                        "section_id": "section-h-0",
+                        "section_index": 0,
+                        "title": "第一章",
+                        "level": 2,
+                        "content": "第一章正文",
+                        "char_start": 0,
+                        "char_end": 5,
+                        "section_role": "main_body",
+                        "parent_chapter_id": "chapter-0",
+                    }
+                ],
             }
         ],
         "structure_nodes": [
@@ -312,10 +321,10 @@ def test_structure_nodes_backward_compatibility() -> None:
         ],
     }
     doc = StructuredDocument.from_dict(payload)
-    _assert(len(doc.structure_nodes) == 1, "legacy structure_nodes should still load")
+    _assert(doc.structure_nodes == [], "normal from_dict should ignore legacy structure_nodes")
     _assert(
-        get_effective_sections(doc) == [],
-        "effective sections should come only from chapters, not root sections/structure_nodes",
+        [section.section_id for section in get_effective_sections(doc)] == ["section-h-0"],
+        "effective sections should come only from hierarchy chapters",
     )
 
 

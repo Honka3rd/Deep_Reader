@@ -369,7 +369,7 @@ def test_duplicate_task_unit_id_rejected_hierarchy_first() -> None:
         raise AssertionError("duplicate task_unit_id should be rejected")
 
 
-def test_legacy_fallback_without_chapters() -> None:
+def test_legacy_sections_only_write_requires_explicit_migration() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         document = StructuredDocument(
             document_id="legacy-only-doc",
@@ -402,28 +402,21 @@ def test_legacy_fallback_without_chapters() -> None:
             ],
         )
         repository = _write_document(temp_dir, document)
-        repository.update_section_summary_artifact(
-            doc_name="legacy-only-doc",
-            section_id="section-0",
-            summary=SummaryArtifact(content="legacy-summary"),
-        )
-        repository.update_task_unit_artifacts(
-            doc_name="legacy-only-doc",
-            task_unit_id="legacy-unit-0",
-            artifacts=TaskArtifacts(summary=SummaryArtifact(content="legacy-unit-summary")),
-        )
-        reloaded = repository.load_document("legacy-only-doc")
-        _assert(reloaded.chapters, "legacy-only document should migrate to hierarchy on write")
-        _assert(
-            reloaded.chapters[0].sections[0].task_artifacts is not None
-            and reloaded.chapters[0].sections[0].task_artifacts.summary is not None,
-            "migrated hierarchy section summary should be updated",
-        )
-        _assert(
-            reloaded.chapters[0].sections[0].task_units[0].task_artifacts is not None,
-            "migrated hierarchy task-unit artifact should be updated",
-        )
-        _assert(reloaded.sections == [], "saved migrated document should no longer persist legacy sections mirror")
+        try:
+            repository.update_section_summary_artifact(
+                doc_name="legacy-only-doc",
+                section_id="section-0",
+                summary=SummaryArtifact(content="legacy-summary"),
+            )
+        except ValueError as error:
+            _assert(
+                "requires explicit migration" in str(error),
+                "legacy sections-only write should fail-fast with migration guidance",
+            )
+        else:
+            raise AssertionError(
+                "legacy sections-only write should fail-fast in normal repository path"
+            )
 
 
 def test_hierarchy_severe_inconsistency_blocks_save() -> None:
@@ -473,7 +466,7 @@ def main() -> None:
     test_update_section_artifacts_hierarchy_only_and_front_matter_preserved()
     test_task_unit_artifacts_writes_hierarchy_only()
     test_duplicate_task_unit_id_rejected_hierarchy_first()
-    test_legacy_fallback_without_chapters()
+    test_legacy_sections_only_write_requires_explicit_migration()
     test_hierarchy_severe_inconsistency_blocks_save()
     test_task_layout_availability_sees_updated_section_artifact()
 
@@ -487,7 +480,7 @@ def main() -> None:
                     "section_artifacts_hierarchy_only_front_matter_preserved",
                     "task_unit_artifacts_hierarchy_only",
                     "duplicate_task_unit_id_rejected",
-                    "legacy_fallback_without_chapters",
+                    "legacy_sections_only_write_requires_explicit_migration",
                     "severe_hierarchy_inconsistency_blocks_save",
                     "task_layout_availability_sees_updated_artifact",
                 ],

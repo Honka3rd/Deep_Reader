@@ -9,8 +9,8 @@ from io import StringIO
 from pathlib import Path
 
 from document_structure.section_role import SectionRole
+from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.structured_document import StructuredDocument, StructuredSection
-from document_structure.structured_hierarchy import StructuredNodeType
 from document_structure.structured_hierarchy_builder import (
     build_document_hierarchy_from_sections,
 )
@@ -156,7 +156,7 @@ def test_section_7_no_mid_sentence_cut() -> dict[str, object]:
     payload = json.loads(structured_path.read_text(encoding="utf-8"))
     document = StructuredDocument.from_dict(payload)
     target = next(
-        (section for section in document.sections if (section.title or "").strip() == "第七章"),
+        (section for section in get_effective_sections(document) if (section.title or "").strip() == "第七章"),
         None,
     )
     _assert(target is not None, "expected chapter section '第七章' not found")
@@ -229,14 +229,14 @@ def test_hierarchy_flat_chapters_are_leaf_nodes() -> None:
         sections=sections,
     )
     with_hierarchy = build_document_hierarchy_from_sections(doc)
-    _assert(len(with_hierarchy.structure_nodes) == 2, "should derive two root nodes")
+    _assert(len(with_hierarchy.chapters) == 2, "should derive two hierarchy chapters")
     _assert(
-        all(node.node_type == StructuredNodeType.CHAPTER for node in with_hierarchy.structure_nodes),
-        "flat chapter headings should become chapter nodes",
+        all(chapter.chapter_role == SectionRole.MAIN_BODY.value for chapter in with_hierarchy.chapters),
+        "flat chapter headings should become main-body chapters",
     )
     _assert(
-        all(len(node.children) == 0 for node in with_hierarchy.structure_nodes),
-        "chapter leaf nodes should not force fake subsection children",
+        all(len(chapter.sections) == 1 for chapter in with_hierarchy.chapters),
+        "flat chapter hierarchy should not force fake subsection children",
     )
 
 
@@ -282,12 +282,12 @@ def test_hierarchy_chapter_with_subsections() -> None:
         sections=sections,
     )
     with_hierarchy = build_document_hierarchy_from_sections(doc)
-    root = with_hierarchy.structure_nodes[0]
-    _assert(root.node_type == StructuredNodeType.CHAPTER, "root should be chapter")
-    _assert(len(root.children) == 2, "chapter should own subsection children")
+    root = with_hierarchy.chapters[0]
+    _assert(root.chapter_role == SectionRole.MAIN_BODY.value, "root chapter should be main body")
+    _assert(len(root.sections) == 3, "chapter should include chapter_body plus subsections")
     _assert(
-        all(child.node_type == StructuredNodeType.SECTION for child in root.children),
-        "subsections should be section nodes",
+        root.sections[1].section_kind == "subsection" and root.sections[2].section_kind == "subsection",
+        "subsections should be stored as subsection sections under chapter",
     )
 
 
@@ -323,8 +323,14 @@ def test_hierarchy_front_matter() -> None:
         sections=sections,
     )
     with_hierarchy = build_document_hierarchy_from_sections(doc)
-    _assert(with_hierarchy.structure_nodes[0].node_type == StructuredNodeType.FRONT_MATTER, "front matter should keep front_matter role")
-    _assert(with_hierarchy.structure_nodes[1].node_type == StructuredNodeType.CHAPTER, "chapter should be chapter node")
+    _assert(
+        with_hierarchy.chapters[0].chapter_role == SectionRole.FRONT_MATTER.value,
+        "front matter chapter should keep front_matter role",
+    )
+    _assert(
+        with_hierarchy.chapters[1].chapter_role == SectionRole.MAIN_BODY.value,
+        "main chapter should keep main_body role",
+    )
 
 
 def test_backward_compatibility_load_without_structure_nodes() -> None:
@@ -348,9 +354,18 @@ def test_backward_compatibility_load_without_structure_nodes() -> None:
             }
         ],
     }
-    doc = StructuredDocument.from_dict(payload)
-    _assert(doc.structure_nodes == [], "legacy payload should load with empty structure_nodes")
-    _assert(len(doc.sections) == 1, "legacy payload sections should stay intact")
+    try:
+        StructuredDocument.from_dict(payload)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(
+            "normal from_dict should fail-fast for legacy sections-only payloads"
+        )
+
+    doc = StructuredDocument.from_legacy_dict_for_migration(payload)
+    _assert(doc.structure_nodes == [], "legacy migration loader should allow missing structure_nodes")
+    _assert(len(doc.sections) == 1, "legacy migration loader should preserve legacy sections")
 
 
 def main() -> None:

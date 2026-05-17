@@ -26,7 +26,11 @@ _ZH_SUBSECTION_PATTERN = re.compile(
 
 
 class DocumentHierarchyBuilder:
-    """Build document->chapter->section->task-unit hierarchy from flat sections."""
+    """Build hierarchy from parser-produced flat sections staging input.
+
+    This builder is a construction-stage utility for parser outputs. It is not
+    a runtime repository read fallback for legacy persisted documents.
+    """
 
     _SPECIAL_CHAPTER_LABELS: dict[str, str] = {
         "front_matter": "Front Matter",
@@ -277,7 +281,7 @@ class _MutableChapter:
 def build_document_hierarchy_from_sections(
     document: StructuredDocument,
 ) -> StructuredDocument:
-    """Backward-compatible function wrapper for hierarchy builder."""
+    """Build hierarchy from flat-section construction input."""
     return DocumentHierarchyBuilder().build(document)
 
 

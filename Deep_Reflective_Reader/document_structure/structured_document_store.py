@@ -37,7 +37,8 @@ class StructuredDocumentStore:
             return StructuredDocument.from_json(payload)
         except Exception as error:
             raise ValueError(
-                f"StructuredDocumentStore.load: invalid structured document JSON: {path}"
+                "StructuredDocumentStore.load: invalid structured document JSON: "
+                f"{path} ({error})"
             ) from error
 
     @staticmethod

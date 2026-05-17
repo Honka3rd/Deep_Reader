@@ -395,7 +395,7 @@ def test_missing_chapters_hierarchy_required() -> None:
             )
         except ValueError as error:
             _assert(
-                "legacy sections-only document requires migration" in str(error),
+                "requires explicit migration" in str(error),
                 "missing-chapters document should fail-fast with migration guidance",
             )
 

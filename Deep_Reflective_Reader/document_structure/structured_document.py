@@ -143,8 +143,8 @@ class StructuredDocument:
 
     `chapters` is the primary hierarchy representation and the only persisted
     section/task-unit source for new JSON artifacts.
-    `sections` is deprecated compatibility input for loading legacy payloads.
-    `structure_nodes` is legacy experimental hierarchy and should not be expanded.
+    `sections` and `structure_nodes` are compatibility-only legacy fields.
+    They are not normal runtime read sources.
     """
 
     document_id: str
@@ -191,7 +191,65 @@ class StructuredDocument:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "StructuredDocument":
-        """Build a structured document DTO from dictionary payload."""
+        """Build a structured document DTO from current hierarchy payload.
+
+        Normal runtime read path requires `chapters` as the hierarchy source.
+        Legacy root `sections` / `structure_nodes` are intentionally ignored here.
+        """
+        chapter_payloads = data.get("chapters")
+        if not isinstance(chapter_payloads, list):
+            raise ValueError(
+                "StructuredDocument.from_dict: chapters must be a list in runtime payload"
+            )
+        chapters = [
+            StructuredChapter.from_dict(chapter_payload)
+            for chapter_payload in chapter_payloads
+            if isinstance(chapter_payload, dict)
+        ]
+        if not chapters:
+            raise ValueError(
+                "StructuredDocument.from_dict: hierarchy chapters are required; "
+                "legacy sections-only/structure_nodes-only payload requires explicit migration path"
+            )
+        return cls(
+            document_id=str(data["document_id"]),
+            title=str(data["title"]),
+            source_path=(
+                None
+                if data.get("source_path") is None
+                else str(data.get("source_path"))
+            ),
+            language=(None if data.get("language") is None else str(data.get("language"))),
+            raw_text=str(data["raw_text"]),
+            sections=[],
+            chapters=chapters,
+            structure_nodes=[],
+            structure_error_code=(
+                None
+                if data.get("structure_error_code") is None
+                else str(data.get("structure_error_code"))
+            ),
+            structure_error_message=(
+                None
+                if data.get("structure_error_message") is None
+                else str(data.get("structure_error_message"))
+            ),
+            document_task_artifacts=DocumentTaskArtifacts.from_dict(
+                data.get("document_task_artifacts")
+            ),
+        )
+
+    @classmethod
+    def from_legacy_dict_for_migration(
+        cls,
+        data: dict[str, Any],
+    ) -> "StructuredDocument":
+        """Compatibility-only loader for legacy payload migration.
+
+        This helper keeps legacy root `sections` / `structure_nodes` readable for
+        explicit migration flows only. It must not be used as a normal runtime
+        read path.
+        """
         section_payloads = data.get("sections", [])
         chapter_payloads = data.get("chapters", [])
         structure_node_payloads = data.get("structure_nodes", [])
@@ -208,6 +266,7 @@ class StructuredDocument:
             sections=[
                 StructuredSection.from_dict(section_data)
                 for section_data in section_payloads
+                if isinstance(section_data, dict)
             ],
             chapters=[
                 StructuredChapter.from_dict(chapter_payload)
@@ -259,3 +318,11 @@ class StructuredDocument:
         if not isinstance(data, dict):
             raise ValueError("StructuredDocument JSON payload must be an object")
         return cls.from_dict(data)
+
+    @classmethod
+    def from_legacy_json_for_migration(cls, payload: str) -> "StructuredDocument":
+        """Compatibility-only JSON loader for explicit legacy migration flows."""
+        data = json.loads(payload)
+        if not isinstance(data, dict):
+            raise ValueError("StructuredDocument JSON payload must be an object")
+        return cls.from_legacy_dict_for_migration(data)

@@ -5,10 +5,15 @@ from __future__ import annotations
 
 import json
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from document_structure.document_hierarchy_index import get_effective_sections
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import (
+    StructuredChapter,
+    StructuredDocument,
+    StructuredSection,
+)
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
@@ -27,8 +32,39 @@ def _assert(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def _build_hierarchy_document(
+    *,
+    document_id: str,
+    title: str,
+    language: str,
+    raw_text: str,
+    sections: list[StructuredSection],
+) -> StructuredDocument:
+    chapter_id = "chapter-0"
+    hierarchy_sections = [
+        replace(section, parent_chapter_id=chapter_id)
+        for section in sections
+    ]
+    return StructuredDocument(
+        document_id=document_id,
+        title=title,
+        source_path=None,
+        language=language,
+        raw_text=raw_text,
+        chapters=[
+            StructuredChapter(
+                chapter_id=chapter_id,
+                title=title,
+                level=1,
+                chapter_role=SectionRole.MAIN_BODY.value,
+                sections=hierarchy_sections,
+            )
+        ],
+    )
+
+
 def test_legacy_json_compatibility() -> None:
-    """Load legacy structured JSON payload without task_artifacts/task_units fields."""
+    """Legacy JSON is migration-only; normal load should fail-fast."""
     legacy_payload = json.dumps(
         {
             "document_id": "legacy-doc",
@@ -54,7 +90,16 @@ def test_legacy_json_compatibility() -> None:
         },
         ensure_ascii=False,
     )
-    loaded = StructuredDocument.from_json(legacy_payload)
+    try:
+        StructuredDocument.from_json(legacy_payload)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(
+            "normal from_json should fail-fast for legacy sections-only payload"
+        )
+
+    loaded = StructuredDocument.from_legacy_json_for_migration(legacy_payload)
     _assert(
         loaded.sections[0].task_units == [],
         "legacy section should load with empty task_units",
@@ -172,10 +217,9 @@ def test_repository_atomic_save_smoke() -> None:
         temp_root = Path(temp_dir)
         target_path = temp_root / "artifact-doc.structured.json"
 
-        base_document = StructuredDocument(
+        base_document = _build_hierarchy_document(
             document_id="artifact-doc",
             title="Artifact Doc",
-            source_path=None,
             language="en",
             raw_text="Chapter 1\ncontent",
             sections=[
@@ -192,7 +236,7 @@ def test_repository_atomic_save_smoke() -> None:
             ],
         )
         target_path.write_text(
-            base_document.to_json(include_legacy_sections=True),
+            base_document.to_json(),
             encoding="utf-8",
         )
 
@@ -231,10 +275,9 @@ def test_repository_atomic_save_smoke() -> None:
 def test_repository_update_section_task_units() -> None:
     """Persist section task_units list and verify reloaded structured document."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        base_document = StructuredDocument(
+        base_document = _build_hierarchy_document(
             document_id="artifact-doc",
             title="Artifact Doc",
-            source_path=None,
             language="en",
             raw_text="Chapter 1\ncontent",
             sections=[
@@ -252,7 +295,7 @@ def test_repository_update_section_task_units() -> None:
         )
         target_path = Path(temp_dir) / "artifact-doc.structured.json"
         target_path.write_text(
-            base_document.to_json(include_legacy_sections=True),
+            base_document.to_json(),
             encoding="utf-8",
         )
 
@@ -293,10 +336,9 @@ def test_repository_update_section_task_units() -> None:
 def test_repository_update_task_unit_artifacts() -> None:
     """Update one task-unit artifact and ensure other units stay unchanged."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        base_document = StructuredDocument(
+        base_document = _build_hierarchy_document(
             document_id="artifact-doc",
             title="Artifact Doc",
-            source_path=None,
             language="en",
             raw_text="Chapter 1\ncontent",
             sections=[
@@ -332,7 +374,7 @@ def test_repository_update_task_unit_artifacts() -> None:
         )
         target_path = Path(temp_dir) / "artifact-doc.structured.json"
         target_path.write_text(
-            base_document.to_json(include_legacy_sections=True),
+            base_document.to_json(),
             encoding="utf-8",
         )
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
@@ -361,10 +403,9 @@ def test_repository_update_task_unit_artifacts() -> None:
 def test_repository_update_task_unit_artifacts_unknown_id() -> None:
     """Unknown task_unit_id should raise ValueError."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        base_document = StructuredDocument(
+        base_document = _build_hierarchy_document(
             document_id="artifact-doc",
             title="Artifact Doc",
-            source_path=None,
             language="en",
             raw_text="Chapter 1\ncontent",
             sections=[
@@ -392,7 +433,7 @@ def test_repository_update_task_unit_artifacts_unknown_id() -> None:
         )
         target_path = Path(temp_dir) / "artifact-doc.structured.json"
         target_path.write_text(
-            base_document.to_json(include_legacy_sections=True),
+            base_document.to_json(),
             encoding="utf-8",
         )
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
@@ -410,10 +451,9 @@ def test_repository_update_task_unit_artifacts_unknown_id() -> None:
 def test_repository_update_task_unit_artifacts_duplicate_id() -> None:
     """Duplicate task_unit_id in one document must be rejected defensively."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        base_document = StructuredDocument(
+        base_document = _build_hierarchy_document(
             document_id="artifact-doc",
             title="Artifact Doc",
-            source_path=None,
             language="en",
             raw_text="content",
             sections=[
@@ -461,7 +501,7 @@ def test_repository_update_task_unit_artifacts_duplicate_id() -> None:
         )
         target_path = Path(temp_dir) / "artifact-doc.structured.json"
         target_path.write_text(
-            base_document.to_json(include_legacy_sections=True),
+            base_document.to_json(),
             encoding="utf-8",
         )
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
@@ -520,7 +560,15 @@ def test_document_level_artifacts_round_trip() -> None:
         source_path=None,
         language="en",
         raw_text="raw",
-        sections=[],
+        chapters=[
+            StructuredChapter(
+                chapter_id="chapter-1",
+                title="Chapter 1",
+                level=1,
+                chapter_role=SectionRole.MAIN_BODY.value,
+                sections=[],
+            )
+        ],
         document_task_artifacts=DocumentTaskArtifacts(
             chapter_artifacts={
                 "chapter-1": TaskArtifacts(

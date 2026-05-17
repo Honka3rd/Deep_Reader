@@ -12,16 +12,16 @@
 
 | File | Responsibility | Notes |
 |---|---|---|
-| `document_structure/structured_document.py` | 定義 `StructuredDocument/StructuredChapter/StructuredSection` 契約與序列化 | 新 JSON 預設不輸出 root `sections`/`structure_nodes` **[Code-Confirmed]** |
+| `document_structure/structured_document.py` | 定義 `StructuredDocument/StructuredChapter/StructuredSection` 契約與序列化 | normal `from_dict/from_json` 已 strict 要求 chapters；legacy loader 僅 migration-only **[Code-Confirmed]** |
 | `document_structure/structured_document_builder.py` | 以 splitter 建立 structured document，錯誤時 fallback doc | 支援 parser mode 選擇入口 **[Code-Confirmed]** |
 | `document_structure/structured_hierarchy_builder.py` | 將 flat sections 收斂成 chapter->section hierarchy | 主流程不再生成 structure_nodes mirror **[Code-Confirmed]** |
 | `document_structure/document_hierarchy_index.py` | hierarchy-first 查找/flatten/一致性校驗 helper | `get_effective_sections` 已 hierarchy-only **[Code-Confirmed]** |
 | `document_structure/section_splitter.py` | common parser split 實作 | 受 language registry 支持 **[Code-Confirmed]** |
 | `document_structure/llm_section_splitter.py` | llm enhanced parser split 實作 | 作為 selector 另一條路徑 **[Code-Confirmed]** |
 | `document_structure/section_splitter_selector.py` | common/llm split mode 選擇 | parser mode contract 中樞 **[Code-Confirmed]** |
-| `document_structure/structured_document_store.py` | structured JSON load/save | persistence store **[Code-Confirmed]** |
+| `document_structure/structured_document_store.py` | structured JSON load/save | normal load 經 strict hierarchy contract 校驗 **[Code-Confirmed]** |
 | `document_structure/document_artifact_repository.py` | artifact repository 抽象介面 | section/chapter/task-unit/document-level methods **[Code-Confirmed]** |
-| `document_structure/structured_document_artifact_repository.py` | 具體 artifact repository（hierarchy-aware） | 含 legacy load-time migration **[Code-Confirmed]** |
+| `document_structure/structured_document_artifact_repository.py` | 具體 artifact repository（hierarchy-aware） | normal read/write 路徑要求 chapters；legacy 讀取僅 explicit migration helper **[Code-Confirmed]** |
 | `document_structure/enhanced_parse_trigger_evaluator.py` | enhanced parse recommendation 評估器 | recommendation only，非 auto-switch **[Code-Confirmed] + [From HLD]** |
 | `document_structure/document_structure_language_registry.py` | parser/regional/profile-evidence 用語言標記 registry | multi-consumer registry **[Code-Confirmed]** |
 
@@ -91,7 +91,7 @@
 
 | Scenario | Current Behavior | Notes |
 |---|---|---|
-| `StructuredDocument` 載入含舊 `sections` | 可讀（compatibility） | 讀取相容，非新寫入來源 **[Code-Confirmed]** |
+| `StructuredDocument` normal 載入僅含舊 `sections`/`structure_nodes` | fail-fast | legacy payload 需走 explicit migration-only loader **[Code-Confirmed] + [Test-Confirmed]** |
 | 無 chapters 的 runtime 結構查找 | 上層多為 fail-fast | helper 層逐步收斂 **[Code-Confirmed]** |
 | severe hierarchy inconsistency | 上層 coordinator fail-fast | 不以 legacy fallback 掩蓋 **[Code-Confirmed]** |
 | parser mode invalid | selector/上層拋錯 | 依 route/coordinator 轉 HTTP **[Code-Confirmed]** |
@@ -109,24 +109,25 @@
 
 | Legacy Item | Can Read | New Write | Runtime Primary Path |
 |---|---:|---:|---:|
-| root `sections[]` | Yes | No (default) | No |
-| `structure_nodes[]` | Yes | No (default) | No |
-| sections-only payload migration | Yes | Converted to hierarchy on save path | No |
+| root `sections[]` | Migration-only helper | No (default) | No |
+| `structure_nodes[]` | Migration-only helper | No (default) | No |
+| sections-only payload migration | Explicit only | Not automatic in normal repository write path | No |
 | root artifact mirror | N/A | No | No |
 
 說明：`find_*_effective(...allow_legacy_fallback=...)` 已完成退場；普通 helper API surface 不再暴露該參數，effective lookup 現為 hierarchy-only，sections-only legacy 文檔不再經由 effective helper 解析。 **[Code-Confirmed] + [Test-Confirmed] + [Maintainer-Confirmed]**
+補充：legacy payload 若需處理，需走 explicit migration-only loader（如 `StructuredDocument.from_legacy_dict_for_migration` / `from_legacy_json_for_migration` 與 repository internal migration helper），不經 normal `from_dict/from_json` 與 ordinary repository write/read path。 **[Code-Confirmed]**
 
 ## 13. Terminology Governance Audit
 
 | Term | Current Meaning in This Module | Classification | Governance Decision |
 |---|---|---|---|
-| root `sections[]` | legacy compatibility input field on `StructuredDocument`; not default write output | **[Code-Confirmed]** | 不得描述為 primary persistence source |
+| root `sections[]` | legacy compatibility input field；normal `from_dict/from_json` 不消費，僅 migration-only loader 可讀 | **[Code-Confirmed]** | 不得描述為 primary persistence source |
 | top-level sections | 若指 root `sections[]`，僅 compatibility 語境可用；正式契約應改稱 `chapters[].sections[]` hierarchy | **[Doc-Confirmed] + [Code-Confirmed]** | 在 module 文檔中避免作 current contract 用語 |
-| `structure_nodes[]` | legacy experimental hierarchy field，可讀；預設不寫 | **[Code-Confirmed]** | 僅保留 old JSON / round-trip compatibility 語義 |
+| `structure_nodes[]` | legacy experimental hierarchy field；normal `from_dict/from_json` 不消費，僅 migration-only loader 可讀 | **[Code-Confirmed]** | 僅保留 old JSON / round-trip compatibility 語義 |
 | `StructuredDocumentNode` | compatibility type，非主流程 hierarchy source | **[Code-Confirmed]** | 不得在架構圖描述為 active main flow |
 | flat `task_units` | 非 persistence truth；task units 應掛載於 section (`chapters[].sections[].task_units[]`) | **[Code-Confirmed] + [From HLD]** | 禁止作新 write contract |
 | mirror（deprecated terminology） | 僅 historical/compatibility 搜尋語境；正式術語改為 `legacy compatibility fields` / `compatibility-only fields` | **[Maintainer-Confirmed] + [Doc-Confirmed]** | 不得作為現行 architecture contract/persistence authority/runtime primary path 術語 |
-| legacy | 指可讀相容，不代表 runtime primary path | **[Doc-Confirmed] + [Code-Confirmed]** | 文檔必須顯式區分 compatibility vs primary contract |
+| legacy | 指 migration-only compatibility，不代表 runtime primary path | **[Doc-Confirmed] + [Code-Confirmed]** | 文檔必須顯式區分 compatibility vs primary contract |
 
 ### Terminology Validation Notes
 
