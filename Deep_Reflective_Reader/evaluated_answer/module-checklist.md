@@ -42,11 +42,11 @@ It is used to:
 ## Needs Confirmation
 
 - [ ] Define minimum deterministic contract for quote/evidence validation.
-  Reason: Added as unresolved in `evaluated_answer/module-detailed-design.md` section `14.1 Needs Confirmation`.
+  Reason: Added as unresolved in `evaluated_answer/module-detailed-design.md` section `14.5 Needs Confirmation`.
   Needed confirmation: Whether strict span match or semantic match should be the baseline deterministic rule.
 
 - [ ] Decide whether content-block-level evidence needs persisted trace metadata or runtime projection only.
-  Reason: Added as unresolved in `evaluated_answer/module-detailed-design.md` section `14.1 Needs Confirmation`.
+  Reason: Added as unresolved in `evaluated_answer/module-detailed-design.md` section `14.5 Needs Confirmation`.
   Needed confirmation: Whether to require persisted trace metadata at evaluation boundary.
 
 ## Future Task Policy

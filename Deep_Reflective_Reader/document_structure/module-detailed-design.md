@@ -196,9 +196,11 @@
 
 > 本節屬 future-direction governance preparation，非當前 implementation。 **[Inferred]**
 
-1. rich content content-block/segment model 的定位是 `task_unit` 內部 render/interaction segmentation，不是新的 hierarchy level。 **[Inferred]**
-2. hierarchy source 仍固定為 `chapters[].sections[].task_units[]`，content block 不得成為 persisted hierarchy source。 **[Code-Confirmed] + [Inferred]**
-3. content block 不是 section replacement、不是 task_unit replacement，也不是 runtime navigation hierarchy。 **[Inferred]**
-4. rich content governance 需避免 dual hierarchy representation（例如把 content block 漂移為 structure authority）。 **[Inferred]**
-5. future content-block artifacts 可作 interaction/annotation/evidence target，但不得反向改寫 chapter/section/task_unit identity。 **[Inferred]**
-6. `task_unit.content: string` 的兼容遷移方向可規劃 `string -> single content block` adapter；本輪不實作 schema、migration algorithm 或 runtime API。 **[Inferred]**
+1. hierarchy source 固定為 `chapters[].sections[].task_units[]`；不得把 `Document -> Chapter -> Section -> TaskUnit -> ContentBlock` 描述成 persisted hierarchy contract。 **[Code-Confirmed] + [Inferred]**
+2. rich content content-block/segment model 的定位是 `task_unit` 內部 render segmentation / interaction segmentation，不是 hierarchy node、不是 persisted structure authority、也不是 runtime navigation hierarchy。 **[Inferred]**
+3. content block 不得替代 `task_unit`、`section`、`chapter` ownership；`TaskUnit` 仍是主要 interaction container。 **[Code-Confirmed] + [Inferred]**
+4. `content_block_id` / `content_segment_id` 的定位是 interaction target id，不是 hierarchy node id。 **[From Proposal] + [Inferred]**
+5. future content-block artifacts 可作 interaction/annotation/evidence target，但仍不是 hierarchy truth source，且不得反向決定 chapter/section ownership 或 task-unit identity。 **[Inferred]**
+6. rich content governance 需避免 dual hierarchy representation（例如把 content block 漂移為 structure authority 或 retrieval authority）。 **[Inferred]**
+7. 目前 `task_unit.content` 為 string；兼容方向可規劃 `string -> single content block` adapter，但該 adapter 屬 future compatibility strategy，不是 legacy fallback runtime path。 **[Code-Confirmed] + [Inferred]**
+8. 本節僅做 governance/邊界對齊；不引入 persistence schema、migration algorithm、runtime API 或 execution model。 **[Doc-Confirmed]**

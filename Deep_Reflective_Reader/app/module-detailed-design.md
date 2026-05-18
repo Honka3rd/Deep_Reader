@@ -137,9 +137,15 @@
 
 > 本節為 future-task documentation/preparation，非當前 implementation。 **[Doc-Confirmed]**
 
-1. app layer 未來可暴露 content-block lookup/read API orchestration，但本輪僅記錄 future tasks。 **[Inferred]**
-2. `task-layout` API 仍應保持 lightweight metadata/projection read path，不承載完整 rich content body。 **[Code-Confirmed] + [Inferred]**
-3. rich content body 應維持 on-demand read model；task-layout 與 rich-content read path 必須分離。 **[Code-Confirmed] + [Maintainer-Confirmed]**
-4. sentence/paragraph/content-block interaction targeting 應以 stable ids（如 chapter_id/section_id/task_unit_id/content_block_id）解析；找不到或歧義時應 fail-fast。 **[Inferred]**
-5. app layer 不應自行實作 rich content construction、artifact persistence internals、parser authority、或 diagnostics write-back。 **[Code-Confirmed] + [Inferred]**
-6. future interaction targeting 不得回退為 title-only path 取代 id-based deterministic path。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+1. app coordinator 未來可擴展為 content-block lookup/read API 的 orchestration boundary（request normalize、identity resolve、response assemble），但本輪僅記錄方向，不代表已實作 endpoint。 **[Maintainer-Confirmed] + [Inferred]**
+2. target resolution 順序的 future contract 應為：`chapter_id/section_id -> task_unit_id -> content_block_id`；id 缺失或不一致時 fail-fast。 **[Inferred]**
+3. 若 `content_block_id` 缺失（且該 API 要求 block 粒度），應 fail-fast，不得隱式降級為 title/全文掃描。 **[Inferred]**
+4. 若 `content_block_id` 重複或產生歧義，應 fail-fast，避免非決定性 target 綁定。 **[Inferred]**
+5. 若 hierarchy path 無效（chapter/section/task-unit 與 block 關聯不成立），應 fail-fast，不得容忍跨層錯配。 **[Inferred]**
+6. future targeting path 不得回退為 title-only lookup，也不得回退 root `sections` 或 synthetic legacy hierarchy。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+7. `task-layout` API 仍保持 lightweight metadata/projection read path，不承載 heavy rich content body。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+8. rich content body 應透過 on-demand content API path 讀取，並與 task-layout metadata path 分離。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+9. app layer 在 rich-content 方向中仍是 orchestration 層，不是 parser authority，不主導 parser strategy。 **[Code-Confirmed] + [From HLD]**
+10. app layer 不應擁有 artifact persistence internals；write path 仍由 service/repository 邊界承擔。 **[Code-Confirmed] + [From HLD]**
+11. rich-content interaction request path 不得 hidden mutation，不得觸發 profile write-back；diagnostics 仍為 projection-only。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+12. 上述內容均為 future-direction contract preparation；本輪不新增 runtime/API/schema 行為。 **[Doc-Confirmed]**

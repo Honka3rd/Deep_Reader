@@ -82,9 +82,17 @@
 
 > 本節屬 future-direction documentation/preparation，非當前 implementation。 **[Doc-Confirmed]**
 
-1. future question interaction 可能擴展到 content-block-level references（含 sentence/paragraph-level evidence 或 quote target），不再僅限 section/task_unit 粒度。 **[Inferred]**
-2. content block reference 是 interaction targeting semantics，不等於 hierarchy ownership；content block 不是新的 persisted hierarchy level。 **[Code-Confirmed] + [Inferred]**
-3. question targeting 應維持 id-based hierarchy context（chapter/section/task_unit/content_block ids），不得以 title-only path 取代 deterministic targeting。 **[Code-Confirmed] + [Inferred]**
-4. question module 不擁有 content persistence，也不應成為 document truth source 或 artifact persistence owner。 **[Code-Confirmed] + [Inferred]**
-5. question/evidence references 不得隱式 override source document truth，亦不得隱式觸發 artifact/persistence write-back。 **[Inferred]**
-6. 後續若實作 rich-content QA targeting，需與 `section_tasks`、`document_structure`、`evaluated_answer`、`prompts` 協調 reference contract 與 fail-fast error semantics。 **[Inferred]**
+1. future question interaction 可能擴展到 content-block-level references，不再僅限 section/task_unit 粒度。 **[Maintainer-Confirmed] + [Inferred]**
+2. future target model 可包含 `task_unit_id`、`content_block_id`、sentence range、paragraph range、quote span、evidence reference；但這些都屬 interaction semantics，不是 hierarchy ownership。 **[Maintainer-Confirmed] + [Inferred]**
+3. content block 不是新的 persisted hierarchy level；`TaskUnit` 仍是主要 interaction container，且需保留 chapter/section/task_unit hierarchy context。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+4. question targeting 應維持 id-based hierarchy context（chapter/section/task_unit/content_block ids），不得以 title-only path 取代 deterministic targeting。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+5. future reference resolution direction 應採 fail-fast：reference 缺失、歧義或 hierarchy path 不一致時直接報錯，不應隱式修正。 **[Inferred]**
+6. question module 不擁有 content persistence，也不應成為 document truth source 或 artifact persistence owner。 **[Code-Confirmed] + [Inferred]**
+7. question/evidence/source-span references 不得隱式 override source document truth，不得隱式觸發 artifact write-back 或其他 hidden persistence。 **[Maintainer-Confirmed] + [Inferred]**
+8. future question layer 不得回退 flat task-unit truth model，不得重引 root sections mirror 或 structure_nodes 主流程語義。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+9. 後續若實作 rich-content QA targeting，需與 `section_tasks`、`shared`、`document_structure`、`evaluated_answer`、`prompts` 協調 quote/evidence/source-span reference contract。 **[Inferred]**
+
+### 14.1 Needs Confirmation
+
+1. sentence range / paragraph range / quote span 的 canonical reference format（offset、token index、或 block-local span）尚待統一。 **[Needs Confirmation]**
+2. evidence reference 的最小跨模組 compatibility contract（`question` 與 `evaluated_answer` 共享欄位）尚待定義。 **[Needs Confirmation]**

@@ -113,9 +113,13 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 > 本輪不新增/修改 `api_schemas.py` DTO，也不引入 API breaking change。 **[Doc-Confirmed]**
 
 1. future `TaskUnitContentResponse` 可由 simple `content: str` 演進為 structured content blocks / segments。 **[From Proposal] + [Inferred]**
-2. content blocks 屬 API interaction target，不是 persisted hierarchy level；hierarchy-first contract 仍以 `chapters[].sections[].task_units[]` 為核心。 **[Code-Confirmed] + [From HLD]**
-3. `content_block_id` 應支持 id-based targeting（避免 title-only targeting 漂移回主路徑）。 **[Code-Confirmed] + [Inferred]**
-4. future block-level artifact metadata 應支持 discovery/availability 表達，但不得暴露 repository internal implementation details。 **[Inferred]**
-5. future evidence metadata 應支持 sentence/paragraph-level answer grounding，但不等同於 parser authority 或 persistence truth source。 **[From HLD] + [Inferred]**
-6. response evolution 需保留 backward compatibility（existing clients 仍可安全消費 simple-string content contract）。 **[Inferred]**
-7. 後續若進入實作，需與 `app` routes、`section_tasks` projection contract、`shared` models、`retrieval/evidence` flows 及 artifact APIs 協調版本化策略。 **[Inferred]**
+2. future rich-content schema 可引入 `content_block_id` / `content_segment_id`，作為 block/segment 級 stable identity。 **[From Proposal] + [Inferred]**
+3. future block/segment 單元仍需保留可渲染的 real string content payload（顯示字串本體）。 **[From Proposal] + [Inferred]**
+4. future block-level metadata 可擴展為 artifact metadata（discovery/availability）與 evidence/quote/annotation target metadata。 **[Inferred]**
+5. future content blocks 可作 QA evidence target、quote target、annotation target、retrieval grounding target。 **[From Proposal] + [Inferred]**
+6. content blocks 是 API interaction target，不是 persisted hierarchy level；不取代 hierarchy-first contract `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [From HLD]**
+7. evidence/grounding metadata 不等同 parser authority，亦不得成為 persistence truth source。 **[From HLD] + [Inferred]**
+8. response evolution 必須 backward-compatible：existing clients 仍可安全消費 current simple-string content；可採 gradual/optional rich-content expansion。 **[Inferred]**
+9. backward compatibility 可採 adapter 思路（例如 string content -> single-block 表達）作遷移方向，但本輪不定 implementation 細節。 **[From Proposal] + [Inferred]**
+10. `task-layout` response 邊界不變：保持 lightweight metadata/projection，不返回 heavy content payload；rich content 仍走 on-demand content API path。 **[Code-Confirmed] + [From HLD]**
+11. 後續若進入實作，需與 `app` routes、`section_tasks` projection contract、`shared` models、`retrieval/evidence` flows 與 artifact APIs 協調版本化策略。 **[Inferred]**
