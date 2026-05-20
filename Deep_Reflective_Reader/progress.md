@@ -455,8 +455,8 @@ No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
-- [ ] Shared rich task-unit content model documentation/checklist preparation is captured as unchecked future work in `shared/module-checklist.md`.
-- [ ] Prepared future tasks include content-block model design, content-block identity + artifact attachment semantics, and string-to-single-block backward adapter planning.
+- [ ] Shared rich task-unit content model future work now keeps only unchecked artifact-attachment semantics definition in `shared/module-checklist.md`.
+- [x] Shared content-block foundation, deterministic block-id semantics, and string-to-single-block adapter have been captured as completed baseline evidence in `shared/module-checklist.md`.
 - [ ] `shared/module-detailed-design.md` keeps future-direction boundaries documented while current shared implementation remains limited to foundation-level content-block model and adapter.
 
 ## 6. Root Python Module Progress
