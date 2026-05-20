@@ -39,6 +39,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/shared/abstract_result.py; Deep_Reflective_Reader/shared/module-detailed-design.md (Key Files)`
   Notes: Success/failure payload structure is standardized.
 
+- [x] Implements shared rich task-unit content block foundation with deterministic adapter behavior.
+  Evidence: `Deep_Reflective_Reader/shared/task_unit_model.py; Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py; Deep_Reflective_Reader/shared/module-detailed-design.md (Rich Task-Unit Content Foundation and Future Direction)`
+  Notes: Added `TaskUnitContentBlock`, deterministic block id builder (`<task_unit_id>:content:<index>`), and `TaskUnit.to_content_blocks()` adapter while preserving `TaskUnit.content: str`; task-layout/API/persistence behavior unchanged.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

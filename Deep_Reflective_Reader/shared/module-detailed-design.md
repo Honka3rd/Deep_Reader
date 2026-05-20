@@ -14,7 +14,7 @@
 |---|---|---|
 | `shared/abstract_result.py` | Generic result 抽象基類 | success/payload/reason/cache_hit **[Code-Confirmed]** |
 | `shared/task_artifacts.py` | summary/quiz/task artifacts schema | section/task-unit/document-level contracts **[Code-Confirmed]** |
-| `shared/task_unit_model.py` | `TaskUnit` schema | parent_section_id 與 artifact nested fields **[Code-Confirmed]** |
+| `shared/task_unit_model.py` | `TaskUnit` 與 `TaskUnitContentBlock` schema | parent_section_id、artifact nested fields、string->block adapter foundation **[Code-Confirmed]** |
 
 ## 4. Main Responsibilities
 
@@ -35,6 +35,7 @@
 - `TaskArtifacts`
 - `DocumentTaskArtifacts`
 - `TaskUnit`
+- `TaskUnitContentBlock`
 
 ## 7. Module Relationships
 
@@ -74,12 +75,11 @@
 
 1. 補 artifact metadata field glossary。
 
-## 14. Future Direction Note: Rich Task-Unit Content Model Preparation
+## 14. Rich Task-Unit Content Foundation and Future Direction
 
-> 本節屬未來方向說明，非當前 implementation。 **[Inferred]**
-
-1. `TaskUnit.content` 未來可由 simple string 演進為 content block / content segment model；shared 層僅承擔 caller-neutral 的 low-level model/helper preparation。 **[Inferred]**
-2. content block 的定位是 task-unit 內部的 content segmentation / evidence target，不是 chapter/section/task_unit 之外的新 hierarchy level。 **[Inferred]**
-3. content block 不得成為 parser authority；artifact 掛載於 content block 也不得成為 hierarchy truth。 **[Inferred]**
-4. `TaskUnit` 仍是 interaction container；hierarchy-first persistence 仍以 `chapters[].sections[].task_units[]` 為可信來源。 **[Code-Confirmed] + [Inferred]**
-5. backward compatibility 方向可考慮 `string content -> single content block` adapter，但本輪不實作。 **[Inferred]**
+1. shared 層已新增 `TaskUnitContentBlock` 與 deterministic block-id helper（`<task_unit_id>:content:<index>`）作為 caller-neutral foundation。 **[Code-Confirmed]**
+2. `TaskUnit.content` 仍維持 `str`；`TaskUnit.to_content_blocks()` 提供 string -> content-block adapter，非空字串映射單一 block、空字串回傳空清單。 **[Code-Confirmed]**
+3. content block 定位為 task-unit 內部 render/interaction segmentation，不是 chapter/section/task_unit 之外的新 hierarchy level。 **[Maintainer-Confirmed] + [Code-Confirmed]**
+4. content block 不得成為 parser authority；block-level artifact metadata/ids 僅作 interaction/evidence metadata，不是 hierarchy truth source。 **[Maintainer-Confirmed] + [Doc-Confirmed]**
+5. 本輪僅 shared-layer foundation，未改動 task-layout DTO、API schema/route、persistence schema、或跨模組 runtime behavior。 **[Code-Confirmed]**
+6. 後續 rich content 跨模組整合（section_tasks/app/api_schemas/question/evaluated_answer）仍屬 future direction。 **[Future Direction]**

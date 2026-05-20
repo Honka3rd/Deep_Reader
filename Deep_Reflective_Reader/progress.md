@@ -50,7 +50,7 @@ It is used to:
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 7 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `shared/` | package | `shared/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `shared/` | package | `shared/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 4 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -439,7 +439,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `shared/module-checklist.md`
 - Detailed Design: `shared/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -447,6 +447,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines cross-module `TaskUnit` contract including parent identity and artifact payload fields.
 - [x] Defines summary/quiz artifact schemas and document-level artifact container models.
 - [x] Defines generic abstract result contract for service execution outputs.
+- [x] Implements shared rich task-unit content block foundation with deterministic string-to-block adapter behavior.
 
 #### Needs Confirmation
 
@@ -456,7 +457,7 @@ No unresolved confirmation items identified in module checklist.
 
 - [ ] Shared rich task-unit content model documentation/checklist preparation is captured as unchecked future work in `shared/module-checklist.md`.
 - [ ] Prepared future tasks include content-block model design, content-block identity + artifact attachment semantics, and string-to-single-block backward adapter planning.
-- [ ] `shared/module-detailed-design.md` now includes `Future Direction Note: Rich Task-Unit Content Model Preparation` to document boundaries without implementation changes.
+- [ ] `shared/module-detailed-design.md` keeps future-direction boundaries documented while current shared implementation remains limited to foundation-level content-block model and adapter.
 
 ## 6. Root Python Module Progress
 
