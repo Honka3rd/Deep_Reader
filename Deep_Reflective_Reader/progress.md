@@ -50,7 +50,7 @@ It is used to:
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 8 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `shared/` | package | `shared/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
+| `shared/` | package | `shared/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -441,7 +441,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `shared/module-checklist.md`
 - Detailed Design: `shared/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `4`
+- Completed item count: `5`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -450,6 +450,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines summary/quiz artifact schemas and document-level artifact container models.
 - [x] Defines generic abstract result contract for service execution outputs.
 - [x] Implements shared rich task-unit content block foundation with deterministic string-to-block adapter behavior.
+- [x] Stabilizes additive `TaskUnit.content_blocks` internal representation while retaining compatibility `content` support.
 
 #### Needs Confirmation
 

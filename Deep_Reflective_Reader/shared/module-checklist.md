@@ -43,6 +43,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/shared/task_unit_model.py; Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py; Deep_Reflective_Reader/shared/module-detailed-design.md (Rich Task-Unit Content Foundation and Future Direction)`
   Notes: Added `TaskUnitContentBlock`, deterministic block id builder (`<task_unit_id>:content:<index>`), and `TaskUnit.to_content_blocks()` adapter while preserving `TaskUnit.content: str`; task-layout/API/persistence behavior unchanged.
 
+- [x] Stabilize TaskUnit rich content internal representation
+  Evidence: `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/shared/module-detailed-design.md (Rich Task-Unit Content Foundation and Future Direction)`
+  Notes: Added additive `TaskUnit.content_blocks` field with post-init auto-stabilization from `content`; `TaskUnit.content` remains supported; `to_dict(include_content_blocks=True)` enables additive round-trip while default serialization remains compatibility-safe; no endpoint/task-layout/API/persistence migration changes in this slice.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

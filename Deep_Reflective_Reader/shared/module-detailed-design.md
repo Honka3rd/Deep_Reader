@@ -78,8 +78,11 @@
 ## 14. Rich Task-Unit Content Foundation and Future Direction
 
 1. shared 層已新增 `TaskUnitContentBlock` 與 deterministic block-id helper（`<task_unit_id>:content:<index>`）作為 caller-neutral foundation。 **[Code-Confirmed]**
-2. `TaskUnit.content` 仍維持 `str`；`TaskUnit.to_content_blocks()` 提供 string -> content-block adapter，非空字串映射單一 block、空字串回傳空清單。 **[Code-Confirmed]**
-3. content block 定位為 task-unit 內部 render/interaction segmentation，不是 chapter/section/task_unit 之外的新 hierarchy level。 **[Maintainer-Confirmed] + [Code-Confirmed]**
-4. content block 不得成為 parser authority；block-level artifact metadata/ids 僅作 interaction/evidence metadata，不是 hierarchy truth source。 **[Maintainer-Confirmed] + [Doc-Confirmed]**
-5. 本輪僅 shared-layer foundation，未改動 task-layout DTO、API schema/route、persistence schema、或跨模組 runtime behavior。 **[Code-Confirmed]**
-6. 後續 rich content 跨模組整合（section_tasks/app/api_schemas/question/evaluated_answer）仍屬 future direction。 **[Future Direction]**
+2. `TaskUnit` 現在含有 additive `content_blocks: list[TaskUnitContentBlock]` 內部表示；`TaskUnit.content` 仍維持 `str` 並保留 compatibility role。 **[Code-Confirmed]**
+3. `TaskUnit` 初始化/反序列化時，若缺少 `content_blocks` 且 `content` 非空，會自動穩定化成單一 deterministic block；空字串內容則維持空 block 清單。 **[Code-Confirmed]**
+4. 當 `content_blocks` 已存在時，`TaskUnit.to_content_blocks()` 回傳穩定化後的現有 blocks；`content` 仍可供 compatibility 使用。 **[Code-Confirmed]**
+5. `TaskUnit.to_dict(include_content_blocks=False)` 預設維持既有 serialization 輸出；`include_content_blocks=True` 提供 additive rich-content round-trip。 **[Code-Confirmed]**
+6. content block 定位為 task-unit 內部 render/interaction segmentation，不是 chapter/section/task_unit 之外的新 hierarchy level。 **[Maintainer-Confirmed] + [Code-Confirmed]**
+7. content block 不得成為 parser authority；block-level artifact metadata/ids 僅作 interaction/evidence metadata，不是 hierarchy truth source。 **[Maintainer-Confirmed] + [Doc-Confirmed]**
+8. 本輪僅 shared-layer internal stabilization，未在本任務中變更 task-layout DTO、API schema/route、或 persistence migration 機制。 **[Code-Confirmed]**
+9. retrieval/LLM/artifact persistence integration 與更細粒度互動 targeting 仍屬 future direction。 **[Future Direction]**
