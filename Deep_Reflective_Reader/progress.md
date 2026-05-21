@@ -441,7 +441,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `shared/module-checklist.md`
 - Detailed Design: `shared/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `5`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
