@@ -450,7 +450,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines summary/quiz artifact schemas and document-level artifact container models.
 - [x] Defines generic abstract result contract for service execution outputs.
 - [x] Implements shared rich task-unit content block foundation with deterministic string-to-block adapter behavior.
-- [x] Stabilizes TaskUnit rich content internal representation with additive `content_blocks`, auto-stabilization from `content`, and compatibility-safe serialization.
+- [x] Stabilizes TaskUnit rich content internal representation with additive `content_blocks`, auto-stabilization from `content`, compatibility-safe serialization, and no endpoint/task-layout/API/persistence migration.
 
 #### Needs Confirmation
 
