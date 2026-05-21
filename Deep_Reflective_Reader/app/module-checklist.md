@@ -31,6 +31,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: 新增 `get_task_unit_content(doc_name, task_unit_id)`，只讀 hierarchy sections/task_units，不走 title/root sections/structure_nodes fallback。
 
+- [x] Pass through rich content blocks in task-unit content coordinator response
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: coordinator 透過 `selected_task_unit.to_content_blocks()` 傳遞 additive `content_blocks`，未改動 hierarchy-only lookup / fail-fast semantics。
+
 - [x] Implements QA orchestration via `QACoordinator` across prepare, retrieval, prompt, and session update paths.
   Evidence: `Deep_Reflective_Reader/app/qa_coordinator.py; Deep_Reflective_Reader/app/module-detailed-design.md (Main Responsibilities)`
   Notes: Coordinator layer exists as application orchestration, not API schema code.

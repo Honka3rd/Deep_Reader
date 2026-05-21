@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from shared.task_unit_model import TaskUnitContentBlock
+
 MetricValue = int | float
 
 
@@ -50,6 +52,7 @@ class TaskUnitContentDTO:
     title: str | None
     container_title: str | None
     content: str
+    content_blocks: list[TaskUnitContentBlock]
     source_section_ids: list[str]
     parent_section_id: str | None
     section_id: str | None
@@ -67,6 +70,10 @@ class TaskUnitContentDTO:
             "title": self.title,
             "container_title": self.container_title,
             "content": self.content,
+            "content_blocks": [
+                content_block.to_dict()
+                for content_block in self.content_blocks
+            ],
             "source_section_ids": list(self.source_section_ids),
             "parent_section_id": self.parent_section_id,
             "section_id": self.section_id,

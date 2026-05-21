@@ -31,6 +31,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: 新增 `TaskUnitContentResponse`，支援 frontend 按需讀取 render content，且不回填 task-layout heavy payload。
 
+- [x] Add backward-compatible content block payload to task-unit content response schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/shared/task_unit_model.py`
+  Notes: 在保留 `content: str` 下新增 `content_blocks` schema，對既有客戶端保持 backward-compatible additive evolution。
+
 - [x] Defines external API schemas used by request and response boundaries.
   Evidence: `Deep_Reflective_Reader/api_schemas.py; Deep_Reflective_Reader/api_schemas.module-detailed-design.md (Main Responsibilities)`
   Notes: Root Python module documented as an API contract boundary.

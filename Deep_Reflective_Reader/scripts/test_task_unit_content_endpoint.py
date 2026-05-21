@@ -247,6 +247,10 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         _assert(layout_response.status_code == 200, "task-layout should succeed")
         layout_payload = layout_response.json()
         unit_id = layout_payload["chapters"][0]["sections"][0]["task_units"][0]["unit_id"]
+        _assert(
+            "content_blocks" not in layout_payload["chapters"][0]["sections"][0]["task_units"][0],
+            "task-layout task_unit metadata must stay lightweight without content_blocks",
+        )
 
         content_response = client.get(
             f"/documents/Doc Content/task-units/{unit_id}/content"
@@ -256,6 +260,19 @@ def test_task_layout_id_then_content_lookup_success() -> None:
 
         _assert(payload["task_unit_id"] == unit_id, "task_unit_id mismatch")
         _assert(payload["content"] == "Content A", "content mismatch")
+        _assert("content_blocks" in payload, "content_blocks should exist in content endpoint payload")
+        _assert(
+            isinstance(payload["content_blocks"], list) and len(payload["content_blocks"]) == 1,
+            "content_blocks should contain a single adapter-generated block",
+        )
+        _assert(
+            payload["content_blocks"][0]["block_id"] == f"{unit_id}:content:0",
+            "content block id should be deterministic",
+        )
+        _assert(
+            payload["content_blocks"][0]["content"] == payload["content"],
+            "content block text should match legacy content field",
+        )
         _assert(payload["section_id"] == "section-a", "section_id mismatch")
         _assert(payload["chapter_id"] == "chapter-a", "chapter_id mismatch")
         _assert(repository.write_calls == 0, "content lookup path must not write persistence")

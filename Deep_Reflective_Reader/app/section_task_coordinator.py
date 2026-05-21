@@ -752,6 +752,7 @@ class SectionTaskCoordinator:
             title=selected_task_unit.title,
             container_title=selected_task_unit.container_title,
             content=selected_task_unit.content,
+            content_blocks=selected_task_unit.to_content_blocks(),
             source_section_ids=list(selected_task_unit.source_section_ids),
             parent_section_id=selected_task_unit.parent_section_id,
             section_id=selected_section.section_id,

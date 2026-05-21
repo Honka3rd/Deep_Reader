@@ -31,6 +31,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: 新增 `TaskUnitContentDTO` 與 hierarchy-only `task_unit_id` 查詢能力；missing/duplicate 明確 fail-fast；未修改 task-layout DTO 的 content contract。
 
+- [x] Add rich content blocks to task-unit content lookup response
+  Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/shared/task_unit_model.py`
+  Notes: 既有 `content: str` 保留，新增 additive `content_blocks`，且由 `TaskUnit.to_content_blocks()` 生成；task-layout response contract 未變更且不返回 `content_blocks`。
+
 - [x] Implements chapters-first task-layout DTO contracts and diagnostics DTO types.
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py; Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Important Data Structures / Contracts)`
   Notes: Task-layout contract is explicit at module level.
@@ -63,7 +67,6 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] Extend task-unit content endpoint for rich content blocks
 - [ ] Support content-block-level interaction targeting
 - [ ] Define content-block artifact availability projection
 - [ ] Preserve lightweight task-layout metadata contract

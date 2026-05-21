@@ -32,7 +32,7 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
+| `app/` | package | `app/module-checklist.md` | 6 | 0 | Completed Baseline Captured |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -48,14 +48,14 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 7 | 0 | Completed Baseline Captured |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 8 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 4 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 4 | 0 | Completed Baseline Captured |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 4 | 0 | Completed Baseline Captured |
+| `main.py` | root-python-module | `main.module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 
 ## 5. Package Module Progress
 
@@ -64,7 +64,7 @@ It is used to:
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `5`
+- Completed item count: `6`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -74,6 +74,7 @@ It is used to:
 - [x] Maintains hierarchy-required fail-fast behavior for incompatible runtime structure states.
 - [x] Replaced legacy chapter-title fallback with fail-fast hierarchy lookup behavior.
 - [x] Exposes task-unit content lookup through coordinator boundary with hierarchy-only id resolution.
+- [x] Passes through additive `content_blocks` in task-unit content coordinator response via `TaskUnit.to_content_blocks()`.
 
 #### Needs Confirmation
 
@@ -83,7 +84,7 @@ No unresolved confirmation items identified in module checklist.
 
 - [ ] Added unchecked future tasks for app-layer rich content interaction API preparation in `app/module-checklist.md`.
 - [ ] App-layer future direction keeps task-layout lightweight and separates on-demand rich-content read path from task-layout projection path.
-- [ ] This update is documentation/checklist preparation only; no runtime/API/schema behavior was changed.
+- [ ] Future-direction items above remain planning-only; current additive content-block runtime integration is captured in completed checklist items.
 
 ### `auth/`
 
@@ -393,7 +394,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `7`
+- Completed item count: `8`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -405,6 +406,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Clarified artifact availability projection vs artifact persistence truth boundary for task-layout/read path semantics.
 - [x] Closed terminology governance item by deprecating `artifact mirror` as formal contract wording.
 - [x] Adds on-demand task-unit content lookup support via stable `task_unit_id` without expanding task-layout payload.
+- [x] Adds backward-compatible rich content blocks to task-unit content lookup response while keeping task-layout payload lightweight.
 
 #### Needs Confirmation
 
@@ -414,7 +416,7 @@ No unresolved confirmation items identified in module checklist.
 
 - [ ] Added unchecked future preparation tasks for rich content interaction planning in `section_tasks/module-checklist.md`.
 - [ ] Task-layout remains lightweight metadata/projection contract; rich content is future-direction-only and remains on-demand API oriented.
-- [ ] This synchronization introduced no runtime/API/schema behavior changes.
+- [ ] Future-direction items above remain planning-only; current additive content-block endpoint integration is captured in completed checklist items.
 
 ### `session/`
 
@@ -439,7 +441,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `shared/module-checklist.md`
 - Detailed Design: `shared/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `4`
+- Completed item count: `5`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -465,7 +467,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `4`
+- Completed item count: `5`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -474,6 +476,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines task-layout response contract with chapters-first projection fields and diagnostics response model.
 - [x] Defines chapter summary/quiz request validation boundary for id/title target fields.
 - [x] Defines dedicated task-unit content response schema for on-demand frontend rendering.
+- [x] Adds backward-compatible `content_blocks` schema to task-unit content response while retaining legacy `content` field.
 
 #### Needs Confirmation
 
@@ -483,7 +486,7 @@ No unresolved confirmation items identified in module checklist.
 
 - [ ] Added unchecked future tasks for rich task-unit content schema evolution in `api_schemas.module-checklist.md`.
 - [ ] API schema future direction keeps hierarchy-first contract and id-based targeting while preserving task-layout lightweight response boundary.
-- [ ] This synchronization is documentation/checklist preparation only; no endpoint/schema/runtime behavior changed.
+- [ ] Future-direction items above remain planning-only; current additive `content_blocks` schema integration is captured in completed checklist items.
 
 ### `bundle_factory.py`
 
@@ -544,7 +547,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `4`
+- Completed item count: `5`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -553,6 +556,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Maps API schemas to coordinator execution paths and response payload construction.
 - [x] Implements explicit projection/mutation route boundary including manual reparse endpoint.
 - [x] Adds read-only task-unit content endpoint resolved by `doc_name + task_unit_id`.
+- [x] Exposes additive `content_blocks` in task-unit content endpoint response without changing route semantics.
 
 #### Needs Confirmation
 
@@ -590,7 +594,7 @@ No unresolved confirmation items identified in module checklist.
   Modules: `section_tasks`, `app`, `document_structure`, `shared`
 - [x] Artifact availability projection boundary documented as runtime/read-side observability (not persistence truth source).
   Modules: `section_tasks`, `app`, `document_structure`, `api_schemas.py`
-- [x] On-demand task-unit content read path exposed as separate API, preserving task-layout metadata-only contract.
+- [x] On-demand task-unit content read path exposed as separate API with backward-compatible additive `content_blocks`, preserving task-layout metadata-only contract.
   Modules: `section_tasks`, `app`, `api_schemas.py`, `main.py`
 
 ### 7.4 API and Application Entry

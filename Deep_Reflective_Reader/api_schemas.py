@@ -318,12 +318,22 @@ class TaskUnitMetadataResponse(BaseModel):
 class TaskUnitContentResponse(BaseModel):
     """On-demand task-unit content response payload for frontend rendering."""
 
+    class TaskUnitContentBlockResponse(BaseModel):
+        """Serializable task-unit content block payload for additive rich-content response."""
+
+        block_id: str
+        content: str
+        block_type: str | None = None
+        artifact_ids: list[str] | None = None
+        metadata: dict[str, object] | None = None
+
     document_id: str
     document_title: str
     task_unit_id: str
     title: str | None
     container_title: str | None
     content: str
+    content_blocks: list[TaskUnitContentBlockResponse]
     source_section_ids: list[str]
     parent_section_id: str | None
     section_id: str | None

@@ -489,6 +489,24 @@ def get_task_unit_content(
             title=payload.title,
             container_title=payload.container_title,
             content=payload.content,
+            content_blocks=[
+                TaskUnitContentResponse.TaskUnitContentBlockResponse(
+                    block_id=content_block.block_id,
+                    content=content_block.content,
+                    block_type=content_block.block_type,
+                    artifact_ids=(
+                        None
+                        if content_block.artifact_ids is None
+                        else list(content_block.artifact_ids)
+                    ),
+                    metadata=(
+                        None
+                        if content_block.metadata is None
+                        else dict(content_block.metadata)
+                    ),
+                )
+                for content_block in payload.content_blocks
+            ],
             source_section_ids=list(payload.source_section_ids),
             parent_section_id=payload.parent_section_id,
             section_id=payload.section_id,
