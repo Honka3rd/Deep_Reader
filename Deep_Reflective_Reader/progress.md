@@ -51,7 +51,7 @@ It is used to:
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 8 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 5 | 0 | Completed Baseline Captured |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 6 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -468,7 +468,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `5`
+- Completed item count: `6`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -478,6 +478,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines chapter summary/quiz request validation boundary for id/title target fields.
 - [x] Defines dedicated task-unit content response schema for on-demand frontend rendering.
 - [x] Adds backward-compatible `content_blocks` schema to task-unit content response while retaining legacy `content` field.
+- [x] Normalize official rich-content API response schema.
 
 #### Needs Confirmation
 
