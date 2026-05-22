@@ -27,6 +27,7 @@ from api_schemas import (
     SectionTaskResponse,
     SummarizeChapterRequest,
     SummarizeChapterResponse,
+    TaskUnitContentBlockResponse,
     TaskUnitContentResponse,
     TaskUnitMetadataResponse,
     StatusResponse,
@@ -490,7 +491,7 @@ def get_task_unit_content(
             container_title=payload.container_title,
             content=payload.content,
             content_blocks=[
-                TaskUnitContentResponse.TaskUnitContentBlockResponse(
+                TaskUnitContentBlockResponse(
                     block_id=content_block.block_id,
                     content=content_block.content,
                     block_type=content_block.block_type,

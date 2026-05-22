@@ -109,17 +109,19 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 
 ## 16. Future Direction Note: Rich Task-Unit Content Schema Evolution
 
-> 本節屬 future-direction documentation，非當前 implementation。  
-> 本輪不新增/修改 `api_schemas.py` DTO，也不引入 API breaking change。 **[Doc-Confirmed]**
+> 本節同時記錄「已落地的 schema normalization」與「後續 future-direction」。  
+> 已落地項目為 backward-compatible additive evolution，不引入 API breaking change。 **[Code-Confirmed]**
 
-1. future `TaskUnitContentResponse` 可由 simple `content: str` 演進為 structured content blocks / segments。 **[From Proposal] + [Inferred]**
-2. future rich-content schema 可引入 `content_block_id` / `content_segment_id`，作為 block/segment 級 stable identity。 **[From Proposal] + [Inferred]**
-3. future block/segment 單元仍需保留可渲染的 real string content payload（顯示字串本體）。 **[From Proposal] + [Inferred]**
-4. future block-level metadata 可擴展為 artifact metadata（discovery/availability）與 evidence/quote/annotation target metadata。 **[Inferred]**
-5. future content blocks 可作 QA evidence target、quote target、annotation target、retrieval grounding target。 **[From Proposal] + [Inferred]**
-6. content blocks 是 API interaction target，不是 persisted hierarchy level；不取代 hierarchy-first contract `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [From HLD]**
-7. evidence/grounding metadata 不等同 parser authority，亦不得成為 persistence truth source。 **[From HLD] + [Inferred]**
-8. response evolution 必須 backward-compatible：existing clients 仍可安全消費 current simple-string content；可採 gradual/optional rich-content expansion。 **[Inferred]**
-9. backward compatibility 可採 adapter 思路（例如 string content -> single-block 表達）作遷移方向，但本輪不定 implementation 細節。 **[From Proposal] + [Inferred]**
-10. `task-layout` response 邊界不變：保持 lightweight metadata/projection，不返回 heavy content payload；rich content 仍走 on-demand content API path。 **[Code-Confirmed] + [From HLD]**
-11. 後續若進入實作，需與 `app` routes、`section_tasks` projection contract、`shared` models、`retrieval/evidence` flows 與 artifact APIs 協調版本化策略。 **[Inferred]**
+1. 已正式定義 top-level `TaskUnitContentBlockResponse`，作為 task-unit on-demand rich-content API 的官方 block contract。 **[Code-Confirmed]**
+2. `TaskUnitContentResponse` 已正式收斂為 `content`（compatibility/simple rendering）+ `content_blocks`（preferred future interaction payload）雙軌 additive 形狀。 **[Code-Confirmed]**
+3. `content` 仍保留，未標記 deprecated，既有 clients 可持續使用 simple rendering path。 **[Code-Confirmed]**
+4. block optional 欄位（`block_type` / `artifact_ids` / `metadata`）在目前 adapter 路徑下可為 `null`，且 response serialization 形狀固定。 **[Code-Confirmed]**
+5. 上述 schema normalization 不包含 persistence migration、不包含 task-layout heavy payload 擴張、不包含 retrieval/LLM integration。 **[Code-Confirmed]**
+
+6. future `TaskUnitContentResponse` 可由 simple `content: str` 演進為更完整 structured content blocks / segments。 **[From Proposal] + [Inferred]**
+7. future rich-content schema 可引入 `content_block_id` / `content_segment_id` 細分互動語義（若與現有 `block_id` 需要分層命名再決策）。 **[From Proposal] + [Needs Confirmation]**
+8. future block-level metadata 可擴展為 artifact metadata（discovery/availability）與 evidence/quote/annotation target metadata。 **[Inferred]**
+9. future content blocks 可作 QA evidence target、quote target、annotation target、retrieval grounding target。 **[From Proposal] + [Inferred]**
+10. content blocks 是 API interaction target，不是 persisted hierarchy level；不取代 hierarchy-first contract `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [From HLD]**
+11. evidence/grounding metadata 不等同 parser authority，亦不得成為 persistence truth source。 **[From HLD] + [Inferred]**
+12. `task-layout` response 邊界不變：保持 lightweight metadata/projection，不返回 heavy content payload；rich content 仍走 on-demand content API path。 **[Code-Confirmed] + [From HLD]**

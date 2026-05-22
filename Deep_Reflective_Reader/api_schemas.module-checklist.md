@@ -35,6 +35,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/shared/task_unit_model.py`
   Notes: 在保留 `content: str` 下新增 `content_blocks` schema，對既有客戶端保持 backward-compatible additive evolution。
 
+- [x] Normalize official rich-content API response schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/api_schemas.module-detailed-design.md`
+  Notes: 正式建立 top-level `TaskUnitContentBlockResponse` 與標準化 `TaskUnitContentResponse`（`content + content_blocks`）；保持 additive evolution，無 API breaking change/無 task-layout heavy payload 擴張。
+
 - [x] Defines external API schemas used by request and response boundaries.
   Evidence: `Deep_Reflective_Reader/api_schemas.py; Deep_Reflective_Reader/api_schemas.module-detailed-design.md (Main Responsibilities)`
   Notes: Root Python module documented as an API contract boundary.

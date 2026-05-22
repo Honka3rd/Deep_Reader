@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from fastapi.testclient import TestClient
 
 import main
+from api_schemas import TaskUnitContentResponse
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
 from document_preparation.prepared_document_result import PreparedDocumentResult
@@ -272,6 +273,21 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         _assert(
             payload["content_blocks"][0]["content"] == payload["content"],
             "content block text should match legacy content field",
+        )
+        _assert(
+            set(payload["content_blocks"][0].keys())
+            == {"block_id", "content", "block_type", "artifact_ids", "metadata"},
+            "content block response should keep normalized API schema shape",
+        )
+        _assert(
+            payload["content_blocks"][0]["block_type"] is None
+            and payload["content_blocks"][0]["artifact_ids"] is None
+            and payload["content_blocks"][0]["metadata"] is None,
+            "default optional block fields should serialize as null in current adapter path",
+        )
+        _assert(
+            TaskUnitContentResponse.model_validate(payload).task_unit_id == unit_id,
+            "endpoint payload should validate against official TaskUnitContentResponse schema",
         )
         _assert(payload["section_id"] == "section-a", "section_id mismatch")
         _assert(payload["chapter_id"] == "chapter-a", "chapter_id mismatch")

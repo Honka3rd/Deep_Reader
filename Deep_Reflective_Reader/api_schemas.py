@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -315,17 +317,23 @@ class TaskUnitMetadataResponse(BaseModel):
     artifacts: ArtifactAvailabilityResponse | None = None
 
 
+class TaskUnitContentBlockResponse(BaseModel):
+    """Official API content-block contract for task-unit on-demand response."""
+
+    block_id: str
+    content: str
+    block_type: str | None = None
+    artifact_ids: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+
+
 class TaskUnitContentResponse(BaseModel):
-    """On-demand task-unit content response payload for frontend rendering."""
+    """On-demand task-unit content response with backward-compatible rich-content shape.
 
-    class TaskUnitContentBlockResponse(BaseModel):
-        """Serializable task-unit content block payload for additive rich-content response."""
-
-        block_id: str
-        content: str
-        block_type: str | None = None
-        artifact_ids: list[str] | None = None
-        metadata: dict[str, object] | None = None
+    Compatibility contract:
+    - `content` remains for existing clients/simple rendering.
+    - `content_blocks` is additive and is the preferred future interaction payload.
+    """
 
     document_id: str
     document_title: str
