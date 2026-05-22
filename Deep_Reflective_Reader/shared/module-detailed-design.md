@@ -86,3 +86,7 @@
 7. content block 不得成為 parser authority；block-level artifact metadata/ids 僅作 interaction/evidence metadata，不是 hierarchy truth source。 **[Maintainer-Confirmed] + [Doc-Confirmed]**
 8. 本輪僅 shared-layer internal stabilization，未在本任務中變更 task-layout DTO、API schema/route、或 persistence migration 機制。 **[Code-Confirmed]**
 9. retrieval/LLM/artifact persistence integration 與更細粒度互動 targeting 仍屬 future direction。 **[Future Direction]**
+10. shared 層已新增 `ArtifactTargetLevel`（`document/chapter/section/task_unit/content_block`）與 `ArtifactTargetRef` 作為 content-block artifact target foundation metadata。 **[Code-Confirmed]**
+11. `TaskUnitContentBlock` 新增 additive `artifact_target_refs`（optional）欄位；舊 payload 缺少該欄位時仍可正常反序列化，`artifact_ids` compatibility 行為不變。 **[Code-Confirmed]**
+12. `artifact_target_refs` 僅是 target metadata，不代表 artifact persistence write path，不具 parser authority，且不改變 hierarchy truth（仍以 `chapters[].sections[].task_units[]` 為準）。 **[Code-Confirmed] + [From HLD]**
+13. 本輪未引入 artifact repository 依賴、未引入 task-layout/API/persistence migration，question/evaluated_answer/retrieval 的 block-level integration 仍是後續工作。 **[Code-Confirmed] + [Future Direction]**

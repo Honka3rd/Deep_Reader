@@ -1,7 +1,72 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
 from shared.task_artifacts import TaskArtifacts
+
+
+class ArtifactTargetLevel(str, Enum):
+    """Stable artifact-target level labels for shared interaction metadata."""
+
+    DOCUMENT = "document"
+    CHAPTER = "chapter"
+    SECTION = "section"
+    TASK_UNIT = "task_unit"
+    CONTENT_BLOCK = "content_block"
+
+
+@dataclass(frozen=True)
+class ArtifactTargetRef:
+    """Caller-neutral artifact target metadata reference."""
+
+    target_level: ArtifactTargetLevel
+    document_id: str | None = None
+    chapter_id: str | None = None
+    section_id: str | None = None
+    task_unit_id: str | None = None
+    content_block_id: str | None = None
+    metadata: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize target reference into JSON-friendly dictionary."""
+        return {
+            "target_level": self.target_level.value,
+            "document_id": self.document_id,
+            "chapter_id": self.chapter_id,
+            "section_id": self.section_id,
+            "task_unit_id": self.task_unit_id,
+            "content_block_id": self.content_block_id,
+            "metadata": None if self.metadata is None else dict(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ArtifactTargetRef":
+        """Deserialize target reference from dictionary payload."""
+        return cls(
+            target_level=ArtifactTargetLevel(str(data["target_level"])),
+            document_id=(
+                None if data.get("document_id") is None else str(data.get("document_id"))
+            ),
+            chapter_id=(
+                None if data.get("chapter_id") is None else str(data.get("chapter_id"))
+            ),
+            section_id=(
+                None if data.get("section_id") is None else str(data.get("section_id"))
+            ),
+            task_unit_id=(
+                None if data.get("task_unit_id") is None else str(data.get("task_unit_id"))
+            ),
+            content_block_id=(
+                None
+                if data.get("content_block_id") is None
+                else str(data.get("content_block_id"))
+            ),
+            metadata=(
+                None
+                if data.get("metadata") is None
+                else {str(key): value for key, value in data.get("metadata", {}).items()}
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -12,6 +77,7 @@ class TaskUnitContentBlock:
     content: str
     block_type: str | None = None
     artifact_ids: list[str] | None = None
+    artifact_target_refs: list[ArtifactTargetRef] | None = None
     metadata: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -21,6 +87,11 @@ class TaskUnitContentBlock:
             "content": self.content,
             "block_type": self.block_type,
             "artifact_ids": None if self.artifact_ids is None else list(self.artifact_ids),
+            "artifact_target_refs": (
+                None
+                if self.artifact_target_refs is None
+                else [target_ref.to_dict() for target_ref in self.artifact_target_refs]
+            ),
             "metadata": None if self.metadata is None else dict(self.metadata),
         }
 
@@ -28,7 +99,21 @@ class TaskUnitContentBlock:
     def from_dict(cls, data: dict[str, Any]) -> "TaskUnitContentBlock":
         """Deserialize content block from dictionary payload."""
         artifact_ids_payload = data.get("artifact_ids")
+        artifact_target_refs_payload = data.get("artifact_target_refs")
         metadata_payload = data.get("metadata")
+        parsed_target_refs: list[ArtifactTargetRef] | None = None
+        if isinstance(artifact_target_refs_payload, list):
+            parsed_target_refs = []
+            for target_payload in artifact_target_refs_payload:
+                if isinstance(target_payload, ArtifactTargetRef):
+                    parsed_target_refs.append(target_payload)
+                    continue
+                if isinstance(target_payload, dict):
+                    parsed_target_refs.append(ArtifactTargetRef.from_dict(target_payload))
+                    continue
+                raise TypeError(
+                    "TaskUnitContentBlock.from_dict expected artifact_target_refs list entries as dict payloads"
+                )
         return cls(
             block_id=str(data["block_id"]),
             content=str(data.get("content", "")),
@@ -38,6 +123,7 @@ class TaskUnitContentBlock:
                 if artifact_ids_payload is None
                 else [str(value) for value in artifact_ids_payload]
             ),
+            artifact_target_refs=parsed_target_refs,
             metadata=(
                 None
                 if metadata_payload is None

@@ -47,6 +47,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/shared/module-detailed-design.md (Rich Task-Unit Content Foundation and Future Direction)`
   Notes: Added additive `TaskUnit.content_blocks` field with post-init auto-stabilization from `content`; `TaskUnit.content` remains supported; `to_dict(include_content_blocks=True)` enables additive round-trip while default serialization remains compatibility-safe; no endpoint/task-layout/API/persistence migration changes in this slice.
 
+- [x] Define shared content-block artifact target foundation
+  Evidence: `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/shared/module-detailed-design.md (Rich Task-Unit Content Foundation and Future Direction)`
+  Notes: Added shared `ArtifactTargetLevel` + `ArtifactTargetRef` metadata model with supported levels (`document/chapter/section/task_unit/content_block`), plus additive `TaskUnitContentBlock.artifact_target_refs`; serialization/deserialization remains backward-compatible and keeps `artifact_ids` behavior unchanged; no artifact persistence/API/task-layout/repository changes.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -55,7 +59,7 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] Define content-block identity and artifact attachment semantics
+- [ ] Finalize content-block identity and artifact attachment semantics beyond shared foundation metadata
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

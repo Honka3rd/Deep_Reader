@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 
 from shared.task_unit_model import (
+    ArtifactTargetLevel,
+    ArtifactTargetRef,
     TaskUnit,
     TaskUnitContentBlock,
     build_default_content_block_id,
@@ -81,6 +83,71 @@ def test_content_block_round_trip_serialization() -> None:
     _assert(restored == block, "content block should support to_dict/from_dict round-trip")
 
 
+def test_content_block_artifact_target_refs_round_trip_serialization() -> None:
+    content_block_target = ArtifactTargetRef(
+        target_level=ArtifactTargetLevel.CONTENT_BLOCK,
+        document_id="doc-1",
+        chapter_id="chapter-1",
+        section_id="section-1",
+        task_unit_id="unit-1",
+        content_block_id="unit-1:content:0",
+        metadata={"quote_span_start": 4, "quote_span_end": 11},
+    )
+    task_unit_target = ArtifactTargetRef(
+        target_level=ArtifactTargetLevel.TASK_UNIT,
+        document_id="doc-1",
+        chapter_id="chapter-1",
+        section_id="section-1",
+        task_unit_id="unit-1",
+        content_block_id=None,
+        metadata={"scope": "unit"},
+    )
+    block = TaskUnitContentBlock(
+        block_id="unit-1:content:0",
+        content="sample paragraph",
+        artifact_ids=["artifact-1"],
+        artifact_target_refs=[content_block_target, task_unit_target],
+    )
+    payload = block.to_dict()
+    restored = TaskUnitContentBlock.from_dict(payload)
+    _assert(
+        restored.artifact_target_refs is not None
+        and len(restored.artifact_target_refs) == 2,
+        "artifact target refs should round-trip with two entries",
+    )
+    _assert(
+        restored.artifact_target_refs[0].target_level == ArtifactTargetLevel.CONTENT_BLOCK,
+        "first target level should preserve content_block level",
+    )
+    _assert(
+        restored.artifact_target_refs[1].target_level == ArtifactTargetLevel.TASK_UNIT,
+        "second target level should preserve task_unit level",
+    )
+    _assert(
+        restored.artifact_ids == ["artifact-1"],
+        "artifact_ids compatibility behavior should remain unchanged",
+    )
+
+
+def test_content_block_without_artifact_target_refs_remains_backward_compatible() -> None:
+    legacy_payload = {
+        "block_id": "legacy-unit:content:0",
+        "content": "legacy",
+        "block_type": None,
+        "artifact_ids": ["artifact-legacy"],
+        "metadata": {"hint": "legacy"},
+    }
+    restored = TaskUnitContentBlock.from_dict(legacy_payload)
+    _assert(
+        restored.artifact_target_refs is None,
+        "legacy payload without artifact_target_refs should remain supported",
+    )
+    _assert(
+        restored.artifact_ids == ["artifact-legacy"],
+        "legacy artifact_ids should remain intact",
+    )
+
+
 def test_task_unit_old_payload_without_content_blocks_still_works() -> None:
     legacy_payload = {
         "unit_id": "legacy-unit-1",
@@ -136,6 +203,8 @@ def main() -> None:
     test_empty_string_content_returns_empty_block_list()
     test_block_id_builder_is_deterministic()
     test_content_block_round_trip_serialization()
+    test_content_block_artifact_target_refs_round_trip_serialization()
+    test_content_block_without_artifact_target_refs_remains_backward_compatible()
     test_task_unit_old_payload_without_content_blocks_still_works()
     test_task_unit_content_blocks_round_trip_with_include_flag()
     print(
@@ -147,6 +216,8 @@ def main() -> None:
                     "empty_string_content_returns_empty_block_list",
                     "block_id_builder_is_deterministic",
                     "content_block_round_trip_serialization",
+                    "content_block_artifact_target_refs_round_trip_serialization",
+                    "content_block_without_artifact_target_refs_remains_backward_compatible",
                     "task_unit_old_payload_without_content_blocks_still_works",
                     "task_unit_content_blocks_round_trip_with_include_flag",
                 ],
