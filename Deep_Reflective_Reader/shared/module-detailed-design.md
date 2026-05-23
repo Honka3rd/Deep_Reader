@@ -94,3 +94,76 @@
 12. `artifact_target_refs` 僅是 target metadata，不代表 artifact persistence write path，不具 parser authority，且不改變 hierarchy truth（仍以 `chapters[].sections[].task_units[]` 為準）。 **[Code-Confirmed] + [From HLD]**
 13. 本輪未引入 artifact repository 依賴、未引入 task-layout/API/persistence migration，question/evaluated_answer/retrieval 的 block-level integration 仍是後續工作。 **[Code-Confirmed] + [Future Direction]**
 14. `ArtifactTargetLevel` / `ArtifactTargetRef` 已抽取至 `shared/artifact_target_model.py`，`shared/task_unit_model.py` 與 `api_schemas.py` 共用同一 target-level contract，避免 enum duplicated-definition drift。 **[Code-Confirmed]**
+
+## 15. Future Direction Note: Content Block Segmentation Design Preparation
+
+> 本節是 segmentation algorithm 的 documentation/design preparation，非 implementation。 **[Doc-Confirmed]**
+
+### 15.1 Segmentation Input/Output Contract
+
+1. input baseline：`TaskUnit.content`（string）；可選 future inputs 僅限 deterministic metadata/context（例如 parser-originated boundary hints）。 **[Future Direction]**
+2. output baseline：ordered deterministic `TaskUnitContentBlock[]`，需保留原文順序並保持可回溯到原始 `content`。 **[Future Direction]**
+3. compatibility requirement：`TaskUnit.content` 仍保留 compatibility role；multi-block generation 不得破壞既有 simple string consumer。 **[Code-Confirmed] + [Future Direction]**
+4. segmentation output 屬 task-unit internal rich-content representation，不是 hierarchy truth。 **[Maintainer-Confirmed] + [From HLD]**
+
+### 15.2 Segmentation Priority Strategy (Deterministic-Only)
+
+1. 建議優先級：paragraph-first -> heading-aware merge/split -> list-aware split -> sentence fallback。 **[Future Direction]**
+2. table/code block 先記為 future consideration，需 deterministic parsing rule 才能納入。 **[Future Direction]**
+3. segmentation 必須 deterministic，不依賴 LLM、不依賴 semantic hallucination-style splitting。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 15.3 Deterministic Block ID Strategy
+
+1. 候選策略：
+   - positional id（可讀性高、但插入漂移敏感）
+   - hash-assisted id（穩定性較好、可讀性較低）
+   - span-assisted id（對 quote linkage 友善、需 offset policy）
+2. block id 不得依賴 random uuid / LLM output / retrieval result。 **[Maintainer-Confirmed] + [Future Direction]**
+3. 方向：保留人類可讀前綴 + deterministic segment token（平衡可讀性與重算穩定性）。 **[Future Direction]**
+
+### 15.4 Source Hash Strategy Direction
+
+1. source hash 建議以 normalized text hash 為核心，需先定義 whitespace normalization policy。 **[Future Direction]**
+2. 可評估 document-level hash + block-local hash 雙層策略，以區分全局編輯與局部漂移。 **[Future Direction]**
+3. hash 只作 reference/invalidation support，不作 hierarchy authority。 **[From HLD] + [Future Direction]**
+
+### 15.5 Quote Span Semantics Direction
+
+1. quote/span metadata 可評估：absolute character offsets、block-local offsets、paragraph-local span。 **[Future Direction]**
+2. quote span 需有 deterministic extraction rule，且與 `content_block_id` 一起描述 evidence target。 **[Future Direction]**
+3. quote spans 不等於 hierarchy position，也不等於 parser authority。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 15.6 Empty Content Behavior
+
+1. default direction：empty content -> empty block list。 **[Future Direction]**
+2. 不建議 synthetic empty semantic block，避免 downstream 對空內容誤判為有效 evidence target。 **[Future Direction]**
+
+### 15.7 Block Size Policy Direction
+
+1. 需定義 min/max block size、heading merge/split policy、oversized paragraph deterministic fallback。 **[Future Direction]**
+2. policy 必須 parser-safe、deterministic、non-LLM。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 15.8 Reparse Stability Risks
+
+1. 主要漂移來源：paragraph insertion、heading renumbering、OCR normalization、whitespace normalization、parser version drift。 **[Future Direction]**
+2. artifact/evidence linkage 在 reparse 後可能失配；後續需明確 stale/unresolved 分類邊界。 **[Future Direction]**
+
+### 15.9 Compatibility Strategy (String -> Multi-Block)
+
+1. staging direction：
+   - Stage A：保留 `content` + 單塊 adapter（已存在）
+   - Stage B：引入 deterministic multi-block generation（future）
+   - Stage C：維持 compatibility mirror，逐步讓 consumers 以 `content_blocks` 為主
+2. old persisted payload（無 `content_blocks`）仍需可載入並自動得到安全 fallback。 **[Code-Confirmed] + [Future Direction]**
+3. 本節不引入 persistence migration、API change、task-layout payload change。 **[Doc-Confirmed]**
+
+### 15.10 Guardrails (This Preparation Pass)
+
+1. content block != hierarchy level。
+2. segmentation 不改 parser authority。
+3. segmentation 不改 hierarchy truth（仍以 `chapters[].sections[].task_units[]` 為準）。
+4. segmentation 不依賴 LLM/retrieval。
+5. segmentation 不新增 artifact persistence behavior。
+6. segmentation metadata 僅 advisory/runtime support。
+
+以上均屬 design preparation，不代表 implementation-ready algorithm 已落地。 **[Doc-Confirmed] + [Future Direction]**

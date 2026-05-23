@@ -55,6 +55,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/shared/artifact_target_model.py`; `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: Moved `ArtifactTargetLevel`/`ArtifactTargetRef` to `shared/artifact_target_model.py` as single source of truth; kept `shared.task_unit_model` import compatibility and aligned API schema to reuse the same enum contract.
 
+- [x] Prepare shared segmentation design direction for future deterministic content-block generation
+  Evidence: `Deep_Reflective_Reader/shared/module-detailed-design.md (Future Direction Note: Content Block Segmentation Design Preparation)`; `Deep_Reflective_Reader/shared/module-checklist.md`; `Deep_Reflective_Reader/progress.md`
+  Notes: Documentation/design-preparation only; defined segmentation contract, deterministic id/source-hash/span policy direction, reparse-stability risk model, and compatibility staging from `content` to multi-block generation; no source code/tests/API/persistence/task-layout behavior changes.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -64,6 +68,9 @@ No unresolved confirmation items identified in this pass.
 New future tasks for this module must be added here first as unchecked items:
 
 - [ ] Finalize content-block identity and artifact attachment semantics beyond shared foundation metadata
+- [ ] Design deterministic content block segmentation contract
+- [ ] Define content block id/source hash/span semantics
+- [ ] Define string-to-multiple-block compatibility strategy
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

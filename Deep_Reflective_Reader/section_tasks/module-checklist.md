@@ -67,6 +67,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Artifact Target Metadata Glossary and Target Constraints)`; `Deep_Reflective_Reader/section_tasks/module-checklist.md`; `Deep_Reflective_Reader/progress.md`
   Notes: 明確固定 metadata keys（`source_hash`, `content_block_id`, `quote_span_start`, `quote_span_end`, `schema_version`）、allowed target combinations（content_block 需 `task_unit_id + content_block_id`；task_unit 需 `task_unit_id`），並標示 metadata-only boundary；no source code changes in this documentation patch.
 
+- [x] Prepare section_tasks segmentation design direction for future content-block projection behavior
+  Evidence: `Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Future Direction Note: Content Block Segmentation Design Preparation)`; `Deep_Reflective_Reader/section_tasks/module-checklist.md`; `Deep_Reflective_Reader/progress.md`
+  Notes: Documentation/design-preparation only; defined segmented content endpoint projection semantics, failure/validation boundaries, task_unit/content_block identity constraints, and artifact-target alignment guardrails; no runtime/API/task-layout/persistence changes.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -78,6 +82,9 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Support content-block-level interaction targeting
 - [ ] Define content-block artifact availability projection
 - [ ] Preserve lightweight task-layout metadata contract
+- [ ] Define segmented content-block endpoint projection semantics
+- [ ] Define duplicate/missing content-block validation behavior
+- [ ] Define segmented block artifact-target alignment behavior
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

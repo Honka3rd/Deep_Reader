@@ -277,3 +277,44 @@ future validation boundary 應 fail-fast 於以下類型：
 4. 不接入 retrieval/question/evaluated_answer/LLM integration。
 
 以上僅為 future design boundary preparation。 **[Doc-Confirmed]**
+
+## 20. Future Direction Note: Content Block Segmentation Boundary Design Preparation
+
+> 本節僅做 segmentation governance/boundary 設計準備，不代表 segmentation algorithm 已實作。 **[Doc-Confirmed]**
+
+### 20.1 Segmentation vs Hierarchy Parser Boundary
+
+1. hierarchy parser responsibility 仍是建立/維護 `chapters[].sections[].task_units[]` 主契約。 **[Code-Confirmed] + [From HLD]**
+2. segmentation responsibility 定位於 task-unit 內部內容切分（render/interaction segmentation），不重新定義 hierarchy。 **[Maintainer-Confirmed] + [Future Direction]**
+3. `task_unit` boundary 與 `content_block` boundary 必須分離：`task_unit` 是 hierarchy-interaction container；`content_block` 是其內部 interaction target。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 20.2 Content-Block Persistence Semantics (Non-Authority Rule)
+
+1. 即使 future `content_blocks` 有 persisted 表示，content block 仍不是 hierarchy truth、不是 structure authority、不是 runtime navigation hierarchy。 **[Maintainer-Confirmed] + [Future Direction]**
+2. 禁止形成 `Document -> Chapter -> Section -> TaskUnit -> ContentBlock` persisted hierarchy model。 **[Maintainer-Confirmed] + [Future Direction]**
+3. content block 不得覆蓋 chapter/section ownership，也不得替代 task-unit identity。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 20.3 Stale-Target Semantics for Reparse/Resegmentation
+
+1. reparse/resegmentation 後，`content_block_id` 可能 stale。 **[Maintainer-Confirmed] + [Future Direction]**
+2. stale target != malformed payload；後續邊界需區分 malformed / unresolved / stale / source-mismatched。 **[Maintainer-Confirmed] + [Future Direction]**
+3. stale detection 方向可依賴 `source_hash`、`quote_span`、`segmentation_version`、`content fingerprint`，但本輪不定義 executable detection engine。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 20.4 content_block_id Dependency Semantics
+
+1. `content_block_id` 必須依附 `task_unit_id` 語境，不可脫離 task unit 成為獨立 hierarchy node。 **[Maintainer-Confirmed] + [Future Direction]**
+2. `content_block_id` 是 interaction target id，不是 hierarchy node id。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+3. segmentation 不能改變 `task_unit_id` identity，不得反向重寫 hierarchy ownership。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 20.5 Legacy String Compatibility Direction
+
+1. 現況 `task_unit.content`（string）仍是 compatibility field，`string -> block` 屬 adapter strategy。 **[Code-Confirmed]**
+2. future multi-block strategy 不得變成 legacy fallback runtime path，也不得回退 root-sections/structure_nodes compatibility 主流程。 **[Maintainer-Confirmed] + [Future Direction]**
+3. compatibility 演進需避免 dual hierarchy representation。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 20.6 Segmentation Non-Authority and Artifact Boundary Guardrails
+
+1. segmentation 不得改變 hierarchy truth，不得成為 parser authority 或 retrieval authority。 **[Maintainer-Confirmed] + [Future Direction]**
+2. `ArtifactTargetRef` 與 content-block target metadata 不得漂移為 persistence truth 或 hierarchy authority。 **[Maintainer-Confirmed] + [Future Direction]**
+3. 允許 resegmentation policy change 與 content block regeneration；不得假設 `content_block_id` 永久穩定。 **[Maintainer-Confirmed] + [Future Direction]**
+4. 本節不引入 segmentation algorithm、persistence schema、repository logic、runtime API、stale-detection engine、retrieval integration。 **[Doc-Confirmed]**

@@ -48,9 +48,9 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 10 | 0 | Completed Baseline Captured |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `shared/` | package | `shared/module-checklist.md` | 7 | 0 | Completed Baseline Captured |
+| `shared/` | package | `shared/module-checklist.md` | 8 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 8 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -207,6 +207,8 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Rich task-unit content governance preparation is captured as unchecked future work in `document_structure/module-checklist.md`.
 - [ ] Future preparation includes hierarchy-boundary rules to keep content blocks out of persisted hierarchy truth.
 - [ ] `document_structure/module-detailed-design.md` now includes `Future Direction Note: Rich Task-Unit Content Governance Preparation` for boundary clarification only.
+- [ ] Segmentation boundary preparation is documented as future-direction governance only (no segmentation implementation/runtime behavior changes in this pass).
+- [ ] Future unchecked tasks now include segmentation-vs-hierarchy persistence boundary, resegmentation stale-target semantics, and content-block persistence non-authority rule.
 
 ### `embeddings/`
 
@@ -391,7 +393,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `10`
+- Completed item count: `11`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -406,6 +408,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Adds backward-compatible rich content blocks to task-unit content lookup response while keeping task-layout payload lightweight.
 - [x] Safely passes through content-block artifact target metadata in task-unit content response with metadata glossary filtering and no artifact repository integration.
 - [x] Documents minimum artifact target metadata glossary and allowed target combinations for content endpoint pass-through boundary.
+- [x] Prepares section_tasks segmentation design direction for future content-block projection behavior (endpoint projection semantics, failure/validation boundary, identity constraints, and artifact-target alignment guardrails) without runtime/API changes.
 
 #### Needs Confirmation
 
@@ -415,6 +418,9 @@ No unresolved confirmation items identified in module checklist.
 
 - [ ] Added unchecked future preparation tasks for rich content interaction planning in `section_tasks/module-checklist.md`.
 - [ ] Task-layout remains lightweight metadata/projection contract; rich content is future-direction-only and remains on-demand API oriented.
+- [ ] Segmented content-block endpoint projection semantics remain future implementation work.
+- [ ] Duplicate/missing content-block validation behavior remains future implementation work.
+- [ ] Segmented block artifact-target alignment behavior remains future implementation work.
 - [ ] Future-direction items above remain planning-only; current additive content-block endpoint integration is captured in completed checklist items.
 
 ### `session/`
@@ -440,7 +446,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `shared/module-checklist.md`
 - Detailed Design: `shared/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `7`
+- Completed item count: `8`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -452,6 +458,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Stabilizes TaskUnit rich content internal representation with additive `content_blocks`, auto-stabilization from `content`, compatibility-safe serialization, and no endpoint/task-layout/API/persistence migration.
 - [x] Defines shared content-block artifact target foundation with additive metadata refs and serialization-safe backward compatibility.
 - [x] Extracts artifact target level/ref contract into dedicated shared module to establish single-source cross-module governance.
+- [x] Prepares shared segmentation design direction for future deterministic content-block generation (contract, deterministic id/hash/span policy direction, reparse risk model, and compatibility staging) without source-code/API/persistence changes.
 
 #### Needs Confirmation
 
@@ -460,6 +467,9 @@ No unresolved confirmation items identified in module checklist.
 #### Future Direction Preparation
 
 - [ ] Finalize content-block identity and artifact attachment semantics beyond shared foundation metadata remains pending in `shared/module-checklist.md`.
+- [ ] Deterministic content-block segmentation contract/design remains pending implementation.
+- [ ] Content block id/source-hash/span semantics design remains pending implementation.
+- [ ] String-to-multiple-block compatibility strategy remains pending implementation.
 - [ ] Richer artifact targeting boundary for content blocks remains future-direction work and is not implemented in this slice.
 
 ## 6. Root Python Module Progress

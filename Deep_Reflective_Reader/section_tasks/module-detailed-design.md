@@ -231,3 +231,47 @@
 
 1. future artifact repository write/read flow 必須做 hierarchy-aware validation。 **[Future Direction]**
 2. 本 endpoint 僅 pass through metadata：不查 artifact repository、不驗證 artifact existence、不創建 artifact target、不做 artifact persistence。 **[Code-Confirmed]**
+
+## 21. Future Direction Note: Content Block Segmentation Design Preparation
+
+> 本節是 section_tasks 層的 segmentation design preparation，非當前 implementation。 **[Doc-Confirmed]**
+
+### 21.1 Segmented Content Endpoint Projection Semantics
+
+1. future `/documents/{doc_name}/task-units/{task_unit_id}/content` 可演進為回傳 segmented `content_blocks`（保持 `content` backward compatibility）。 **[Maintainer-Confirmed] + [Future Direction]**
+2. segmented blocks 與 `content` 的關係：`content` 仍提供 compatibility/simple rendering；`content_blocks` 作 richer interaction projection。 **[Code-Confirmed] + [Future Direction]**
+3. segmentation 在本 module 的定位是 runtime projection concern，不是 hierarchy/persistence truth。 **[Maintainer-Confirmed] + [Future Direction]**
+4. additive evolution 原則：既有 endpoint shape 不應被破壞，task-layout 仍保持 lightweight metadata contract。 **[Code-Confirmed] + [Maintainer-Confirmed]**
+
+### 21.2 Segmentation Failure and Validation Semantics
+
+future boundary 應定義並 fail-fast 於：
+
+1. missing segmentation result（應有 segmented mode 卻無有效 blocks）。 **[Future Direction]**
+2. invalid segmentation result（block order/shape 不符合 deterministic contract）。 **[Future Direction]**
+3. duplicate `content_block_id`。 **[Future Direction]**
+4. empty segmented block（例如內容全空但非整體 empty-content case）。 **[Future Direction]**
+5. malformed segmentation metadata（span/hash/target metadata 不合規）。 **[Future Direction]**
+
+validation boundary 要求：fail-fast + 明確錯誤分類；不得 silent fallback 成 title lookup 或 hidden mutation。 **[Maintainer-Confirmed] + [Future Direction]**
+
+### 21.3 Identity Relationship and Deterministic Constraints
+
+1. hierarchy lookup 仍以 `task_unit_id` 為入口；`content_block_id` 是 task-unit 內 interaction identity。 **[Code-Confirmed] + [Future Direction]**
+2. block-id generation 應保持 deterministic；不得依賴 random uuid/LLM/retrieval。 **[Maintainer-Confirmed] + [Future Direction]**
+3. `content_block_id` 不得升格為 hierarchy identity；segmentation 不得改變 `task_unit_id` identity。 **[Maintainer-Confirmed] + [From HLD]**
+
+### 21.4 Segmented Block Artifact-Target Alignment
+
+1. segmented block artifact-target alignment 應以 metadata pass-through + deterministic id 對齊為主，不宣稱 artifact persistence truth。 **[Future Direction]**
+2. segmentation 不得成為 artifact write/read flow，不得驗證 artifact existence。 **[Maintainer-Confirmed] + [Future Direction]**
+3. future artifact repository validation 仍需 hierarchy-aware trust boundary（repository 層責任，不在本模組本輪落地）。 **[Doc-Confirmed] + [Future Direction]**
+
+### 21.5 Guardrails for This Preparation Slice
+
+1. 不把 segmented `content_blocks` 加入 task-layout response。 **[Maintainer-Confirmed] + [Code-Confirmed]**
+2. segmentation 不改變 task-unit identity，不修改 hierarchy truth。 **[Maintainer-Confirmed] + [From HLD]**
+3. segmentation 不做 hidden mutation，不寫回 profile。 **[Maintainer-Confirmed] + [Code-Confirmed]**
+4. 不接 retrieval/LLM/question/evaluated_answer integration。 **[Maintainer-Confirmed]**
+5. 不做 artifact persistence/repository read-write integration。 **[Maintainer-Confirmed]**
+6. content block identity 是 interaction identity，不是 persisted hierarchy identity。 **[Maintainer-Confirmed] + [Future Direction]**

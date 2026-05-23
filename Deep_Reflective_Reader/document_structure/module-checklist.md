@@ -83,6 +83,9 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Prevent content-block model from becoming persisted hierarchy source
 - [ ] Define migration strategy for string content compatibility
 - [ ] Clarify content-block artifact targeting boundary without mutating chapter/section/task_unit identity
+- [ ] Define segmentation boundary against hierarchy persistence
+- [ ] Define resegmentation stale-target semantics
+- [ ] Define future content-block persistence non-authority rule
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 
