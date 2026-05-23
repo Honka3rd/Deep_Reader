@@ -40,7 +40,7 @@ It is used to:
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 2 | Needs Confirmation |
+| `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `llm/` | package | `llm/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `profile/` | package | `profile/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
@@ -230,9 +230,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `evaluated_answer/module-checklist.md`
 - Detailed Design: `evaluated_answer/module-detailed-design.md`
-- Status: `Needs Confirmation`
+- Status: `Completed Baseline Captured`
 - Completed item count: `3`
-- Needs confirmation count: `2`
+- Needs confirmation count: `0`
 
 #### Completed Work
 
@@ -242,18 +242,14 @@ No unresolved confirmation items identified in module checklist.
 
 #### Needs Confirmation
 
-- [ ] Define minimum deterministic contract for quote/evidence validation.
-  Reason: Unresolved by design documentation; baseline validation rule not fixed.
-  Needed confirmation: Choose strict span match or semantic match as deterministic baseline.
-
-- [ ] Decide whether content-block-level evidence needs persisted trace metadata or runtime projection only.
-  Reason: Evidence trace ownership and durability boundary is still open.
-  Needed confirmation: Confirm persistence requirement at evaluation boundary.
+No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
 - [ ] Added unchecked future tasks for rich-content-aware evaluation preparation in `evaluated_answer/module-checklist.md`.
-- [ ] Preparation scope records content-block evidence/reference semantics and hierarchy-aware targeting boundaries only.
+- [ ] Maintainer-confirmed design contract fixes deterministic evidence baseline to `content_block_id + quote_span_start + quote_span_end + source_hash` (strict deterministic-first).
+- [ ] Maintainer-confirmed policy keeps content-block evidence trace runtime-projection-only (no persisted trace metadata in current phase).
+- [ ] Reparse stale-evidence taxonomy (`malformed`/`unresolved`/`stale`/`source-mismatched`) is documented as future-direction boundary, not runtime implementation.
 - [ ] This update is documentation/checklist preparation only; no runtime behavior, scoring logic, LLM evaluation implementation, or API/schema behavior was changed.
 
 ### `language/`

@@ -54,11 +54,11 @@ No known legacy compatibility responsibility.
 
 1. risk：閾值固定，跨文檔泛化不佳
 - why：可能過度 reject 或過度寬鬆
-- guardrail：把閾值文件化並可配置化 **[Needs Confirmation]**
+- guardrail：把閾值文件化並可配置化（屬 future calibration planning）。 **[Future Direction]**
 
 ## 12. Open Questions for Maintainer
 
-1. relevance threshold 是否要進 AppDIConfig？ **[Needs Confirmation]**
+1. relevance threshold 是否要進 AppDIConfig？ **[Future Direction]**
 
 ## 13. Suggested Next Documentation Improvements
 
@@ -91,8 +91,9 @@ No known legacy compatibility responsibility.
 ### 14.3 Quote/Source Validation Direction
 
 1. future quote/source validation 方向是 source/evidence alignment，而非由 evaluation 層重寫來源文本。 **[Inferred]**
-2. deterministic validation contract 尚未 finalized；本節僅記錄方向，不代表規則已定案或已實作。 **[Doc-Confirmed] + [Needs Confirmation]**
-3. quote validation 不能被描述為現行 runtime capability；目前仍是 future-direction planning。 **[Doc-Confirmed]**
+2. deterministic validation baseline 已由 maintainer 收斂為：`content_block_id + quote_span_start + quote_span_end + source_hash`；先採 strict deterministic validation-first。 **[Maintainer-Confirmed] + [Doc-Confirmed]**
+3. semantic quote match / fuzzy quote recovery / LLM-based quote validation 僅屬 advanced future direction，不是當前 baseline。 **[Maintainer-Confirmed] + [Future Direction]**
+4. quote validation 不能被描述為現行 runtime capability；目前仍是 future-direction planning。 **[Doc-Confirmed]**
 
 ### 14.4 Artifact-Linked Evaluation Boundary
 
@@ -100,7 +101,21 @@ No known legacy compatibility responsibility.
 2. evaluation layer 不得成為 parser authority，不得回退 flat task-unit truth model，不得重引 root sections mirror/structure_nodes 主流程語義。 **[Code-Confirmed] + [Inferred]**
 3. 後續若實作，需與 `question`、`section_tasks`、`shared` 協調跨模組 evidence/reference contract。 **[Inferred]**
 
-### 14.5 Needs Confirmation
+### 14.5 Maintainer-Confirmed Evidence Boundary Closure
 
-1. quote/evidence validation 的最小 deterministic contract（例如 strict span match vs semantic match）是否需先固定？ **[Needs Confirmation]**
-2. content-block-level evidence 是否需要 persisted trace metadata，或僅 runtime projection 即可？ **[Needs Confirmation]**
+1. content-block-level evidence trace 先採 runtime projection only；本階段不引入 persisted trace metadata。 **[Maintainer-Confirmed] + [Doc-Confirmed]**
+2. 本階段不新增 evaluation persistence schema、不新增 evaluation repository、不新增 artifact-linked write flow。 **[Maintainer-Confirmed] + [Doc-Confirmed]**
+3. rationale：artifact/retrieval/evaluation repository 邊界尚未穩定，過早 persistence 容易固化錯誤 schema，且 reparse 後 trace 容易 stale。 **[Maintainer-Confirmed] + [Inferred]**
+
+### 14.6 Reparse / Stale Evidence Semantics (Design Preparation)
+
+1. reparse 後 `content_block_id` 可能改變，`quote_span_start/end` 可能失效，`source_hash` 可能 mismatch。 **[Maintainer-Confirmed] + [Doc-Confirmed]**
+2. stale evidence 不等於 malformed evidence；future boundary 應區分 `malformed`、`unresolved`、`stale`、`source-mismatched`。 **[Maintainer-Confirmed] + [Future Direction]**
+3. 上述分類目前僅是設計邊界，不代表 runtime classification implementation 已存在。 **[Doc-Confirmed] + [Future Direction]**
+
+### 14.7 Explicit Non-Goals in This Pass
+
+1. 不新增 scoring implementation。 **[Doc-Confirmed]**
+2. 不新增 LLM evaluation implementation。 **[Doc-Confirmed]**
+3. 不新增 quote validation runtime implementation。 **[Doc-Confirmed]**
+4. 不新增 persisted evidence trace schema。 **[Doc-Confirmed]**

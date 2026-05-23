@@ -41,13 +41,7 @@ It is used to:
 
 ## Needs Confirmation
 
-- [ ] Define minimum deterministic contract for quote/evidence validation.
-  Reason: Added as unresolved in `evaluated_answer/module-detailed-design.md` section `14.5 Needs Confirmation`.
-  Needed confirmation: Whether strict span match or semantic match should be the baseline deterministic rule.
-
-- [ ] Decide whether content-block-level evidence needs persisted trace metadata or runtime projection only.
-  Reason: Added as unresolved in `evaluated_answer/module-detailed-design.md` section `14.5 Needs Confirmation`.
-  Needed confirmation: Whether to require persisted trace metadata at evaluation boundary.
+No unresolved confirmation items identified in this pass.
 
 ## Future Task Policy
 
@@ -56,8 +50,9 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Support content-block-linked answer evidence
 - [ ] Define content-block reference validation semantics
 - [ ] Define artifact-linked evaluation flow
-- [ ] Define quote/evidence validation boundaries
-- [ ] Clarify evaluation evidence persistence boundaries
+- [ ] Define deterministic content-block evidence validation contract (baseline: `content_block_id + quote_span_start + quote_span_end + source_hash`; strict deterministic-first)
+- [ ] Define runtime-only evidence trace projection flow (no persisted trace metadata in current phase)
+- [ ] Define stale evidence classification semantics after reparse (`malformed` / `unresolved` / `stale` / `source-mismatched`)
 - [ ] Define hierarchy-aware evidence targeting semantics
 
 After implementation, the task owner must update this checklist and mark the task as completed:
