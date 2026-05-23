@@ -48,14 +48,14 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 8 | 0 | Completed Baseline Captured |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `shared/` | package | `shared/module-checklist.md` | 6 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 6 | 0 | Completed Baseline Captured |
+| `shared/` | package | `shared/module-checklist.md` | 7 | 0 | Completed Baseline Captured |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 8 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 5 | 0 | Completed Baseline Captured |
+| `main.py` | root-python-module | `main.module-checklist.md` | 7 | 0 | Completed Baseline Captured |
 
 ## 5. Package Module Progress
 
@@ -394,7 +394,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `8`
+- Completed item count: `9`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -407,6 +407,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Closed terminology governance item by deprecating `artifact mirror` as formal contract wording.
 - [x] Adds on-demand task-unit content lookup support via stable `task_unit_id` without expanding task-layout payload.
 - [x] Adds backward-compatible rich content blocks to task-unit content lookup response while keeping task-layout payload lightweight.
+- [x] Safely passes through content-block artifact target metadata in task-unit content response with metadata glossary filtering and no artifact repository integration.
 
 #### Needs Confirmation
 
@@ -441,7 +442,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `shared/module-checklist.md`
 - Detailed Design: `shared/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `6`
+- Completed item count: `7`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -452,6 +453,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Implements shared rich task-unit content block foundation with deterministic string-to-block adapter behavior.
 - [x] Stabilizes TaskUnit rich content internal representation with additive `content_blocks`, auto-stabilization from `content`, compatibility-safe serialization, and no endpoint/task-layout/API/persistence migration.
 - [x] Defines shared content-block artifact target foundation with additive metadata refs and serialization-safe backward compatibility.
+- [x] Extracts artifact target level/ref contract into dedicated shared module to establish single-source cross-module governance.
 
 #### Needs Confirmation
 
@@ -469,7 +471,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `6`
+- Completed item count: `8`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -480,6 +482,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines dedicated task-unit content response schema for on-demand frontend rendering.
 - [x] Adds backward-compatible `content_blocks` schema to task-unit content response while retaining legacy `content` field.
 - [x] Normalize official rich-content API response schema.
+- [x] Validates content-block artifact target metadata response schema with explicit enum/constraint fail-fast behavior.
+- [x] Reuses shared artifact target level contract to remove duplicated enum definitions across shared/API schema boundaries.
 
 #### Needs Confirmation
 
@@ -550,7 +554,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `5`
+- Completed item count: `7`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -560,6 +564,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Implements explicit projection/mutation route boundary including manual reparse endpoint.
 - [x] Adds read-only task-unit content endpoint resolved by `doc_name + task_unit_id`.
 - [x] Exposes additive `content_blocks` in task-unit content endpoint response without changing route semantics.
+- [x] Normalizes rich-content endpoint response mapping with official top-level content block schema usage.
+- [x] Maps content-block artifact target metadata in task-unit content endpoint response with safe glossary-key filtering.
 
 #### Needs Confirmation
 

@@ -148,6 +148,18 @@ def test_content_block_without_artifact_target_refs_remains_backward_compatible(
     )
 
 
+def test_artifact_target_ref_invalid_target_level_fails_fast() -> None:
+    invalid_payload = {
+        "target_level": "invalid-level",
+        "task_unit_id": "unit-x",
+    }
+    try:
+        ArtifactTargetRef.from_dict(invalid_payload)
+        raise AssertionError("invalid target_level should fail fast")
+    except ValueError:
+        pass
+
+
 def test_task_unit_old_payload_without_content_blocks_still_works() -> None:
     legacy_payload = {
         "unit_id": "legacy-unit-1",
@@ -205,6 +217,7 @@ def main() -> None:
     test_content_block_round_trip_serialization()
     test_content_block_artifact_target_refs_round_trip_serialization()
     test_content_block_without_artifact_target_refs_remains_backward_compatible()
+    test_artifact_target_ref_invalid_target_level_fails_fast()
     test_task_unit_old_payload_without_content_blocks_still_works()
     test_task_unit_content_blocks_round_trip_with_include_flag()
     print(
@@ -218,6 +231,7 @@ def main() -> None:
                     "content_block_round_trip_serialization",
                     "content_block_artifact_target_refs_round_trip_serialization",
                     "content_block_without_artifact_target_refs_remains_backward_compatible",
+                    "artifact_target_ref_invalid_target_level_fails_fast",
                     "task_unit_old_payload_without_content_blocks_still_works",
                     "task_unit_content_blocks_round_trip_with_include_flag",
                 ],

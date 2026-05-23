@@ -13,6 +13,7 @@
 | File | Responsibility | Notes |
 |---|---|---|
 | `shared/abstract_result.py` | Generic result 抽象基類 | success/payload/reason/cache_hit **[Code-Confirmed]** |
+| `shared/artifact_target_model.py` | artifact target level/ref shared contract | single source of truth for target-level enum **[Code-Confirmed]** |
 | `shared/task_artifacts.py` | summary/quiz/task artifacts schema | section/task-unit/document-level contracts **[Code-Confirmed]** |
 | `shared/task_unit_model.py` | `TaskUnit` 與 `TaskUnitContentBlock` schema | parent_section_id、artifact nested fields、string->block adapter foundation **[Code-Confirmed]** |
 
@@ -34,6 +35,8 @@
 - `QuizArtifact`
 - `TaskArtifacts`
 - `DocumentTaskArtifacts`
+- `ArtifactTargetLevel`
+- `ArtifactTargetRef`
 - `TaskUnit`
 - `TaskUnitContentBlock`
 
@@ -90,3 +93,4 @@
 11. `TaskUnitContentBlock` 新增 additive `artifact_target_refs`（optional）欄位；舊 payload 缺少該欄位時仍可正常反序列化，`artifact_ids` compatibility 行為不變。 **[Code-Confirmed]**
 12. `artifact_target_refs` 僅是 target metadata，不代表 artifact persistence write path，不具 parser authority，且不改變 hierarchy truth（仍以 `chapters[].sections[].task_units[]` 為準）。 **[Code-Confirmed] + [From HLD]**
 13. 本輪未引入 artifact repository 依賴、未引入 task-layout/API/persistence migration，question/evaluated_answer/retrieval 的 block-level integration 仍是後續工作。 **[Code-Confirmed] + [Future Direction]**
+14. `ArtifactTargetLevel` / `ArtifactTargetRef` 已抽取至 `shared/artifact_target_model.py`，`shared/task_unit_model.py` 與 `api_schemas.py` 共用同一 target-level contract，避免 enum duplicated-definition drift。 **[Code-Confirmed]**

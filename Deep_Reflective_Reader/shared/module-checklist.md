@@ -51,6 +51,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/shared/module-detailed-design.md (Rich Task-Unit Content Foundation and Future Direction)`
   Notes: Added shared `ArtifactTargetLevel` + `ArtifactTargetRef` metadata model with supported levels (`document/chapter/section/task_unit/content_block`), plus additive `TaskUnitContentBlock.artifact_target_refs`; serialization/deserialization remains backward-compatible and keeps `artifact_ids` behavior unchanged; no artifact persistence/API/task-layout/repository changes.
 
+- [x] Extract shared artifact target level contract into dedicated shared module
+  Evidence: `Deep_Reflective_Reader/shared/artifact_target_model.py`; `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: Moved `ArtifactTargetLevel`/`ArtifactTargetRef` to `shared/artifact_target_model.py` as single source of truth; kept `shared.task_unit_model` import compatibility and aligned API schema to reuse the same enum contract.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

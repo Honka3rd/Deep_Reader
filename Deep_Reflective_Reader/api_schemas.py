@@ -1,6 +1,7 @@
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, model_validator
+from shared.artifact_target_model import ArtifactTargetLevel
 
 
 class PrepareDocumentRequest(BaseModel):
@@ -317,6 +318,55 @@ class TaskUnitMetadataResponse(BaseModel):
     artifacts: ArtifactAvailabilityResponse | None = None
 
 
+class ArtifactTargetRefResponse(BaseModel):
+    """Public API metadata-only artifact target reference."""
+
+    _ALLOWED_METADATA_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "source_hash",
+            "content_block_id",
+            "quote_span_start",
+            "quote_span_end",
+            "schema_version",
+        }
+    )
+
+    target_level: ArtifactTargetLevel
+    document_id: str | None = None
+    chapter_id: str | None = None
+    section_id: str | None = None
+    task_unit_id: str | None = None
+    content_block_id: str | None = None
+    metadata: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _validate_content_endpoint_target_constraints(self) -> "ArtifactTargetRefResponse":
+        if self.target_level == ArtifactTargetLevel.CONTENT_BLOCK:
+            if not (self.task_unit_id or "").strip():
+                raise ValueError(
+                    "content_block target_level requires task_unit_id in task-unit content response"
+                )
+            if not (self.content_block_id or "").strip():
+                raise ValueError(
+                    "content_block target_level requires content_block_id in task-unit content response"
+                )
+
+        if self.target_level == ArtifactTargetLevel.TASK_UNIT:
+            if not (self.task_unit_id or "").strip():
+                raise ValueError(
+                    "task_unit target_level requires task_unit_id in task-unit content response"
+                )
+
+        if self.metadata is not None:
+            unknown_keys = set(self.metadata.keys()) - self._ALLOWED_METADATA_KEYS
+            if unknown_keys:
+                raise ValueError(
+                    "artifact target metadata contains unsupported keys: "
+                    + ", ".join(sorted(unknown_keys))
+                )
+        return self
+
+
 class TaskUnitContentBlockResponse(BaseModel):
     """Official API content-block contract for task-unit on-demand response."""
 
@@ -324,6 +374,7 @@ class TaskUnitContentBlockResponse(BaseModel):
     content: str
     block_type: str | None = None
     artifact_ids: list[str] | None = None
+    artifact_target_refs: list[ArtifactTargetRefResponse] | None = None
     metadata: dict[str, Any] | None = None
 
 

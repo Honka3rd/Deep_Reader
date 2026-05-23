@@ -6,9 +6,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 import main
-from api_schemas import TaskUnitContentResponse
+from api_schemas import ArtifactTargetRefResponse, TaskUnitContentResponse
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
 from document_preparation.prepared_document_result import PreparedDocumentResult
@@ -22,7 +23,12 @@ from document_structure.structured_document import (
 )
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from shared.task_artifacts import DocumentTaskArtifacts
-from shared.task_unit_model import TaskUnit
+from shared.task_unit_model import (
+    ArtifactTargetLevel,
+    ArtifactTargetRef,
+    TaskUnit,
+    TaskUnitContentBlock,
+)
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -118,6 +124,37 @@ class _FailIfResolverCalled:
 
 
 def _build_section(*, section_id: str, chapter_id: str, title: str, unit_id: str, content: str) -> StructuredSection:
+    content_block_id = f"{unit_id}:content:0"
+    content_block = TaskUnitContentBlock(
+        block_id=content_block_id,
+        content=content,
+        artifact_target_refs=[
+            ArtifactTargetRef(
+                target_level=ArtifactTargetLevel.CONTENT_BLOCK,
+                document_id="doc-content",
+                chapter_id=chapter_id,
+                section_id=section_id,
+                task_unit_id=unit_id,
+                content_block_id=content_block_id,
+                metadata={
+                    "source_hash": "hash-123",
+                    "content_block_id": content_block_id,
+                    "quote_span_start": 0,
+                    "quote_span_end": 7,
+                    "schema_version": "v1",
+                    "unexpected_key": "should-be-filtered",
+                },
+            ),
+            ArtifactTargetRef(
+                target_level=ArtifactTargetLevel.TASK_UNIT,
+                document_id="doc-content",
+                chapter_id=chapter_id,
+                section_id=section_id,
+                task_unit_id=unit_id,
+                metadata={"schema_version": "v1"},
+            ),
+        ],
+    )
     return StructuredSection(
         section_id=section_id,
         section_index=0,
@@ -139,6 +176,7 @@ def _build_section(*, section_id: str, chapter_id: str, title: str, unit_id: str
                 source_section_ids=[section_id],
                 is_fallback_generated=False,
                 parent_section_id=section_id,
+                content_blocks=[content_block],
             )
         ],
     )
@@ -276,14 +314,44 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         )
         _assert(
             set(payload["content_blocks"][0].keys())
-            == {"block_id", "content", "block_type", "artifact_ids", "metadata"},
+            == {
+                "block_id",
+                "content",
+                "block_type",
+                "artifact_ids",
+                "artifact_target_refs",
+                "metadata",
+            },
             "content block response should keep normalized API schema shape",
         )
         _assert(
             payload["content_blocks"][0]["block_type"] is None
             and payload["content_blocks"][0]["artifact_ids"] is None
+            and isinstance(payload["content_blocks"][0]["artifact_target_refs"], list)
+            and len(payload["content_blocks"][0]["artifact_target_refs"]) == 2
             and payload["content_blocks"][0]["metadata"] is None,
             "default optional block fields should serialize as null in current adapter path",
+        )
+        _assert(
+            payload["content_blocks"][0]["artifact_target_refs"][0]["target_level"]
+            == "content_block",
+            "first artifact target ref should preserve content_block target level",
+        )
+        _assert(
+            set(payload["content_blocks"][0]["artifact_target_refs"][0]["metadata"].keys())
+            == {
+                "source_hash",
+                "content_block_id",
+                "quote_span_start",
+                "quote_span_end",
+                "schema_version",
+            },
+            "artifact target metadata should be limited to approved glossary keys",
+        )
+        _assert(
+            "unexpected_key"
+            not in payload["content_blocks"][0]["artifact_target_refs"][0]["metadata"],
+            "unexpected artifact target metadata keys should be filtered out",
         )
         _assert(
             TaskUnitContentResponse.model_validate(payload).task_unit_id == unit_id,
@@ -348,9 +416,48 @@ def test_task_unit_content_does_not_fallback_to_root_sections() -> None:
         main.section_task_coordinator = original
 
 
+def test_artifact_target_schema_invalid_target_level_fails_fast() -> None:
+    try:
+        ArtifactTargetRefResponse.model_validate(
+            {
+                "target_level": "invalid-level",
+                "task_unit_id": "task-unit-1",
+            }
+        )
+        raise AssertionError("invalid target_level should fail schema validation")
+    except ValidationError:
+        pass
+
+
+def test_artifact_target_schema_level_constraints_fail_fast() -> None:
+    try:
+        ArtifactTargetRefResponse.model_validate(
+            {
+                "target_level": "content_block",
+                "task_unit_id": "task-unit-1",
+            }
+        )
+        raise AssertionError("content_block target should require content_block_id")
+    except ValidationError:
+        pass
+
+    try:
+        ArtifactTargetRefResponse.model_validate(
+            {
+                "target_level": "task_unit",
+                "content_block_id": "task-unit-1:content:0",
+            }
+        )
+        raise AssertionError("task_unit target should require task_unit_id")
+    except ValidationError:
+        pass
+
+
 if __name__ == "__main__":
     test_task_layout_id_then_content_lookup_success()
     test_task_unit_content_missing_id_returns_404()
     test_task_unit_content_duplicate_id_fails_fast()
     test_task_unit_content_does_not_fallback_to_root_sections()
+    test_artifact_target_schema_invalid_target_level_fails_fast()
+    test_artifact_target_schema_level_constraints_fail_fast()
     print("ok")

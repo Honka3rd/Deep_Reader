@@ -39,6 +39,14 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/api_schemas.module-detailed-design.md`
   Notes: 正式建立 top-level `TaskUnitContentBlockResponse` 與標準化 `TaskUnitContentResponse`（`content + content_blocks`）；保持 additive evolution，無 API breaking change/無 task-layout heavy payload 擴張。
 
+- [x] Validate content-block artifact target metadata response schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`
+  Notes: 新增 `ArtifactTargetRefResponse` 並重用 shared `ArtifactTargetLevel`；非法 `target_level` fail-fast，`content_block`/`task_unit` level 目標欄位需符合最小約束；metadata key vocabulary 收斂為 approved glossary。
+
+- [x] Reuse shared artifact target level contract to remove duplicated enum definitions
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/shared/artifact_target_model.py`; `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: 移除 API schema 層重複 enum 定義，改為共用 shared single-source `ArtifactTargetLevel`，降低跨模組 vocabulary drift 風險。
+
 - [x] Defines external API schemas used by request and response boundaries.
   Evidence: `Deep_Reflective_Reader/api_schemas.py; Deep_Reflective_Reader/api_schemas.module-detailed-design.md (Main Responsibilities)`
   Notes: Root Python module documented as an API contract boundary.

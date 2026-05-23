@@ -59,6 +59,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Terminology Governance Audit, Terminology Validation Notes)`; maintainer decision in current documentation-governance task; `Deep_Reflective_Reader/progress.md`
   Notes: `artifact mirror` 僅保留為 historical/migration/compatibility reference；正式術語統一為 `transitional internal field`，並明確非 persistence authority/non-public-contract terminology。
 
+- [x] Pass through content-block artifact target metadata safely in task-unit content response
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`
+  Notes: task-unit content endpoint 在保留 `content + content_blocks` 下新增 pass-through `artifact_target_refs`；metadata 僅允許最小 glossary keys（`source_hash`, `content_block_id`, `quote_span_start`, `quote_span_end`, `schema_version`）；不觸發 artifact repository read/write，不改 task-layout payload。
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

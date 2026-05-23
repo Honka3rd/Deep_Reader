@@ -2,9 +2,11 @@ from uuid import uuid4
 import re
 
 from fastapi import FastAPI, HTTPException, Response
+from pydantic import ValidationError
 
 from app.qa_coordinator import QACoordinator
 from api_schemas import (
+    ArtifactTargetRefResponse,
     ArtifactAvailabilityResponse,
     DocumentTaskLayoutChapterResponse,
     ChapterQuizRequest,
@@ -42,6 +44,47 @@ app = FastAPI(
 # ⭐ QA coordinator 是自由問答主線 singleton
 qa_coordinator = QACoordinator()
 section_task_coordinator = qa_coordinator.container.section_task_coordinator()
+_ALLOWED_ARTIFACT_TARGET_METADATA_KEYS = frozenset(
+    {
+        "source_hash",
+        "content_block_id",
+        "quote_span_start",
+        "quote_span_end",
+        "schema_version",
+    }
+)
+
+
+def _filter_artifact_target_metadata(metadata: object) -> dict[str, object] | None:
+    """Filter artifact-target metadata to approved glossary keys only."""
+    if metadata is None:
+        return None
+    if not isinstance(metadata, dict):
+        raise ValueError("artifact target metadata must be a dictionary when provided")
+    return {
+        str(key): value
+        for key, value in metadata.items()
+        if str(key) in _ALLOWED_ARTIFACT_TARGET_METADATA_KEYS
+    }
+
+
+def _map_artifact_target_ref_response(target_ref: object) -> ArtifactTargetRefResponse:
+    """Map shared artifact target reference into stable API response schema."""
+    target_level_raw = getattr(target_ref, "target_level", None)
+    target_level = (
+        target_level_raw.value
+        if hasattr(target_level_raw, "value")
+        else str(target_level_raw)
+    )
+    return ArtifactTargetRefResponse(
+        target_level=target_level,
+        document_id=getattr(target_ref, "document_id", None),
+        chapter_id=getattr(target_ref, "chapter_id", None),
+        section_id=getattr(target_ref, "section_id", None),
+        task_unit_id=getattr(target_ref, "task_unit_id", None),
+        content_block_id=getattr(target_ref, "content_block_id", None),
+        metadata=_filter_artifact_target_metadata(getattr(target_ref, "metadata", None)),
+    )
 
 
 def _resolve_section_task_failure_status(reason: str) -> int:
@@ -500,6 +543,14 @@ def get_task_unit_content(
                         if content_block.artifact_ids is None
                         else list(content_block.artifact_ids)
                     ),
+                    artifact_target_refs=(
+                        None
+                        if content_block.artifact_target_refs is None
+                        else [
+                            _map_artifact_target_ref_response(target_ref)
+                            for target_ref in content_block.artifact_target_refs
+                        ]
+                    ),
                     metadata=(
                         None
                         if content_block.metadata is None
@@ -516,7 +567,7 @@ def get_task_unit_content(
             chapter_title=payload.chapter_title,
             is_fallback_generated=payload.is_fallback_generated,
         )
-    except ValueError as error:
+    except (ValueError, ValidationError) as error:
         raise HTTPException(
             status_code=_resolve_task_unit_content_failure_status(str(error)),
             detail=str(error),
