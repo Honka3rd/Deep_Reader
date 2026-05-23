@@ -196,3 +196,38 @@
 4. future content-block artifact targeting/availability projection 屬 interaction 層語義，不得污染 hierarchy persistence truth source。 **[Future Direction]**
 5. interaction targeting 應維持 id-based deterministic path，不得回退為 title-only lookup。 **[Code-Confirmed] + [Future Direction]**
 6. richer interaction state 不得 hidden write-back profile；diagnostics/projection 與 persisted profile 需保持邊界分離。 **[Code-Confirmed] + [Future Direction]**
+
+## 20. Artifact Target Metadata Glossary and Target Constraints (Content Endpoint Context)
+
+> 本節描述 `/documents/{doc_name}/task-units/{task_unit_id}/content` 回應中的
+> content-block artifact target metadata 邊界；屬 pass-through/documentation contract，
+> 不是 artifact persistence contract。 **[Code-Confirmed] + [Doc-Confirmed]**
+
+### 20.1 Minimum Metadata Glossary
+
+在 content endpoint context 中，artifact target metadata 的最小允許 key 僅限：
+
+- `source_hash`
+- `content_block_id`
+- `quote_span_start`
+- `quote_span_end`
+- `schema_version`
+
+治理規則：
+
+1. 不應任意擴張 metadata vocabulary。 **[Maintainer-Confirmed]**
+2. 以上欄位僅支援 pass-through / interaction targeting support。 **[Code-Confirmed]**
+3. metadata 不是 artifact persistence truth，也不是 hierarchy truth。 **[Code-Confirmed] + [From HLD]**
+
+### 20.2 Allowed Target Combinations (Task-Unit Content Endpoint)
+
+在此 endpoint context 下的最小 target constraints：
+
+1. `target_level = content_block` 必須包含：`task_unit_id`、`content_block_id`。 **[Code-Confirmed]**
+2. `target_level = task_unit` 必須包含：`task_unit_id`。 **[Code-Confirmed]**
+3. 其他 target levels 可保留 enum vocabulary，但本 endpoint 不宣稱完整 artifact write support。 **[Code-Confirmed] + [Doc-Confirmed]**
+
+### 20.3 Future Validation Boundary
+
+1. future artifact repository write/read flow 必須做 hierarchy-aware validation。 **[Future Direction]**
+2. 本 endpoint 僅 pass through metadata：不查 artifact repository、不驗證 artifact existence、不創建 artifact target、不做 artifact persistence。 **[Code-Confirmed]**

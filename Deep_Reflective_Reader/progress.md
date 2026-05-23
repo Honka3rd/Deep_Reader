@@ -48,7 +48,7 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 10 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 7 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 8 | 0 | Completed Baseline Captured |
@@ -394,7 +394,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `9`
+- Completed item count: `10`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -408,6 +408,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Adds on-demand task-unit content lookup support via stable `task_unit_id` without expanding task-layout payload.
 - [x] Adds backward-compatible rich content blocks to task-unit content lookup response while keeping task-layout payload lightweight.
 - [x] Safely passes through content-block artifact target metadata in task-unit content response with metadata glossary filtering and no artifact repository integration.
+- [x] Documents minimum artifact target metadata glossary and allowed target combinations for content endpoint pass-through boundary.
 
 #### Needs Confirmation
 

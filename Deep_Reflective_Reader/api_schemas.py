@@ -3,6 +3,16 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, Field, model_validator
 from shared.artifact_target_model import ArtifactTargetLevel
 
+ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS: frozenset[str] = frozenset(
+    {
+        "source_hash",
+        "content_block_id",
+        "quote_span_start",
+        "quote_span_end",
+        "schema_version",
+    }
+)
+
 
 class PrepareDocumentRequest(BaseModel):
     """Request payload for document preparation operations."""
@@ -321,15 +331,7 @@ class TaskUnitMetadataResponse(BaseModel):
 class ArtifactTargetRefResponse(BaseModel):
     """Public API metadata-only artifact target reference."""
 
-    _ALLOWED_METADATA_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "source_hash",
-            "content_block_id",
-            "quote_span_start",
-            "quote_span_end",
-            "schema_version",
-        }
-    )
+    _ALLOWED_METADATA_KEYS: ClassVar[frozenset[str]] = ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS
 
     target_level: ArtifactTargetLevel
     document_id: str | None = None

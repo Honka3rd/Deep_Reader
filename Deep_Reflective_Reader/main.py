@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.qa_coordinator import QACoordinator
 from api_schemas import (
+    ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS,
     ArtifactTargetRefResponse,
     ArtifactAvailabilityResponse,
     DocumentTaskLayoutChapterResponse,
@@ -44,15 +45,6 @@ app = FastAPI(
 # ⭐ QA coordinator 是自由問答主線 singleton
 qa_coordinator = QACoordinator()
 section_task_coordinator = qa_coordinator.container.section_task_coordinator()
-_ALLOWED_ARTIFACT_TARGET_METADATA_KEYS = frozenset(
-    {
-        "source_hash",
-        "content_block_id",
-        "quote_span_start",
-        "quote_span_end",
-        "schema_version",
-    }
-)
 
 
 def _filter_artifact_target_metadata(metadata: object) -> dict[str, object] | None:
@@ -64,7 +56,7 @@ def _filter_artifact_target_metadata(metadata: object) -> dict[str, object] | No
     return {
         str(key): value
         for key, value in metadata.items()
-        if str(key) in _ALLOWED_ARTIFACT_TARGET_METADATA_KEYS
+        if str(key) in ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS
     }
 
 
