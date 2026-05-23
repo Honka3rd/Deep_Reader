@@ -59,6 +59,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/shared/module-detailed-design.md (Future Direction Note: Content Block Segmentation Design Preparation)`; `Deep_Reflective_Reader/shared/module-checklist.md`; `Deep_Reflective_Reader/progress.md`
   Notes: Documentation/design-preparation only; defined segmentation contract, deterministic id/source-hash/span policy direction, reparse-stability risk model, and compatibility staging from `content` to multi-block generation; no source code/tests/API/persistence/task-layout behavior changes.
 
+- [x] Implement deterministic content block segmentation foundation
+  Evidence: `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/shared/module-detailed-design.md`; `Deep_Reflective_Reader/progress.md`
+  Notes: Added explicit opt-in shared segmentation (`TaskUnit.segment_content_blocks()` / `segment_task_unit_content`) with deterministic paragraph-first + list-item-safe split rules, deterministic block ids (`<task_unit_id>:content:<index>`), advisory metadata (`source_hash`, `content_block_id`, `quote_span_start`, `quote_span_end`, `schema_version`), and idempotent behavior; preserved default `to_content_blocks()` compatibility, old payload support, and no endpoint/API/task-layout/persistence/retrieval/LLM changes.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -68,9 +72,9 @@ No unresolved confirmation items identified in this pass.
 New future tasks for this module must be added here first as unchecked items:
 
 - [ ] Finalize content-block identity and artifact attachment semantics beyond shared foundation metadata
-- [ ] Design deterministic content block segmentation contract
-- [ ] Define content block id/source hash/span semantics
-- [ ] Define string-to-multiple-block compatibility strategy
+- [ ] Harden deterministic segmentation rules for heading/sentence/table-like structures beyond paragraph/list baseline
+- [ ] Define reparse-resilient block-id/source-hash/span evolution strategy across segmentation-version changes
+- [ ] Define promotion strategy from explicit opt-in segmentation to default multi-block behavior
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

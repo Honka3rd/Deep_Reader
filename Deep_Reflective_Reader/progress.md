@@ -50,7 +50,7 @@ It is used to:
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `shared/` | package | `shared/module-checklist.md` | 8 | 0 | Completed Baseline Captured |
+| `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 8 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -446,7 +446,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `shared/module-checklist.md`
 - Detailed Design: `shared/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `8`
+- Completed item count: `9`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -459,6 +459,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines shared content-block artifact target foundation with additive metadata refs and serialization-safe backward compatibility.
 - [x] Extracts artifact target level/ref contract into dedicated shared module to establish single-source cross-module governance.
 - [x] Prepares shared segmentation design direction for future deterministic content-block generation (contract, deterministic id/hash/span policy direction, reparse risk model, and compatibility staging) without source-code/API/persistence changes.
+- [x] Implements deterministic content block segmentation foundation as explicit opt-in shared-layer behavior with paragraph-first/list-safe rules, deterministic block ids, advisory source-hash/span metadata, and preserved default compatibility behavior.
 
 #### Needs Confirmation
 
@@ -467,9 +468,9 @@ No unresolved confirmation items identified in module checklist.
 #### Future Direction Preparation
 
 - [ ] Finalize content-block identity and artifact attachment semantics beyond shared foundation metadata remains pending in `shared/module-checklist.md`.
-- [ ] Deterministic content-block segmentation contract/design remains pending implementation.
-- [ ] Content block id/source-hash/span semantics design remains pending implementation.
-- [ ] String-to-multiple-block compatibility strategy remains pending implementation.
+- [ ] Hardening deterministic segmentation rules for heading/sentence/table-like structures remains future-direction work.
+- [ ] Reparse-resilient block-id/source-hash/span evolution strategy remains future-direction work.
+- [ ] Promotion strategy from explicit opt-in segmentation to default multi-block behavior remains future-direction work.
 - [ ] Richer artifact targeting boundary for content blocks remains future-direction work and is not implemented in this slice.
 
 ## 6. Root Python Module Progress

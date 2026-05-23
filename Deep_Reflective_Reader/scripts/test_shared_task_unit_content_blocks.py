@@ -3,14 +3,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 from shared.task_unit_model import (
     ArtifactTargetLevel,
     ArtifactTargetRef,
+    SEGMENTATION_METADATA_SCHEMA_VERSION,
     TaskUnit,
     TaskUnitContentBlock,
     build_default_content_block_id,
+    segment_task_unit_content,
 )
 
 
@@ -210,6 +213,125 @@ def test_task_unit_content_blocks_round_trip_with_include_flag() -> None:
     )
 
 
+def test_segmentation_paragraph_first_with_deterministic_spans_and_hash() -> None:
+    content = "Paragraph one.\n\nParagraph two."
+    unit = TaskUnit(
+        unit_id="seg-unit-1",
+        title="Segmented",
+        container_title="Chapter",
+        content=content,
+        source_section_ids=["section-1"],
+        is_fallback_generated=False,
+    )
+    segmented_blocks = unit.segment_content_blocks()
+    _assert(len(segmented_blocks) == 2, "paragraph-first segmentation should produce 2 blocks")
+
+    source_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    first = segmented_blocks[0]
+    second = segmented_blocks[1]
+
+    _assert(first.block_id == "seg-unit-1:content:0", "first segmented block id mismatch")
+    _assert(second.block_id == "seg-unit-1:content:1", "second segmented block id mismatch")
+    _assert(first.content == "Paragraph one.", "first paragraph content mismatch")
+    _assert(second.content == "Paragraph two.", "second paragraph content mismatch")
+    _assert(first.block_type == "paragraph", "first paragraph block type mismatch")
+    _assert(second.block_type == "paragraph", "second paragraph block type mismatch")
+
+    _assert(first.metadata is not None, "segmented block metadata should not be None")
+    _assert(second.metadata is not None, "segmented block metadata should not be None")
+
+    _assert(first.metadata.get("source_hash") == source_hash, "source_hash mismatch on first block")
+    _assert(second.metadata.get("source_hash") == source_hash, "source_hash mismatch on second block")
+    _assert(
+        first.metadata.get("schema_version") == SEGMENTATION_METADATA_SCHEMA_VERSION,
+        "schema_version mismatch on first block",
+    )
+    _assert(
+        second.metadata.get("schema_version") == SEGMENTATION_METADATA_SCHEMA_VERSION,
+        "schema_version mismatch on second block",
+    )
+    _assert(first.metadata.get("quote_span_start") == 0, "first span start mismatch")
+    _assert(first.metadata.get("quote_span_end") == 14, "first span end mismatch")
+    _assert(second.metadata.get("quote_span_start") == 16, "second span start mismatch")
+    _assert(second.metadata.get("quote_span_end") == len(content), "second span end mismatch")
+
+    _assert(
+        content[first.metadata["quote_span_start"]:first.metadata["quote_span_end"]] == first.content,
+        "first quote span should map back to block content",
+    )
+    _assert(
+        content[second.metadata["quote_span_start"]:second.metadata["quote_span_end"]] == second.content,
+        "second quote span should map back to block content",
+    )
+
+
+def test_segmentation_list_items_when_paragraph_is_deterministic_list() -> None:
+    content = "- item one\n- item two\n\nTail paragraph."
+    unit = TaskUnit(
+        unit_id="seg-unit-2",
+        title="List",
+        container_title="Chapter",
+        content=content,
+        source_section_ids=["section-2"],
+        is_fallback_generated=False,
+    )
+    segmented_blocks = segment_task_unit_content(unit)
+    _assert(len(segmented_blocks) == 3, "list-aware segmentation should produce 3 blocks")
+    _assert(segmented_blocks[0].block_type == "list_item", "first list item block_type mismatch")
+    _assert(segmented_blocks[1].block_type == "list_item", "second list item block_type mismatch")
+    _assert(segmented_blocks[2].block_type == "paragraph", "tail paragraph block_type mismatch")
+    _assert(segmented_blocks[0].content == "- item one", "first list item content mismatch")
+    _assert(segmented_blocks[1].content == "- item two", "second list item content mismatch")
+    _assert(segmented_blocks[2].content == "Tail paragraph.", "tail paragraph content mismatch")
+
+
+def test_segmentation_fallback_single_block_and_default_adapter_unchanged() -> None:
+    content = "Single paragraph without deterministic split markers."
+    unit = TaskUnit(
+        unit_id="seg-unit-3",
+        title="Single",
+        container_title="Chapter",
+        content=content,
+        source_section_ids=["section-3"],
+        is_fallback_generated=False,
+    )
+
+    default_blocks = unit.to_content_blocks()
+    segmented_blocks = unit.segment_content_blocks()
+
+    _assert(len(default_blocks) == 1, "default adapter should remain single block")
+    _assert(default_blocks[0].metadata is None, "default adapter metadata should remain unchanged")
+    _assert(len(segmented_blocks) == 1, "segmentation fallback should still return one block")
+    _assert(segmented_blocks[0].block_type in {"paragraph", "full_content"}, "unexpected fallback block_type")
+    _assert(segmented_blocks[0].content == content, "segmentation fallback should preserve content")
+
+
+def test_segmentation_repeated_calls_are_idempotent() -> None:
+    unit = TaskUnit(
+        unit_id="seg-unit-4",
+        title="Repeat",
+        container_title="Chapter",
+        content="Para A.\n\nPara B.",
+        source_section_ids=["section-4"],
+        is_fallback_generated=False,
+    )
+    first = [block.to_dict() for block in unit.segment_content_blocks()]
+    second = [block.to_dict() for block in unit.segment_content_blocks()]
+    _assert(first == second, "segmentation should be idempotent for repeated calls")
+
+
+def test_segmentation_empty_content_behavior_unchanged() -> None:
+    unit = TaskUnit(
+        unit_id="seg-unit-5",
+        title=None,
+        container_title=None,
+        content="",
+        source_section_ids=["section-5"],
+        is_fallback_generated=False,
+    )
+    _assert(unit.segment_content_blocks() == [], "empty content should segment to empty block list")
+
+
 def main() -> None:
     test_string_content_adapts_to_single_block()
     test_empty_string_content_returns_empty_block_list()
@@ -220,6 +342,11 @@ def main() -> None:
     test_artifact_target_ref_invalid_target_level_fails_fast()
     test_task_unit_old_payload_without_content_blocks_still_works()
     test_task_unit_content_blocks_round_trip_with_include_flag()
+    test_segmentation_paragraph_first_with_deterministic_spans_and_hash()
+    test_segmentation_list_items_when_paragraph_is_deterministic_list()
+    test_segmentation_fallback_single_block_and_default_adapter_unchanged()
+    test_segmentation_repeated_calls_are_idempotent()
+    test_segmentation_empty_content_behavior_unchanged()
     print(
         json.dumps(
             {
@@ -234,6 +361,11 @@ def main() -> None:
                     "artifact_target_ref_invalid_target_level_fails_fast",
                     "task_unit_old_payload_without_content_blocks_still_works",
                     "task_unit_content_blocks_round_trip_with_include_flag",
+                    "segmentation_paragraph_first_with_deterministic_spans_and_hash",
+                    "segmentation_list_items_when_paragraph_is_deterministic_list",
+                    "segmentation_fallback_single_block_and_default_adapter_unchanged",
+                    "segmentation_repeated_calls_are_idempotent",
+                    "segmentation_empty_content_behavior_unchanged",
                 ],
             },
             ensure_ascii=False,

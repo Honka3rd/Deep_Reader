@@ -167,3 +167,22 @@
 6. segmentation metadata 僅 advisory/runtime support。
 
 以上均屬 design preparation，不代表 implementation-ready algorithm 已落地。 **[Doc-Confirmed] + [Future Direction]**
+
+## 16. Deterministic Content Block Segmentation Foundation (Implemented)
+
+> 本節描述已落地的 shared-layer segmentation foundation；僅 shared 內部能力，不代表 endpoint/API/task-layout 行為變更。 **[Code-Confirmed]**
+
+1. 已新增 explicit opt-in segmentation path：`TaskUnit.segment_content_blocks()` 與 shared helper `segment_task_unit_content(task_unit)`。 **[Code-Confirmed]**
+2. `TaskUnit.to_content_blocks()` 預設行為維持 compatibility-safe 單塊適配，不會因本次變更自動改成多塊輸出。 **[Code-Confirmed]**
+3. 已實作 deterministic split rules（目前最小可用）：
+   - paragraph-first（blank-line paragraph boundaries）
+   - list-item split（僅當整段每個 non-empty line 都是 deterministic list item pattern）
+   - 無安全分割時 fallback 為單塊
+   - 不做 LLM/NLP 語義切句。 **[Code-Confirmed]**
+4. block id 策略：沿用 `build_default_content_block_id`，格式 `<task_unit_id>:content:<index>`；不依賴 random uuid/LLM/retrieval。 **[Code-Confirmed]**
+5. segmented block metadata（advisory-only）包含：`source_hash`、`content_block_id`、`quote_span_start`、`quote_span_end`、`schema_version`。 **[Code-Confirmed]**
+6. `source_hash` 目前以原始 `TaskUnit.content` 原文（不做 normalization）計算 deterministic SHA-256；同一輸入字串輸出穩定。 **[Code-Confirmed]**
+7. quote span 語義：absolute character offsets，`quote_span_start` inclusive、`quote_span_end` exclusive，對應原始 `TaskUnit.content` 切片。 **[Code-Confirmed]**
+8. empty content 行為維持：`content == ""` 時 segmentation 回傳空 block list（不生成 synthetic empty semantic block）。 **[Code-Confirmed]**
+9. repeated segmentation 呼叫具 idempotent 結果；在同一內容輸入下輸出 block id、span、hash 穩定。 **[Code-Confirmed] + [Test-Confirmed]**
+10. 本實作不變更 hierarchy truth、parser authority、artifact persistence、task-layout/API/persistence schema，也不接入 retrieval/LLM/question/evaluated_answer。 **[Code-Confirmed] + [Doc-Confirmed]**
