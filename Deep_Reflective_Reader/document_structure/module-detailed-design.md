@@ -204,3 +204,76 @@
 6. rich content governance 需避免 dual hierarchy representation（例如把 content block 漂移為 structure authority 或 retrieval authority）。 **[Inferred]**
 7. 目前 `task_unit.content` 為 string；兼容方向可規劃 `string -> single content block` adapter，但該 adapter 屬 future compatibility strategy，不是 legacy fallback runtime path。 **[Code-Confirmed] + [Inferred]**
 8. 本節僅做 governance/邊界對齊；不引入 persistence schema、migration algorithm、runtime API 或 execution model。 **[Doc-Confirmed]**
+
+## 19. Future Direction Note: Artifact Target Validation Boundary Preparation
+
+> 本節屬 validation-boundary governance preparation，非當前 repository/runtime implementation。 **[Future Direction] + [Maintainer-Confirmed]**
+
+### 19.1 Current Boundary (What Is Already True)
+
+1. `ArtifactTargetRef` 目前語義是 metadata + target intent，不是 validated persistence truth。 **[Code-Confirmed] + [Doc-Confirmed]**
+2. hierarchy truth source 仍固定為 `chapters[].sections[].task_units[]`；content block 不是 hierarchy node。 **[Code-Confirmed]**
+3. content endpoint 現階段僅 pass through target metadata，不查 artifact repository、不驗證 artifact existence、不創建 persistence target。 **[Doc-Confirmed]**
+
+### 19.2 Future Validation Lifecycle (Design Boundary)
+
+`ArtifactTargetRef` (request intent)
+-> hierarchy-aware validation
+-> resolved target identity
+-> repository trust boundary
+
+治理要求：repository 層不得直接 trust target ref；必須先完成 hierarchy-aware resolution。 **[Future Direction] + [Maintainer-Confirmed]**
+
+### 19.3 Reparse / Restructure Stale-Ref Semantics
+
+以下情況可使 target ref 失效：
+
+1. task-unit split policy 改變
+2. content-block id regeneration
+3. section/chapter restructure
+4. source text edit
+5. `source_hash` mismatch
+
+治理語義：stale ref != malformed payload；future validation layer 必須可區分 stale/unresolved/malformed。 **[Future Direction] + [Maintainer-Confirmed]**
+
+### 19.4 Failure Boundary (Fail-Fast Direction)
+
+future validation boundary 應 fail-fast 於以下類型：
+
+1. invalid `target_level`
+2. required id 缺失
+3. hierarchy mismatch
+4. `content_block_id` not found under selected `task_unit_id`
+5. `source_hash` mismatch
+6. stale ref after reparse/restructure
+
+並區分 error class：malformed / unresolved / stale / hierarchy-mismatched。 **[Future Direction] + [Maintainer-Confirmed]**
+
+### 19.5 Allowed Target Combinations (Endpoint Context Policy)
+
+1. `target_level=content_block`：必須至少包含 `task_unit_id` + `content_block_id`。
+2. `target_level=task_unit`：必須至少包含 `task_unit_id`。
+3. `target_level=document/chapter/section`：可保留 enum vocabulary，但本階段不宣稱完整 artifact persistence semantics。
+
+本政策用於避免 enum 漂移被誤解為完整 persistence 支援。 **[Doc-Confirmed] + [Maintainer-Confirmed]**
+
+### 19.6 Minimum Metadata Glossary (Cross-Module Anti-Drift)
+
+允許的最小 glossary key：
+
+1. `source_hash`
+2. `content_block_id`
+3. `quote_span_start`
+4. `quote_span_end`
+5. `schema_version`
+
+治理要求：metadata glossary 用於 interaction/reference pass-through，非 parser authority、非 hierarchy truth、非 artifact persistence truth。 **[Doc-Confirmed] + [Maintainer-Confirmed]**
+
+### 19.7 Non-Goals In This Pass
+
+1. 不實作 repository validation engine。
+2. 不實作 artifact read/write flow。
+3. 不實作 persistence schema migration。
+4. 不接入 retrieval/question/evaluated_answer/LLM integration。
+
+以上僅為 future design boundary preparation。 **[Doc-Confirmed]**

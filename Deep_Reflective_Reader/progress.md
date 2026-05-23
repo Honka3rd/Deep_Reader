@@ -38,7 +38,7 @@ It is used to:
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 10 | 0 | Completed Baseline Captured |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 2 | Needs Confirmation |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -181,7 +181,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `10`
+- Completed item count: `11`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -196,6 +196,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Completed allow_legacy_fallback retirement audit with compatibility-only isolation (hierarchy-first runtime no longer depends on fallback success).
 - [x] Removed `allow_legacy_fallback` API surface and enforced hierarchy-only runtime lookup.
 - [x] Isolated legacy read compatibility from normal model/repository boundaries via strict hierarchy read contract + explicit migration-only loaders.
+- [x] Defined hierarchy-aware artifact target validation boundary as future-direction governance contract (`ArtifactTargetRef` metadata-only semantics, validation lifecycle, stale-ref/error taxonomy, allowed target combinations, and metadata glossary alignment).
 
 #### Needs Confirmation
 
