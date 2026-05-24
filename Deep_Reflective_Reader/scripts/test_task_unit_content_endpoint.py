@@ -280,6 +280,48 @@ def _build_segmentable_document() -> StructuredDocument:
     )
 
 
+def _build_multilingual_segmentable_document() -> StructuredDocument:
+    content = "第一段：中文段落。\n\n第二段：日本語の段落。"
+    section = _build_section(
+        section_id="section-cjk",
+        chapter_id="chapter-cjk",
+        title="Chapter CJK",
+        unit_id="task-unit-cjk",
+        content=content,
+    )
+    document = StructuredDocument(
+        document_id="doc-cjk",
+        title="Doc CJK",
+        source_path=None,
+        language="zh",
+        raw_text=content,
+        chapters=[
+            StructuredChapter(
+                chapter_id="chapter-cjk",
+                title="Chapter CJK",
+                level=1,
+                chapter_role="main_body",
+                sections=[section],
+            )
+        ],
+        sections=[],
+        structure_nodes=[],
+    )
+    source_hash = SectionTaskCoordinator._compute_source_hash(document)
+    task_layout_metadata = {
+        "task_layout": {
+            "source_hash": source_hash,
+            "task_unit_split_mode": TaskUnitSplitMode.SEMANTIC_SAFE.value,
+            "semantic_top_k_candidates": None,
+            "resolver_version": "task_unit_resolver_v2",
+        }
+    }
+    return replace(
+        document,
+        document_task_artifacts=DocumentTaskArtifacts(metadata=task_layout_metadata),
+    )
+
+
 def _build_legacy_sections_only_document() -> StructuredDocument:
     section = _build_section(
         section_id="legacy-section",
@@ -355,6 +397,10 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         _assert(
             len(payload_segmented_false["content_blocks"]) == 1,
             "segmented=false should preserve compatibility-safe single-block behavior",
+        )
+        _assert(
+            payload["content_blocks"] == payload_segmented_false["content_blocks"],
+            "omitted segmented and segmented=false should produce identical compatibility-safe blocks",
         )
         _assert(
             payload["content_blocks"][0]["block_id"] == f"{unit_id}:content:0",
@@ -496,6 +542,49 @@ def test_task_unit_content_segmented_true_returns_deterministic_multi_blocks() -
         main.section_task_coordinator = original
 
 
+def test_task_unit_content_segmented_true_supports_multilingual_paragraph_split() -> None:
+    coordinator, repository = _build_coordinator(_build_multilingual_segmentable_document())
+    client = TestClient(main.app)
+    original = main.section_task_coordinator
+    main.section_task_coordinator = coordinator
+    expected_raw_content = "第一段：中文段落。\n\n第二段：日本語の段落。"
+    try:
+        response = client.get(
+            "/documents/Doc CJK/task-units/task-unit-cjk/content",
+            params={"segmented": "true"},
+        )
+        _assert(response.status_code == 200, "multilingual segmented=true lookup should succeed")
+        payload = response.json()
+
+        _assert(payload["content"] is None, "default multilingual segmented response should not expose raw content")
+        _assert(len(payload["content_blocks"]) == 2, "CJK blank-line paragraphs should split into two blocks")
+        _assert(payload["content_blocks"][0]["content"] == "第一段：中文段落。", "Chinese paragraph mismatch")
+        _assert(payload["content_blocks"][1]["content"] == "第二段：日本語の段落。", "Japanese paragraph mismatch")
+        _assert(payload["content_blocks"][0]["block_id"] == "task-unit-cjk:content:0", "first CJK block id mismatch")
+        _assert(payload["content_blocks"][1]["block_id"] == "task-unit-cjk:content:1", "second CJK block id mismatch")
+
+        expected_metadata_keys = {
+            "source_hash",
+            "content_block_id",
+            "quote_span_start",
+            "quote_span_end",
+            "schema_version",
+        }
+        for block in payload["content_blocks"]:
+            _assert(block["metadata"] is not None, "CJK segmented block metadata must exist")
+            _assert(
+                set(block["metadata"].keys()) == expected_metadata_keys,
+                "CJK segmented metadata keys mismatch",
+            )
+            start = block["metadata"]["quote_span_start"]
+            end = block["metadata"]["quote_span_end"]
+            _assert(expected_raw_content[start:end] == block["content"], "CJK quote span should map to block content")
+
+        _assert(repository.write_calls == 0, "multilingual segmented lookup must not write persistence")
+    finally:
+        main.section_task_coordinator = original
+
+
 def test_task_unit_content_missing_id_returns_404() -> None:
     coordinator, repository = _build_coordinator(_build_cache_valid_document())
     client = TestClient(main.app)
@@ -588,6 +677,7 @@ def test_artifact_target_schema_level_constraints_fail_fast() -> None:
 if __name__ == "__main__":
     test_task_layout_id_then_content_lookup_success()
     test_task_unit_content_segmented_true_returns_deterministic_multi_blocks()
+    test_task_unit_content_segmented_true_supports_multilingual_paragraph_split()
     test_task_unit_content_missing_id_returns_404()
     test_task_unit_content_duplicate_id_fails_fast()
     test_task_unit_content_does_not_fallback_to_root_sections()

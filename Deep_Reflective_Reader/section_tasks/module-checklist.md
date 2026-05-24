@@ -75,6 +75,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Future Direction Note: Content Block Segmentation Design Preparation)`; `Deep_Reflective_Reader/section_tasks/module-checklist.md`; `Deep_Reflective_Reader/progress.md`
   Notes: Documentation/design-preparation only; defined segmented content endpoint projection semantics, failure/validation boundaries, task_unit/content_block identity constraints, and artifact-target alignment guardrails; no runtime/API/task-layout/persistence changes.
 
+- [x] Harden segmented task-unit content endpoint behavior and multilingual fixtures
+  Evidence: `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/section_tasks/module-detailed-design.md`; `Deep_Reflective_Reader/progress.md`
+  Notes: 強化 omitted/false/true segmented flag 行為矩陣、compatibility regression、deterministic block id/metadata key 驗證，並新增 CJK/mixed-format fixture coverage（Chinese/Japanese paragraph、mixed paragraph+list、heading-like、table-like）；未修改 task-layout payload/persistence/artifact repository/retrieval/LLM/evaluated_answer。
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

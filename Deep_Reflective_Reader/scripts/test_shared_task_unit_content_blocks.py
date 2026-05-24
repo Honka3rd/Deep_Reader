@@ -332,6 +332,102 @@ def test_segmentation_empty_content_behavior_unchanged() -> None:
     _assert(unit.segment_content_blocks() == [], "empty content should segment to empty block list")
 
 
+def test_segmentation_chinese_paragraph_split_deterministic() -> None:
+    content = "第一段：中文內容。\n\n第二段：中文內容。"
+    unit = TaskUnit(
+        unit_id="seg-zh-1",
+        title="中文",
+        container_title="Chapter",
+        content=content,
+        source_section_ids=["section-zh"],
+        is_fallback_generated=False,
+    )
+    segmented_blocks = unit.segment_content_blocks()
+    _assert(len(segmented_blocks) == 2, "Chinese blank-line paragraphs should split into two blocks")
+    _assert(segmented_blocks[0].content == "第一段：中文內容。", "Chinese first paragraph mismatch")
+    _assert(segmented_blocks[1].content == "第二段：中文內容。", "Chinese second paragraph mismatch")
+    _assert(segmented_blocks[0].block_id == "seg-zh-1:content:0", "Chinese first block id mismatch")
+    _assert(segmented_blocks[1].block_id == "seg-zh-1:content:1", "Chinese second block id mismatch")
+
+
+def test_segmentation_japanese_paragraph_split_deterministic() -> None:
+    content = "第一段です。\n\n第二段です。"
+    unit = TaskUnit(
+        unit_id="seg-ja-1",
+        title="日本語",
+        container_title="Chapter",
+        content=content,
+        source_section_ids=["section-ja"],
+        is_fallback_generated=False,
+    )
+    segmented_blocks = unit.segment_content_blocks()
+    _assert(len(segmented_blocks) == 2, "Japanese blank-line paragraphs should split into two blocks")
+    _assert(segmented_blocks[0].content == "第一段です。", "Japanese first paragraph mismatch")
+    _assert(segmented_blocks[1].content == "第二段です。", "Japanese second paragraph mismatch")
+    _assert(segmented_blocks[0].block_id == "seg-ja-1:content:0", "Japanese first block id mismatch")
+    _assert(segmented_blocks[1].block_id == "seg-ja-1:content:1", "Japanese second block id mismatch")
+
+
+def test_segmentation_mixed_paragraph_and_list_deterministic() -> None:
+    content = "引言段落。\n\n- 列表一\n- 列表二\n\n結尾段落。"
+    unit = TaskUnit(
+        unit_id="seg-mix-1",
+        title="Mixed",
+        container_title="Chapter",
+        content=content,
+        source_section_ids=["section-mix"],
+        is_fallback_generated=False,
+    )
+    segmented_blocks = unit.segment_content_blocks()
+    _assert(len(segmented_blocks) == 4, "mixed paragraph+list should produce four deterministic blocks")
+    _assert(segmented_blocks[0].block_type == "paragraph", "mixed block 0 type mismatch")
+    _assert(segmented_blocks[1].block_type == "list_item", "mixed block 1 type mismatch")
+    _assert(segmented_blocks[2].block_type == "list_item", "mixed block 2 type mismatch")
+    _assert(segmented_blocks[3].block_type == "paragraph", "mixed block 3 type mismatch")
+    _assert(segmented_blocks[0].content == "引言段落。", "mixed block 0 content mismatch")
+    _assert(segmented_blocks[1].content == "- 列表一", "mixed block 1 content mismatch")
+    _assert(segmented_blocks[2].content == "- 列表二", "mixed block 2 content mismatch")
+    _assert(segmented_blocks[3].content == "結尾段落。", "mixed block 3 content mismatch")
+
+
+def test_segmentation_heading_like_text_stable_no_over_split() -> None:
+    content = "### 標題行\n正文緊接在後，無空行。"
+    unit = TaskUnit(
+        unit_id="seg-head-1",
+        title="Heading-like",
+        container_title="Chapter",
+        content=content,
+        source_section_ids=["section-head"],
+        is_fallback_generated=False,
+    )
+    segmented_blocks = unit.segment_content_blocks()
+    _assert(len(segmented_blocks) == 1, "heading-like text should remain one deterministic block without blank lines")
+    _assert(
+        segmented_blocks[0].block_type in {"paragraph", "full_content"},
+        "heading-like text fallback block_type mismatch",
+    )
+    _assert(segmented_blocks[0].content == content, "heading-like text content should remain intact")
+
+
+def test_segmentation_table_like_text_stable_fallback_behavior() -> None:
+    content = "| 列1 | 列2 |\n| --- | --- |\n| 甲 | 乙 |"
+    unit = TaskUnit(
+        unit_id="seg-table-1",
+        title="Table-like",
+        container_title="Chapter",
+        content=content,
+        source_section_ids=["section-table"],
+        is_fallback_generated=False,
+    )
+    segmented_blocks = unit.segment_content_blocks()
+    _assert(len(segmented_blocks) == 1, "table-like text should keep stable single-block fallback without blank lines")
+    _assert(
+        segmented_blocks[0].block_type in {"paragraph", "full_content"},
+        "table-like text fallback block_type mismatch",
+    )
+    _assert(segmented_blocks[0].content == content, "table-like text content should remain intact")
+
+
 def main() -> None:
     test_string_content_adapts_to_single_block()
     test_empty_string_content_returns_empty_block_list()
@@ -347,6 +443,11 @@ def main() -> None:
     test_segmentation_fallback_single_block_and_default_adapter_unchanged()
     test_segmentation_repeated_calls_are_idempotent()
     test_segmentation_empty_content_behavior_unchanged()
+    test_segmentation_chinese_paragraph_split_deterministic()
+    test_segmentation_japanese_paragraph_split_deterministic()
+    test_segmentation_mixed_paragraph_and_list_deterministic()
+    test_segmentation_heading_like_text_stable_no_over_split()
+    test_segmentation_table_like_text_stable_fallback_behavior()
     print(
         json.dumps(
             {
@@ -366,6 +467,11 @@ def main() -> None:
                     "segmentation_fallback_single_block_and_default_adapter_unchanged",
                     "segmentation_repeated_calls_are_idempotent",
                     "segmentation_empty_content_behavior_unchanged",
+                    "segmentation_chinese_paragraph_split_deterministic",
+                    "segmentation_japanese_paragraph_split_deterministic",
+                    "segmentation_mixed_paragraph_and_list_deterministic",
+                    "segmentation_heading_like_text_stable_no_over_split",
+                    "segmentation_table_like_text_stable_fallback_behavior",
                 ],
             },
             ensure_ascii=False,

@@ -275,3 +275,13 @@ validation boundary 要求：fail-fast + 明確錯誤分類；不得 silent fall
 4. 不接 retrieval/LLM/question/evaluated_answer integration。 **[Maintainer-Confirmed]**
 5. 不做 artifact persistence/repository read-write integration。 **[Maintainer-Confirmed]**
 6. content block identity 是 interaction identity，不是 persisted hierarchy identity。 **[Maintainer-Confirmed] + [Future Direction]**
+
+## 22. Segmented Endpoint Behavior Stabilization Note
+
+1. task-unit content endpoint 的 segmented 行為矩陣固定為：
+   - omitted / `segmented=false`：compatibility-safe default projection（single/default block behavior）
+   - `segmented=true`：explicit opt-in segmented projection。 **[Code-Confirmed]**
+2. segmentation 在本模組定位為 runtime projection concern，不是 persistence truth，不改 hierarchy identity。 **[Code-Confirmed] + [From HLD]**
+3. task-layout payload 維持 lightweight metadata/projection，不承載 segmented blocks。 **[Code-Confirmed]**
+4. segmented projection 不觸發 artifact persistence、不觸發 retrieval/LLM/evaluated_answer integration。 **[Code-Confirmed]**
+5. 本輪 stabilization 僅強化 deterministic/compatibility regression 與 multilingual fixture coverage，不擴張 endpoint 功能範圍。 **[Doc-Confirmed]**

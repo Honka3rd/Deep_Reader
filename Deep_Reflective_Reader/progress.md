@@ -48,7 +48,7 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 12 | 0 | Completed Baseline Captured |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 13 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 10 | 0 | Completed Baseline Captured |
@@ -394,7 +394,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `12`
+- Completed item count: `13`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -411,6 +411,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Safely passes through content-block artifact target metadata in task-unit content response with metadata glossary filtering and no artifact repository integration.
 - [x] Documents minimum artifact target metadata glossary and allowed target combinations for content endpoint pass-through boundary.
 - [x] Prepares section_tasks segmentation design direction for future content-block projection behavior (endpoint projection semantics, failure/validation boundary, identity constraints, and artifact-target alignment guardrails) without runtime/API changes.
+- [x] Hardens segmented task-unit content endpoint behavior with deterministic flag-matrix regression and multilingual segmentation fixtures (Chinese/Japanese paragraphs, mixed paragraph+list, heading-like, table-like) without task-layout/persistence/artifact/retrieval/LLM/evaluated_answer changes.
 
 #### Needs Confirmation
 
