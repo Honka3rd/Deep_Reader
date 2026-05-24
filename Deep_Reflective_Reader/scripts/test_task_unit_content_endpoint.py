@@ -239,6 +239,47 @@ def _build_cache_valid_document(*, duplicate_unit_id: bool = False) -> Structure
     )
 
 
+def _build_segmentable_document() -> StructuredDocument:
+    section = _build_section(
+        section_id="section-seg",
+        chapter_id="chapter-seg",
+        title="Chapter Seg",
+        unit_id="task-unit-seg",
+        content="Paragraph one.\n\n- item one\n- item two\n\nParagraph tail.",
+    )
+    document = StructuredDocument(
+        document_id="doc-seg",
+        title="Doc Seg",
+        source_path=None,
+        language="en",
+        raw_text="Paragraph one.\n\n- item one\n- item two\n\nParagraph tail.",
+        chapters=[
+            StructuredChapter(
+                chapter_id="chapter-seg",
+                title="Chapter Seg",
+                level=1,
+                chapter_role="main_body",
+                sections=[section],
+            )
+        ],
+        sections=[],
+        structure_nodes=[],
+    )
+    source_hash = SectionTaskCoordinator._compute_source_hash(document)
+    task_layout_metadata = {
+        "task_layout": {
+            "source_hash": source_hash,
+            "task_unit_split_mode": TaskUnitSplitMode.SEMANTIC_SAFE.value,
+            "semantic_top_k_candidates": None,
+            "resolver_version": "task_unit_resolver_v2",
+        }
+    }
+    return replace(
+        document,
+        document_task_artifacts=DocumentTaskArtifacts(metadata=task_layout_metadata),
+    )
+
+
 def _build_legacy_sections_only_document() -> StructuredDocument:
     section = _build_section(
         section_id="legacy-section",
@@ -304,6 +345,17 @@ def test_task_layout_id_then_content_lookup_success() -> None:
             isinstance(payload["content_blocks"], list) and len(payload["content_blocks"]) == 1,
             "content_blocks should contain a single adapter-generated block",
         )
+
+        content_response_segmented_false = client.get(
+            f"/documents/Doc Content/task-units/{unit_id}/content",
+            params={"segmented": "false"},
+        )
+        _assert(content_response_segmented_false.status_code == 200, "segmented=false should succeed")
+        payload_segmented_false = content_response_segmented_false.json()
+        _assert(
+            len(payload_segmented_false["content_blocks"]) == 1,
+            "segmented=false should preserve compatibility-safe single-block behavior",
+        )
         _assert(
             payload["content_blocks"][0]["block_id"] == f"{unit_id}:content:0",
             "content block id should be deterministic",
@@ -360,6 +412,59 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         _assert(payload["section_id"] == "section-a", "section_id mismatch")
         _assert(payload["chapter_id"] == "chapter-a", "chapter_id mismatch")
         _assert(repository.write_calls == 0, "content lookup path must not write persistence")
+    finally:
+        main.section_task_coordinator = original
+
+
+def test_task_unit_content_segmented_true_returns_deterministic_multi_blocks() -> None:
+    coordinator, repository = _build_coordinator(_build_segmentable_document())
+    client = TestClient(main.app)
+    original = main.section_task_coordinator
+    main.section_task_coordinator = coordinator
+    try:
+        response = client.get(
+            "/documents/Doc Seg/task-units/task-unit-seg/content",
+            params={"segmented": "true"},
+        )
+        _assert(response.status_code == 200, "segmented=true lookup should succeed")
+        payload = response.json()
+
+        _assert(payload["content"] == "Paragraph one.\n\n- item one\n- item two\n\nParagraph tail.", "content field should remain unchanged")
+        _assert(len(payload["content_blocks"]) == 4, "segmented=true should return deterministic multi-block output")
+
+        block_0 = payload["content_blocks"][0]
+        block_1 = payload["content_blocks"][1]
+        block_2 = payload["content_blocks"][2]
+        block_3 = payload["content_blocks"][3]
+
+        _assert(block_0["block_id"] == "task-unit-seg:content:0", "block 0 id mismatch")
+        _assert(block_1["block_id"] == "task-unit-seg:content:1", "block 1 id mismatch")
+        _assert(block_2["block_id"] == "task-unit-seg:content:2", "block 2 id mismatch")
+        _assert(block_3["block_id"] == "task-unit-seg:content:3", "block 3 id mismatch")
+
+        _assert(block_0["content"] == "Paragraph one.", "block 0 content mismatch")
+        _assert(block_1["content"] == "- item one", "block 1 content mismatch")
+        _assert(block_2["content"] == "- item two", "block 2 content mismatch")
+        _assert(block_3["content"] == "Paragraph tail.", "block 3 content mismatch")
+
+        expected_metadata_keys = {
+            "source_hash",
+            "content_block_id",
+            "quote_span_start",
+            "quote_span_end",
+            "schema_version",
+        }
+        for block in payload["content_blocks"]:
+            _assert(block["metadata"] is not None, "segmented block metadata must exist")
+            _assert(
+                set(block["metadata"].keys()) == expected_metadata_keys,
+                "segmented block metadata keys mismatch",
+            )
+            start = block["metadata"]["quote_span_start"]
+            end = block["metadata"]["quote_span_end"]
+            _assert(payload["content"][start:end] == block["content"], "quote span must map to block content")
+
+        _assert(repository.write_calls == 0, "segmented=true lookup must not write persistence")
     finally:
         main.section_task_coordinator = original
 
@@ -455,6 +560,7 @@ def test_artifact_target_schema_level_constraints_fail_fast() -> None:
 
 if __name__ == "__main__":
     test_task_layout_id_then_content_lookup_success()
+    test_task_unit_content_segmented_true_returns_deterministic_multi_blocks()
     test_task_unit_content_missing_id_returns_404()
     test_task_unit_content_duplicate_id_fails_fast()
     test_task_unit_content_does_not_fallback_to_root_sections()

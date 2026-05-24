@@ -315,6 +315,13 @@ class GetTaskUnitContentRequest(BaseModel):
         ...,
         description="Stable task unit id from task-layout response",
     )
+    segmented: bool = Field(
+        False,
+        description=(
+            "When true, return explicit opt-in deterministic segmented content blocks. "
+            "When false, preserve compatibility-safe default content-block behavior."
+        ),
+    )
 
 
 class TaskUnitMetadataResponse(BaseModel):

@@ -697,6 +697,7 @@ class SectionTaskCoordinator:
         *,
         doc_name: str,
         task_unit_id: str,
+        segmented: bool = False,
     ) -> TaskUnitContentDTO:
         """Read one task-unit content payload by stable task_unit_id."""
         normalized_task_unit_id = task_unit_id.strip()
@@ -745,6 +746,12 @@ class SectionTaskCoordinator:
                 f"task_unit_id '{normalized_task_unit_id}' has empty content and cannot be rendered"
             )
 
+        content_blocks = (
+            selected_task_unit.segment_content_blocks()
+            if segmented
+            else selected_task_unit.to_content_blocks()
+        )
+
         return TaskUnitContentDTO(
             document_id=structured_document.document_id,
             document_title=structured_document.title,
@@ -752,7 +759,7 @@ class SectionTaskCoordinator:
             title=selected_task_unit.title,
             container_title=selected_task_unit.container_title,
             content=selected_task_unit.content,
-            content_blocks=selected_task_unit.to_content_blocks(),
+            content_blocks=content_blocks,
             source_section_ids=list(selected_task_unit.source_section_ids),
             parent_section_id=selected_task_unit.parent_section_id,
             section_id=selected_section.section_id,

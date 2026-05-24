@@ -35,6 +35,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/shared/task_unit_model.py`
   Notes: 既有 `content: str` 保留，新增 additive `content_blocks`，且由 `TaskUnit.to_content_blocks()` 生成；task-layout response contract 未變更且不返回 `content_blocks`。
 
+- [x] Add explicit segmented content-block option to task-unit content endpoint
+  Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`
+  Notes: 新增顯式 opt-in 參數 `segmented`；`segmented=true` 使用 shared `TaskUnit.segment_content_blocks()`，`segmented=false/省略` 保持 compatibility-safe 預設 block 行為；`content: str` 保留，不改 task-layout/API route/persistence contract。
+
 - [x] Implements chapters-first task-layout DTO contracts and diagnostics DTO types.
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py; Deep_Reflective_Reader/section_tasks/module-detailed-design.md (Important Data Structures / Contracts)`
   Notes: Task-layout contract is explicit at module level.

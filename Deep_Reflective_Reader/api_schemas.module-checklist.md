@@ -47,6 +47,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/shared/artifact_target_model.py`; `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: 移除 API schema 層重複 enum 定義，改為共用 shared single-source `ArtifactTargetLevel`，降低跨模組 vocabulary drift 風險。
 
+- [x] Preserve backward-compatible schema for segmented task-unit content response
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: `GetTaskUnitContentRequest` 新增 `segmented: bool = False` 顯式 opt-in；`TaskUnitContentResponse` 保持 `content + content_blocks` additive contract，不移除 `content`、不引入 breaking change。
+
 - [x] Defines external API schemas used by request and response boundaries.
   Evidence: `Deep_Reflective_Reader/api_schemas.py; Deep_Reflective_Reader/api_schemas.module-detailed-design.md (Main Responsibilities)`
   Notes: Root Python module documented as an API contract boundary.

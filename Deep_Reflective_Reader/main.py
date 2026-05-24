@@ -1,7 +1,7 @@
 from uuid import uuid4
 import re
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Query, Response
 from pydantic import ValidationError
 
 from app.qa_coordinator import QACoordinator
@@ -507,16 +507,25 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
 def get_task_unit_content(
     doc_name: str,
     task_unit_id: str,
+    segmented: bool = Query(
+        False,
+        description=(
+            "When true, return explicit opt-in deterministic segmented content blocks. "
+            "When false, preserve compatibility-safe default content-block behavior."
+        ),
+    ),
 ):
     """Read one task-unit render content payload on demand by task_unit_id."""
     try:
         request = GetTaskUnitContentRequest(
             doc_name=doc_name,
             task_unit_id=task_unit_id,
+            segmented=segmented,
         )
         payload = section_task_coordinator.get_task_unit_content(
             doc_name=request.doc_name,
             task_unit_id=request.task_unit_id,
+            segmented=request.segmented,
         )
         return TaskUnitContentResponse(
             document_id=payload.document_id,
