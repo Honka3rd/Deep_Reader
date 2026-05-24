@@ -113,8 +113,8 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 > 已落地項目為 backward-compatible additive evolution，不引入 API breaking change。 **[Code-Confirmed]**
 
 1. 已正式定義 top-level `TaskUnitContentBlockResponse`，作為 task-unit on-demand rich-content API 的官方 block contract。 **[Code-Confirmed]**
-2. `TaskUnitContentResponse` 已正式收斂為 `content`（compatibility/simple rendering）+ `content_blocks`（preferred future interaction payload）雙軌 additive 形狀。 **[Code-Confirmed]**
-3. `content` 仍保留，未標記 deprecated，既有 clients 可持續使用 simple rendering path。 **[Code-Confirmed]**
+2. `TaskUnitContentResponse` 已正式收斂為 `content_blocks`（preferred future interaction payload）+ nullable `content`（compatibility/debug payload）雙軌 additive 形狀。 **[Code-Confirmed]**
+3. `content` 仍保留，未標記 deprecated；但預設回應可為 `null`，需透過顯式 `include_raw_content=true` 取得 legacy raw content。 **[Code-Confirmed]**
 4. block optional 欄位（`block_type` / `artifact_ids` / `metadata`）在目前 adapter 路徑下可為 `null`，且 response serialization 形狀固定。 **[Code-Confirmed]**
 5. 上述 schema normalization 不包含 persistence migration、不包含 task-layout heavy payload 擴張、不包含 retrieval/LLM integration。 **[Code-Confirmed]**
 

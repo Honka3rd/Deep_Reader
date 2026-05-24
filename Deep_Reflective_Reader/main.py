@@ -514,6 +514,13 @@ def get_task_unit_content(
             "When false, preserve compatibility-safe default content-block behavior."
         ),
     ),
+    include_raw_content: bool = Query(
+        False,
+        description=(
+            "When true, include legacy raw task-unit content string for compatibility/debug. "
+            "When false, return content-block-first payload without raw content duplication."
+        ),
+    ),
 ):
     """Read one task-unit render content payload on demand by task_unit_id."""
     try:
@@ -521,6 +528,7 @@ def get_task_unit_content(
             doc_name=doc_name,
             task_unit_id=task_unit_id,
             segmented=segmented,
+            include_raw_content=include_raw_content,
         )
         payload = section_task_coordinator.get_task_unit_content(
             doc_name=request.doc_name,
@@ -533,7 +541,7 @@ def get_task_unit_content(
             task_unit_id=payload.task_unit_id,
             title=payload.title,
             container_title=payload.container_title,
-            content=payload.content,
+            content=payload.content if request.include_raw_content else None,
             content_blocks=[
                 TaskUnitContentBlockResponse(
                     block_id=content_block.block_id,

@@ -322,6 +322,13 @@ class GetTaskUnitContentRequest(BaseModel):
             "When false, preserve compatibility-safe default content-block behavior."
         ),
     )
+    include_raw_content: bool = Field(
+        False,
+        description=(
+            "When true, include legacy raw task-unit `content` string for compatibility/debug. "
+            "When false, prefer content-block-first payload without raw content duplication."
+        ),
+    )
 
 
 class TaskUnitMetadataResponse(BaseModel):
@@ -391,8 +398,8 @@ class TaskUnitContentResponse(BaseModel):
     """On-demand task-unit content response with backward-compatible rich-content shape.
 
     Compatibility contract:
-    - `content` remains for existing clients/simple rendering.
-    - `content_blocks` is additive and is the preferred future interaction payload.
+    - `content_blocks` is the primary render/interaction payload.
+    - `content` is compatibility/debug-only and may be null by default.
     """
 
     document_id: str
@@ -400,7 +407,7 @@ class TaskUnitContentResponse(BaseModel):
     task_unit_id: str
     title: str | None
     container_title: str | None
-    content: str
+    content: str | None
     content_blocks: list[TaskUnitContentBlockResponse]
     source_section_ids: list[str]
     parent_section_id: str | None

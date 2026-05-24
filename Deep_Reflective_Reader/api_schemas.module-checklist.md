@@ -51,6 +51,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: `GetTaskUnitContentRequest` 新增 `segmented: bool = False` 顯式 opt-in；`TaskUnitContentResponse` 保持 `content + content_blocks` additive contract，不移除 `content`、不引入 breaking change。
 
+- [x] Reduce raw content exposure in task-unit content API response
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: `TaskUnitContentResponse.content` 改為 nullable compatibility/debug field；新增 `include_raw_content: bool = False` request flag，預設 content-block-first（`content` 不填），`include_raw_content=true` 才回傳 legacy raw content；`content_blocks` 仍為必備 render payload。
+
 - [x] Defines external API schemas used by request and response boundaries.
   Evidence: `Deep_Reflective_Reader/api_schemas.py; Deep_Reflective_Reader/api_schemas.module-detailed-design.md (Main Responsibilities)`
   Notes: Root Python module documented as an API contract boundary.

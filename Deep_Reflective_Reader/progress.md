@@ -51,11 +51,11 @@ It is used to:
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 12 | 0 | Completed Baseline Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 9 | 0 | Completed Baseline Captured |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 10 | 0 | Completed Baseline Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 8 | 0 | Completed Baseline Captured |
+| `main.py` | root-python-module | `main.module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 
 ## 5. Package Module Progress
 
@@ -482,7 +482,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `9`
+- Completed item count: `10`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -491,9 +491,10 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines task-layout response contract with chapters-first projection fields and diagnostics response model.
 - [x] Defines chapter summary/quiz request validation boundary for id/title target fields.
 - [x] Defines dedicated task-unit content response schema for on-demand frontend rendering.
-- [x] Adds backward-compatible `content_blocks` schema to task-unit content response while retaining legacy `content` field.
+- [x] Adds backward-compatible `content_blocks` schema to task-unit content response while preserving compatibility path for legacy `content`.
 - [x] Normalize official rich-content API response schema.
 - [x] Preserves backward-compatible schema for segmented task-unit content response via additive `segmented` request flag and unchanged `content + content_blocks` response contract.
+- [x] Reduces raw content exposure by making `content` compatibility/debug-oriented and introducing explicit `include_raw_content` opt-in while keeping `content_blocks` primary.
 - [x] Validates content-block artifact target metadata response schema with explicit enum/constraint fail-fast behavior.
 - [x] Reuses shared artifact target level contract to remove duplicated enum definitions across shared/API schema boundaries.
 
@@ -566,7 +567,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
 - Status: `Completed Baseline Captured`
-- Completed item count: `8`
+- Completed item count: `9`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -577,6 +578,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Adds read-only task-unit content endpoint resolved by `doc_name + task_unit_id`.
 - [x] Exposes additive `content_blocks` in task-unit content endpoint response without changing route semantics.
 - [x] Adds explicit `segmented` query option to task-unit content endpoint while preserving default backward-compatible response behavior.
+- [x] Stops returning raw task-unit `content` by default and adds explicit `include_raw_content` compatibility flag.
 - [x] Normalizes rich-content endpoint response mapping with official top-level content block schema usage.
 - [x] Maps content-block artifact target metadata in task-unit content endpoint response with safe glossary-key filtering.
 

@@ -339,7 +339,7 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         payload = content_response.json()
 
         _assert(payload["task_unit_id"] == unit_id, "task_unit_id mismatch")
-        _assert(payload["content"] == "Content A", "content mismatch")
+        _assert(payload["content"] is None, "default response should not expose raw content")
         _assert("content_blocks" in payload, "content_blocks should exist in content endpoint payload")
         _assert(
             isinstance(payload["content_blocks"], list) and len(payload["content_blocks"]) == 1,
@@ -361,8 +361,23 @@ def test_task_layout_id_then_content_lookup_success() -> None:
             "content block id should be deterministic",
         )
         _assert(
-            payload["content_blocks"][0]["content"] == payload["content"],
-            "content block text should match legacy content field",
+            payload["content_blocks"][0]["content"] == "Content A",
+            "default content block should preserve original text",
+        )
+
+        content_response_with_raw = client.get(
+            f"/documents/Doc Content/task-units/{unit_id}/content",
+            params={"include_raw_content": "true"},
+        )
+        _assert(content_response_with_raw.status_code == 200, "include_raw_content=true should succeed")
+        payload_with_raw = content_response_with_raw.json()
+        _assert(
+            payload_with_raw["content"] == "Content A",
+            "include_raw_content=true should expose legacy raw content for compatibility",
+        )
+        _assert(
+            payload_with_raw["content_blocks"][0]["content"] == "Content A",
+            "content_blocks should remain unchanged when raw-content compatibility is enabled",
         )
         _assert(
             set(payload["content_blocks"][0].keys())
@@ -421,6 +436,7 @@ def test_task_unit_content_segmented_true_returns_deterministic_multi_blocks() -
     client = TestClient(main.app)
     original = main.section_task_coordinator
     main.section_task_coordinator = coordinator
+    expected_raw_content = "Paragraph one.\n\n- item one\n- item two\n\nParagraph tail."
     try:
         response = client.get(
             "/documents/Doc Seg/task-units/task-unit-seg/content",
@@ -429,7 +445,7 @@ def test_task_unit_content_segmented_true_returns_deterministic_multi_blocks() -
         _assert(response.status_code == 200, "segmented=true lookup should succeed")
         payload = response.json()
 
-        _assert(payload["content"] == "Paragraph one.\n\n- item one\n- item two\n\nParagraph tail.", "content field should remain unchanged")
+        _assert(payload["content"] is None, "segmented=true default should not expose raw content")
         _assert(len(payload["content_blocks"]) == 4, "segmented=true should return deterministic multi-block output")
 
         block_0 = payload["content_blocks"][0]
@@ -462,9 +478,20 @@ def test_task_unit_content_segmented_true_returns_deterministic_multi_blocks() -
             )
             start = block["metadata"]["quote_span_start"]
             end = block["metadata"]["quote_span_end"]
-            _assert(payload["content"][start:end] == block["content"], "quote span must map to block content")
+            _assert(expected_raw_content[start:end] == block["content"], "quote span must map to block content")
 
         _assert(repository.write_calls == 0, "segmented=true lookup must not write persistence")
+
+        response_with_raw = client.get(
+            "/documents/Doc Seg/task-units/task-unit-seg/content",
+            params={"segmented": "true", "include_raw_content": "true"},
+        )
+        _assert(response_with_raw.status_code == 200, "segmented+include_raw_content should succeed")
+        payload_with_raw = response_with_raw.json()
+        _assert(
+            payload_with_raw["content"] == expected_raw_content,
+            "raw content should be available with compatibility flag",
+        )
     finally:
         main.section_task_coordinator = original
 
