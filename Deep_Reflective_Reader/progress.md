@@ -249,11 +249,13 @@ No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
-- [ ] Added unchecked future tasks for rich-content-aware evaluation preparation in `evaluated_answer/module-checklist.md`.
-- [ ] Maintainer-confirmed design contract fixes deterministic evidence baseline to `content_block_id + quote_span_start + quote_span_end + source_hash` (strict deterministic-first).
-- [ ] Maintainer-confirmed policy keeps content-block evidence trace runtime-projection-only (no persisted trace metadata in current phase).
-- [ ] Reparse stale-evidence taxonomy (`malformed`/`unresolved`/`stale`/`source-mismatched`) is documented as future-direction boundary, not runtime implementation.
-- [ ] This update is documentation/checklist preparation only; no runtime behavior, scoring logic, LLM evaluation implementation, or API/schema behavior was changed.
+- [ ] Support content-block-linked answer evidence.
+- [ ] Define content-block reference validation semantics.
+- [ ] Define artifact-linked evaluation flow.
+- [ ] Define deterministic content-block evidence validation contract (baseline: `content_block_id + quote_span_start + quote_span_end + source_hash`; strict deterministic-first).
+- [ ] Define runtime-only evidence trace projection flow (no persisted trace metadata in current phase).
+- [ ] Define stale evidence classification semantics after reparse (`malformed` / `unresolved` / `stale` / `source-mismatched`).
+- [ ] Define hierarchy-aware evidence targeting semantics.
 
 ### `language/`
 
