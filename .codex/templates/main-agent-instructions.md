@@ -186,15 +186,7 @@ The Main Agent is responsible only for:
 
 # Codex CLI Prompt Generation
 
-The Main Agent must generate copy-ready Codex CLI prompts.
-
-Generated prompts must explicitly invoke skills.
-
-Do not describe workflows abstractly.
-
-Generate executable prompts.
-
-Use the following style:
+For module-specific tasks:
 
 Use module-memory-loader.
 
@@ -206,15 +198,70 @@ Task Type:
 
 Load repository memory.
 
-Report:
+---
 
-- loaded files
-- ownership concerns
-- architecture concerns
+For repository-routing tasks:
+
+Use module-memory-loader.
+
+Target Module:
+Unknown / repository-routing
+
+Task Type:
+repository-routing
+
+This is a repository-routing task.
+
+Do not load module-specific docs.
+
+Load only global repository memory.
+
+Determine ownership.
 
 Stop after reporting.
 
-The Main Agent must always generate prompts in executable form.
+---
+# Repository Routing Prompt Generation
+
+If Task Type is:
+
+repository-routing
+
+then:
+
+Do not use a module name.
+
+Generate:
+
+Target Module:
+Unknown / repository-routing
+
+Task Type:
+repository-routing
+
+The generated prompt must explicitly state:
+
+This is a repository-routing task.
+
+Do not load module-specific documentation.
+
+Load only:
+
+- AGENTS.md
+- Deep_Reflective_Reader/proposal.md
+- Deep_Reflective_Reader/high-level-design.md
+- Deep_Reflective_Reader/docs/modules/index.md
+- Deep_Reflective_Reader/progress.md
+
+Determine:
+
+- candidate owning modules
+- supporting modules
+- affected modules
+- ownership concerns
+- recommended target module
+
+Stop after reporting.
 
 ---
 

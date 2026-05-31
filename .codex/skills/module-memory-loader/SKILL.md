@@ -1,53 +1,65 @@
 ---
 name: module-memory-loader
-description: Load Deep Reader repository memory for a module-specific task before implementation, audit, validation, or documentation work.
+description: Load Deep Reader repository memory before implementation, audit, validation, documentation, or repository-routing work.
 ---
 
 # Module Memory Loader
 
 ## Purpose
 
-This skill loads the minimum required repository memory for a module-specific task.
+This skill loads the required repository memory before execution.
 
-The goal is to make repository memory deterministic and reduce dependence on chat context.
+The goal is to:
 
-This skill is read-only.
+- make repository memory deterministic
+- reduce dependence on chat context
+- validate module ownership
+- identify architecture concerns
+- identify repository memory conflicts
 
-It must not modify source code or markdown files.
+This skill is strictly read-only.
+
+It must never modify:
+
+- source code
+- tests
+- markdown files
+- configuration files
+
+---
+
+# Supported Modes
+
+## Module-Specific Mode
+
+Used when the target module is already known.
+
+Examples:
+
+text document_structure section_tasks retrieval profile evaluated_answer 
+
+---
+
+## Repository-Routing Mode
+
+Used when the target module is not yet known.
+
+Purpose:
+
+text Determine ownership.  Determine affected modules.  Recommend target module.  Recommend required module memory. 
 
 ---
 
 # When To Use
 
-Use this skill when:
+Use this skill before:
 
-- working on a specific module
-- auditing a module
-- implementing module changes
-- validating module changes
-- synchronizing module documentation
-- generating implementation plans
-
-Examples:
-
-- document_structure task
-- section_tasks task
-- profile task
-- retrieval task
-- evaluated_answer task
-
----
-
-# When Not To Use
-
-Do not use this skill when:
-
-- performing repository-wide architecture review
-- modifying global architecture documents
-- working on cross-module integration tasks
-- performing frontend/mobile integration planning
-
-Use future architecture-level memory loaders instead.
+- implementation
+- audit
+- validation
+- documentation synchronization
+- architecture review
+- repository routing
 
 ---
 
@@ -56,6 +68,8 @@ Use future architecture-level memory loaders instead.
 ## Allowed
 
 Read repository files.
+
+---
 
 ## Forbidden
 
@@ -66,7 +80,9 @@ Do not modify:
 - markdown files
 - configuration files
 
-This skill is strictly read-only.
+Files Modified:
+
+text none 
 
 ---
 
@@ -74,23 +90,7 @@ This skill is strictly read-only.
 
 The caller must provide:
 
-```text
-Target Module:
-<module_name>
-
-Task Type:
-<implementation | audit | validation | documentation>
-```
-
-Example:
-
-```text
-Target Module:
-document_structure
-
-Task Type:
-audit
-```
+text Target Module: <module_name | Unknown / repository-routing>  Task Type: <implementation | audit | validation | documentation | repository-routing> 
 
 ---
 
@@ -101,74 +101,102 @@ Always load:
 1. AGENTS.md
 2. Deep_Reflective_Reader/proposal.md
 3. Deep_Reflective_Reader/high-level-design.md
-4. Deep_Reflective_Reader/progress.md
-5. Deep_Reflective_Reader/docs/modules/index.md
+4. Deep_Reflective_Reader/docs/modules/index.md
+5. Deep_Reflective_Reader/progress.md
 
 ---
 
-# Module Memory Loading Order
+# Repository-Routing Mode
 
-For the target module:
+Activate repository-routing mode if:
 
-Load:
+text Target Module: Unknown / repository-routing 
 
-```text
-<module>/module-detailed-design.md
-```
+or:
+
+text Task Type: repository-routing 
+
+In repository-routing mode:
+
+Load only:
+
+text AGENTS.md  Deep_Reflective_Reader/proposal.md  Deep_Reflective_Reader/high-level-design.md  Deep_Reflective_Reader/docs/modules/index.md  Deep_Reflective_Reader/progress.md 
+
+Do not load:
+
+text module-detailed-design.md  module-checklist.md 
+
+Do not attempt to locate:
+
+text repository-routing/ 
+
+because repository-routing is a task type, not a module.
+
+Repository-routing mode must report:
+
+text Candidate Owning Modules  Supporting Modules  Affected Modules  Ownership Concerns  Architecture Concerns  Recommended Target Module  Required Module Docs For Next Stage 
+
+Stop after reporting.
+
+---
+
+# Module-Specific Mode
+
+Activate module-specific mode if:
+
+text Target Module: <existing module> 
+
+For the target module load:
+
+text <module>/module-detailed-design.md 
 
 Then:
 
-```text
-<module>/module-checklist.md
-```
+text <module>/module-checklist.md 
 
-If additional module documentation exists:
+If available:
 
-```text
-README.md
-design-notes.md
-future-work.md
-```
+text README.md  design-notes.md  future-work.md 
 
-load them after the required files.
+load them afterwards.
 
 ---
 
 # Memory Priority
 
-Repository memory must be interpreted in the following order:
+Repository memory must be interpreted in the following order.
 
 Priority 1
 
-AGENTS.md
+text AGENTS.md 
 
 Priority 2
 
-proposal.md
+text proposal.md 
 
 Priority 3
 
-high-level-design.md
+text high-level-design.md 
 
 Priority 4
 
-docs/modules/index.md
+text docs/modules/index.md 
 
 Priority 5
 
-module-detailed-design.md
+text module-detailed-design.md 
 
 Priority 6
 
-module-checklist.md
+text module-checklist.md 
 
 Priority 7
 
-progress.md
+text progress.md 
 
 Priority 8
 
-implementation files
+text implementation files 
 
 If conflicts are discovered:
 
@@ -180,56 +208,7 @@ Higher priority memory wins.
 
 The skill must report:
 
-```text
-Target Module:
-
-Task Type:
-
-Files Loaded:
-
-Global Memory:
-- ...
-
-Module Memory:
-- ...
-
-Additional Memory:
-- ...
-
-Potential Conflicts:
-- ...
-
-Recommended Next Skill:
-- ...
-```
-
----
-
-# Recommended Next Skill
-
-Implementation task:
-
-```text
-implementation-validation
-```
-
-Audit task:
-
-```text
-module-boundary-audit
-```
-
-Documentation task:
-
-```text
-documentation-sync
-```
-
-Checklist synchronization:
-
-```text
-checklist-progress-sync
-```
+text Mode  Target Module  Task Type  Files Loaded  Potential Conflicts  Architecture Concerns  Recommended Next Step 
 
 ---
 
@@ -239,58 +218,30 @@ Before completing:
 
 Confirm:
 
-- target module exists
-- required memory files were loaded
-- no files were modified
+text required memory files loaded  no files modified 
 
-Report:
+For module-specific mode:
 
-```text
-Files Modified:
-none
-```
+text target module exists 
+
+For repository-routing mode:
+
+text no module-specific docs loaded 
 
 If any file was modified:
 
-Return:
-
-```text
-ERROR:
-module-memory-loader is read-only.
-```
+text ERROR:  module-memory-loader is read-only. 
 
 ---
 
 # Final Report Format
 
-```text
-Skill:
-module-memory-loader
+## Module-Specific Mode
 
-Target Module:
-...
+text Skill: module-memory-loader  Mode: module-specific  Target Module: ...  Task Type: ...  Global Memory Loaded: - ...  Module Memory Loaded: - ...  Additional Memory Loaded: - ...  Potential Conflicts: - ...  Architecture Concerns: - ...  Recommended Next Step: - ...  Files Modified: none  Validation Result: success 
 
-Task Type:
-...
+---
 
-Global Memory Loaded:
-- ...
+## Repository-Routing Mode
 
-Module Memory Loaded:
-- ...
-
-Additional Memory Loaded:
-- ...
-
-Potential Conflicts:
-- ...
-
-Recommended Next Skill:
-- ...
-
-Files Modified:
-none
-
-Validation Result:
-success
-```
+text Skill: module-memory-loader  Mode: repository-routing  Target Module: Unknown / repository-routing  Task Type: repository-routing  Global Memory Loaded: - ...  Module Memory Loaded: none  Candidate Owning Modules: - ...  Supporting Modules: - ...  Affected Modules: - ...  Ownership Concerns: - ...  Architecture Concerns: - ...  Recommended Target Module: ...  Required Module Docs For Next Stage: - ...  Files Modified: none  Validation Result: success 
