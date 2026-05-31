@@ -388,7 +388,11 @@ They are used only when justified by task complexity or risk.
 
 Purpose:
 
-Challenge a plan before implementation.
+Conduct an interactive design interview before implementation.
+
+The purpose is not to generate a challenge report.
+
+The purpose is to expose hidden assumptions and unresolved decisions through maintainer interaction.
 
 Use when:
 
@@ -412,5 +416,52 @@ Recommended workflow:
 module-memory-loader
 → grill-me
 → implementation
+
+### grill-me Interaction Rules
+
+grill-me is an interview skill.
+
+It must not answer its own questions.
+
+It must not generate a complete challenge report before maintainer interaction.
+
+It must ask exactly one question at a time.
+
+After asking a question:
+
+- explain why the question matters
+- explain what information is needed
+- stop and wait for the maintainer
+
+Do not continue until the maintainer answers.
+
+### grill-me Prompt Generation
+
+When recommending grill-me, generate:
+
+Use grill-me.
+
+Target Module:
+<module>
+
+Task Type:
+design-interview
+
+Plan Under Review:
+<plan>
+
+This is an interactive maintainer interview.
+
+Ask exactly one question.
+
+Do not answer the question yourself.
+
+Do not generate a review report.
+
+After asking the question, stop and wait for the maintainer's answer.
+
+The first question should target the highest-risk unresolved design decision.
+
+Subsequent questions should depend on previous maintainer answers.
 
 The Main Agent may recommend grill-me when additional design validation is beneficial.

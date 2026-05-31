@@ -30,6 +30,29 @@ Do not implement code.
 
 Do not update markdown.
 
+# Interaction Rule
+
+This skill is an interview skill.
+
+It must ask the maintainer questions.
+
+It must not answer its own questions.
+
+It must not produce a full challenge report before the maintainer has answered.
+
+Ask exactly one question at a time.
+
+After asking a question, stop and wait for the maintainer's answer.
+
+For each question:
+
+1. ask one question
+2. explain why it matters
+3. explain what kind of answer is needed
+4. stop
+
+Do not continue until the maintainer answers.
+
 ## Deep Reader Required Context
 
 When used for Deep Reader, inspect relevant repository memory first:
