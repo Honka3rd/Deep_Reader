@@ -92,3 +92,13 @@
 
 1. 補 container dependency graph（高層）。
 2. 補 policy groups 對應的 owner/調參策略。
+
+## 14. Future Direction Note: Storage Backend Governance
+
+> 本節是 future DB migration governance preparation，非目前 implementation。 **[Future Direction]**
+
+1. Future DB migration should be configured through the `config/` layer. **[Future Direction]**
+2. Storage backend selection belongs in `config/`, including eventual file / DB coexistence policy and DI wiring choice. **[Future Direction]**
+3. Persistence semantics do not belong in `config/`; hierarchy semantics remain owned by `document_structure/`, profile semantics by `profile/`, retrieval semantics by `retrieval/`, and raw loading semantics by `doc_loaders/`. **[Code-Confirmed] + [Inferred]**
+4. `config/` may own backend selection policy, namespace normalization policy, and provider assembly, but must not define schema authority, parser authority, artifact authority, or runtime projection semantics. **[Future Direction]**
+5. Current file path behavior remains active; this note does not introduce storage abstractions, DB dependencies, schema design, dual write, or runtime switch behavior. **[Doc-Confirmed]**

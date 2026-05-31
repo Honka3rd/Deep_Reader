@@ -204,7 +204,59 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 
 > 上述 DB migration phases 均屬 **[Future Direction]**；本輪僅建立 proposal-level direction 與 checklist preparation。
 
-## 9. Phased Rollout Plan (Proposal)
+## 9. Storage Contract Inventory
+
+> 本節是 storage contract inventory preparation，用於 future DB-centric migration planning；不代表 schema design、runtime switch、或 storage abstraction implementation。 **[Code-Confirmed] + [Future Direction]**
+
+### 9.1 Structured Document
+
+- Owner: `document_structure` **[Code-Confirmed]**
+- Current Persistence: structured JSON **[Code-Confirmed]**
+- Truth Source: `chapters[].sections[].task_units[]` **[Code-Confirmed]**
+- Future DB Candidate: Yes **[Future Direction]**
+- Migration Priority: Highest **[Future Direction]**
+
+### 9.2 Profile
+
+- Owner: `profile` **[Code-Confirmed]**
+- Current Persistence: profile artifact **[Code-Confirmed]**
+- Truth Source: metadata snapshot only **[Code-Confirmed]**
+- Future DB Candidate: Yes **[Future Direction]**
+- Migration Priority: Medium **[Future Direction]**
+
+### 9.3 Retrieval
+
+- Owner: `retrieval` **[Code-Confirmed]**
+- Current Persistence: FAISS + records + metadata **[Code-Confirmed]**
+- Truth Source: Not authoritative **[Code-Confirmed]**
+- Future DB Candidate: Partial **[Future Direction]**
+- Migration Priority: Low **[Future Direction]**
+
+### 9.4 Artifacts
+
+- Owner: `document_structure` **[Code-Confirmed]**
+- Current Persistence: artifact repository **[Code-Confirmed]**
+- Truth Source: No **[Code-Confirmed]**
+- Future DB Candidate: Yes **[Future Direction]**
+- Migration Priority: Medium **[Future Direction]**
+
+### 9.5 Raw Documents
+
+- Owner: `doc_loaders` **[Code-Confirmed]**
+- Current Persistence: uploaded files **[Code-Confirmed]**
+- Truth Source: Canonical user document **[Inferred]**
+- Future DB Candidate: Needs Confirmation **[Needs Confirmation]**
+- Migration Priority: Separate Track **[Future Direction]**
+
+### 9.6 Runtime Bundles
+
+- Owner: `bundle_provider` / `bundle_factory` **[Code-Confirmed]**
+- Current Persistence: runtime cache **[Code-Confirmed]**
+- Truth Source: No **[Code-Confirmed]**
+- Future DB Candidate: No **[Future Direction]**
+- Migration Priority: None **[Future Direction]**
+
+## 10. Phased Rollout Plan (Proposal)
 
 ### Phase 1 — Proposal / Architecture Documentation Only
 - 更新 proposal，固定方向與邊界
@@ -232,7 +284,7 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 
 > 上述各 phase 均屬 **[Future Direction]**。
 
-## 10. Explicit Non-goals (This Round)
+## 11. Explicit Non-goals (This Round)
 
 - 本輪不 coding **[Maintainer-Provided]**
 - 本輪不改 API behavior **[Maintainer-Provided]**
@@ -245,14 +297,14 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 - 本輪不移除、不遷移、不破壞既有 `data/` file storage path **[Maintainer-Provided]**
 - 本輪不改 parser/task-layout/API/runtime behavior **[Maintainer-Provided]**
 
-## 11. Open Questions for Maintainer
+## 12. Open Questions for Maintainer
 
 1. rich content model 的最小 segment granularity（句子/段落/混合）偏好？ **[Future Direction]**
 2. content_block_id 是否需要跨 reparse 穩定，還是只需單次 version 穩定？ **[Future Direction]**
 3. content-block-level artifact 的最小 metadata contract（source_hash/version/trace）是否先行定義？ **[Future Direction]**
 4. rich content endpoint 是否要分版本（例如 `/v2/task-units/.../content`）？ **[Future Direction]**
 
-## 12. Status Summary
+## 13. Status Summary
 
 - hierarchy-first runtime contract：已落地 **[Code-Confirmed]**
 - pure hierarchy persistence defaults：已落地 **[Code-Confirmed]**
@@ -261,3 +313,4 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 - task-unit on-demand content API：已落地 **[Code-Confirmed]**
 - rich task-unit content model：下一階段提案 **[Maintainer-Provided]** + **[Future Direction]**
 - DB-centric persistence migration：下一階段 documentation/checklist preparation **[Maintainer-Provided] + [Future Direction]**
+- storage contract inventory：已完成 documentation-only inventory preparation **[Code-Confirmed]**

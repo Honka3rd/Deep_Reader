@@ -658,6 +658,14 @@ No unresolved confirmation items identified in module checklist.
 - [x] Retrieval/embedding/session/runtime bundle support baseline captured.
   Modules: `retrieval`, `embeddings`, `session`, `bundle_factory.py`, `bundle_provider.py`, `fingerprint_handler.py`
 
+### 7.6 Storage Inventory Documentation
+
+- [x] Storage Contract Inventory Documentation
+  Status: `Completed`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/docs/storage-contract-inventory.md`; `Deep_Reflective_Reader/proposal.md (Storage Contract Inventory)`; `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Storage Ownership Boundary)`; `Deep_Reflective_Reader/config/module-detailed-design.md (Storage Backend Governance)`
+
 ## 8. Cross-Module Needs Confirmation
 
 No unresolved cross-module confirmation items identified.
@@ -695,6 +703,7 @@ No unresolved cross-module confirmation items identified.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
 - DB-centric persistence migration is documented as future-direction planning only; no DB migration work is marked completed.
 - Existing `data/` file storage remains valid during migration planning and must not be removed until DB readiness validation supports gradual retirement.
+- Storage Contract Inventory Documentation is completed as documentation-only work with no implementation impact.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.
 - Task-layout projection boundary is documented as read/projection-focused in current docs/checklists.
 - API entry/schema and coordinator orchestration baselines are captured and linked in module-level documentation.

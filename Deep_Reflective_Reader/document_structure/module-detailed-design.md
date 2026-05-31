@@ -161,7 +161,22 @@
 1. legacy 可讀/migration 可保留，但不得重新引入 root sections mirror 或 flat task_units 作新 artifact write contract。 **[Code-Confirmed] + [From HLD]**  
 2. `structure_nodes` compatibility 不延伸到 artifact truth contract。 **[Code-Confirmed]**
 
-## 15. Current Risks
+## 15. Storage Ownership Boundary
+
+### 15.1 Owned By `document_structure`
+
+1. `document_structure` owns the hierarchy persistence contract: `chapters[].sections[].task_units[]` remains the structured document truth source. **[Code-Confirmed] + [From HLD]**
+2. `document_structure` owns the structured document storage contract through `StructuredDocumentStore`, `DocumentArtifactRepository`, and the hierarchy-aware concrete repository. **[Code-Confirmed]**
+3. `document_structure` owns hierarchy-aware artifact write primitives only insofar as artifacts are persisted against existing hierarchy targets. **[Code-Confirmed]**
+
+### 15.2 Not Owned By `document_structure`
+
+1. `document_structure` does not own profile persistence; profile artifacts and advisory metadata snapshots belong to `profile/`. **[Code-Confirmed] + [From HLD]**
+2. `document_structure` does not own retrieval persistence; FAISS index, node records, and fingerprint metadata belong to `retrieval/`, `fingerprint_handler.py`, and bundle orchestration. **[Code-Confirmed] + [Inferred]**
+3. `document_structure` does not own runtime cache persistence; runtime bundle cache belongs to `bundle_factory.py` / `bundle_provider.py` and is not authoritative. **[Code-Confirmed] + [Inferred]**
+4. `document_structure` does not own raw uploaded file storage; canonical raw document loading belongs to `doc_loaders/`. **[Code-Confirmed] + [Inferred]**
+
+## 16. Current Risks
 
 1. risk：新 helper/feature 誤把 legacy sections 重新引入 runtime lookup
 - why：會破壞 hierarchy-only 路徑一致性
@@ -179,20 +194,20 @@
 - why：後續開發者可能重引入多層 persistence
 - guardrail：在 module docs/non-goals 明確固定 current scope **[From Proposal] + [From HLD]**
 
-## 16. Open Questions for Maintainer
+## 17. Open Questions for Maintainer
 
 1. `llm_section_splitter` 的輸出契約是否要加入更明確 schema guard（僅文檔層）？
 2. enhanced recommendation 的 score threshold 調整責任層級在哪（config 或 evaluator 固化）？
 3. chapter summary/quiz artifact 長期是否固定以 `document_task_artifacts.chapter_artifacts` 為唯一寫入權威（chapter node `task_artifacts` 僅作投影輔助）？
 4. `legacy compatibility fields`（原 historical mirror wording）是否需在全專案文檔補一份 alias 對照表以利遷移搜尋？
 
-## 17. Suggested Next Documentation Improvements
+## 18. Suggested Next Documentation Improvements
 
 1. 增加「common vs llm enhanced parser lifecycle」sequence diagram。
 2. 增加 artifact repository write boundary 狀態圖（section/chapter/task-unit/document-level）。
 3. 補 `document_structure_language_registry` 的 consumer matrix。
 
-## 18. Future Direction Note: Rich Task-Unit Content Governance Preparation
+## 19. Future Direction Note: Rich Task-Unit Content Governance Preparation
 
 > 本節屬 future-direction governance preparation，非當前 implementation。 **[Inferred]**
 
@@ -205,17 +220,17 @@
 7. 目前 `task_unit.content` 為 string；兼容方向可規劃 `string -> single content block` adapter，但該 adapter 屬 future compatibility strategy，不是 legacy fallback runtime path。 **[Code-Confirmed] + [Inferred]**
 8. 本節僅做 governance/邊界對齊；不引入 persistence schema、migration algorithm、runtime API 或 execution model。 **[Doc-Confirmed]**
 
-## 19. Future Direction Note: Artifact Target Validation Boundary Preparation
+## 20. Future Direction Note: Artifact Target Validation Boundary Preparation
 
 > 本節屬 validation-boundary governance preparation，非當前 repository/runtime implementation。 **[Future Direction] + [Maintainer-Confirmed]**
 
-### 19.1 Current Boundary (What Is Already True)
+### 20.1 Current Boundary (What Is Already True)
 
 1. `ArtifactTargetRef` 目前語義是 metadata + target intent，不是 validated persistence truth。 **[Code-Confirmed] + [Doc-Confirmed]**
 2. hierarchy truth source 仍固定為 `chapters[].sections[].task_units[]`；content block 不是 hierarchy node。 **[Code-Confirmed]**
 3. content endpoint 現階段僅 pass through target metadata，不查 artifact repository、不驗證 artifact existence、不創建 persistence target。 **[Doc-Confirmed]**
 
-### 19.2 Future Validation Lifecycle (Design Boundary)
+### 20.2 Future Validation Lifecycle (Design Boundary)
 
 `ArtifactTargetRef` (request intent)
 -> hierarchy-aware validation
@@ -224,7 +239,7 @@
 
 治理要求：repository 層不得直接 trust target ref；必須先完成 hierarchy-aware resolution。 **[Future Direction] + [Maintainer-Confirmed]**
 
-### 19.3 Reparse / Restructure Stale-Ref Semantics
+### 20.3 Reparse / Restructure Stale-Ref Semantics
 
 以下情況可使 target ref 失效：
 
@@ -236,7 +251,7 @@
 
 治理語義：stale ref != malformed payload；future validation layer 必須可區分 stale/unresolved/malformed。 **[Future Direction] + [Maintainer-Confirmed]**
 
-### 19.4 Failure Boundary (Fail-Fast Direction)
+### 20.4 Failure Boundary (Fail-Fast Direction)
 
 future validation boundary 應 fail-fast 於以下類型：
 
@@ -249,7 +264,7 @@ future validation boundary 應 fail-fast 於以下類型：
 
 並區分 error class：malformed / unresolved / stale / hierarchy-mismatched。 **[Future Direction] + [Maintainer-Confirmed]**
 
-### 19.5 Allowed Target Combinations (Endpoint Context Policy)
+### 20.5 Allowed Target Combinations (Endpoint Context Policy)
 
 1. `target_level=content_block`：必須至少包含 `task_unit_id` + `content_block_id`。
 2. `target_level=task_unit`：必須至少包含 `task_unit_id`。
@@ -257,7 +272,7 @@ future validation boundary 應 fail-fast 於以下類型：
 
 本政策用於避免 enum 漂移被誤解為完整 persistence 支援。 **[Doc-Confirmed] + [Maintainer-Confirmed]**
 
-### 19.6 Minimum Metadata Glossary (Cross-Module Anti-Drift)
+### 20.6 Minimum Metadata Glossary (Cross-Module Anti-Drift)
 
 允許的最小 glossary key：
 
@@ -269,7 +284,7 @@ future validation boundary 應 fail-fast 於以下類型：
 
 治理要求：metadata glossary 用於 interaction/reference pass-through，非 parser authority、非 hierarchy truth、非 artifact persistence truth。 **[Doc-Confirmed] + [Maintainer-Confirmed]**
 
-### 19.7 Non-Goals In This Pass
+### 20.7 Non-Goals In This Pass
 
 1. 不實作 repository validation engine。
 2. 不實作 artifact read/write flow。
@@ -278,72 +293,72 @@ future validation boundary 應 fail-fast 於以下類型：
 
 以上僅為 future design boundary preparation。 **[Doc-Confirmed]**
 
-## 20. Future Direction Note: Content Block Segmentation Boundary Design Preparation
+## 21. Future Direction Note: Content Block Segmentation Boundary Design Preparation
 
 > 本節僅做 segmentation governance/boundary 設計準備，不代表 segmentation algorithm 已實作。 **[Doc-Confirmed]**
 
-### 20.1 Segmentation vs Hierarchy Parser Boundary
+### 21.1 Segmentation vs Hierarchy Parser Boundary
 
 1. hierarchy parser responsibility 仍是建立/維護 `chapters[].sections[].task_units[]` 主契約。 **[Code-Confirmed] + [From HLD]**
 2. segmentation responsibility 定位於 task-unit 內部內容切分（render/interaction segmentation），不重新定義 hierarchy。 **[Maintainer-Confirmed] + [Future Direction]**
 3. `task_unit` boundary 與 `content_block` boundary 必須分離：`task_unit` 是 hierarchy-interaction container；`content_block` 是其內部 interaction target。 **[Maintainer-Confirmed] + [Future Direction]**
 
-### 20.2 Content-Block Persistence Semantics (Non-Authority Rule)
+### 21.2 Content-Block Persistence Semantics (Non-Authority Rule)
 
 1. 即使 future `content_blocks` 有 persisted 表示，content block 仍不是 hierarchy truth、不是 structure authority、不是 runtime navigation hierarchy。 **[Maintainer-Confirmed] + [Future Direction]**
 2. 禁止形成 `Document -> Chapter -> Section -> TaskUnit -> ContentBlock` persisted hierarchy model。 **[Maintainer-Confirmed] + [Future Direction]**
 3. content block 不得覆蓋 chapter/section ownership，也不得替代 task-unit identity。 **[Maintainer-Confirmed] + [Future Direction]**
 
-### 20.3 Stale-Target Semantics for Reparse/Resegmentation
+### 21.3 Stale-Target Semantics for Reparse/Resegmentation
 
 1. reparse/resegmentation 後，`content_block_id` 可能 stale。 **[Maintainer-Confirmed] + [Future Direction]**
 2. stale target != malformed payload；後續邊界需區分 malformed / unresolved / stale / source-mismatched。 **[Maintainer-Confirmed] + [Future Direction]**
 3. stale detection 方向可依賴 `source_hash`、`quote_span`、`segmentation_version`、`content fingerprint`，但本輪不定義 executable detection engine。 **[Maintainer-Confirmed] + [Future Direction]**
 
-### 20.4 content_block_id Dependency Semantics
+### 21.4 content_block_id Dependency Semantics
 
 1. `content_block_id` 必須依附 `task_unit_id` 語境，不可脫離 task unit 成為獨立 hierarchy node。 **[Maintainer-Confirmed] + [Future Direction]**
 2. `content_block_id` 是 interaction target id，不是 hierarchy node id。 **[Code-Confirmed] + [Maintainer-Confirmed]**
 3. segmentation 不能改變 `task_unit_id` identity，不得反向重寫 hierarchy ownership。 **[Maintainer-Confirmed] + [Future Direction]**
 
-### 20.5 Legacy String Compatibility Direction
+### 21.5 Legacy String Compatibility Direction
 
 1. 現況 `task_unit.content`（string）仍是 compatibility field，`string -> block` 屬 adapter strategy。 **[Code-Confirmed]**
 2. future multi-block strategy 不得變成 legacy fallback runtime path，也不得回退 root-sections/structure_nodes compatibility 主流程。 **[Maintainer-Confirmed] + [Future Direction]**
 3. compatibility 演進需避免 dual hierarchy representation。 **[Maintainer-Confirmed] + [Future Direction]**
 
-### 20.6 Segmentation Non-Authority and Artifact Boundary Guardrails
+### 21.6 Segmentation Non-Authority and Artifact Boundary Guardrails
 
 1. segmentation 不得改變 hierarchy truth，不得成為 parser authority 或 retrieval authority。 **[Maintainer-Confirmed] + [Future Direction]**
 2. `ArtifactTargetRef` 與 content-block target metadata 不得漂移為 persistence truth 或 hierarchy authority。 **[Maintainer-Confirmed] + [Future Direction]**
 3. 允許 resegmentation policy change 與 content block regeneration；不得假設 `content_block_id` 永久穩定。 **[Maintainer-Confirmed] + [Future Direction]**
 4. 本節不引入 segmentation algorithm、persistence schema、repository logic、runtime API、stale-detection engine、retrieval integration。 **[Doc-Confirmed]**
 
-## 21. Future Direction Note: DB-Centric Structured Persistence Migration
+## 22. Future Direction Note: DB-Centric Structured Persistence Migration
 
 > 本節屬 DB-centric structured persistence migration 的 documentation/governance preparation，非目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
 
-### 21.1 Current Active Implementation Boundary
+### 22.1 Current Active Implementation Boundary
 
 1. 目前 active structured persistence implementation 仍是 structured JSON file storage。 **[Code-Confirmed]**
 2. 現有 `data/structured/*.structured.json` file path 在 DB migration 期間仍是有效 storage path，不得在本階段移除或破壞。 **[Maintainer-Provided]**
 3. DB storage 是 future representation target，不是目前 runtime read/write behavior。 **[Maintainer-Provided] + [Future Direction]**
 
-### 21.2 StructuredDocument Contract Preservation
+### 22.2 StructuredDocument Contract Preservation
 
 1. DB storage 必須保留 `StructuredDocument` hierarchy contract。 **[Maintainer-Provided] + [Future Direction]**
 2. hierarchy truth 仍固定為 `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [Maintainer-Provided]**
 3. DB rows、JSONB documents、relational tables 都只是 persistence representations，不是新的 parser authority、structure authority、或 hierarchy identity authority。 **[Maintainer-Provided] + [Future Direction]**
 4. DB schema 不得改變 chapter/section/task-unit identity semantics。 **[Maintainer-Provided] + [Future Direction]**
 
-### 21.3 Legacy and Repository Boundary
+### 22.3 Legacy and Repository Boundary
 
 1. DB migration 必須保留 explicit legacy migration-only boundary。 **[Maintainer-Provided] + [Future Direction]**
 2. DB-backed repository 必須仍是 hierarchy-aware repository，不得信任 root `sections[]`、`structure_nodes[]`、或 flat `task_units` 作 primary flow。 **[Maintainer-Provided] + [Future Direction]**
 3. DB read-path switch 前必須先定義 validation rules，確認 hierarchy parity、target resolution、artifact target consistency、以及 fail-fast error behavior。 **[Maintainer-Provided] + [Future Direction]**
 4. file-backed structured JSON 在 DB readiness 被驗證前仍可作 compatibility / fallback / migration source。 **[Maintainer-Provided] + [Future Direction]**
 
-### 21.4 Separate Persistence Concerns
+### 22.4 Separate Persistence Concerns
 
 1. content blocks 是 task-unit internal interaction/render concern，不是 structured hierarchy persistence authority。 **[Maintainer-Provided] + [Future Direction]**
 2. artifacts 是 interaction output；artifact persistence migration 需要獨立 track，不應混入 hierarchy truth contract。 **[Code-Confirmed] + [Maintainer-Provided]**
