@@ -47,7 +47,9 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Define preparation pipeline behavior for DB-backed structured persistence
+- [ ] Preserve current file-based prepare outputs during migration
+- [ ] Define future storage abstraction boundary for structured/profile/retrieval artifacts
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

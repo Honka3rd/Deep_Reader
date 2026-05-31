@@ -86,6 +86,12 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define segmentation boundary against hierarchy persistence
 - [ ] Define resegmentation stale-target semantics
 - [ ] Define future content-block persistence non-authority rule
+- [ ] Define DB-centric structured persistence migration contract
+- [ ] Preserve hierarchy-first StructuredDocument semantics across file and DB storage
+- [ ] Define file-to-DB migration boundary for structured documents
+- [ ] Define DB-backed repository validation rules before switching read path
+- [ ] Prevent DB schema from reintroducing root sections[], structure_nodes[], or flat task_units as primary flow
+- [ ] Define gradual retirement policy for data/ structured JSON after DB readiness validation
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

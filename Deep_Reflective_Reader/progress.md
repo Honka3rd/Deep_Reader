@@ -123,6 +123,12 @@ No unresolved confirmation items identified in module checklist.
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Added unchecked future tasks for file / DB storage backend coexistence policy in `config/module-checklist.md`.
+- [ ] Future direction keeps current file path behavior valid during DB migration rollout.
+- [ ] Configuration-layer DB work remains planning-only; no database dependency or runtime backend selection behavior changed.
+
 ### `context/`
 
 - Checklist: `context/module-checklist.md`
@@ -177,6 +183,12 @@ No unresolved confirmation items identified in module checklist.
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Added unchecked future tasks for DB-backed structured persistence behavior in the preparation pipeline in `document_preparation/module-checklist.md`.
+- [ ] Future direction preserves current file-based prepare outputs during migration.
+- [ ] Future storage abstraction boundary must separately account for structured/profile/retrieval artifacts; this pass is documentation/checklist preparation only.
+
 ### `document_structure/`
 
 - Checklist: `document_structure/module-checklist.md`
@@ -210,6 +222,10 @@ No unresolved confirmation items identified in module checklist.
 - [ ] `document_structure/module-detailed-design.md` now includes `Future Direction Note: Rich Task-Unit Content Governance Preparation` for boundary clarification only.
 - [ ] Segmentation boundary preparation is documented as future-direction governance only (no segmentation implementation/runtime behavior changes in this pass).
 - [ ] Future unchecked tasks now include segmentation-vs-hierarchy persistence boundary, resegmentation stale-target semantics, and content-block persistence non-authority rule.
+- [ ] DB-centric structured persistence migration is captured as unchecked future work in `document_structure/module-checklist.md`.
+- [ ] `document_structure/module-detailed-design.md` now includes `Future Direction Note: DB-Centric Structured Persistence Migration` for boundary clarification only.
+- [ ] Future DB migration planning preserves hierarchy-first `StructuredDocument` semantics across file and DB storage.
+- [ ] File-backed structured JSON remains valid compatibility/fallback/migration source until DB readiness validation; no runtime read/write behavior changed.
 
 ### `embeddings/`
 
@@ -599,6 +615,8 @@ No unresolved confirmation items identified in module checklist.
   Modules: `document_structure`, `app`, `section_tasks`, `shared`
 - [x] Legacy compatibility exists as controlled read/migration behavior rather than new default writes.
   Modules: `document_structure`, `config`, `document_preparation`
+- [ ] DB-centric persistence migration direction captured as documentation/checklist preparation only; JSON/file and future DB storage may coexist during migration, with `data/` retirement gated by validation.
+  Modules: `document_structure`, `config`, `document_preparation`
 
 ### 7.2 Profile and Metadata
 
@@ -675,6 +693,8 @@ No unresolved cross-module confirmation items identified.
 - Most aggregated module checklists report completed baseline items with no unresolved confirmation items in this aggregation pass.
 - Global status currently reflects checklist aggregation, not roadmap completion.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
+- DB-centric persistence migration is documented as future-direction planning only; no DB migration work is marked completed.
+- Existing `data/` file storage remains valid during migration planning and must not be removed until DB readiness validation supports gradual retirement.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.
 - Task-layout projection boundary is documented as read/projection-focused in current docs/checklists.
 - API entry/schema and coordinator orchestration baselines are captured and linked in module-level documentation.

@@ -147,7 +147,64 @@ ownership split：
 - task-layout 仍不回傳 heavy full content payload **[Code-Confirmed]**
 - on-demand content API 可演進為 rich payload **[Future Direction]**
 
-## 8. Phased Rollout Plan (Proposal)
+## 8. Next-Phase Proposal: DB-Centric Persistence Migration
+
+> 本節是 DB-centric persistence 的 documentation/governance preparation，不代表目前 runtime behavior 已改變。 **[Maintainer-Provided] + [Future Direction]**
+
+### 8.1 Proposal Statement
+
+Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演進到 DB-centric persistence。此方向是 future target，不是目前 runtime behavior；現有 `data/` file storage 在 migration 期間仍是有效、受支援的 temporary persistence scheme。 **[Maintainer-Provided] + [Future Direction]**
+
+### 8.2 Migration Boundary Rules
+
+- 目前 file-based `data/` storage 在 migration 期間仍有效，不得在本階段破壞。 **[Maintainer-Provided]**
+- DB-centric persistence 是 future target，不是 current runtime behavior。 **[Maintainer-Provided] + [Future Direction]**
+- JSON 與 relational persistence models 可在 migration 期間共存。 **[Maintainer-Provided] + [Future Direction]**
+- file storage 在 DB readiness 被證明前，仍作 compatibility / fallback / migration source。 **[Maintainer-Provided] + [Future Direction]**
+- hierarchy truth 仍是 `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [Maintainer-Provided]**
+- DB migration 不得重新引入 root `sections[]`、`structure_nodes[]`、或 flat `task_units` 作 primary source。 **[Maintainer-Provided]**
+- DB migration 必須保留 hierarchy-first lookup、fail-fast runtime behavior、與 explicit migration-only legacy handling。 **[Maintainer-Provided] + [Future Direction]**
+- `document_structure` owns hierarchy persistence contract。 **[Code-Confirmed] + [Maintainer-Provided]**
+- `config` 後續應擁有 backend selection / storage policy configuration。 **[Maintainer-Provided] + [Future Direction]**
+- `document_preparation` 後續應透過 storage abstraction 寫入，而不是直接假設 file paths。 **[Maintainer-Provided] + [Future Direction]**
+- `profile`、`retrieval`、與 artifact storage 需要各自獨立的 future DB migration tracks。 **[Maintainer-Provided] + [Future Direction]**
+- user-uploaded documents are user-scoped and must not be shared across users. **[Maintainer-Provided]**
+- raw file ownership/copyright boundary must be preserved; DB migration must not imply cross-user document sharing. **[Maintainer-Provided]**
+- `data/` retirement 必須 gradual 且 gated by validation，不得以 breaking deletion 完成。 **[Maintainer-Provided] + [Future Direction]**
+
+### 8.3 Phased Rollout Plan
+
+### Phase 1 — Documentation and checklist preparation only
+- 更新 proposal / module detailed design / checklist / progress。 **[Maintainer-Provided] + [Future Direction]**
+- 不改 code、不改 runtime behavior、不新增 DB dependency。 **[Maintainer-Provided]**
+
+### Phase 2 — Storage contract inventory
+- 盤點 structured/profile/retrieval/artifact/raw file storage contracts。 **[Future Direction]**
+- 明確區分 hierarchy truth、artifact output、profile metadata、retrieval index、raw source ownership。 **[Future Direction]**
+
+### Phase 3 — Storage abstraction design
+- 設計 file/DB coexistence storage abstraction。 **[Future Direction]**
+- 保留 file-backed implementation 作 compatibility/fallback/migration source。 **[Future Direction]**
+
+### Phase 4 — DB schema proposal, JSON + relational coexistence
+- 提出 DB schema proposal，允許 JSON document 與 relational projection coexist。 **[Future Direction]**
+- DB schema 只作 persistence representation，不作 parser authority 或 hierarchy identity authority。 **[Future Direction]**
+
+### Phase 5 — dual-write or import/export migration tooling proposal
+- 評估 dual-write、one-shot import、export/replay、validation tooling。 **[Future Direction]**
+- migration tooling 必須可驗證 hierarchy parity 與 artifact target consistency。 **[Future Direction]**
+
+### Phase 6 — read-path switch behind configuration
+- 在 configuration/backend selection 後方切換 read path。 **[Future Direction]**
+- 切換前必須保留 hierarchy-first fail-fast 與 explicit legacy migration-only boundary。 **[Future Direction]**
+
+### Phase 7 — file storage retirement after validation
+- 僅在 DB readiness、data parity、rollback/migration policy、user-scope isolation 驗證後，才進行 `data/` retirement。 **[Future Direction]**
+- retirement 必須是 gradual policy，不是 breaking deletion。 **[Maintainer-Provided] + [Future Direction]**
+
+> 上述 DB migration phases 均屬 **[Future Direction]**；本輪僅建立 proposal-level direction 與 checklist preparation。
+
+## 9. Phased Rollout Plan (Proposal)
 
 ### Phase 1 — Proposal / Architecture Documentation Only
 - 更新 proposal，固定方向與邊界
@@ -175,7 +232,7 @@ ownership split：
 
 > 上述各 phase 均屬 **[Future Direction]**。
 
-## 9. Explicit Non-goals (This Round)
+## 10. Explicit Non-goals (This Round)
 
 - 本輪不 coding **[Maintainer-Provided]**
 - 本輪不改 API behavior **[Maintainer-Provided]**
@@ -184,15 +241,18 @@ ownership split：
 - 本輪不做 automatic LLM answer grounding **[Maintainer-Provided]**
 - 本輪不改 task-layout response contract **[Maintainer-Provided]**
 - 本輪不引入 retrieval dependency **[Maintainer-Provided]**
+- 本輪不實作 DB code、不新增 database dependency、不建立 database schema **[Maintainer-Provided]**
+- 本輪不移除、不遷移、不破壞既有 `data/` file storage path **[Maintainer-Provided]**
+- 本輪不改 parser/task-layout/API/runtime behavior **[Maintainer-Provided]**
 
-## 10. Open Questions for Maintainer
+## 11. Open Questions for Maintainer
 
 1. rich content model 的最小 segment granularity（句子/段落/混合）偏好？ **[Future Direction]**
 2. content_block_id 是否需要跨 reparse 穩定，還是只需單次 version 穩定？ **[Future Direction]**
 3. content-block-level artifact 的最小 metadata contract（source_hash/version/trace）是否先行定義？ **[Future Direction]**
 4. rich content endpoint 是否要分版本（例如 `/v2/task-units/.../content`）？ **[Future Direction]**
 
-## 11. Status Summary
+## 12. Status Summary
 
 - hierarchy-first runtime contract：已落地 **[Code-Confirmed]**
 - pure hierarchy persistence defaults：已落地 **[Code-Confirmed]**
@@ -200,3 +260,4 @@ ownership split：
 - task-layout projection/read boundary：已固定 **[Code-Confirmed]**
 - task-unit on-demand content API：已落地 **[Code-Confirmed]**
 - rich task-unit content model：下一階段提案 **[Maintainer-Provided]** + **[Future Direction]**
+- DB-centric persistence migration：下一階段 documentation/checklist preparation **[Maintainer-Provided] + [Future Direction]**

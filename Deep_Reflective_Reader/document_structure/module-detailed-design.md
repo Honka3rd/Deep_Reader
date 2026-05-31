@@ -318,3 +318,36 @@ future validation boundary 應 fail-fast 於以下類型：
 2. `ArtifactTargetRef` 與 content-block target metadata 不得漂移為 persistence truth 或 hierarchy authority。 **[Maintainer-Confirmed] + [Future Direction]**
 3. 允許 resegmentation policy change 與 content block regeneration；不得假設 `content_block_id` 永久穩定。 **[Maintainer-Confirmed] + [Future Direction]**
 4. 本節不引入 segmentation algorithm、persistence schema、repository logic、runtime API、stale-detection engine、retrieval integration。 **[Doc-Confirmed]**
+
+## 21. Future Direction Note: DB-Centric Structured Persistence Migration
+
+> 本節屬 DB-centric structured persistence migration 的 documentation/governance preparation，非目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+### 21.1 Current Active Implementation Boundary
+
+1. 目前 active structured persistence implementation 仍是 structured JSON file storage。 **[Code-Confirmed]**
+2. 現有 `data/structured/*.structured.json` file path 在 DB migration 期間仍是有效 storage path，不得在本階段移除或破壞。 **[Maintainer-Provided]**
+3. DB storage 是 future representation target，不是目前 runtime read/write behavior。 **[Maintainer-Provided] + [Future Direction]**
+
+### 21.2 StructuredDocument Contract Preservation
+
+1. DB storage 必須保留 `StructuredDocument` hierarchy contract。 **[Maintainer-Provided] + [Future Direction]**
+2. hierarchy truth 仍固定為 `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [Maintainer-Provided]**
+3. DB rows、JSONB documents、relational tables 都只是 persistence representations，不是新的 parser authority、structure authority、或 hierarchy identity authority。 **[Maintainer-Provided] + [Future Direction]**
+4. DB schema 不得改變 chapter/section/task-unit identity semantics。 **[Maintainer-Provided] + [Future Direction]**
+
+### 21.3 Legacy and Repository Boundary
+
+1. DB migration 必須保留 explicit legacy migration-only boundary。 **[Maintainer-Provided] + [Future Direction]**
+2. DB-backed repository 必須仍是 hierarchy-aware repository，不得信任 root `sections[]`、`structure_nodes[]`、或 flat `task_units` 作 primary flow。 **[Maintainer-Provided] + [Future Direction]**
+3. DB read-path switch 前必須先定義 validation rules，確認 hierarchy parity、target resolution、artifact target consistency、以及 fail-fast error behavior。 **[Maintainer-Provided] + [Future Direction]**
+4. file-backed structured JSON 在 DB readiness 被驗證前仍可作 compatibility / fallback / migration source。 **[Maintainer-Provided] + [Future Direction]**
+
+### 21.4 Separate Persistence Concerns
+
+1. content blocks 是 task-unit internal interaction/render concern，不是 structured hierarchy persistence authority。 **[Maintainer-Provided] + [Future Direction]**
+2. artifacts 是 interaction output；artifact persistence migration 需要獨立 track，不應混入 hierarchy truth contract。 **[Code-Confirmed] + [Maintainer-Provided]**
+3. profile metadata 是 advisory；profile DB migration 需要獨立 track，不得成為 parser authority。 **[Code-Confirmed] + [Maintainer-Provided]**
+4. retrieval records / FAISS artifacts 是 retrieval persistence concern，需要獨立 DB migration track。 **[Maintainer-Provided] + [Future Direction]**
+5. raw files / user-uploaded documents 是 user-scoped ownership/copyright concern；DB migration 不代表跨使用者共享文件內容。 **[Maintainer-Provided]**
+6. 本節不引入 DB schema、DB dependency、repository implementation、runtime/API behavior change、data migration tooling、或 `data/` retirement execution。 **[Doc-Confirmed]**
