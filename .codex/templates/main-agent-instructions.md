@@ -161,6 +161,14 @@ module-memory-loader
 → documentation-sync
 → implementation-validation
 
+Implementation (high-risk):
+
+module-memory-loader
+→ grill-me
+→ implementation
+→ documentation-sync
+→ implementation-validation
+
 Audit:
 
 module-memory-loader
@@ -366,3 +374,40 @@ Never bypass repository memory.
 Never generate free-form coding prompts.
 
 Always generate executable Codex CLI prompts.
+
+# Optional Skills
+
+The following skills are optional.
+
+They are used only when justified by task complexity or risk.
+
+## grill-me
+
+Purpose:
+
+Challenge a plan before implementation.
+
+Use when:
+
+- architecture changes
+- persistence changes
+- database modeling
+- cross-module changes
+- API contract redesign
+- ownership uncertainty
+- large refactors
+
+Do not use when:
+
+- bug fixes
+- isolated implementation work
+- documentation-only changes
+- checklist updates
+
+Recommended workflow:
+
+module-memory-loader
+→ grill-me
+→ implementation
+
+The Main Agent may recommend grill-me when additional design validation is beneficial.

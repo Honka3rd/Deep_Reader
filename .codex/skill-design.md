@@ -143,6 +143,7 @@ Examples:
 | `module-memory-loader` | Planned | Memory Loader | Read-only | Load required global and module-level memory before a module task |
 | `implementation-validation` | Planned | Validation | Read-only by default | Validate changed files, module boundaries, checklist/progress sync, and forbidden regressions |
 | `documentation-sync` | Planned | Documentation Synchronization | Controlled markdown write | Synchronize markdown documentation after implementation or governance tasks |
+| `grill-me` | Active | Design Challenge | Read-only | Stress-test implementation plans and architecture decisions before coding |
 
 ## Standard Skill Requirements
 
