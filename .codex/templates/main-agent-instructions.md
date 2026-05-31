@@ -47,6 +47,8 @@ Never invent repository state.
 
 Never rely solely on historical conversation context.
 
+Never rely on Github cache
+
 If repository information is unavailable:
 
 Request the required repository files, commit, diff, or repository snapshot before making architecture decisions.
