@@ -140,3 +140,12 @@ Step 6  Prepare runtime bundle
 1. 增加 preparation pipeline lifecycle diagram（base vs free_qa）。
 2. 增加錯誤分類矩陣（blocking/non-blocking）。
 3. 增加 profile cache policy appendix（hash/version/rebuild triggers）。
+
+## 17. Future Storage Independence Note
+
+> 本節是 storage abstraction boundary preparation，非目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. The preparation pipeline should prepare artifacts and readiness snapshots. **[Code-Confirmed] + [Future Direction]**
+2. The preparation pipeline should not permanently assume file-path persistence as the only possible destination. **[Maintainer-Provided] + [Future Direction]**
+3. Future storage destination should be configurable through a storage/backend policy boundary, while preparation lifecycle semantics remain owned by `document_preparation/`. **[Maintainer-Provided] + [Future Direction]**
+4. This note does not introduce storage abstractions, repositories, DB schemas, dual-write behavior, read-path switches, API changes, parser changes, or runtime behavior changes. **[Doc-Confirmed]**

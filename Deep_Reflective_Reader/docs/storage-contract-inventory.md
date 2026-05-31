@@ -56,6 +56,29 @@ Raw document storage is a separate track because uploaded files are canonical us
 
 These tracks are intentionally independent. There should be no big-bang migration.
 
+## Future Storage Abstraction Layer
+
+This section defines a conceptual future boundary only. It does not introduce interfaces, repositories, schemas, ORM usage, dual-write behavior, backend implementations, or runtime switching.
+
+Current:
+
+```text
+Domain Module
+  -> File Persistence
+```
+
+Future:
+
+```text
+Domain Module
+  -> Storage Contract
+  -> Backend Implementation
+```
+
+The domain module owns persistence semantics; the storage contract preserves that meaning across physical backends; the backend implementation is a replaceable representation detail. Backend selection belongs to future `config` policy, while hierarchy/profile/retrieval/raw-document semantics remain owned by their respective domain modules.
+
+This abstraction layer must not become a new source of truth. Backend selection does not define hierarchy truth, database schema does not define parser authority, and runtime caches remain cache-only.
+
 ## Non Goals
 
 - No schema design.

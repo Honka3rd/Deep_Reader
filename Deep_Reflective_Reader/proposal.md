@@ -256,7 +256,52 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 - Future DB Candidate: No **[Future Direction]**
 - Migration Priority: None **[Future Direction]**
 
-## 10. Phased Rollout Plan (Proposal)
+## 10. Future Direction: Storage Abstraction Boundary
+
+> 本節定義 future storage abstraction ownership boundary；不代表 repository interface、schema、ORM、migration tooling、dual-write、read-path switch、或 runtime behavior 已實作。 **[Maintainer-Provided] + [Future Direction]**
+
+### 10.1 Principle 1 — Business Modules Must Not Depend on Physical Storage Implementation
+
+Business modules should depend on their domain storage contracts, not the physical backend representation. **[Maintainer-Provided] + [Future Direction]**
+
+For example, `document_structure` should not care whether structured persistence is represented as:
+- JSON
+- JSONB
+- PostgreSQL
+- SQLite
+- S3
+
+The backend representation is an implementation detail behind future storage contracts, not a domain behavior contract. **[Future Direction]**
+
+### 10.2 Principle 2 — Storage Backend Selection Belongs to `config`
+
+`config` owns future backend selection, storage policy, and rollout policy. **[Maintainer-Provided] + [Future Direction]**
+
+`config` does not own:
+- hierarchy semantics
+- profile semantics
+- retrieval semantics
+
+Backend selection can decide where persistence is routed, but it must not redefine what persisted data means. **[Future Direction]**
+
+### 10.3 Principle 3 — Persistence Ownership Remains Domain-Owned
+
+- `document_structure` owns hierarchy persistence semantics. **[Code-Confirmed] + [Future Direction]**
+- `profile` owns profile persistence semantics. **[Code-Confirmed] + [Future Direction]**
+- `retrieval` owns retrieval persistence semantics. **[Code-Confirmed] + [Future Direction]**
+- `doc_loaders` owns raw document persistence semantics. **[Code-Confirmed] + [Future Direction]**
+
+Future migration work must preserve these ownership boundaries instead of centralizing persistence meaning inside configuration, database schema, or infrastructure wiring. **[Maintainer-Provided] + [Future Direction]**
+
+### 10.4 Principle 4 — Storage Abstraction Must Not Become New Authority
+
+- Backend selection != truth source. **[Maintainer-Provided] + [Future Direction]**
+- Database schema != hierarchy contract. **[Maintainer-Provided] + [Future Direction]**
+- Storage implementation != parser authority. **[Maintainer-Provided] + [Future Direction]**
+
+Hierarchy truth remains `chapters[].sections[].task_units[]`; profile and retrieval remain advisory/rebuildable surfaces; runtime caches remain cache-only. **[Code-Confirmed] + [Future Direction]**
+
+## 11. Phased Rollout Plan (Proposal)
 
 ### Phase 1 — Proposal / Architecture Documentation Only
 - 更新 proposal，固定方向與邊界
@@ -284,7 +329,7 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 
 > 上述各 phase 均屬 **[Future Direction]**。
 
-## 11. Explicit Non-goals (This Round)
+## 12. Explicit Non-goals (This Round)
 
 - 本輪不 coding **[Maintainer-Provided]**
 - 本輪不改 API behavior **[Maintainer-Provided]**
@@ -297,14 +342,14 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 - 本輪不移除、不遷移、不破壞既有 `data/` file storage path **[Maintainer-Provided]**
 - 本輪不改 parser/task-layout/API/runtime behavior **[Maintainer-Provided]**
 
-## 12. Open Questions for Maintainer
+## 13. Open Questions for Maintainer
 
 1. rich content model 的最小 segment granularity（句子/段落/混合）偏好？ **[Future Direction]**
 2. content_block_id 是否需要跨 reparse 穩定，還是只需單次 version 穩定？ **[Future Direction]**
 3. content-block-level artifact 的最小 metadata contract（source_hash/version/trace）是否先行定義？ **[Future Direction]**
 4. rich content endpoint 是否要分版本（例如 `/v2/task-units/.../content`）？ **[Future Direction]**
 
-## 13. Status Summary
+## 14. Status Summary
 
 - hierarchy-first runtime contract：已落地 **[Code-Confirmed]**
 - pure hierarchy persistence defaults：已落地 **[Code-Confirmed]**
@@ -314,3 +359,4 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 - rich task-unit content model：下一階段提案 **[Maintainer-Provided]** + **[Future Direction]**
 - DB-centric persistence migration：下一階段 documentation/checklist preparation **[Maintainer-Provided] + [Future Direction]**
 - storage contract inventory：已完成 documentation-only inventory preparation **[Code-Confirmed]**
+- storage abstraction boundary：future-direction ownership design only；no repository interface/schema/runtime switch implemented **[Maintainer-Provided] + [Future Direction]**

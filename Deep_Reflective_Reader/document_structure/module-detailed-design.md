@@ -176,6 +176,14 @@
 3. `document_structure` does not own runtime cache persistence; runtime bundle cache belongs to `bundle_factory.py` / `bundle_provider.py` and is not authoritative. **[Code-Confirmed] + [Inferred]**
 4. `document_structure` does not own raw uploaded file storage; canonical raw document loading belongs to `doc_loaders/`. **[Code-Confirmed] + [Inferred]**
 
+### 15.3 Storage Abstraction Boundary
+
+1. `document_structure` owns the `StructuredDocument` contract and hierarchy truth. **[Code-Confirmed]**
+2. `document_structure` owns the domain semantics of structured persistence across file and future DB-backed representations. **[Maintainer-Provided] + [Future Direction]**
+3. `document_structure` does not own storage backend selection; that belongs to future `config/` backend policy. **[Maintainer-Provided] + [Future Direction]**
+4. `document_structure` does not own DB rollout strategy, migration rollout switches, or backend enablement policy. **[Maintainer-Provided] + [Future Direction]**
+5. A future storage abstraction must preserve hierarchy-first `StructuredDocument` semantics and must not make the backend, schema, or file path a new hierarchy authority. **[Maintainer-Provided] + [Future Direction]**
+
 ## 16. Current Risks
 
 1. risk：新 helper/feature 誤把 legacy sections 重新引入 runtime lookup

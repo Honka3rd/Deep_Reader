@@ -128,6 +128,8 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Added unchecked future tasks for file / DB storage backend coexistence policy in `config/module-checklist.md`.
 - [ ] Future direction keeps current file path behavior valid during DB migration rollout.
 - [ ] Configuration-layer DB work remains planning-only; no database dependency or runtime backend selection behavior changed.
+- [ ] Added unchecked future tasks for storage backend configuration contract, rollout policy contract, and file-to-db coexistence configuration model in `config/module-checklist.md`.
+- [ ] Storage abstraction boundary remains future-direction planning only; `config/` owns backend selection and rollout policy, not domain persistence semantics.
 
 ### `context/`
 
@@ -188,6 +190,7 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Added unchecked future tasks for DB-backed structured persistence behavior in the preparation pipeline in `document_preparation/module-checklist.md`.
 - [ ] Future direction preserves current file-based prepare outputs during migration.
 - [ ] Future storage abstraction boundary must separately account for structured/profile/retrieval artifacts; this pass is documentation/checklist preparation only.
+- [ ] Future storage independence note clarifies that preparation should prepare artifacts without permanently assuming file-path persistence as the only possible destination.
 
 ### `document_structure/`
 
@@ -226,6 +229,7 @@ No unresolved confirmation items identified in module checklist.
 - [ ] `document_structure/module-detailed-design.md` now includes `Future Direction Note: DB-Centric Structured Persistence Migration` for boundary clarification only.
 - [ ] Future DB migration planning preserves hierarchy-first `StructuredDocument` semantics across file and DB storage.
 - [ ] File-backed structured JSON remains valid compatibility/fallback/migration source until DB readiness validation; no runtime read/write behavior changed.
+- [ ] Storage abstraction boundary planning clarifies that `document_structure` owns `StructuredDocument` hierarchy truth and domain persistence semantics, not backend selection or DB rollout strategy.
 
 ### `embeddings/`
 
@@ -617,6 +621,8 @@ No unresolved confirmation items identified in module checklist.
   Modules: `document_structure`, `config`, `document_preparation`
 - [ ] DB-centric persistence migration direction captured as documentation/checklist preparation only; JSON/file and future DB storage may coexist during migration, with `data/` retirement gated by validation.
   Modules: `document_structure`, `config`, `document_preparation`
+- [ ] Storage abstraction boundary direction captured as future planning only; domain modules own persistence semantics while `config` owns backend selection and rollout policy.
+  Modules: `document_structure`, `config`, `document_preparation`, `profile`, `retrieval`, `doc_loaders`
 
 ### 7.2 Profile and Metadata
 
@@ -704,6 +710,7 @@ No unresolved cross-module confirmation items identified.
 - DB-centric persistence migration is documented as future-direction planning only; no DB migration work is marked completed.
 - Existing `data/` file storage remains valid during migration planning and must not be removed until DB readiness validation supports gradual retirement.
 - Storage Contract Inventory Documentation is completed as documentation-only work with no implementation impact.
+- Storage abstraction boundary is documented as future-direction planning only; no storage abstraction implementation, repository interface, schema, dual-write, read-path switch, API change, or runtime change is complete.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.
 - Task-layout projection boundary is documented as read/projection-focused in current docs/checklists.
 - API entry/schema and coordinator orchestration baselines are captured and linked in module-level documentation.

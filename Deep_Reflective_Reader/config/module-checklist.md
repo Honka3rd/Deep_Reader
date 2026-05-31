@@ -50,6 +50,9 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define storage backend selection policy for file / DB coexistence
 - [ ] Define configuration boundary for DB-backed structured storage
 - [ ] Preserve existing file path behavior during DB migration rollout
+- [ ] Define storage backend configuration contract
+- [ ] Define backend rollout policy contract
+- [ ] Define file-to-db coexistence configuration model
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

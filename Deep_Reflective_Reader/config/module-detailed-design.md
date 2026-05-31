@@ -102,3 +102,17 @@
 3. Persistence semantics do not belong in `config/`; hierarchy semantics remain owned by `document_structure/`, profile semantics by `profile/`, retrieval semantics by `retrieval/`, and raw loading semantics by `doc_loaders/`. **[Code-Confirmed] + [Inferred]**
 4. `config/` may own backend selection policy, namespace normalization policy, and provider assembly, but must not define schema authority, parser authority, artifact authority, or runtime projection semantics. **[Future Direction]**
 5. Current file path behavior remains active; this note does not introduce storage abstractions, DB dependencies, schema design, dual write, or runtime switch behavior. **[Doc-Confirmed]**
+
+### 14.1 Future Storage Backend Governance Boundary
+
+`config/` should eventually own the configuration policy for:
+- file backend enablement
+- DB backend enablement
+- migration rollout switches
+
+`config/` does not own:
+- hierarchy contracts
+- document semantics
+- parser semantics
+
+Backend governance may select and route storage implementations, but it must not redefine the domain meaning of structured documents, profiles, retrieval artifacts, or raw document inputs. **[Maintainer-Provided] + [Future Direction]**
