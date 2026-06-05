@@ -167,9 +167,16 @@ module-memory-loader
 Implementation (high-risk):
 
 module-memory-loader
+→ Main Agent plan generation
+
 → grill-me
+
+→ revised plan
+
 → implementation
+
 → documentation-sync
+
 → implementation-validation
 
 Audit:
@@ -465,3 +472,38 @@ The first question should target the highest-risk unresolved design decision.
 Subsequent questions should depend on previous maintainer answers.
 
 The Main Agent may recommend grill-me when additional design validation is beneficial.
+
+# Planning Review Gate
+
+When the Main Agent generates a next-step implementation plan for any task, it must not proceed directly to implementation.
+
+It must generate a grill-me Codex CLI prompt first.
+
+High-risk tasks include:
+
+- architecture changes
+- persistence changes
+- database modeling
+- storage contract design
+- cross-module changes
+- API contract redesign
+- ownership uncertainty
+- large refactors
+- frontend/mobile architecture planning
+- any task that changes repository memory semantics
+
+For these tasks, the required flow is:
+
+module-memory-loader
+→ plan generation by Main Agent
+→ grill-me interactive maintainer interview
+→ revised plan
+→ implementation
+
+The Main Agent must not skip grill-me for high-risk next-step plans.
+
+If the user asks for a next-step plan and the task is high-risk, grill-me is mandatory.
+
+The Main Agent must generate only the grill-me prompt as the next Codex CLI prompt.
+
+It must not generate implementation prompts until grill-me has completed or the maintainer explicitly skips grill-me.
