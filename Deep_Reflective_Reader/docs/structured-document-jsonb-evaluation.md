@@ -57,6 +57,20 @@ Phase 1 covers bare `StructuredDocument` hierarchy parity:
 
 `task_unit.content` must be preserved if present and exported back without semantic loss, but it is not hierarchy identity and must not be used to validate content-block semantics or artifact target semantics.
 
+### Task Unit Identity Clarification
+
+Phase 1 does not resolve the final DB-era task-unit identity strategy.
+
+For Phase 1 parity evidence, current persisted `unit_id` values may be used only as legacy/import identity baselines from existing structured JSON. They must not be treated as proof that the current Python-generated identity algorithm is sufficient for long-term DB-backed domain identity.
+
+Future pre-schema planning must distinguish:
+
+- DB-generated internal primary key
+- stable `task_unit_id` domain identity used by external/domain references
+- legacy/import identity from existing structured JSON
+
+DB-generated internal primary keys should not automatically replace stable domain reference identity. Artifact targets, content-block links, API references, and evaluation records require stable identity semantics. This document does not choose an ID format, ID generator, table design, column design, or migration algorithm.
+
 ### Excluded
 
 Phase 1 explicitly excludes:
@@ -77,6 +91,19 @@ Phase 1 explicitly excludes:
 - backend cutover
 
 Artifact target references and content-block-level target validation belong to later evaluation stages after bare hierarchy parity is proven.
+
+### Lazy Content Block Persistence Clarification
+
+Content blocks remain excluded from Phase 1 acceptance. They should not be embedded into the normal Phase 1 `StructuredDocument` JSONB payload as the default persistence strategy.
+
+Future direction:
+
+- Content blocks should remain lazy-loaded or lazily materialized resources linked to task units.
+- If a user does not request content blocks, they should not be eagerly computed.
+- Once computed, content blocks should be persisted separately from `StructuredDocument` JSONB.
+- Related artifacts should also be persisted separately and linked to hierarchy or content-block targets.
+
+This preserves the Phase 1 focus on bare hierarchy parity while acknowledging that content-block-aware persistence needs a later, separate planning track. This document does not design tables, columns, artifact schema, lazy-loading behavior, or content-block persistence implementation.
 
 ## Positive Validation Requirements
 

@@ -75,6 +75,7 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Harden deterministic segmentation rules for heading/sentence/table-like structures beyond paragraph/list baseline
 - [ ] Define reparse-resilient block-id/source-hash/span evolution strategy across segmentation-version changes
 - [ ] Define promotion strategy from explicit opt-in segmentation to default multi-block behavior
+- [ ] Define lazy content-block persistence boundary separate from StructuredDocument JSONB
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

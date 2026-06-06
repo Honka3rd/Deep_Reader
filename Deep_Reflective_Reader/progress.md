@@ -627,6 +627,8 @@ No unresolved confirmation items identified in module checklist.
   Modules: `document_structure`, `config`
 - [ ] StructuredDocument JSONB-first Phase 1 readiness audit is captured as documentation-only planning; the audit inventories current structured files and identifies fixture gaps without implementing PostgreSQL, JSONB persistence, schema, migration, repository abstraction, runtime switching, or API behavior changes.
   Modules: `document_structure`
+- [ ] Maintainer clarification for Phase 1 JSONB planning is captured as documentation-only future planning: `APPLE` is legacy / pre-task-unit evidence, current `unit_id` is legacy/import identity evidence only, DB-era stable task-unit identity remains pre-schema work, and lazy content-block persistence remains separate from `StructuredDocument` JSONB.
+  Modules: `document_structure`, `shared`
 
 ### 7.2 Profile and Metadata
 
@@ -691,6 +693,13 @@ No unresolved confirmation items identified in module checklist.
   Implementation Impact: `None`
   Evidence: `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/data/structured/*.structured.json`
   Notes: This audit prepares future Phase 1 evaluation by inventorying current structured files and identifying fixture/readiness gaps. It does not mark Phase 1 evaluation complete and does not add schema, DB implementation, migration execution, runtime switch, API change, or source code change.
+
+- [ ] Maintainer Identity and Lazy Content Persistence Clarification Sync
+  Status: `Future Planning`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/shared/module-checklist.md`
+  Notes: Clarifies APPLE legacy/pre-task-unit classification, task-unit identity strategy risk, and lazy content-block persistence separation. Does not mark DB implementation, schema design, identity migration, fixture creation, content-block persistence, PostgreSQL, JSONB persistence, runtime behavior, or API changes complete.
 
 ## 8. Cross-Module Needs Confirmation
 

@@ -95,6 +95,7 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Complete Phase 1 StructuredDocument JSONB-first evaluation
 - [ ] Validate hierarchy parity criteria defined by the evaluation document
 - [ ] Resolve readiness-audit gaps before Phase 1 StructuredDocument JSONB-first evaluation
+- [ ] Define DB-era task-unit identity strategy before schema design
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 
