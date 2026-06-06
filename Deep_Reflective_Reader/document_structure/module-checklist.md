@@ -94,6 +94,7 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define gradual retirement policy for data/ structured JSON after DB readiness validation
 - [ ] Complete Phase 1 StructuredDocument JSONB-first evaluation
 - [ ] Validate hierarchy parity criteria defined by the evaluation document
+- [ ] Resolve readiness-audit gaps before Phase 1 StructuredDocument JSONB-first evaluation
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

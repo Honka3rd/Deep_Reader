@@ -625,6 +625,8 @@ No unresolved confirmation items identified in module checklist.
   Modules: `document_structure`, `config`, `document_preparation`, `profile`, `retrieval`, `doc_loaders`
 - [ ] StructuredDocument JSONB-first Phase 1 evaluation plan is captured as documentation-only planning; PostgreSQL JSONB is an assumed evaluation backend, not a final backend commitment, and no schema, migration execution, repository interface, runtime read-path switch, or backend cutover is implemented.
   Modules: `document_structure`, `config`
+- [ ] StructuredDocument JSONB-first Phase 1 readiness audit is captured as documentation-only planning; the audit inventories current structured files and identifies fixture gaps without implementing PostgreSQL, JSONB persistence, schema, migration, repository abstraction, runtime switching, or API behavior changes.
+  Modules: `document_structure`
 
 ### 7.2 Profile and Metadata
 
@@ -682,6 +684,13 @@ No unresolved confirmation items identified in module checklist.
   Implementation Impact: `None`
   Evidence: `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/proposal.md (Phase 1 StructuredDocument JSONB-First Evaluation Plan)`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/config/module-checklist.md`
   Notes: This planning note records the Phase 1 evaluation direction only. It does not approve DB implementation, schema design, migration execution, repository interface design, runtime read-path switching, backend cutover, or runtime behavior changes.
+
+- [ ] StructuredDocument JSONB-First Evaluation Readiness Audit
+  Status: `Future Planning`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/data/structured/*.structured.json`
+  Notes: This audit prepares future Phase 1 evaluation by inventorying current structured files and identifying fixture/readiness gaps. It does not mark Phase 1 evaluation complete and does not add schema, DB implementation, migration execution, runtime switch, API change, or source code change.
 
 ## 8. Cross-Module Needs Confirmation
 
