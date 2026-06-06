@@ -204,6 +204,10 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 
 > 上述 DB migration phases 均屬 **[Future Direction]**；本輪僅建立 proposal-level direction 與 checklist preparation。
 
+### 8.4 Phase 1 StructuredDocument JSONB-First Evaluation Plan
+
+The current Phase 1 `StructuredDocument` DB evaluation plan is documented in `docs/structured-document-jsonb-evaluation.md`. It is documentation-only planning for evaluating PostgreSQL JSONB as an assumed evaluation backend for semantic hierarchy parity; it does not approve schema design, repository interfaces, migration execution, runtime read-path switching, or backend cutover. **[Maintainer-Provided] + [Future Direction]**
+
 ## 9. Storage Contract Inventory
 
 > 本節是 storage contract inventory preparation，用於 future DB-centric migration planning；不代表 schema design、runtime switch、或 storage abstraction implementation。 **[Code-Confirmed] + [Future Direction]**

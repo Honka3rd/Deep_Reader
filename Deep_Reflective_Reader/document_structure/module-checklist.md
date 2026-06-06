@@ -92,6 +92,8 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define DB-backed repository validation rules before switching read path
 - [ ] Prevent DB schema from reintroducing root sections[], structure_nodes[], or flat task_units as primary flow
 - [ ] Define gradual retirement policy for data/ structured JSON after DB readiness validation
+- [ ] Complete Phase 1 StructuredDocument JSONB-first evaluation
+- [ ] Validate hierarchy parity criteria defined by the evaluation document
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

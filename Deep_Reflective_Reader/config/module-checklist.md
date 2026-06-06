@@ -53,6 +53,7 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define storage backend configuration contract
 - [ ] Define backend rollout policy contract
 - [ ] Define file-to-db coexistence configuration model
+- [ ] Review backend-selection implications after Phase 1 evaluation
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

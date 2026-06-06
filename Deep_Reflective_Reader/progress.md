@@ -623,6 +623,8 @@ No unresolved confirmation items identified in module checklist.
   Modules: `document_structure`, `config`, `document_preparation`
 - [ ] Storage abstraction boundary direction captured as future planning only; domain modules own persistence semantics while `config` owns backend selection and rollout policy.
   Modules: `document_structure`, `config`, `document_preparation`, `profile`, `retrieval`, `doc_loaders`
+- [ ] StructuredDocument JSONB-first Phase 1 evaluation plan is captured as documentation-only planning; PostgreSQL JSONB is an assumed evaluation backend, not a final backend commitment, and no schema, migration execution, repository interface, runtime read-path switch, or backend cutover is implemented.
+  Modules: `document_structure`, `config`
 
 ### 7.2 Profile and Metadata
 
@@ -671,6 +673,15 @@ No unresolved confirmation items identified in module checklist.
   Type: `Documentation Only`
   Implementation Impact: `None`
   Evidence: `Deep_Reflective_Reader/docs/storage-contract-inventory.md`; `Deep_Reflective_Reader/proposal.md (Storage Contract Inventory)`; `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Storage Ownership Boundary)`; `Deep_Reflective_Reader/config/module-detailed-design.md (Storage Backend Governance)`
+
+### 7.7 StructuredDocument JSONB-First Evaluation Planning
+
+- [ ] StructuredDocument JSONB-First Evaluation Document
+  Status: `Future Planning`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/proposal.md (Phase 1 StructuredDocument JSONB-First Evaluation Plan)`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/config/module-checklist.md`
+  Notes: This planning note records the Phase 1 evaluation direction only. It does not approve DB implementation, schema design, migration execution, repository interface design, runtime read-path switching, backend cutover, or runtime behavior changes.
 
 ## 8. Cross-Module Needs Confirmation
 
