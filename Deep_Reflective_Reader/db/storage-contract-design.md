@@ -6,7 +6,7 @@ This document defines conceptual storage contract boundaries for `Deep_Reflectiv
 
 It sits between:
 
-- `docs/storage-contract-inventory.md`
+- `db/storage-contract-inventory.md`
 - future schema design
 - future migration design
 - future backend implementation

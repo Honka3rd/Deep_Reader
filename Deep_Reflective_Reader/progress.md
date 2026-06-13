@@ -37,6 +37,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `db/` | documentation module | `db/module-checklist.md` | 6 | 0 | Documentation Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -191,6 +192,34 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Future direction preserves current file-based prepare outputs during migration.
 - [ ] Future storage abstraction boundary must separately account for structured/profile/retrieval artifacts; this pass is documentation/checklist preparation only.
 - [ ] Future storage independence note clarifies that preparation should prepare artifacts without permanently assuming file-path persistence as the only possible destination.
+
+### `db/`
+
+- Checklist: `db/module-checklist.md`
+- Detailed Design: `db/module-detailed-design.md`
+- Status: `Documentation Baseline Captured`
+- Completed item count: `6`
+- Needs confirmation count: `0`
+
+#### Completed Work
+
+- [x] Captures DB-era identity strategy as documentation-only golden source.
+- [x] Captures document-level `structure_version` policy.
+- [x] Captures current-state-only hierarchy policy for early DB design.
+- [x] Captures hard reparse transaction and cleanup policy.
+- [x] Captures derived-resource provenance and validation policy.
+- [x] Captures minimal parse event provenance policy.
+
+#### Needs Confirmation
+
+No unresolved confirmation items identified in module checklist.
+
+#### Future Direction Preparation
+
+- [ ] Future DB schema proposal remains pending and must be derived from `db/module-detailed-design.md`.
+- [ ] Future DB implementation must not production-migrate current JSON `unit_id` as stable identity.
+- [ ] Future DB implementation must keep DB-generated IDs as default internal identity and add public/domain IDs only for concrete external stability requirements.
+- [ ] Future hard reparse implementation must validate candidate hierarchy before transaction cutover and must explicitly delete all document-derived content blocks and artifacts after version advancement in the same transaction.
 
 ### `document_structure/`
 
@@ -628,7 +657,10 @@ No unresolved confirmation items identified in module checklist.
 - [ ] StructuredDocument JSONB-first Phase 1 readiness audit is captured as documentation-only planning; the audit inventories current structured files and identifies fixture gaps without implementing PostgreSQL, JSONB persistence, schema, migration, repository abstraction, runtime switching, or API behavior changes.
   Modules: `document_structure`
 - [ ] Maintainer clarification for Phase 1 JSONB planning is captured as documentation-only future planning: `APPLE` is legacy / pre-task-unit evidence, current `unit_id` is legacy/import identity evidence only, DB-era stable task-unit identity remains pre-schema work, and lazy content-block persistence remains separate from `StructuredDocument` JSONB.
-  Modules: `document_structure`, `shared`
+  Modules: `document_structure`, `shared`, `db`
+
+- [x] DB-era identity/versioning/reparse golden source captured.
+  Modules: `db`, `document_structure`, `shared`, `config`, `document_preparation`
 
 ### 7.2 Profile and Metadata
 
@@ -676,7 +708,7 @@ No unresolved confirmation items identified in module checklist.
   Status: `Completed`
   Type: `Documentation Only`
   Implementation Impact: `None`
-  Evidence: `Deep_Reflective_Reader/docs/storage-contract-inventory.md`; `Deep_Reflective_Reader/proposal.md (Storage Contract Inventory)`; `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Storage Ownership Boundary)`; `Deep_Reflective_Reader/config/module-detailed-design.md (Storage Backend Governance)`
+  Evidence: `Deep_Reflective_Reader/db/storage-contract-inventory.md`; `Deep_Reflective_Reader/proposal.md (Storage Contract Inventory)`; `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Storage Ownership Boundary)`; `Deep_Reflective_Reader/config/module-detailed-design.md (Storage Backend Governance)`
 
 ### 7.7 StructuredDocument JSONB-First Evaluation Planning
 
@@ -684,22 +716,31 @@ No unresolved confirmation items identified in module checklist.
   Status: `Future Planning`
   Type: `Documentation Only`
   Implementation Impact: `None`
-  Evidence: `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/proposal.md (Phase 1 StructuredDocument JSONB-First Evaluation Plan)`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/config/module-checklist.md`
+  Evidence: `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/proposal.md (Phase 1 StructuredDocument JSONB-First Evaluation Plan)`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/config/module-checklist.md`
   Notes: This planning note records the Phase 1 evaluation direction only. It does not approve DB implementation, schema design, migration execution, repository interface design, runtime read-path switching, backend cutover, or runtime behavior changes.
 
 - [ ] StructuredDocument JSONB-First Evaluation Readiness Audit
   Status: `Future Planning`
   Type: `Documentation Only`
   Implementation Impact: `None`
-  Evidence: `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/data/structured/*.structured.json`
+  Evidence: `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/data/structured/*.structured.json`
   Notes: This audit prepares future Phase 1 evaluation by inventorying current structured files and identifying fixture/readiness gaps. It does not mark Phase 1 evaluation complete and does not add schema, DB implementation, migration execution, runtime switch, API change, or source code change.
 
 - [ ] Maintainer Identity and Lazy Content Persistence Clarification Sync
   Status: `Future Planning`
   Type: `Documentation Only`
   Implementation Impact: `None`
-  Evidence: `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/docs/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/shared/module-checklist.md`
+  Evidence: `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/shared/module-checklist.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`
   Notes: Clarifies APPLE legacy/pre-task-unit classification, task-unit identity strategy risk, and lazy content-block persistence separation. Does not mark DB implementation, schema design, identity migration, fixture creation, content-block persistence, PostgreSQL, JSONB persistence, runtime behavior, or API changes complete.
+
+### 7.8 DB-Era Identity and Reparse Golden Source
+
+- [x] DB-Era Identity / Versioning / Reparse Golden Source
+  Status: `Documentation Baseline Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md`; `Deep_Reflective_Reader/db/module-checklist.md`; maintainer-confirmed grill-me decisions in current architecture task.
+  Notes: Captures DB-generated IDs as default internal identity, public/domain IDs only for concrete external stability needs, no production dependency on current Python-generated `unit_id`, document-level monotonic `structure_version`, current-state-only hierarchy, hard reparse transaction order, physical deletion of all document artifacts/content blocks on successful hard reparse, and required minimal parse event provenance. Does not mark schema, ORM, migration, repository interface, fixture, runtime behavior, or API changes complete.
 
 ## 8. Cross-Module Needs Confirmation
 
@@ -707,6 +748,7 @@ No unresolved cross-module confirmation items identified.
 ## 9. Missing or Weak Checklists
 
 - No checklist files are missing in this pass.
+- `db/` now has documentation-only module memory and checklist coverage for DB-era planning.
 - No module checklist has insufficient completed item count in this pass.
 - No completed checklist evidence formatting gaps were detected in this pass.
 
@@ -740,6 +782,7 @@ No unresolved cross-module confirmation items identified.
 - Existing `data/` file storage remains valid during migration planning and must not be removed until DB readiness validation supports gradual retirement.
 - Storage Contract Inventory Documentation is completed as documentation-only work with no implementation impact.
 - Storage abstraction boundary is documented as future-direction planning only; no storage abstraction implementation, repository interface, schema, dual-write, read-path switch, API change, or runtime change is complete.
+- DB-era identity/versioning/reparse policy now has a dedicated documentation-only golden source in `db/module-detailed-design.md`; no DB implementation work is marked complete.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.
 - Task-layout projection boundary is documented as read/projection-focused in current docs/checklists.
 - API entry/schema and coordinator orchestration baselines are captured and linked in module-level documentation.

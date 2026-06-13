@@ -30,6 +30,7 @@ Global Progress: [progress.md](../../progress.md)
 | `config/` | package | DI assembly and runtime config contracts | [config/module-detailed-design.md](../../config/module-detailed-design.md) | [config/module-checklist.md](../../config/module-checklist.md) | Drafted |
 | `context/` | package | QA context composition/orchestration | [context/module-detailed-design.md](../../context/module-detailed-design.md) | [context/module-checklist.md](../../context/module-checklist.md) | Drafted |
 | `doc_loaders/` | package | raw document loader selection (txt/pdf) | [doc_loaders/module-detailed-design.md](../../doc_loaders/module-detailed-design.md) | [doc_loaders/module-checklist.md](../../doc_loaders/module-checklist.md) | Drafted |
+| `db/` | documentation module | future DB identity, versioning, reparse, and derived-resource lifecycle golden source | [db/module-detailed-design.md](../../db/module-detailed-design.md) | [db/module-checklist.md](../../db/module-checklist.md) | Drafted |
 | `document_preparation/` | package | preparation pipeline and readiness snapshot | [document_preparation/module-detailed-design.md](../../document_preparation/module-detailed-design.md) | [document_preparation/module-checklist.md](../../document_preparation/module-checklist.md) | Drafted |
 | `document_structure/` | package | hierarchy model, parser split, structure persistence contracts | [document_structure/module-detailed-design.md](../../document_structure/module-detailed-design.md) | [document_structure/module-checklist.md](../../document_structure/module-checklist.md) | Drafted |
 | `embeddings/` | package | embedding provider and similarity utilities | [embeddings/module-detailed-design.md](../../embeddings/module-detailed-design.md) | [embeddings/module-checklist.md](../../embeddings/module-checklist.md) | Drafted |
@@ -61,7 +62,8 @@ Global Progress: [progress.md](../../progress.md)
 7. [main.module-detailed-design.md](../../main.module-detailed-design.md)
 8. [config/module-detailed-design.md](../../config/module-detailed-design.md)
 9. [retrieval/module-detailed-design.md](../../retrieval/module-detailed-design.md)
-10. 其餘 support/peripheral modules（`auth/`, `context/`, `language/`, `session/`, `shared/` 等）
+10. [db/module-detailed-design.md](../../db/module-detailed-design.md) for future DB-era identity/versioning/reparse planning
+11. 其餘 support/peripheral modules（`auth/`, `context/`, `language/`, `session/`, `shared/` 等）
 
 ## Open Questions
 

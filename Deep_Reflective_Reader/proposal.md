@@ -206,7 +206,22 @@ Deep_Reflective_Reader 未來應逐步從目前 file-based `data/` storage 演�
 
 ### 8.4 Phase 1 StructuredDocument JSONB-First Evaluation Plan
 
-The current Phase 1 `StructuredDocument` DB evaluation plan is documented in `docs/structured-document-jsonb-evaluation.md`. It is documentation-only planning for evaluating PostgreSQL JSONB as an assumed evaluation backend for semantic hierarchy parity; it does not approve schema design, repository interfaces, migration execution, runtime read-path switching, or backend cutover. **[Maintainer-Provided] + [Future Direction]**
+The current Phase 1 `StructuredDocument` DB evaluation plan is documented in `db/structured-document-jsonb-evaluation.md`. It is documentation-only planning for evaluating PostgreSQL JSONB as an assumed evaluation backend for semantic hierarchy parity; it does not approve schema design, repository interfaces, migration execution, runtime read-path switching, or backend cutover. **[Maintainer-Provided] + [Future Direction]**
+
+### 8.5 DB-Era Identity / Versioning / Reparse Golden Source
+
+The current DB-era identity, document-level `structure_version`, hard reparse, derived-resource cleanup, and minimal parse event policy is documented in `db/module-detailed-design.md`. **[Maintainer-Provided] + [Future Direction]**
+
+Current direction:
+
+- DB-generated primary keys are the default internal identity and relational link foundation. **[Maintainer-Provided]**
+- Separate public/domain IDs should be introduced only for concrete external stability requirements, not automatically for every hierarchy node. **[Maintainer-Provided]**
+- Existing Python-generated `unit_id` values from file-based JSON are reference/import evidence only and must not become production DB identity. **[Maintainer-Provided]**
+- `documents.current_structure_version` is the authoritative document-level hierarchy version; initial parse starts at `1`, and successful hard reparse advances it monotonically. **[Maintainer-Provided]**
+- Early DB hierarchy persistence is current-state-only: no immutable hierarchy snapshots, no old row aliases, no staged candidate hierarchy persistence, and no per-row hierarchy versions. **[Maintainer-Provided]**
+- Successful hard reparse validates the candidate hierarchy first, then atomically replaces current hierarchy rows, advances `current_structure_version`, explicitly deletes all document artifacts/content blocks, writes a minimal parse event record, and commits. **[Maintainer-Provided]**
+
+This golden source remains documentation-only. It does not approve schema design, ORM models, repository interfaces, migrations, fixtures, runtime behavior changes, or API changes. **[Maintainer-Provided] + [Future Direction]**
 
 ## 9. Storage Contract Inventory
 
@@ -349,7 +364,7 @@ Hierarchy truth remains `chapters[].sections[].task_units[]`; profile and retrie
 ## 13. Open Questions for Maintainer
 
 1. rich content model 的最小 segment granularity（句子/段落/混合）偏好？ **[Future Direction]**
-2. content_block_id 是否需要跨 reparse 穩定，還是只需單次 version 穩定？ **[Future Direction]**
+2. 若未來出現非 hard-reparse 的 partial update / history / rollback requirement，content_block_id 是否需要跨版本穩定？ **[Future Direction]**
 3. content-block-level artifact 的最小 metadata contract（source_hash/version/trace）是否先行定義？ **[Future Direction]**
 4. rich content endpoint 是否要分版本（例如 `/v2/task-units/.../content`）？ **[Future Direction]**
 
@@ -362,5 +377,6 @@ Hierarchy truth remains `chapters[].sections[].task_units[]`; profile and retrie
 - task-unit on-demand content API：已落地 **[Code-Confirmed]**
 - rich task-unit content model：下一階段提案 **[Maintainer-Provided]** + **[Future Direction]**
 - DB-centric persistence migration：下一階段 documentation/checklist preparation **[Maintainer-Provided] + [Future Direction]**
+- DB-era identity/versioning/reparse golden source：已完成 documentation-only baseline，位於 `db/module-detailed-design.md`；no schema/ORM/migration/runtime/API change implemented **[Maintainer-Provided] + [Future Direction]**
 - storage contract inventory：已完成 documentation-only inventory preparation **[Code-Confirmed]**
 - storage abstraction boundary：future-direction ownership design only；no repository interface/schema/runtime switch implemented **[Maintainer-Provided] + [Future Direction]**
