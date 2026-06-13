@@ -1,5 +1,5 @@
 Please use GitHub Connector.
-
+(Important: Do not use cache)
 Repository:
 
 https://github.com/Honka3rd/Deep_Reader
