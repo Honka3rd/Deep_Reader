@@ -71,9 +71,9 @@ A separate public/domain identity may be introduced only when there is a concret
 
 Separate public/domain IDs carry generation, uniqueness, persistence, mapping, and lifecycle costs. They must be deliberate, not automatic. **[Maintainer-Confirmed]**
 
-### 6.3 Legacy / Import Identity Rule
+### 6.3 Reference / Import Identity Rule
 
-Existing file-based JSON data is reference/test data only and will not be production-migrated as stable API-visible identity. Current Python-generated `unit_id` values are legacy/import identity evidence only. **[Maintainer-Confirmed]**
+Existing file-based JSON data is reference/test data only and will not be production-migrated as stable API-visible identity. Current Python-generated `unit_id` values are reference/import identity evidence only. **[Maintainer-Confirmed]**
 
 Future DB work must not depend on current Python-generated `unit_id` as the production task-unit identity strategy. **[Maintainer-Confirmed]**
 

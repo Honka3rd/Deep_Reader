@@ -656,7 +656,7 @@ No unresolved confirmation items identified in module checklist.
   Modules: `document_structure`, `config`
 - [ ] StructuredDocument JSONB-first Phase 1 readiness audit is captured as documentation-only planning; the audit inventories current structured files and identifies fixture gaps without implementing PostgreSQL, JSONB persistence, schema, migration, repository abstraction, runtime switching, or API behavior changes.
   Modules: `document_structure`
-- [ ] Maintainer clarification for Phase 1 JSONB planning is captured as documentation-only future planning: `APPLE` is legacy / pre-task-unit evidence, current `unit_id` is legacy/import identity evidence only, DB-era stable task-unit identity remains pre-schema work, and lazy content-block persistence remains separate from `StructuredDocument` JSONB.
+- [ ] Maintainer clarification for Phase 1 JSONB planning is captured as documentation-only future planning: `APPLE` is a valid no-task-unit `StructuredDocument` hierarchy reference file, current `unit_id` is reference/import identity evidence only, DB-era public/domain identity is introduced only for concrete external stability requirements, and lazy content-block persistence remains separate from `StructuredDocument` JSONB.
   Modules: `document_structure`, `shared`, `db`
 
 - [x] DB-era identity/versioning/reparse golden source captured.
@@ -731,7 +731,7 @@ No unresolved confirmation items identified in module checklist.
   Type: `Documentation Only`
   Implementation Impact: `None`
   Evidence: `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/document_structure/module-checklist.md`; `Deep_Reflective_Reader/shared/module-checklist.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`
-  Notes: Clarifies APPLE legacy/pre-task-unit classification, task-unit identity strategy risk, and lazy content-block persistence separation. Does not mark DB implementation, schema design, identity migration, fixture creation, content-block persistence, PostgreSQL, JSONB persistence, runtime behavior, or API changes complete.
+  Notes: Clarifies that APPLE is valid no-task-unit hierarchy evaluation material, not legacy/pre-task-unit schema evidence, production migration constraint, or DB identity requirement; also clarifies task-unit identity strategy risk and lazy content-block persistence separation. Does not mark DB implementation, schema design, identity migration, fixture creation, content-block persistence, PostgreSQL, JSONB persistence, runtime behavior, or API changes complete.
 
 ### 7.8 DB-Era Identity and Reparse Golden Source
 

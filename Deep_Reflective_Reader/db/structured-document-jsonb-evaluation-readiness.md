@@ -26,7 +26,7 @@ Non-document file observed: `.DS_Store`; ignored for this inventory.
 
 | Document | File | Approx File Size | Language | Chapters | Sections | Task Units | Approx Hierarchy Size | Unusual Characteristics |
 |---|---|---:|---|---:|---:|---:|---:|---|
-| `APPLE` | `APPLE.structured.json` | 752 KB | `en` | 11 | 11 | 0 | 22 hierarchy nodes excluding document | Legacy / pre-task-unit structured file created before task units existed; useful as legacy classification evidence, but not a normal no-task-unit acceptance candidate and not primary Phase 1 task-unit parity evidence. |
+| `APPLE` | `APPLE.structured.json` | 752 KB | `en` | 11 | 11 | 0 | 22 hierarchy nodes excluding document | Valid `StructuredDocument` reference file with chapter/section hierarchy and no task units; useful hierarchy evaluation material. Zero task units must not be interpreted as legacy schema, production migration constraint, or DB identity requirement. |
 | `Madame Bovary` | `Madame Bovary.structured.json` | 2.2 MB | `en` | 35 | 35 | 500 | 570 hierarchy nodes excluding document | Largest task-unit set; one section per chapter; repeated local chapter titles across book parts; strong content-preservation candidate. |
 | `中式思维` | `中式思维.structured.json` | 123 KB | `zh` | 5 | 5 | 14 | 24 hierarchy nodes excluding document | Chinese document with front matter and back matter; back matter has 10 task units; compact but content-heavy per unit. |
 | `许三观卖血记` | `许三观卖血记.structured.json` | 1.2 MB | `zh` | 30 | 34 | 98 | 162 hierarchy nodes excluding document | Chinese long-form narrative; front matter has 5 sections and 6 task units; most chapters have one section; good multi-section chapter coverage. |
@@ -42,13 +42,13 @@ Additional observed shape signals:
 
 Readiness note: persisted task units currently expose `unit_id`, not `task_unit_id`, in the structured JSON files. This is not only a wording mismatch. It is a pre-schema task-unit identity strategy risk.
 
-Current `unit_id` values should be treated as legacy/import identity evidence for Phase 1 parity checks. Future DB planning must distinguish:
+Current `unit_id` values should be treated as reference/import identity evidence for Phase 1 parity checks. Future DB planning must distinguish:
 
 - DB-generated internal primary key
-- stable domain identity used by external references
-- legacy/import identity from existing structured JSON
+- public/domain identity only where a concrete external stability requirement exists
+- reference/import identity from existing structured JSON
 
-DB-generated internal primary keys are useful for storage integrity, but they must not automatically replace external/domain reference identity without explicit migration design. Artifact targets, content-block links, API references, and evaluation records require stable identity semantics. This audit does not choose UUID, bigint, or any other identity implementation.
+DB-generated internal primary keys are the default internal identity and relational link foundation for early DB design. Current `unit_id` values must not become production DB identity. Artifact targets, content-block links, API references, and evaluation records may require validation metadata or deliberate public/domain identity later. This audit does not choose UUID, bigint, or any other identity implementation.
 
 ## Representative Evaluation Candidates
 
@@ -59,24 +59,24 @@ Recommended small evaluation set:
 | Small / compact hierarchy | `中式思维` | Small chapter count, Chinese text, front/back matter, and dense task-unit content make it a good smoke candidate. |
 | Medium hierarchy / multi-section chapter | `许三观卖血记` | Covers Chinese long-form structure and the only observed multi-section chapter pattern through front matter. |
 | Large hierarchy / content-heavy | `Madame Bovary` | Largest task-unit count and largest structured file; best stress candidate for import parity, reload parity, lookup parity, and opaque content preservation. |
-| Legacy / pre-task-unit classification evidence | `APPLE` | Created before task units existed. It should help classify legacy structured files but must not be used as primary task-unit identity/order/content parity evidence. |
+| Hierarchy reference / no-task-unit valid document | `APPLE` | Valid `StructuredDocument` reference file with chapter/section hierarchy and zero task units. Useful for hierarchy parity, reload parity, and no-task-unit acceptance coverage; not task-unit identity/order/content evidence. |
 
 Coverage gaps:
 
 - No deeply nested hierarchy exists because the current architecture intentionally normalizes to chapter -> section -> task unit.
 - No single document appears multilingual; repository-level coverage includes English and Chinese documents.
 - No content-block persistence examples are present, which is acceptable because content blocks are out of Phase 1 scope.
-- `APPLE` is not an ordinary no-task-unit acceptance candidate; it is legacy / pre-task-unit evidence.
+- `APPLE` is a valid no-task-unit `StructuredDocument` reference file. Its absence of task units must not be interpreted as legacy schema, production migration constraint, or DB identity requirement.
 
 ## Phase 1 Positive Validation Readiness
 
 | Validation Area | Readiness | Rationale |
 |---|---|---|
-| Semantic hierarchy parity | Ready with caveat | Three documents include full chapter/section/task-unit hierarchy with unique `unit_id` values. `APPLE` is legacy / pre-task-unit evidence and must not be used as primary task-unit parity evidence. |
+| Semantic hierarchy parity | Ready with caveat | `APPLE` provides valid chapter/section hierarchy coverage with zero task units; three other documents include full chapter/section/task-unit hierarchy with unique `unit_id` values. |
 | Hierarchy lookup parity | Partially Ready | The repository has real hierarchy files and existing hierarchy-first helper/test coverage, but this audit does not create a validation harness that compares file-backed and JSONB-reloaded models. |
 | DB-to-model reload parity | Partially Ready | File-backed JSON payloads can serve as import/reload baselines, but no DB-to-model validation path exists yet and this task does not implement one. |
 | Namespace/document isolation validation | Partially Ready | Real documents have distinct names and file identities, but there is no observed same-`doc_name` cross-namespace fixture or DB identity fixture. Future validation will need synthetic namespace collision/isolation cases. |
-| Opaque `task_unit.content` preservation validation | Ready with caveat | `Madame Bovary`, `中式思维`, and `许三观卖血记` provide substantial task-unit content payloads. `APPLE` cannot validate task-unit content preservation because it is a legacy / pre-task-unit structured file. |
+| Opaque `task_unit.content` preservation validation | Ready with caveat | `Madame Bovary`, `中式思维`, and `许三观卖血记` provide substantial task-unit content payloads. `APPLE` has no task units, so it is not content-preservation evidence, but that absence is a valid document shape rather than a legacy classification. |
 
 ## Phase 1 Negative Validation Readiness
 
@@ -113,7 +113,7 @@ Use synthetic fixtures for:
 - duplicate task-unit IDs
 - malformed hierarchy placement
 - namespace/document collision or same `doc_name` under different namespaces
-- legacy / pre-task-unit classification policy for `APPLE`-like files
+- valid no-task-unit hierarchy acceptance for `APPLE`-like files
 
 Do not use synthetic fixtures to define hierarchy truth. Synthetic fixtures should only exercise rejection, isolation, and edge-case categories that are not naturally present in the current structured repository.
 
@@ -125,14 +125,14 @@ Do not use synthetic fixtures to define hierarchy truth. Synthetic fixtures shou
 2. Namespace isolation coverage is incomplete.
    - Current files have distinct names. They do not prove same-document-name isolation across namespaces.
 
-3. `APPLE` is legacy / pre-task-unit.
-   - It was created before task units existed. It may be useful as legacy classification evidence, but it cannot validate task-unit identity/order/content parity and must not be treated as a normal acceptance candidate.
+3. `APPLE` is not task-unit evidence.
+   - `APPLE` is a valid `StructuredDocument` reference file with chapter/section hierarchy and zero task units. It remains useful hierarchy evaluation material, but it cannot validate task-unit identity/order/content parity.
 
 4. No deeply nested hierarchy coverage.
    - This is expected under the current two-layer normalized hierarchy scope, but future reviewers should not mistake the absence of deeper nesting for an untested DB limitation.
 
 5. Task-unit identity strategy risk.
-   - The evaluation document says `task_unit_id`, while current persisted task units use `unit_id`. Current `unit_id` should be legacy/import evidence only. Future DB design must define stable domain identity separately from DB-generated internal primary keys before schema design.
+   - The evaluation document says `task_unit_id`, while current persisted task units use `unit_id`. Current `unit_id` should be reference/import evidence only. Future DB design defaults to DB-generated internal primary keys and should add public/domain identity only for concrete external stability requirements.
 
 6. Lazy content-block persistence boundary remains future work.
    - Content blocks are out of Phase 1 acceptance and should not be embedded into the normal `StructuredDocument` JSONB payload. Future planning should treat them as lazily materialized resources linked to task units and persisted separately after computation.
@@ -158,9 +158,9 @@ Recommendation: Ready with Minor Preparation.
 Justification:
 
 - The repository has enough real structured documents to cover valid hierarchy parity across small, medium, large, English, Chinese, and content-heavy examples.
-- The repository has `APPLE` as legacy / pre-task-unit evidence, which should be classified before the evaluation begins and excluded from primary task-unit parity acceptance.
+- The repository has `APPLE` as a valid no-task-unit `StructuredDocument` reference file, which should be included as hierarchy evaluation material while excluded from task-unit parity acceptance.
 - The repository does not yet have reusable negative validation fixtures for legacy-only payloads, missing chapters, duplicate hierarchy IDs, malformed hierarchy placement, or namespace collision.
-- Phase 1 can proceed after minor preparation defines the representative candidate set, creates validation-only negative fixtures in a future task, classifies `APPLE` as legacy / pre-task-unit evidence, and records `unit_id` as legacy/import identity evidence while deferring stable `task_unit_id` strategy to pre-schema planning.
+- Phase 1 can proceed after minor preparation defines the representative candidate set, creates validation-only negative fixtures in a future task, records `APPLE` as valid no-task-unit hierarchy evidence, and records `unit_id` as reference/import identity evidence while deferring any deliberate public/domain identity decisions to pre-schema planning.
 
 This recommendation does not mark Phase 1 evaluation complete. It only states readiness for future evaluation planning after minor fixture preparation.
 

@@ -61,15 +61,15 @@ Phase 1 covers bare `StructuredDocument` hierarchy parity:
 
 Phase 1 does not resolve the final DB-era task-unit identity strategy.
 
-For Phase 1 parity evidence, current persisted `unit_id` values may be used only as legacy/import identity baselines from existing structured JSON. They must not be treated as proof that the current Python-generated identity algorithm is sufficient for long-term DB-backed domain identity.
+For Phase 1 parity evidence, current persisted `unit_id` values may be used only as reference/import identity baselines from existing structured JSON. They must not be treated as proof that the current Python-generated identity algorithm is sufficient for long-term DB-backed identity.
 
 Future pre-schema planning must distinguish:
 
 - DB-generated internal primary key
-- stable `task_unit_id` domain identity used by external/domain references
-- legacy/import identity from existing structured JSON
+- public/domain identity only where a concrete external stability requirement exists
+- reference/import identity from existing structured JSON
 
-DB-generated internal primary keys should not automatically replace stable domain reference identity. Artifact targets, content-block links, API references, and evaluation records require stable identity semantics. This document does not choose an ID format, ID generator, table design, column design, or migration algorithm.
+DB-generated internal primary keys are the default internal identity and relational link foundation for early DB design. Current Python-generated `unit_id` values must not be treated as production DB identity, public API identity, or proof that a separate task-unit domain ID is required. Artifact targets, content-block links, API references, and evaluation records may need validation metadata or deliberate public/domain identity later, but this document does not choose an ID format, ID generator, table design, column design, or migration algorithm.
 
 ### Excluded
 
