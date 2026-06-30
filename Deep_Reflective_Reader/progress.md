@@ -37,7 +37,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `db/` | documentation module | `db/module-checklist.md` | 6 | 0 | Documentation Baseline Captured |
+| `db/` | documentation module | `db/module-checklist.md` | 13 | 0 | Documentation Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -198,7 +198,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
 - Status: `Documentation Baseline Captured`
-- Completed item count: `6`
+- Completed item count: `13`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -209,6 +209,13 @@ No unresolved confirmation items identified in module checklist.
 - [x] Captures hard reparse transaction and cleanup policy.
 - [x] Captures derived-resource provenance and validation policy.
 - [x] Captures minimal parse event provenance policy.
+- [x] Derives Phase 1 logical DB schema proposal from repository memory.
+- [x] Confirms optional `StructuredDocument` JSONB snapshot boundary for Phase 1.
+- [x] Confirms Phase 1 advisory profile snapshot placement and minimum metadata.
+- [x] Confirms Phase 1 artifact payload grouping strategy.
+- [x] Confirms Phase 1 public document identity requirement.
+- [x] Confirms Phase 1 parse event retention policy.
+- [x] Confirms Phase 1 raw document storage boundary.
 
 #### Needs Confirmation
 
@@ -216,7 +223,7 @@ No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
-- [ ] Future DB schema proposal remains pending and must be derived from `db/module-detailed-design.md`.
+- [ ] Future implementation-ready DB schema design remains pending and must be derived from the logical proposal in `db/module-detailed-design.md`; the current proposal is logical only and contains no SQL, DDL, ORM, repository interface, migration, fixtures, runtime behavior, or API changes.
 - [ ] Future DB implementation must not production-migrate current JSON `unit_id` as stable identity.
 - [ ] Future DB implementation must keep DB-generated IDs as default internal identity and add public/domain IDs only for concrete external stability requirements.
 - [ ] Future hard reparse implementation must validate candidate hierarchy before transaction cutover and must explicitly delete all document-derived content blocks and artifacts after version advancement in the same transaction.
@@ -662,6 +669,9 @@ No unresolved confirmation items identified in module checklist.
 - [x] DB-era identity/versioning/reparse golden source captured.
   Modules: `db`, `document_structure`, `shared`, `config`, `document_preparation`
 
+- [x] Phase 1 logical DB schema proposal captured as documentation-only architecture memory.
+  Modules: `db`, `document_structure`, `shared`, `config`, `document_preparation`
+
 ### 7.2 Profile and Metadata
 
 - [x] Parser metadata extraction and profile build pipeline baseline captured.
@@ -742,9 +752,24 @@ No unresolved confirmation items identified in module checklist.
   Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md`; `Deep_Reflective_Reader/db/module-checklist.md`; maintainer-confirmed grill-me decisions in current architecture task.
   Notes: Captures DB-generated IDs as default internal identity, public/domain IDs only for concrete external stability needs, no production dependency on current Python-generated `unit_id`, document-level monotonic `structure_version`, current-state-only hierarchy, hard reparse transaction order, physical deletion of all document artifacts/content blocks on successful hard reparse, and required minimal parse event provenance. Does not mark schema, ORM, migration, repository interface, fixture, runtime behavior, or API changes complete.
 
+- [x] Phase 1 Logical DB Schema Proposal
+  Status: `Documentation Baseline Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md`; `Deep_Reflective_Reader/db/module-checklist.md`; `Deep_Reflective_Reader/db/storage-contract-design.md`; supporting module designs for `document_structure`, `shared`, `config`, and `document_preparation`.
+  Notes: Derives logical persistence domains, proposed logical entities, entity responsibilities, relationships, ownership boundaries, JSONB-vs-relational placement rationale, and open design questions. Optional full `StructuredDocument` JSONB snapshot is confirmed only as a validation/parity/debug artifact, not runtime hierarchy authority or fallback. Does not mark SQL, DDL, ORM models, repository interfaces, migration scripts, fixtures, runtime behavior, API changes, PostgreSQL implementation, or backend selection complete.
+
+- [x] Phase 1 DB Schema Design Preparation
+  Status: `Documentation Planning Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`; `Deep_Reflective_Reader/db/module-checklist.md`; supporting module designs for `document_structure`, `shared`, `profile`, `config`, and `document_preparation`.
+  Notes: Defines logical tables/entities, candidate fields, relationships, ownership boundaries, constraint candidates, hard-reparse lifecycle, application-level validation, and governance guardrails for Phase 1. It does not mark SQL, DDL, ORM models, repository interfaces, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, or backend selection complete.
+
 ## 8. Cross-Module Needs Confirmation
 
 No unresolved cross-module confirmation items identified.
+
 ## 9. Missing or Weak Checklists
 
 - No checklist files are missing in this pass.
@@ -783,6 +808,7 @@ No unresolved cross-module confirmation items identified.
 - Storage Contract Inventory Documentation is completed as documentation-only work with no implementation impact.
 - Storage abstraction boundary is documented as future-direction planning only; no storage abstraction implementation, repository interface, schema, dual-write, read-path switch, API change, or runtime change is complete.
 - DB-era identity/versioning/reparse policy now has a dedicated documentation-only golden source in `db/module-detailed-design.md`; no DB implementation work is marked complete.
+- Phase 1 logical DB schema proposal is captured in `db/module-detailed-design.md`; it is documentation-only and has no unresolved Phase 1 logical schema confirmation items in `db/module-checklist.md`.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.
 - Task-layout projection boundary is documented as read/projection-focused in current docs/checklists.
 - API entry/schema and coordinator orchestration baselines are captured and linked in module-level documentation.

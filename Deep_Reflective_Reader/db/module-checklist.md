@@ -20,6 +20,7 @@ It is used to:
 - `Deep_Reflective_Reader/db/storage-contract-design.md`
 - `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation.md`
 - `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation-readiness.md`
+- `Deep_Reflective_Reader/db/phase-1-schema-design.md`
 
 ## Rules
 
@@ -54,6 +55,34 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (Parse Event Provenance)`; maintainer-confirmed grill-me decisions in current architecture task.
   Notes: Required event types are `initial_parse` and `hard_reparse`; events are provenance only, not full audit/history or version authority.
 
+- [x] Derive Phase 1 logical DB schema proposal from repository memory.
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (Logical DB Schema Proposal (Phase 1))`; `Deep_Reflective_Reader/db/storage-contract-design.md`; `Deep_Reflective_Reader/document_structure/module-detailed-design.md`; `Deep_Reflective_Reader/shared/module-detailed-design.md`; `Deep_Reflective_Reader/document_preparation/module-detailed-design.md`; `Deep_Reflective_Reader/config/module-detailed-design.md`; maintainer request for logical schema proposal in current architecture task.
+  Notes: Documentation-only logical persistence model covering domains, entities, responsibilities, relationships, ownership boundaries, JSONB-vs-relational placement rationale, and open design questions; no SQL, DDL, ORM, repository interface, migration, fixtures, runtime behavior, or API changes.
+
+- [x] Confirm optional `StructuredDocument` JSONB snapshot boundary for Phase 1.
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (JSONB vs Relational Placement Rationale)`; maintainer clarification in current architecture task.
+  Notes: Optional full `StructuredDocument` JSONB snapshot may exist only as a validation/parity/debug artifact; relational current hierarchy and `Document.current_structure_version` remain authoritative, and JSONB conflict is a validation failure rather than fallback or dual-authority behavior.
+
+- [x] Confirm Phase 1 advisory profile snapshot placement and minimum metadata.
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (Logical DB Schema Proposal (Phase 1), ProfileSnapshot)`; maintainer clarification in current architecture task.
+  Notes: Phase 1 includes `ProfileSnapshot` / `document_profiles` as a separate document-scoped logical entity linked to `Document`, storing profile payload, version metadata, generation/source metadata, optional language/script/title/author/source metadata, optional `source_structure_version`, and advisory diagnostics when produced. It remains advisory only and must not become hierarchy truth, parser authority, artifact availability authority, retrieval authority, or a mutator of chapters/sections/task units.
+
+- [x] Confirm Phase 1 artifact payload grouping strategy.
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (Logical DB Schema Proposal (Phase 1), Artifact)`; maintainer clarification in current architecture task.
+  Notes: Phase 1 uses one common logical `Artifact` entity with `artifact_type`, target metadata, type-specific payload, and lifecycle/provenance metadata. It must not split into category-specific artifact tables in Phase 1; splitting can be reconsidered later only if schemas stabilize, type-specific constraints become important, query patterns require dedicated tables, or generic payload validation becomes insufficient.
+
+- [x] Confirm Phase 1 public document identity requirement.
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (DB-Era Identity Strategy, Logical DB Schema Proposal (Phase 1))`; maintainer clarification in current architecture task.
+  Notes: There is no current explicit business requirement for a separate public document identity. `documents.id` is sufficient for the first DB-backed internal API and application use. Public document UUID/key/slug remains a future extensibility point only for concrete external stability requirements such as public sharing, external SDK/API, cross-system integration, permanent external references, or multi-tenant public URLs.
+
+- [x] Confirm Phase 1 parse event retention policy.
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (Parse Event Provenance, Retention Policy)`; maintainer clarification in current architecture task.
+  Notes: Parse events are retained for the lifetime of the document and deleted when the document is deleted. They remain document-scoped provenance only; Phase 1 does not keep parse events after document deletion as independent audit records and does not introduce archival, TTL, or compliance retention.
+
+- [x] Confirm Phase 1 raw document storage boundary.
+  Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (Logical DB Schema Proposal (Phase 1), RawSourceMetadata)`; maintainer clarification in current architecture task.
+  Notes: Raw uploaded documents remain canonical user-owned file-backed source files for the first DB rollout. The DB stores only raw-source metadata such as `document_id`, source location/file path/object key, original filename, MIME type, file size, checksum/fingerprint when available, `uploaded_at`, and ownership scope when applicable. Raw bytes, future object storage, and DB-backed raw storage remain separate tracks.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -62,7 +91,7 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] Derive a first DB schema proposal from the DB golden source.
+- [ ] Convert Phase 1 logical schema into implementation-ready schema design
 - [ ] Define DB repository/storage interfaces without making schema authority.
 - [ ] Define migration/evaluation fixtures that do not production-migrate existing JSON identity.
 - [ ] Define transaction-level hard reparse implementation plan.
