@@ -2,13 +2,14 @@
 
 ## 1. Module Purpose
 
-`db/` is the documentation-only golden source for future DB-era persistence planning. It records maintainer-approved DB identity, versioning, reparse, and derived-resource lifecycle rules before any schema, ORM, repository interface, migration, or runtime behavior is implemented. **[Maintainer-Confirmed]**
+`db/` is the golden source for DB-era persistence planning and isolated Phase 1 DB validation implementation. It records maintainer-approved DB identity, versioning, reparse, and derived-resource lifecycle rules, and now includes the first isolated core hierarchy persistence slice. **[Maintainer-Confirmed] + [Code-Confirmed]**
 
-This module does not represent an implemented Python package in the current codebase. It exists to prevent future DB work from rediscovering or contradicting the agreed architecture decisions. **[Doc-Confirmed]**
+The implemented slice is intentionally isolated from production runtime read/write selection. It exists to validate the core DB hierarchy path before broader schema, ORM, repository, migration, backend configuration, API, or runtime rollout work. **[Code-Confirmed]**
 
 ## 2. Position in Overall Architecture
 
 - Future DB persistence planning / governance layer
+- Isolated Phase 1 core hierarchy persistence validation layer
 - Cross-module design source for future schema and storage implementation work
 
 The existing file-backed runtime remains valid until DB readiness, rollout, and validation gates are explicitly satisfied. **[From Proposal]**
@@ -24,6 +25,9 @@ The existing file-backed runtime remains valid until DB readiness, rollout, and 
 | `db/structured-document-jsonb-evaluation.md` | Phase 1 `StructuredDocument` JSONB-first evaluation plan | Evaluation planning only; no schema approval |
 | `db/structured-document-jsonb-evaluation-readiness.md` | Readiness audit for future Phase 1 JSONB evaluation | Audit/planning only; no implementation impact |
 | `db/phase-1-schema-design.md` | Implementation-ready schema design reference for Phase 1 logical tables/entities, candidate fields, relationships, ownership boundaries, and constraint candidates | Documentation only; no SQL, ORM, repository interface, migration, runtime behavior, or backend selection |
+| `db/migrations/001_phase_1_core_hierarchy.sql` | Executable SQLite schema for the isolated Phase 1 core hierarchy validation slice | Covers `documents`, `raw_source_metadata`, `parse_events`, `chapters`, `sections`, and `task_units`; not production backend rollout |
+| `db/phase_1_core_schema.py` | Applies the isolated Phase 1 core hierarchy schema to a SQLite connection | Validation helper only; no production runtime switch |
+| `db/sqlite_core_document_store.py` | Minimal SQLite-backed accepted hierarchy write/read adapter | Uses DB-generated IDs on readback; not a production repository abstraction or backend selection mechanism |
 
 ## 4. Main Responsibilities
 
@@ -33,16 +37,42 @@ The existing file-backed runtime remains valid until DB readiness, rollout, and 
 4. Define hard reparse transaction and derived-resource invalidation policy. **[Maintainer-Confirmed]**
 5. Define minimal parse event provenance requirements. **[Maintainer-Confirmed]**
 6. Preserve boundaries from existing repository memory: hierarchy-first, no hidden mutation, metadata advisory-only, and no backend/schema authority. **[From Proposal] + [From HLD]**
-7. Derive the first logical relational persistence model from documented domain semantics, without SQL, DDL, ORM, repositories, migrations, or runtime behavior changes. **[Maintainer-Confirmed] + [Doc-Confirmed]**
+7. Derive the first logical relational persistence model from documented domain semantics. **[Maintainer-Confirmed] + [Doc-Confirmed]**
+8. Provide an isolated executable validation slice for new-document core hierarchy persistence, without enabling production runtime DB reads or writes. **[Code-Confirmed]**
 
 ## 5. Non-Responsibilities
 
-1. Does not implement database schema, tables, migrations, ORM models, repositories, fixtures, or runtime read/write behavior. **[Maintainer-Confirmed]**
+1. Does not implement production database rollout, ORM models, production repositories, API integration, backend selection, or runtime read/write behavior. **[Maintainer-Confirmed] + [Code-Confirmed]**
 2. Does not select a final DB backend beyond previously documented PostgreSQL JSONB evaluation assumptions. **[From Proposal]**
 3. Does not redefine `StructuredDocument` hierarchy truth. **[From HLD]**
 4. Does not make database schema a parser, hierarchy, artifact, profile, retrieval, or raw-document authority. **[From Proposal]**
 5. Does not preserve current Python-generated `unit_id` as production identity. **[Maintainer-Confirmed]**
 6. Does not introduce immutable hierarchy history, staging hierarchy tables, or candidate promotion workflows in the first DB design. **[Maintainer-Confirmed]**
+
+## 5.1 Implemented Phase 1 Core Validation Slice
+
+The implemented slice validates the smallest DB-backed hierarchy path for new documents. **[Code-Confirmed]**
+
+Implemented scope:
+
+- applies an executable SQLite schema for `documents`, `raw_source_metadata`, `parse_events`, `chapters`, `sections`, and `task_units`
+- persists an already accepted `StructuredDocument` hierarchy with `current_structure_version = 1`
+- stores raw-source metadata only, not raw bytes
+- appends an `initial_parse` parse event
+- reads current hierarchy back through `Document -> Chapter -> Section -> TaskUnit`
+- exposes DB-generated IDs in the read model instead of current Python-generated `unit_id`
+- validates the slice with `scripts/test_db_phase_1_core_hierarchy_persistence.py`
+
+Out of scope:
+
+- production runtime DB read/write switch
+- profile persistence
+- content-block persistence
+- artifact persistence
+- hard reparse transaction implementation
+- JSONB parity snapshot implementation
+- migration of existing JSON outputs
+- public/domain identity introduction
 
 ## 6. DB-Era Identity Strategy
 

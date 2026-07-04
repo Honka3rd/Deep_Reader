@@ -37,7 +37,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `db/` | documentation module | `db/module-checklist.md` | 33 | 0 | Documentation Baseline Captured |
+| `db/` | package + design module | `db/module-checklist.md` | 34 | 0 | Implementation Slice Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -197,8 +197,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
-- Status: `Documentation Baseline Captured`
-- Completed item count: `33`
+- Status: `Implementation Slice Captured`
+- Completed item count: `34`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -236,6 +236,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines DB parity validation fixtures against file-backed `StructuredDocument` golden outputs.
 - [x] Defines runtime read/write switch plan behind explicit backend policy, without enabling it by default.
 - [x] Defines rollback and failure-mode behavior for failed initial parse, failed hard reparse, and failed derived-resource cleanup.
+- [x] Implements Phase 1 core DB hierarchy persistence slice for new-document isolated validation.
 
 #### Needs Confirmation
 
@@ -243,11 +244,11 @@ No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
-- [ ] Future executable DB migration remains pending and must be derived from `db/phase-1-sql-ddl-migration-plan.md`; the current plan is documentation-only and contains no executable SQL, ORM, repository interface, migration script, fixtures, runtime behavior, or API changes.
+- [ ] Future production DB migration remains pending and must be derived from the Phase 1 planning docs and isolated SQLite validation slice; the current implemented schema is validation-only and does not provide production migration rollout, ORM, repository interface, runtime behavior, or API changes.
 - [ ] Future DB implementation must not production-migrate current JSON `unit_id` as stable identity.
 - [ ] Future DB implementation must keep DB-generated IDs as default internal identity and add public/domain IDs only for concrete external stability requirements.
 - [ ] Future hard reparse implementation must validate candidate hierarchy before transaction cutover and must explicitly delete all document-derived content blocks and artifacts after version advancement in the same transaction.
-- [ ] Future executable implementation remains pending for DB adapters, migrations, ORM mappings, repository/storage code, runtime backend policy, fixtures, and tests; this checklist pass completed planning documents only.
+- [ ] Future production DB implementation remains pending for ORM mappings, production repository/storage code, backend runtime policy, hard reparse transaction behavior, derived-resource persistence, existing JSON migration, and broader tests; the implemented slice is isolated validation only.
 
 ### `document_structure/`
 
@@ -829,6 +830,13 @@ No unresolved confirmation items identified in module checklist.
   Evidence: `Deep_Reflective_Reader/db/phase-1-raw-source-metadata-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-document-profile-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-migration-evaluation-fixtures-plan.md`; `Deep_Reflective_Reader/db/phase-1-empty-database-ingestion-path-plan.md`; `Deep_Reflective_Reader/db/phase-1-hard-reparse-transaction-plan.md`; `Deep_Reflective_Reader/db/phase-1-parse-event-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-content-block-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-artifact-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-derived-row-validation-plan.md`; `Deep_Reflective_Reader/db/phase-1-config-backend-integration-plan.md`; `Deep_Reflective_Reader/db/phase-1-structured-document-jsonb-parity-snapshot-plan.md`; `Deep_Reflective_Reader/db/phase-1-current-state-hierarchy-validation-test-plan.md`; `Deep_Reflective_Reader/db/phase-1-db-parity-validation-fixtures-plan.md`; `Deep_Reflective_Reader/db/phase-1-runtime-read-write-switch-plan.md`; `Deep_Reflective_Reader/db/phase-1-db-failure-mode-rollback-plan.md`; `Deep_Reflective_Reader/db/module-checklist.md`.
   Notes: Completes the remaining DB checklist planning items for raw-source metadata, advisory profile persistence, fixture strategy, empty-database ingestion, hard reparse transaction behavior, parse events, content blocks, artifacts, derived-row freshness validation, config integration, JSONB parity snapshots, validation-test planning, parity-fixture planning, runtime switch policy, and rollback/failure modes. It does not mark Python code, SQL DDL, ORM models, repository/storage implementations, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, object storage integration, or backend selection complete.
 
+- [x] Phase 1 Core DB Hierarchy Persistence Slice
+  Status: `Implementation Slice Captured`
+  Type: `Implementation + Validation`
+  Implementation Impact: `Isolated DB validation only`
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/db/phase_1_core_schema.py`; `Deep_Reflective_Reader/db/sqlite_core_document_store.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_core_hierarchy_persistence.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Implements an isolated SQLite-backed core hierarchy persistence slice for new-document validation: schema application, accepted hierarchy write, raw-source metadata row, initial parse event, and current hierarchy readback with DB-generated document/chapter/section/task-unit IDs. It does not enable production runtime DB reads/writes, profile persistence, content-block persistence, artifact persistence, hard reparse transaction behavior, JSONB runtime fallback, public/domain IDs, existing JSON production migration, PostgreSQL rollout, ORM mappings, or backend selection.
+
 ## 8. Cross-Module Needs Confirmation
 
 No unresolved cross-module confirmation items identified.
@@ -836,7 +844,7 @@ No unresolved cross-module confirmation items identified.
 ## 9. Missing or Weak Checklists
 
 - No checklist files are missing in this pass.
-- `db/` now has documentation-only module memory and checklist coverage for DB-era planning.
+- `db/` now has DB-era planning memory plus an isolated Phase 1 core hierarchy validation implementation slice.
 - No module checklist has insufficient completed item count in this pass.
 - No completed checklist evidence formatting gaps were detected in this pass.
 

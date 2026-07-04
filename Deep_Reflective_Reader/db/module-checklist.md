@@ -183,6 +183,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/db/phase-1-db-failure-mode-rollback-plan.md`; `Deep_Reflective_Reader/db/phase-1-hard-reparse-transaction-plan.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`.
   Notes: Documentation-only failure-mode plan covering initial parse failure, hard reparse validation failure, hard reparse transaction failure, and derived cleanup failure. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
 
+- [x] Implement Phase 1 core DB hierarchy persistence slice for new-document isolated validation.
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/db/phase_1_core_schema.py`; `Deep_Reflective_Reader/db/sqlite_core_document_store.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_core_hierarchy_persistence.py`.
+  Notes: Implements an isolated SQLite-backed validation slice for `documents`, `raw_source_metadata`, `parse_events`, `chapters`, `sections`, and `task_units`, including schema application, accepted hierarchy write, DB-generated identity readback, and initial parse provenance validation. It does not enable production runtime DB reads/writes, profile persistence, content-block persistence, artifact persistence, JSONB runtime fallback, public/domain IDs, existing JSON production migration, or backend selection.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -191,7 +195,7 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-No unchecked future tasks remain in this checklist after the current documentation planning pass.
+No unchecked future tasks remain in this checklist after the current implementation pass.
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 
