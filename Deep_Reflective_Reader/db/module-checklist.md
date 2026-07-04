@@ -21,6 +21,26 @@ It is used to:
 - `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation.md`
 - `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation-readiness.md`
 - `Deep_Reflective_Reader/db/phase-1-schema-design.md`
+- `Deep_Reflective_Reader/db/phase-1-sql-ddl-migration-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`
+- `Deep_Reflective_Reader/db/phase-1-orm-model-mapping-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-repository-storage-interface-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-document-structure-storage-integration-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-raw-source-metadata-persistence-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-document-profile-persistence-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-migration-evaluation-fixtures-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-empty-database-ingestion-path-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-hard-reparse-transaction-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-parse-event-persistence-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-content-block-persistence-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-artifact-persistence-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-derived-row-validation-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-config-backend-integration-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-structured-document-jsonb-parity-snapshot-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-current-state-hierarchy-validation-test-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-db-parity-validation-fixtures-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-runtime-read-write-switch-plan.md`
+- `Deep_Reflective_Reader/db/phase-1-db-failure-mode-rollback-plan.md`
 
 ## Rules
 
@@ -83,6 +103,86 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (Logical DB Schema Proposal (Phase 1), RawSourceMetadata)`; maintainer clarification in current architecture task.
   Notes: Raw uploaded documents remain canonical user-owned file-backed source files for the first DB rollout. The DB stores only raw-source metadata such as `document_id`, source location/file path/object key, original filename, MIME type, file size, checksum/fingerprint when available, `uploaded_at`, and ownership scope when applicable. Raw bytes, future object storage, and DB-backed raw storage remain separate tracks.
 
+- [x] Convert Phase 1 schema design into SQL/DDL migration plan.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-sql-ddl-migration-plan.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`.
+  Notes: Documentation-only migration planning reference covering DDL work units, dependency order, foreign-key direction, delete/retention strategy, rollback expectations, validation gates, future migration file shape, and governance guardrails. It does not create executable SQL DDL, ORM models, repository interfaces, migration scripts, runtime behavior, fixtures, tests, API changes, or backend selection.
+
+- [x] Define physical table, column, foreign-key, uniqueness, and index candidates for Phase 1.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/phase-1-sql-ddl-migration-plan.md`.
+  Notes: Documentation-only candidate physical schema reference covering table names, column/type candidates, required/nullability candidates, foreign-key directions, uniqueness candidates, index candidates, delete behavior candidates, cross-table consistency rules, and governance guardrails. It does not create executable SQL DDL, ORM models, repository interfaces, migration scripts, runtime behavior, fixtures, tests, API changes, or backend selection.
+
+- [x] Define ORM/model mapping plan for Phase 1 entities without making ORM classes parser authority.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-orm-model-mapping-plan.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`.
+  Notes: Documentation-only ORM/model mapping plan covering candidate ORM record classes, table mapping, relationship mapping, model responsibility boundaries, DTO/domain conversion boundaries, loading/session policy candidates, cascade/lifecycle boundaries, and validation responsibility split. It does not create executable ORM model code, SQL DDL, repository interfaces, migration scripts, runtime behavior, fixtures, tests, API changes, or backend selection.
+
+- [x] Define DB repository/storage interfaces without making schema authority.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-repository-storage-interface-plan.md`; `Deep_Reflective_Reader/db/phase-1-orm-model-mapping-plan.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`.
+  Notes: Documentation-only repository/storage interface plan covering candidate storage ports, ownership boundaries, pseudo-interface operations, transaction/unit-of-work boundary, DTO boundary candidates, schema authority guardrails, and runtime integration boundaries. It does not create Python repository interfaces, executable ORM model code, SQL DDL, migration scripts, runtime behavior, fixtures, tests, API changes, or backend selection.
+
+- [x] Define document_structure storage integration plan for DB-backed hierarchy writes and reads.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-document-structure-storage-integration-plan.md`; `Deep_Reflective_Reader/db/phase-1-repository-storage-interface-plan.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`.
+  Notes: Documentation-only integration plan covering `document_structure` ownership, DB-backed initial hierarchy writes, current hierarchy reads, hard-reparse replacement, mapper/DTO boundaries, fail-fast behavior, file/DB coexistence, and governance guardrails. It does not create Python code, repository interfaces, executable ORM model code, SQL DDL, migration scripts, runtime behavior, fixtures, tests, API changes, or backend selection.
+
+- [x] Define raw-source metadata persistence plan while keeping raw bytes file-backed/object-backed.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-raw-source-metadata-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`.
+  Notes: Documentation-only plan for DB metadata rows that reference file/object-backed raw sources without storing raw bytes or making source metadata parser authority. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, object storage integration, or backend selection.
+
+- [x] Define advisory document_profile persistence plan without profile hierarchy authority.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-document-profile-persistence-plan.md`; `Deep_Reflective_Reader/profile/module-detailed-design.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`.
+  Notes: Documentation-only plan for document-scoped advisory profile snapshots, including metadata boundaries and profile non-authority rules. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, profile parser changes, or backend selection.
+
+- [x] Define migration/evaluation fixtures that do not production-migrate existing JSON identity.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-migration-evaluation-fixtures-plan.md`; `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`.
+  Notes: Documentation-only fixture planning that treats existing JSON IDs as reference evidence only and focuses future validation on semantic hierarchy shape and ordering. It does not create fixtures, Python code, SQL DDL, ORM models, repository interfaces, migrations, tests, runtime behavior, API changes, or backend selection.
+
+- [x] Define empty-database / new-document ingestion migration path before any existing JSON production migration.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-empty-database-ingestion-path-plan.md`; `Deep_Reflective_Reader/db/phase-1-document-structure-storage-integration-plan.md`; `Deep_Reflective_Reader/db/phase-1-raw-source-metadata-persistence-plan.md`.
+  Notes: Documentation-only rollout plan that prioritizes new-document ingestion into an empty DB before production migration of existing JSON outputs. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
+
+- [x] Define transaction-level hard reparse implementation plan.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-hard-reparse-transaction-plan.md`; `Deep_Reflective_Reader/db/phase-1-document-structure-storage-integration-plan.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`.
+  Notes: Documentation-only transaction plan for validated hard reparse replacement, document-level structure-version advance, derived-row deletion, and parse-event append. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
+
+- [x] Define parse event persistence implementation plan.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-parse-event-persistence-plan.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`.
+  Notes: Documentation-only plan for minimal `initial_parse` and `hard_reparse` provenance retained for document lifetime. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
+
+- [x] Define content-block relational persistence implementation plan.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-content-block-persistence-plan.md`; `Deep_Reflective_Reader/shared/module-detailed-design.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`.
+  Notes: Documentation-only plan for lazy materialized content blocks linked to current task-unit hierarchy with application-level freshness validation. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
+
+- [x] Define artifact relational persistence implementation plan.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-artifact-persistence-plan.md`; `Deep_Reflective_Reader/document_structure/module-detailed-design.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`.
+  Notes: Documentation-only plan for one common artifact entity with `artifact_type`, validated hierarchy-aware target metadata, type-specific payload, and provenance metadata. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, artifact generators, or backend selection.
+
+- [x] Define application-level stale/invalid derived-row validation behavior.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-derived-row-validation-plan.md`; `Deep_Reflective_Reader/db/phase-1-content-block-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-artifact-persistence-plan.md`.
+  Notes: Documentation-only plan for validating derived-row freshness against `documents.current_structure_version` at the application layer. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
+
+- [x] Define backend configuration integration with `config/`.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-config-backend-integration-plan.md`; `Deep_Reflective_Reader/config/module-detailed-design.md`; `Deep_Reflective_Reader/db/phase-1-repository-storage-interface-plan.md`.
+  Notes: Documentation-only plan for future backend policy ownership in `config/` without enabling DB reads, DB writes, hidden dual-write behavior, or runtime fallback. It does not create Python code, config implementation, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
+
+- [x] Define optional `StructuredDocument` JSONB parity snapshot validation plan without runtime fallback authority.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-structured-document-jsonb-parity-snapshot-plan.md`; `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`.
+  Notes: Documentation-only plan for optional JSONB parity/debug snapshots as validation evidence only, not runtime hierarchy authority or fallback. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, JSONB persistence, or backend selection.
+
+- [x] Define validation tests for current-state-only hierarchy replacement.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-current-state-hierarchy-validation-test-plan.md`; `Deep_Reflective_Reader/db/phase-1-hard-reparse-transaction-plan.md`; `Deep_Reflective_Reader/db/phase-1-document-structure-storage-integration-plan.md`.
+  Notes: Documentation-only future test plan for initial parse, current hierarchy reads, hard reparse replacement, derived-row deletion, and no JSONB fallback. It does not create tests, fixtures, Python code, SQL DDL, ORM models, repository interfaces, migrations, runtime behavior, API changes, or backend selection.
+
+- [x] Define DB parity validation fixtures against file-backed `StructuredDocument` golden outputs.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-db-parity-validation-fixtures-plan.md`; `Deep_Reflective_Reader/db/structured-document-jsonb-evaluation-readiness.md`; `Deep_Reflective_Reader/db/phase-1-migration-evaluation-fixtures-plan.md`.
+  Notes: Documentation-only fixture plan for future semantic parity checks between DB-backed relational hierarchy and file-backed golden outputs without making JSON IDs production identity. It does not create fixtures, tests, Python code, SQL DDL, ORM models, repository interfaces, migrations, runtime behavior, API changes, or backend selection.
+
+- [x] Define runtime read/write switch plan behind explicit backend policy, without enabling it by default.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-runtime-read-write-switch-plan.md`; `Deep_Reflective_Reader/db/phase-1-config-backend-integration-plan.md`; `Deep_Reflective_Reader/config/module-detailed-design.md`.
+  Notes: Documentation-only plan for future explicit, observable, reversible backend read/write policy. It does not enable DB runtime reads, DB runtime writes, hidden dual writes, silent fallback, Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, API changes, or backend selection.
+
+- [x] Define rollback and failure-mode behavior for failed initial parse, failed hard reparse, and failed derived-resource cleanup.
+  Evidence: `Deep_Reflective_Reader/db/phase-1-db-failure-mode-rollback-plan.md`; `Deep_Reflective_Reader/db/phase-1-hard-reparse-transaction-plan.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`.
+  Notes: Documentation-only failure-mode plan covering initial parse failure, hard reparse validation failure, hard reparse transaction failure, and derived cleanup failure. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -91,16 +191,7 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] Convert Phase 1 logical schema into implementation-ready schema design
-- [ ] Define DB repository/storage interfaces without making schema authority.
-- [ ] Define migration/evaluation fixtures that do not production-migrate existing JSON identity.
-- [ ] Define transaction-level hard reparse implementation plan.
-- [ ] Define parse event persistence implementation plan.
-- [ ] Define content-block relational persistence implementation plan.
-- [ ] Define artifact relational persistence implementation plan.
-- [ ] Define application-level stale/invalid derived-row validation behavior.
-- [ ] Define backend configuration integration with `config/`.
-- [ ] Define validation tests for current-state-only hierarchy replacement.
+No unchecked future tasks remain in this checklist after the current documentation planning pass.
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

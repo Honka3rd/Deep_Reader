@@ -37,7 +37,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `db/` | documentation module | `db/module-checklist.md` | 13 | 0 | Documentation Baseline Captured |
+| `db/` | documentation module | `db/module-checklist.md` | 33 | 0 | Documentation Baseline Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -198,7 +198,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
 - Status: `Documentation Baseline Captured`
-- Completed item count: `13`
+- Completed item count: `33`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -216,6 +216,26 @@ No unresolved confirmation items identified in module checklist.
 - [x] Confirms Phase 1 public document identity requirement.
 - [x] Confirms Phase 1 parse event retention policy.
 - [x] Confirms Phase 1 raw document storage boundary.
+- [x] Converts Phase 1 schema design into SQL/DDL migration plan.
+- [x] Defines physical table, column, foreign-key, uniqueness, and index candidates for Phase 1.
+- [x] Defines ORM/model mapping plan for Phase 1 entities without making ORM classes parser authority.
+- [x] Defines DB repository/storage interfaces without making schema authority.
+- [x] Defines document_structure storage integration plan for DB-backed hierarchy writes and reads.
+- [x] Defines raw-source metadata persistence plan while keeping raw bytes file-backed/object-backed.
+- [x] Defines advisory document_profile persistence plan without profile hierarchy authority.
+- [x] Defines migration/evaluation fixtures that do not production-migrate existing JSON identity.
+- [x] Defines empty-database / new-document ingestion migration path before any existing JSON production migration.
+- [x] Defines transaction-level hard reparse implementation plan.
+- [x] Defines parse event persistence implementation plan.
+- [x] Defines content-block relational persistence implementation plan.
+- [x] Defines artifact relational persistence implementation plan.
+- [x] Defines application-level stale/invalid derived-row validation behavior.
+- [x] Defines backend configuration integration with `config/`.
+- [x] Defines optional `StructuredDocument` JSONB parity snapshot validation plan without runtime fallback authority.
+- [x] Defines validation tests for current-state-only hierarchy replacement.
+- [x] Defines DB parity validation fixtures against file-backed `StructuredDocument` golden outputs.
+- [x] Defines runtime read/write switch plan behind explicit backend policy, without enabling it by default.
+- [x] Defines rollback and failure-mode behavior for failed initial parse, failed hard reparse, and failed derived-resource cleanup.
 
 #### Needs Confirmation
 
@@ -223,10 +243,11 @@ No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
-- [ ] Future implementation-ready DB schema design remains pending and must be derived from the logical proposal in `db/module-detailed-design.md`; the current proposal is logical only and contains no SQL, DDL, ORM, repository interface, migration, fixtures, runtime behavior, or API changes.
+- [ ] Future executable DB migration remains pending and must be derived from `db/phase-1-sql-ddl-migration-plan.md`; the current plan is documentation-only and contains no executable SQL, ORM, repository interface, migration script, fixtures, runtime behavior, or API changes.
 - [ ] Future DB implementation must not production-migrate current JSON `unit_id` as stable identity.
 - [ ] Future DB implementation must keep DB-generated IDs as default internal identity and add public/domain IDs only for concrete external stability requirements.
 - [ ] Future hard reparse implementation must validate candidate hierarchy before transaction cutover and must explicitly delete all document-derived content blocks and artifacts after version advancement in the same transaction.
+- [ ] Future executable implementation remains pending for DB adapters, migrations, ORM mappings, repository/storage code, runtime backend policy, fixtures, and tests; this checklist pass completed planning documents only.
 
 ### `document_structure/`
 
@@ -766,6 +787,48 @@ No unresolved confirmation items identified in module checklist.
   Evidence: `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/module-detailed-design.md`; `Deep_Reflective_Reader/db/module-checklist.md`; supporting module designs for `document_structure`, `shared`, `profile`, `config`, and `document_preparation`.
   Notes: Defines logical tables/entities, candidate fields, relationships, ownership boundaries, constraint candidates, hard-reparse lifecycle, application-level validation, and governance guardrails for Phase 1. It does not mark SQL, DDL, ORM models, repository interfaces, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, or backend selection complete.
 
+- [x] Phase 1 SQL/DDL Migration Plan
+  Status: `Documentation Planning Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/phase-1-sql-ddl-migration-plan.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Converts the Phase 1 schema design into a migration planning reference covering DDL work units, dependency order, foreign-key direction, delete/retention strategy, rollback expectations, validation gates, future migration file shape, and governance guardrails. It does not mark executable SQL DDL, ORM models, repository interfaces, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, or backend selection complete.
+
+- [x] Phase 1 Physical Schema Candidates
+  Status: `Documentation Planning Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/phase-1-sql-ddl-migration-plan.md`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Defines physical table names, column/type candidates, required/nullability candidates, foreign-key directions, uniqueness candidates, index candidates, delete behavior candidates, cross-table consistency rules, and governance guardrails for Phase 1. It does not mark executable SQL DDL, ORM models, repository interfaces, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, or backend selection complete.
+
+- [x] Phase 1 ORM/Model Mapping Plan
+  Status: `Documentation Planning Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/phase-1-orm-model-mapping-plan.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Defines candidate ORM record classes, table mapping, relationship mapping, model responsibility boundaries, DTO/domain conversion boundaries, loading/session policy candidates, cascade/lifecycle boundaries, and validation responsibility split. It does not mark executable ORM model code, SQL DDL, repository interfaces, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, or backend selection complete.
+
+- [x] Phase 1 Repository / Storage Interface Plan
+  Status: `Documentation Planning Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/phase-1-repository-storage-interface-plan.md`; `Deep_Reflective_Reader/db/phase-1-orm-model-mapping-plan.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Defines candidate storage ports, ownership boundaries, pseudo-interface operations, transaction/unit-of-work boundary, DTO boundary candidates, schema authority guardrails, and runtime integration boundaries. It does not mark Python repository interfaces, executable ORM model code, SQL DDL, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, or backend selection complete.
+
+- [x] Phase 1 document_structure Storage Integration Plan
+  Status: `Documentation Planning Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/phase-1-document-structure-storage-integration-plan.md`; `Deep_Reflective_Reader/db/phase-1-repository-storage-interface-plan.md`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Defines future `document_structure` integration boundaries for DB-backed initial hierarchy writes, current hierarchy reads, hard-reparse replacement, mapper/DTO boundaries, fail-fast behavior, and file/DB coexistence. It does not mark Python code, repository interfaces, ORM models, SQL DDL, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, or backend selection complete.
+
+- [x] Phase 1 Remaining DB Planning Batch
+  Status: `Documentation Planning Captured`
+  Type: `Documentation Only`
+  Implementation Impact: `None`
+  Evidence: `Deep_Reflective_Reader/db/phase-1-raw-source-metadata-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-document-profile-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-migration-evaluation-fixtures-plan.md`; `Deep_Reflective_Reader/db/phase-1-empty-database-ingestion-path-plan.md`; `Deep_Reflective_Reader/db/phase-1-hard-reparse-transaction-plan.md`; `Deep_Reflective_Reader/db/phase-1-parse-event-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-content-block-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-artifact-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-derived-row-validation-plan.md`; `Deep_Reflective_Reader/db/phase-1-config-backend-integration-plan.md`; `Deep_Reflective_Reader/db/phase-1-structured-document-jsonb-parity-snapshot-plan.md`; `Deep_Reflective_Reader/db/phase-1-current-state-hierarchy-validation-test-plan.md`; `Deep_Reflective_Reader/db/phase-1-db-parity-validation-fixtures-plan.md`; `Deep_Reflective_Reader/db/phase-1-runtime-read-write-switch-plan.md`; `Deep_Reflective_Reader/db/phase-1-db-failure-mode-rollback-plan.md`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Completes the remaining DB checklist planning items for raw-source metadata, advisory profile persistence, fixture strategy, empty-database ingestion, hard reparse transaction behavior, parse events, content blocks, artifacts, derived-row freshness validation, config integration, JSONB parity snapshots, validation-test planning, parity-fixture planning, runtime switch policy, and rollback/failure modes. It does not mark Python code, SQL DDL, ORM models, repository/storage implementations, migration scripts, fixtures, tests, runtime behavior, API changes, PostgreSQL implementation, object storage integration, or backend selection complete.
+
 ## 8. Cross-Module Needs Confirmation
 
 No unresolved cross-module confirmation items identified.
@@ -803,7 +866,7 @@ No unresolved cross-module confirmation items identified.
 - Most aggregated module checklists report completed baseline items with no unresolved confirmation items in this aggregation pass.
 - Global status currently reflects checklist aggregation, not roadmap completion.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
-- DB-centric persistence migration is documented as future-direction planning only; no DB migration work is marked completed.
+- DB-centric persistence migration is documented as future-direction planning only; SQL/DDL migration planning is captured, but no executable DB migration or implementation work is marked completed.
 - Existing `data/` file storage remains valid during migration planning and must not be removed until DB readiness validation supports gradual retirement.
 - Storage Contract Inventory Documentation is completed as documentation-only work with no implementation impact.
 - Storage abstraction boundary is documented as future-direction planning only; no storage abstraction implementation, repository interface, schema, dual-write, read-path switch, API change, or runtime change is complete.
