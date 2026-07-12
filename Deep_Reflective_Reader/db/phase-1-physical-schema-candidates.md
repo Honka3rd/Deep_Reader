@@ -25,6 +25,13 @@ Suggested type vocabulary:
 
 Phase 1 should use DB-generated primary keys by default and should not introduce public/domain IDs unless a concrete external stability requirement appears.
 
+Timestamp ownership policy:
+
+- `updated_at` is application-managed for Phase 1 mutable rows.
+- PostgreSQL defaults may initialize insert timestamps, but update statements must explicitly set `updated_at = NOW()` or an equivalent application-supplied timestamp.
+- Phase 1 does not use timestamp triggers; triggers must not be mistaken for lifecycle/domain authority.
+- `artifacts.updated_at` remains nullable until the first explicit artifact mutation because mutable artifact updates are not yet required as an always-on lifecycle path.
+
 ## 3. Table Candidates
 
 ### 3.1 `documents`
@@ -44,7 +51,7 @@ Purpose:
 | `status` | `text` | no | Optional lifecycle status candidate. |
 | `metadata_payload` | `json/jsonb` | no | Non-authoritative operational metadata. |
 | `created_at` | `timestamp` | yes | Record creation time. |
-| `updated_at` | `timestamp` | yes | Record update time. |
+| `updated_at` | `timestamp` | yes | Record update time; insert default allowed, subsequent updates are application-managed. |
 
 Foreign-key candidates:
 
@@ -59,6 +66,11 @@ Index candidates:
 
 - lookup index on `(namespace, document_name)`.
 - optional index on `status` if soft-deletion or lifecycle filtering is implemented.
+
+Update behavior candidates:
+
+- repository/service update statements that mutate document lifecycle fields must set `updated_at` explicitly.
+- no PostgreSQL trigger updates document timestamps in Phase 1.
 
 Delete behavior candidates:
 
@@ -93,6 +105,7 @@ Uniqueness candidates:
 
 - `unique(document_id)` for the Phase 1 core validation slice: one canonical raw-source metadata row per document.
 - `unique(document_id, source_location)` may replace this only if multiple raw-source records are deliberately retained later.
+- `file_size IS NULL OR file_size >= 0`.
 
 Index candidates:
 
@@ -171,6 +184,7 @@ Foreign-key candidates:
 Uniqueness candidates:
 
 - `unique(document_id, chapter_order)`.
+- `chapter_order >= 0`.
 
 Index candidates:
 
@@ -209,11 +223,14 @@ Purpose:
 Foreign-key candidates:
 
 - `sections.document_id -> documents.id`.
-- `sections.chapter_id -> chapters.id`.
+- `sections(chapter_id, document_id) -> chapters(id, document_id)` to prevent cross-document parent mismatch.
 
 Uniqueness candidates:
 
 - `unique(chapter_id, section_order)`.
+- `section_order >= 0`.
+- `char_start >= 0`, `char_end >= 0`, and `char_start <= char_end`.
+- parent-side `unique(chapters.id, chapters.document_id)` for same-document composite FK support.
 
 Index candidates:
 
@@ -249,11 +266,13 @@ Purpose:
 Foreign-key candidates:
 
 - `task_units.document_id -> documents.id`.
-- `task_units.section_id -> sections.id`.
+- `task_units(section_id, document_id) -> sections(id, document_id)` to prevent cross-document parent mismatch.
 
 Uniqueness candidates:
 
 - `unique(section_id, task_unit_order)`.
+- `task_unit_order >= 0`.
+- parent-side `unique(sections.id, sections.document_id)` for same-document composite FK support.
 - no uniqueness guarantee on `reference_unit_id` unless fixtures prove it is needed for import diagnostics only.
 
 Index candidates:
@@ -293,10 +312,14 @@ Purpose:
 Foreign-key candidates:
 
 - `content_blocks.document_id -> documents.id`.
-- `content_blocks.task_unit_id -> task_units.id`.
+- `content_blocks(task_unit_id, document_id) -> task_units(id, document_id)` to prevent cross-document parent mismatch.
 
 Uniqueness candidates:
 
+- parent-side `unique(task_units.id, task_units.document_id)` for same-document composite FK support.
+- `block_order >= 0`.
+- `quote_span_start IS NULL OR quote_span_start >= 0`; `quote_span_end IS NULL OR quote_span_end >= 0`.
+- one-sided quote spans remain allowed; when both endpoints exist, `quote_span_start <= quote_span_end`.
 - `unique(task_unit_id, block_order, segmentation_version)` if repeated materialization should replace equivalent blocks.
 - otherwise use no uniqueness beyond primary key until materialization behavior is confirmed.
 
@@ -333,7 +356,7 @@ Purpose:
 | `schema_version` | `text` | no | Artifact payload schema/version metadata. |
 | `metadata_payload` | `json/jsonb` | no | Lifecycle/cache/validity metadata. |
 | `created_at` | `timestamp` | yes | Artifact creation time. |
-| `updated_at` | `timestamp` | no | Update time if mutable artifacts are allowed. |
+| `updated_at` | `timestamp` | no | Nullable until first explicit application-managed artifact mutation. |
 
 Foreign-key candidates:
 
@@ -344,6 +367,8 @@ Foreign-key candidates:
 Uniqueness candidates:
 
 - none by default.
+- quote span endpoints remain independently nullable and must be non-negative when present.
+- when both quote-span endpoints exist, `quote_span_start <= quote_span_end`.
 - later candidates may include `(document_id, artifact_type, target_type, target_id, source_structure_version)` if artifact overwrite/cache semantics require one current artifact per target/type/version.
 
 Index candidates:
@@ -438,10 +463,12 @@ Delete behavior candidates:
 Candidate consistency rules:
 
 1. Child rows should duplicate `document_id` for cleanup/query scope, while parent FKs preserve hierarchy ownership.
-2. Application logic should validate that child `document_id` matches the parent row's `document_id` when inserting sections, task units, and content blocks.
-3. Artifact target validation remains application/repository-level because `target_id` is polymorphic.
+2. PostgreSQL DDL should enforce same-document parentage for static hierarchy/derived parent links using composite foreign keys on `(parent_id, document_id)`.
+3. Application logic should still validate semantic parentage before writes so DB errors are defensive rather than the primary control flow.
+4. Artifact target validation remains application/repository-level because `target_id` is polymorphic.
 4. Derived `source_structure_version` freshness remains application-level.
 5. No table should store row-level hierarchy `structure_version` for chapters, sections, or task units.
+6. One-sided quote spans remain allowed for optional metadata; database constraints only reject negative endpoints and reversed fully specified spans.
 
 ## 5. Candidate Index Summary
 

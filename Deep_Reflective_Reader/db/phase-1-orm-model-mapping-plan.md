@@ -20,6 +20,7 @@ The goal is to plan how future ORM models should map to physical table candidate
 8. `source_structure_version` freshness remains application-level validation.
 9. JSON/JSONB payload fields remain flexible payload carriers, not authority boundaries.
 10. ORM models must not introduce runtime read/write switching by themselves.
+11. ORM models may map timestamp fields, but update timestamp ownership remains application/repository-managed; ORM events or database triggers must not hide lifecycle mutation.
 
 ## 3. Candidate Model Set
 
@@ -72,6 +73,7 @@ Responsibilities:
 
 - Map DB document row identity.
 - Store required `namespace`, required `document_name`, and `current_structure_version`.
+- Map `updated_at` as an application-managed field: insert defaults may initialize it, but update operations must explicitly set it.
 - Own ORM relationships to document-scoped records.
 
 Non-responsibilities:
@@ -117,6 +119,7 @@ Responsibilities:
 
 - Represent one common artifact persistence surface.
 - Store `artifact_type`, target metadata, type-specific payload, and provenance metadata.
+- Keep `updated_at` nullable until a mutable artifact update path explicitly sets it.
 - Support application-level stale validation through `source_structure_version`.
 
 Non-responsibilities:

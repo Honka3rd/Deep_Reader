@@ -128,7 +128,13 @@ documents
   -> artifacts
 ```
 
-Foreign keys should enforce ownership and prevent orphan rows where the target table is static and unambiguous.
+Foreign keys should enforce ownership and prevent orphan rows where the target table is static and unambiguous. For duplicated document-scoped hierarchy and derived rows, PostgreSQL DDL should use composite parent FKs to prevent mismatched parent ownership:
+
+- `sections(chapter_id, document_id) -> chapters(id, document_id)`.
+- `task_units(section_id, document_id) -> sections(id, document_id)`.
+- `content_blocks(task_unit_id, document_id) -> task_units(id, document_id)`.
+
+These composite FKs require parent-side unique constraints on `(id, document_id)` while keeping DB-generated single-column primary keys as the identity foundation.
 
 Artifact target references need special care. Phase 1 artifacts use one logical artifact entity with `target_type` and `target_id`; a single DB foreign key cannot represent every possible target table without polymorphic complexity. Future implementation should keep artifact target resolution hierarchy-aware at the application/repository layer unless a later design introduces dedicated target join tables.
 

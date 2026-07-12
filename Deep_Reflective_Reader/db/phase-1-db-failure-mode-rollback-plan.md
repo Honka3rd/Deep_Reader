@@ -26,7 +26,7 @@ If candidate validation fails:
 - keep existing content blocks and artifacts
 - do not append hard-reparse parse event
 
-If transaction execution fails:
+If transaction execution fails, including a parse-event CHECK constraint failure:
 
 - rollback hierarchy replacement
 - rollback structure version advance

@@ -22,6 +22,8 @@ The transaction should:
 8. append one hard-reparse parse event
 9. commit atomically
 
+The parse event row may be protected by PostgreSQL CHECK constraints requiring `new_structure_version = previous_structure_version + 1`, but the service transaction remains responsible for advancing `documents.current_structure_version` and writing the matching parse event together.
+
 ## Validation Boundary
 
 Candidate validation happens before destructive persistence begins.

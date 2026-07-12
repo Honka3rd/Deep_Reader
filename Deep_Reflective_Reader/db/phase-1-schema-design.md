@@ -22,6 +22,7 @@ It is documentation-only. It defines logical tables/entities, candidate fields, 
 - Profile is included as an advisory document-scoped snapshot.
 - Raw source bytes remain file-backed/object-backed; DB tracks metadata only.
 - Parse events are minimal document-scoped provenance, not event sourcing.
+- PostgreSQL CHECK constraints may validate event-specific shape, but `documents.current_structure_version` remains the sole current-version authority.
 - Hard reparse deletes document-level content blocks and artifacts.
 - Derived rows use `source_structure_version` for application-level defensive validation.
 - Optional `StructuredDocument` JSONB snapshot is validation/parity/debug only.
@@ -45,6 +46,8 @@ No confirmed Phase 1 logical schema decision is missing. The main clarification 
 13. Keep parse events minimal provenance only.
 14. Treat derived `source_structure_version` checks as application-level validation.
 15. Keep DB schema as representation, not parser authority or hierarchy authority.
+16. Use conservative numeric and span constraints for representation integrity: ordering values and offsets are non-negative, section spans are ordered, and quote spans are non-negative when present.
+17. Use application-managed `updated_at` timestamps: DB defaults may initialize timestamps on insert, but every mutable update path must explicitly set `updated_at = NOW()` or an equivalent application-supplied timestamp; Phase 1 does not use timestamp triggers.
 
 ## 4. Logical Tables
 
@@ -67,7 +70,7 @@ Candidate fields:
 | `namespace` | Required storage namespace / isolation key for user/tenant-ready document isolation. |
 | `current_structure_version` | Authoritative current hierarchy version. |
 | `created_at` | Document record creation time. |
-| `updated_at` | Document record update time. |
+| `updated_at` | Document record update time; initialized by DB default on insert and explicitly set by application/repository update statements on mutation. |
 | `status` | Optional lifecycle status such as active/deleted if soft deletion is later chosen. |
 | `metadata_payload` | Optional flexible metadata for non-authoritative operational details. |
 
@@ -77,6 +80,7 @@ Constraint candidates:
 - `current_structure_version` starts at `1` after initial successful parse.
 - `current_structure_version` advances only after successful document-level hard reparse transaction.
 - `namespace` and `document_name` are required together for Phase 1 DB-backed document identity.
+- `updated_at` is application-managed after insert; PostgreSQL does not auto-update it in Phase 1 and no trigger should be assumed.
 - Enforce namespace/name uniqueness with `unique(namespace, document_name)` to preserve future user/tenant isolation.
 
 Non-goals:
@@ -111,6 +115,7 @@ Constraint candidates:
 
 - `document_id` links raw-source metadata to one document.
 - Raw-source metadata is metadata only; raw bytes and extracted raw text remain outside DB.
+- File size, when present, must be non-negative.
 - Deletion/retention must preserve user-owned source boundaries.
 
 Non-goals:
@@ -180,7 +185,7 @@ Candidate fields:
 Constraint candidates:
 
 - Chapter rows are current-state only.
-- Ordering is scoped to document.
+- Ordering is scoped to document and must be non-negative.
 - Hard reparse replaces current hierarchy rows rather than preserving old rows.
 
 Non-goals:
@@ -219,7 +224,9 @@ Constraint candidates:
 
 - Section rows are current-state only.
 - Section parent must be a current chapter in the same document.
-- Ordering is scoped to chapter.
+- PostgreSQL DDL enforces same-document parentage with `sections(chapter_id, document_id)` referencing `chapters(id, document_id)`.
+- Ordering is scoped to chapter and must be non-negative.
+- Section character offsets must be non-negative and `char_start <= char_end`.
 
 Non-goals:
 
@@ -254,7 +261,8 @@ Constraint candidates:
 
 - Task-unit rows are current-state only.
 - Parent section must belong to the same document.
-- Ordering is scoped to section.
+- PostgreSQL DDL enforces same-document parentage with `task_units(section_id, document_id)` referencing `sections(id, document_id)`.
+- Ordering is scoped to section and must be non-negative.
 - `reference_unit_id` must not become the production identity foundation.
 
 Non-goals:
@@ -293,6 +301,9 @@ Constraint candidates:
 - `source_structure_version` is application-level defensive validation metadata.
 - Reads may treat rows as stale if `source_structure_version != documents.current_structure_version`.
 - Successful hard reparse physically deletes all content blocks for the document.
+- PostgreSQL DDL enforces same-document parentage with `content_blocks(task_unit_id, document_id)` referencing `task_units(id, document_id)`.
+- `block_order` must be non-negative.
+- Quote span endpoints remain independently nullable; when present they must be non-negative, and when both endpoints exist `quote_span_start <= quote_span_end`.
 
 Non-goals:
 
@@ -323,7 +334,7 @@ Candidate fields:
 | `payload` | Type-specific artifact payload. |
 | `schema_version` | Artifact payload schema/version metadata. |
 | `created_at` | Artifact creation time. |
-| `updated_at` | Artifact update time if mutable artifacts are later allowed. |
+| `updated_at` | Artifact update time; nullable until the first explicit application-managed mutation. |
 | `metadata_payload` | Optional lifecycle/cache/validity metadata. |
 
 Constraint candidates:
@@ -332,6 +343,7 @@ Constraint candidates:
 - `source_structure_version` supports application-level stale validation.
 - Successful hard reparse physically deletes all artifacts for the document.
 - `artifact_type` plus `payload` handles type-specific shape in Phase 1.
+- Quote span endpoints remain independently nullable; when present they must be non-negative, and when both endpoints exist `quote_span_start <= quote_span_end`.
 
 Non-goals:
 

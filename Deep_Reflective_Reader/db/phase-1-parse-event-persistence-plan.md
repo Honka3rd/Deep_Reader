@@ -40,6 +40,17 @@ Hard reparse appends one event inside the same transaction that replaces hierarc
 
 Parse event writes should not decide current structure version. `documents.current_structure_version` remains authoritative.
 
+## PostgreSQL Shape Constraints
+
+The PostgreSQL migration may enforce event-specific row shape with CHECK constraints:
+
+- `initial_parse` requires `previous_structure_version IS NULL` and `new_structure_version = 1`.
+- `initial_parse` must not carry hard-reparse-only metadata such as `reparse_reason` or non-zero invalidation counts.
+- `hard_reparse` requires `previous_structure_version >= 1` and `new_structure_version = previous_structure_version + 1`.
+- invalidation counts, when present, must be non-negative.
+
+These constraints validate parse-event provenance rows only. They do not make parse events current-version authority, do not reconstruct hierarchy, and do not advance `documents.current_structure_version`.
+
 ## Retention
 
 Parse events are retained for the lifetime of the document and deleted when the document is deleted.

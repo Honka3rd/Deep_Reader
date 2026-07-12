@@ -39,6 +39,21 @@ def test_postgresql_migration_shape() -> None:
         "PostgreSQL migration should use timestamptz timestamps",
     )
     _assert("boolean" in lowered, "PostgreSQL migration should use boolean fields")
+    _assert(
+        "updated_at fields are application-managed" in lowered
+        and "update statements must explicitly set updated_at = now()" in lowered,
+        "migration should document application-managed updated_at ownership",
+    )
+    _assert(
+        "created_at timestamptz not null default now(),\n    updated_at timestamptz not null default now()"
+        in lowered,
+        "documents.updated_at should keep an insert default but require explicit updates",
+    )
+    _assert(
+        "nullable until the first application-managed artifact mutation" in lowered
+        and "updated_at timestamptz," in lowered,
+        "artifacts.updated_at should remain nullable until first explicit mutation",
+    )
 
     for table_name in (
         "documents",
@@ -74,11 +89,6 @@ def test_postgresql_migration_shape() -> None:
         "document_profile should persist advisory profile JSONB payload",
     )
     _assert(
-        "task_unit_id bigint not null references task_units(id) on delete cascade"
-        in lowered,
-        "content_blocks should be linked to task_units",
-    )
-    _assert(
         "target_type text not null check" in lowered,
         "artifacts should keep polymorphic target validation metadata",
     )
@@ -93,6 +103,157 @@ def test_postgresql_migration_shape() -> None:
     _assert(
         "create table if not exists summary_artifacts" not in lowered,
         "Phase 1 must not introduce category-specific artifact tables",
+    )
+    for constraint_name in (
+        "ck_raw_source_metadata_file_size_non_negative",
+        "ck_chapters_order_non_negative",
+        "ck_sections_order_non_negative",
+        "ck_sections_char_span_non_negative",
+        "ck_sections_char_span_order",
+        "ck_task_units_order_non_negative",
+        "ck_content_blocks_order_non_negative",
+        "ck_content_blocks_quote_span_non_negative",
+        "ck_content_blocks_quote_span_order",
+        "ck_artifacts_quote_span_non_negative",
+        "ck_artifacts_quote_span_order",
+    ):
+        _assert(
+            f"constraint {constraint_name} check" in lowered,
+            f"missing numeric/range constraint: {constraint_name}",
+        )
+    _assert(
+        "file_size is null or file_size >= 0" in lowered,
+        "raw_source_metadata.file_size should be nullable or non-negative",
+    )
+    _assert(
+        "char_start >= 0 and char_end >= 0" in lowered
+        and "char_start <= char_end" in lowered,
+        "sections should enforce non-negative ordered char spans",
+    )
+    _assert(
+        "quote_span_start is null" in lowered
+        and "quote_span_end is null" in lowered
+        and "quote_span_start <= quote_span_end" in lowered,
+        "quote spans should keep one-sided nullable semantics but reject reversed spans",
+    )
+    _assert(
+        "constraint ck_parse_events_initial_parse_versions check" in lowered,
+        "parse_events should validate initial_parse version shape",
+    )
+    _assert(
+        "previous_structure_version is null" in lowered
+        and "new_structure_version = 1" in lowered,
+        "initial_parse should require null previous version and new version 1",
+    )
+    _assert(
+        "constraint ck_parse_events_initial_parse_no_reparse_metadata check" in lowered,
+        "initial_parse should reject reparse-only metadata",
+    )
+    _assert(
+        "constraint ck_parse_events_hard_reparse_versions check" in lowered,
+        "hard_reparse should validate monotonic version transition",
+    )
+    _assert(
+        "new_structure_version = previous_structure_version + 1" in lowered,
+        "hard_reparse should advance exactly one structure version",
+    )
+    _assert(
+        "constraint ck_parse_events_invalidation_counts_non_negative check" in lowered,
+        "parse_events should reject negative invalidation counts",
+    )
+    _assert(
+        "create trigger" not in lowered and "create function" not in lowered,
+        "Phase 1 migration must not use triggers/functions for timestamps or lifecycle behavior",
+    )
+    _assert(
+        "before update" not in lowered,
+        "updated_at must not be trigger-managed in Phase 1",
+    )
+    _assert(
+        "constraint uq_chapters_id_document unique (id, document_id)" in lowered,
+        "chapters must expose a parent-side unique key for composite FKs",
+    )
+    _assert(
+        "constraint uq_sections_id_document unique (id, document_id)" in lowered,
+        "sections must expose a parent-side unique key for composite FKs",
+    )
+    _assert(
+        "constraint uq_task_units_id_document unique (id, document_id)" in lowered,
+        "task_units must expose a parent-side unique key for composite FKs",
+    )
+    _assert(
+        "constraint fk_sections_chapter_document" in lowered
+        and "foreign key (chapter_id, document_id)" in lowered
+        and "references chapters(id, document_id)" in lowered,
+        "sections must enforce same-document chapter ownership",
+    )
+    _assert(
+        "constraint fk_task_units_section_document" in lowered
+        and "foreign key (section_id, document_id)" in lowered
+        and "references sections(id, document_id)" in lowered,
+        "task_units must enforce same-document section ownership",
+    )
+    _assert(
+        "constraint fk_content_blocks_task_unit_document" in lowered
+        and "foreign key (task_unit_id, document_id)" in lowered
+        and "references task_units(id, document_id)" in lowered,
+        "content_blocks must enforce same-document task-unit ownership",
+    )
+    _assert(
+        "foreign key (target_id, document_id)" not in lowered,
+        "artifacts must not add composite polymorphic target foreign keys in Phase 1",
+    )
+
+    for removed_index in (
+        "idx_raw_source_metadata_document_id",
+        "idx_documents_namespace_document_name",
+        "idx_document_profile_document_id",
+        "idx_document_profile_document_id_source_structure_version",
+        "idx_sections_chapter_id",
+        "idx_chapters_document_id_order",
+        "idx_task_units_section_id",
+        "idx_artifacts_created_at",
+        "idx_structured_document_snapshots_document_id_version",
+    ):
+        _assert(
+            removed_index not in lowered,
+            f"redundant or premature index should be absent: {removed_index}",
+        )
+
+    for retained_index in (
+        "idx_parse_events_document_id_occurred_at",
+        "idx_parse_events_document_id_new_structure_version",
+        "idx_sections_document_id_chapter_id_order",
+        "idx_task_units_document_id_section_id_order",
+        "idx_content_blocks_document_id_task_unit_id_order",
+        "idx_content_blocks_document_id_source_structure_version",
+        "idx_artifacts_document_id_artifact_type",
+        "idx_artifacts_document_id_target",
+        "idx_artifacts_document_id_source_structure_version",
+    ):
+        _assert(
+            f"create index if not exists {retained_index}" in lowered,
+            f"required Phase 1 query index should remain: {retained_index}",
+        )
+
+    _assert(
+        "constraint uq_documents_namespace_document_name unique (namespace, document_name)"
+        in lowered,
+        "documents namespace/name lookup is covered by its UNIQUE constraint",
+    )
+    _assert(
+        "document_id bigint not null unique references documents(id)" in lowered,
+        "raw_source_metadata/document_profile document_id lookup is covered by UNIQUE",
+    )
+    _assert(
+        "constraint uq_structured_document_snapshots_document_version" in lowered
+        and "unique (document_id, source_structure_version)" in lowered,
+        "structured_document_snapshots document/version lookup is covered by UNIQUE",
+    )
+    _assert(
+        "constraint uq_chapters_document_order unique (document_id, chapter_order)"
+        in lowered,
+        "chapters document/order lookup is covered by its UNIQUE constraint",
     )
 
 

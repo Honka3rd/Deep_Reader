@@ -20,6 +20,7 @@ The goal is to define future storage boundaries before code exists.
 8. Repository interfaces must not expose ORM session-bound objects across domain/service boundaries.
 9. Repository interfaces should accept validated domain inputs or explicit persistence DTOs, not raw parser internals.
 10. Runtime read/write switch remains a separate future task.
+11. Repository/storage update operations own `updated_at` mutation explicitly; Phase 1 must not depend on PostgreSQL triggers or hidden ORM hooks to maintain update timestamps.
 
 ## 3. Candidate Interface Ownership
 
@@ -55,11 +56,13 @@ create_document_with_initial_structure(input) -> document_identity
 load_current_structure(document_id) -> current_structure_read_model
 load_document_lifecycle(document_id) -> document_lifecycle_read_model
 find_document_by_name(namespace, document_name) -> document_identity | not_found
+update_document_lifecycle(..., updated_at=now) -> write_result
 ```
 
 Required boundaries:
 
 - Input hierarchy must already be parser-validated.
+- Any document row mutation must explicitly set `updated_at`; PostgreSQL only provides the insert default.
 - Output should be detached DTO/read model, not ORM records.
 - No root `sections[]` or `structure_nodes` read path.
 - No hidden profile diagnostics write-back.
@@ -125,6 +128,7 @@ Candidate operations:
 
 ```text
 save_artifact(document_id, validated_target, artifact_type, payload, provenance) -> artifact_identity
+update_artifact(artifact_id, mutation, updated_at=now) -> write_result
 list_artifacts_for_target(document_id, validated_target) -> artifact_read_models
 list_artifacts_for_document(document_id, filters) -> artifact_read_models
 delete_document_artifacts(document_id) -> deletion_count
@@ -136,6 +140,7 @@ Required boundaries:
 - Repository should not accept unresolved raw `target_id` without target validation metadata.
 - Artifacts are interaction outputs only.
 - No category-specific artifact repositories in Phase 1.
+- Initial artifact inserts may leave `updated_at` null; explicit artifact mutations must set it.
 - Hard reparse deletes all document artifacts.
 
 ### 4.5 `ParseEventStoragePort`
@@ -247,6 +252,7 @@ Repository/storage interfaces must not:
 - decide artifact availability without hierarchy-aware target validation
 - write profile diagnostics during read paths
 - decide runtime backend switching
+- rely on timestamp triggers or hidden ORM hooks for `updated_at` mutation
 
 ## 7. Runtime Integration Boundary
 

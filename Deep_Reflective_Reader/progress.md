@@ -37,7 +37,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `db/` | package + design module | `db/module-checklist.md` | 35 | 0 | Implementation Slice Captured |
+| `db/` | package + design module | `db/module-checklist.md` | 39 | 0 | Implementation Slice Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -198,7 +198,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
 - Status: `Implementation Slice Captured`
-- Completed item count: `35`
+- Completed item count: `39`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -237,6 +237,10 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines runtime read/write switch plan behind explicit backend policy, without enabling it by default.
 - [x] Defines rollback and failure-mode behavior for failed initial parse, failed hard reparse, and failed derived-resource cleanup.
 - [x] Implements Phase 1 core DB hierarchy persistence slice for new-document isolated validation.
+- [x] Enforces same-document parent consistency for PostgreSQL hierarchy and content-block rows.
+- [x] Enforces PostgreSQL parse_event event-specific row-shape constraints.
+- [x] Enforces conservative PostgreSQL numeric and span representation constraints.
+- [x] Defines PostgreSQL `updated_at` ownership as application-managed.
 
 #### Needs Confirmation
 
@@ -841,8 +845,36 @@ No unresolved confirmation items identified in module checklist.
   Status: `Implementation Slice Captured`
   Type: `Implementation + Static Validation`
   Implementation Impact: `PostgreSQL DDL shape only`
-  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
   Notes: Completes the PostgreSQL-targeted Phase 1 DDL surface for documents, raw-source metadata, advisory document profile, parse events, current hierarchy rows, lazy content blocks, common artifacts, and optional structured-document parity snapshots. It preserves raw-source metadata-only storage, one common artifact table, application-level polymorphic artifact target validation, and no runtime backend switch.
+
+- [x] Phase 1 PostgreSQL Same-Document Parent Consistency
+  Status: `Implementation Slice Captured`
+  Type: `Implementation + Static Validation`
+  Implementation Impact: `PostgreSQL DDL shape only`
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Adds parent-side `unique(id, document_id)` constraints and composite foreign keys for `sections`, `task_units`, and `content_blocks` so duplicated child `document_id` values cannot disagree with their static parent rows. It does not add composite artifact target foreign keys and does not enable runtime DB reads or writes.
+
+- [x] Phase 1 PostgreSQL Parse Event Shape Constraints
+  Status: `Implementation Slice Captured`
+  Type: `Implementation + Static Validation`
+  Implementation Impact: `PostgreSQL DDL shape only`
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Adds CHECK constraints for `initial_parse` and `hard_reparse` version semantics, reparse-only metadata on initial parse, and non-negative invalidation counts. It keeps parse events as provenance only and does not add triggers, event sourcing, hierarchy history, or parse-event-driven `documents.current_structure_version` updates.
+
+- [x] Phase 1 PostgreSQL Numeric And Span Representation Constraints
+  Status: `Implementation Slice Captured`
+  Type: `Implementation + Static Validation`
+  Implementation Impact: `PostgreSQL DDL shape only`
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Adds conservative CHECK constraints for non-negative order fields, file size, section offsets, invalidation counts, and quote-span endpoints, plus ordered section and quote-span ranges. One-sided quote spans remain allowed; the DB validates representation integrity only and does not infer, repair, or classify spans.
+
+- [x] Phase 1 PostgreSQL Updated-At Ownership Policy
+  Status: `Implementation Slice Captured`
+  Type: `Architecture + Implementation + Static Validation`
+  Implementation Impact: `PostgreSQL DDL shape and repository obligation only`
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Chooses application-managed `updated_at` ownership. PostgreSQL may initialize insert defaults, but document and artifact mutations must set `updated_at` explicitly in repository/service update statements. No timestamp trigger or lifecycle trigger was introduced.
 
 ## 8. Cross-Module Needs Confirmation
 

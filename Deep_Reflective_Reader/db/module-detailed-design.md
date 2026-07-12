@@ -67,6 +67,10 @@ Implemented scope:
 - keeps `documents` free of raw text; `source_path` readback comes from `raw_source_metadata.source_location`
 - validates the SQLite hierarchy slice with `scripts/test_db_phase_1_core_hierarchy_persistence.py`
 - validates the PostgreSQL migration shape with `scripts/test_db_phase_1_postgresql_migration_shape.py`
+- enforces same-document parentage for static hierarchy and content-block parent links with PostgreSQL composite foreign keys
+- enforces parse-event row-shape invariants with PostgreSQL CHECK constraints while keeping `documents.current_structure_version` authoritative
+- enforces numeric and span representation integrity with conservative PostgreSQL CHECK constraints without inferring or repairing parser output
+- defines application-managed `updated_at` ownership for PostgreSQL rows without timestamp triggers or hidden lifecycle mutation
 
 Out of scope:
 
@@ -306,6 +310,8 @@ derived.source_structure_version == documents.current_structure_version
 If a mismatch appears, the row should be treated as stale or invalid defensive data. **[Maintainer-Confirmed]**
 
 This check remains application-level in the first DB design. DB-level triggers or cross-table constraints may be reconsidered later if stale derived rows become a real operational problem. **[Maintainer-Confirmed]**
+
+Timestamp updates follow the same explicit-write principle. `documents.updated_at` may use a DB default for initial insert, but later document mutations must set it explicitly in the repository/service update statement. `artifacts.updated_at` remains nullable until a mutable artifact update occurs, and that mutation must set the timestamp explicitly. Phase 1 does not use PostgreSQL triggers or ORM hooks for timestamp mutation. **[Maintainer-Confirmed] + [Code-Confirmed]**
 
 ## 14. Relationship to Existing Planning Documents
 

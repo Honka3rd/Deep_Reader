@@ -191,6 +191,22 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`.
   Notes: Extends the PostgreSQL-targeted migration shape beyond the core hierarchy subset to include `document_profile`, `content_blocks`, `artifacts`, and optional `structured_document_snapshots`, while preserving raw-source metadata-only storage, one common artifact table, application-level polymorphic artifact target validation, and no runtime backend switch.
 
+- [x] Enforce same-document parent consistency for PostgreSQL hierarchy and content-block rows.
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`; `Deep_Reflective_Reader/db/phase-1-sql-ddl-migration-plan.md`.
+  Notes: Adds parent-side `unique(id, document_id)` constraints and composite foreign keys for `sections(chapter_id, document_id)`, `task_units(section_id, document_id)`, and `content_blocks(task_unit_id, document_id)` so duplicated child `document_id` values cannot disagree with static parent ownership. Artifact polymorphic target validation remains application-level and no composite artifact target foreign keys were added.
+
+- [x] Enforce PostgreSQL parse_event event-specific row-shape constraints.
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/phase-1-parse-event-persistence-plan.md`; `Deep_Reflective_Reader/db/phase-1-hard-reparse-transaction-plan.md`.
+  Notes: Adds named CHECK constraints for `initial_parse` and `hard_reparse` version semantics plus non-negative invalidation counts. The constraints validate parse-event provenance row shape only; `documents.current_structure_version` remains authoritative and no triggers, event sourcing, hierarchy history, or parse-event-driven version advancement were introduced.
+
+- [x] Enforce conservative PostgreSQL numeric and span representation constraints.
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`.
+  Notes: Adds named CHECK constraints for non-negative hierarchy/content ordering, raw-source file size, section char offsets, and quote-span endpoints, plus ordered section and quote-span ranges. One-sided quote spans remain allowed because quote-span metadata is optional; the DB validates representation integrity only and does not infer, repair, or classify parser/content spans.
+
+- [x] Define PostgreSQL `updated_at` ownership as application-managed.
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`; `Deep_Reflective_Reader/db/phase-1-orm-model-mapping-plan.md`; `Deep_Reflective_Reader/db/phase-1-repository-storage-interface-plan.md`.
+  Notes: Chooses application-managed timestamps for Phase 1. `documents.updated_at` keeps its insert default but must be explicitly set by document mutation statements. `artifacts.updated_at` remains nullable until the first explicit artifact mutation. No PostgreSQL timestamp trigger, lifecycle trigger, hidden ORM hook, or domain mutation trigger was introduced.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
