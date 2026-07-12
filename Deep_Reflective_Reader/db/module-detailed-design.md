@@ -2,7 +2,7 @@
 
 ## 1. Module Purpose
 
-`db/` is the golden source for DB-era persistence planning and isolated Phase 1 DB validation implementation. It records maintainer-approved DB identity, versioning, reparse, and derived-resource lifecycle rules, and now includes the first isolated core hierarchy persistence slice. **[Maintainer-Confirmed] + [Code-Confirmed]**
+`db/` is the golden source for DB-era persistence planning and isolated Phase 1 DB validation implementation. It records maintainer-approved DB identity, versioning, reparse, and derived-resource lifecycle rules, and now includes the first PostgreSQL Phase 1 DDL shape plus an isolated core hierarchy persistence validation slice. **[Maintainer-Confirmed] + [Code-Confirmed]**
 
 The implemented slice is intentionally isolated from production runtime read/write selection. It exists to validate the core DB hierarchy path before broader schema, ORM, repository, migration, backend configuration, API, or runtime rollout work. **[Code-Confirmed]**
 
@@ -25,8 +25,9 @@ The existing file-backed runtime remains valid until DB readiness, rollout, and 
 | `db/structured-document-jsonb-evaluation.md` | Phase 1 `StructuredDocument` JSONB-first evaluation plan | Evaluation planning only; no schema approval |
 | `db/structured-document-jsonb-evaluation-readiness.md` | Readiness audit for future Phase 1 JSONB evaluation | Audit/planning only; no implementation impact |
 | `db/phase-1-schema-design.md` | Implementation-ready schema design reference for Phase 1 logical tables/entities, candidate fields, relationships, ownership boundaries, and constraint candidates | Documentation only; no SQL, ORM, repository interface, migration, runtime behavior, or backend selection |
-| `db/migrations/001_phase_1_core_hierarchy.sql` | Executable SQLite schema for the isolated Phase 1 core hierarchy validation slice | Covers `documents`, `raw_source_metadata`, `parse_events`, `chapters`, `sections`, and `task_units`; not production backend rollout |
-| `db/phase_1_core_schema.py` | Applies the isolated Phase 1 core hierarchy schema to a SQLite connection | Validation helper only; no production runtime switch |
+| `db/migrations/001_phase_1_core_hierarchy.sql` | PostgreSQL Phase 1 migration shape | Covers the executable production-target DDL surface for `documents`, `raw_source_metadata`, `document_profile`, `parse_events`, `chapters`, `sections`, `task_units`, `content_blocks`, `artifacts`, and optional `structured_document_snapshots`; does not enable runtime rollout |
+| `db/sqlite_validation/phase_1_core_hierarchy_schema.sql` | SQLite validation-only schema mirroring the core hierarchy subset | Used only by the isolated local validation adapter for accepted hierarchy write/read checks; not a production migration and not the full Phase 1 DDL surface |
+| `db/phase_1_core_schema.py` | Applies the isolated SQLite validation schema to a SQLite connection | Validation helper only; no production runtime switch |
 | `db/sqlite_core_document_store.py` | Minimal SQLite-backed accepted hierarchy write/read adapter | Uses DB-generated IDs on readback; not a production repository abstraction or backend selection mechanism |
 
 ## 4. Main Responsibilities
@@ -55,13 +56,17 @@ The implemented slice validates the smallest DB-backed hierarchy path for new do
 
 Implemented scope:
 
-- applies an executable SQLite schema for `documents`, `raw_source_metadata`, `parse_events`, `chapters`, `sections`, and `task_units`
+- defines a PostgreSQL Phase 1 migration shape for `documents`, `raw_source_metadata`, `document_profile`, `parse_events`, `chapters`, `sections`, `task_units`, `content_blocks`, `artifacts`, and optional `structured_document_snapshots`
+- applies a separate SQLite validation-only schema for the isolated local adapter
 - persists an already accepted `StructuredDocument` hierarchy with `current_structure_version = 1`
-- stores raw-source metadata only, not raw bytes
+- stores `namespace` and `document_name` on `documents` for namespace/document isolation
+- stores raw-source metadata only, not raw bytes or raw text
 - appends an `initial_parse` parse event
 - reads current hierarchy back through `Document -> Chapter -> Section -> TaskUnit`
 - exposes DB-generated IDs in the read model instead of current Python-generated `unit_id`
-- validates the slice with `scripts/test_db_phase_1_core_hierarchy_persistence.py`
+- keeps `documents` free of raw text; `source_path` readback comes from `raw_source_metadata.source_location`
+- validates the SQLite hierarchy slice with `scripts/test_db_phase_1_core_hierarchy_persistence.py`
+- validates the PostgreSQL migration shape with `scripts/test_db_phase_1_postgresql_migration_shape.py`
 
 Out of scope:
 

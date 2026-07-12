@@ -96,7 +96,7 @@ Future code may need a lightweight lifecycle read separate from full hierarchy l
 Candidate fields:
 
 - `document_id`
-- document name or namespace key, if present
+- `namespace` and `document_name`
 - `current_structure_version`
 - created/update timestamps
 - raw-source metadata presence
@@ -192,7 +192,7 @@ This integration plan only covers `document_structure` hierarchy persistence int
 
 Separate future tasks must define:
 
-- raw-source metadata persistence while raw bytes remain file-backed/object-backed
+- raw-source metadata persistence while raw bytes and extracted raw text remain file-backed/object-backed
 - advisory `document_profile` persistence
 - parse event persistence implementation details
 - content-block relational persistence

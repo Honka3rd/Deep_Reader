@@ -41,7 +41,7 @@ No confirmed Phase 1 logical schema decision is missing. The main clarification 
 9. Persist content blocks separately and lazily after materialization.
 10. Persist artifacts through one logical `artifacts` entity with `artifact_type` and type-specific payload.
 11. Persist `document_profile` as advisory document-scoped snapshot metadata.
-12. Keep raw document bytes file-backed/object-backed; store only raw-source metadata in DB.
+12. Keep raw document bytes and extracted raw text file-backed/object-backed; store only raw-source metadata in DB.
 13. Keep parse events minimal provenance only.
 14. Treat derived `source_structure_version` checks as application-level validation.
 15. Keep DB schema as representation, not parser authority or hierarchy authority.
@@ -64,7 +64,7 @@ Candidate fields:
 |---|---|
 | `id` | DB-generated internal primary key. |
 | `document_name` | Current application document name or namespace-facing identifier. |
-| `namespace` | Optional storage namespace / isolation key when needed. |
+| `namespace` | Required storage namespace / isolation key for user/tenant-ready document isolation. |
 | `current_structure_version` | Authoritative current hierarchy version. |
 | `created_at` | Document record creation time. |
 | `updated_at` | Document record update time. |
@@ -76,12 +76,13 @@ Constraint candidates:
 - `id` is the internal relational link foundation.
 - `current_structure_version` starts at `1` after initial successful parse.
 - `current_structure_version` advances only after successful document-level hard reparse transaction.
-- Namespace/name uniqueness may be needed if runtime document lookup still depends on name and namespace.
+- `namespace` and `document_name` are required together for Phase 1 DB-backed document identity.
+- Enforce namespace/name uniqueness with `unique(namespace, document_name)` to preserve future user/tenant isolation.
 
 Non-goals:
 
 - No public UUID/key/slug in Phase 1.
-- No raw document bytes.
+- No raw document bytes or raw text in `documents`; raw source location and source metadata belong in `raw_source_metadata`.
 - No hierarchy JSON as the authority.
 
 ### 4.2 `raw_source_metadata`
@@ -109,7 +110,7 @@ Candidate fields:
 Constraint candidates:
 
 - `document_id` links raw-source metadata to one document.
-- Raw-source metadata is metadata only; raw bytes remain outside DB.
+- Raw-source metadata is metadata only; raw bytes and extracted raw text remain outside DB.
 - Deletion/retention must preserve user-owned source boundaries.
 
 Non-goals:
@@ -170,6 +171,9 @@ Candidate fields:
 | `document_id` | Owning document reference. |
 | `chapter_order` | Current chapter order within document. |
 | `title` | Display title. |
+| `level` | Readback/parity projection field from current hierarchy model; not parser authority. |
+| `chapter_role` | Readback/parity projection field. |
+| `reference_chapter_id` | Optional import/reference identity from current structured output; not production identity. |
 | `source_anchor` | Optional source/span/page anchor metadata. |
 | `metadata_payload` | Optional non-authoritative chapter metadata. |
 
@@ -200,7 +204,15 @@ Candidate fields:
 | `chapter_id` | Parent chapter reference. |
 | `section_order` | Current section order within chapter. |
 | `title` | Display title. |
-| `source_anchor` | Optional source/span/page anchor metadata. |
+| `level` | Readback/parity projection field from current hierarchy model; not parser authority. |
+| `content` | Accepted structured section content for current hierarchy readback; not raw document storage and not a content-block hierarchy level. |
+| `char_start` / `char_end` | Source span metadata for accepted section. |
+| `container_title` | Readback/parity projection field. |
+| `section_role` | Readback/parity projection field. |
+| `section_kind` | Readback/parity projection field. |
+| `is_implicit_section` | Readback/parity projection field. |
+| `reference_section_id` | Optional import/reference identity from current structured output; not production identity. |
+| `source_anchor` | Optional normalized source/span/page anchor metadata. |
 | `metadata_payload` | Optional non-authoritative section metadata. |
 
 Constraint candidates:
@@ -230,7 +242,11 @@ Candidate fields:
 | `document_id` | Owning document reference for cleanup/query scope. |
 | `section_id` | Parent section reference. |
 | `task_unit_order` | Current order within section. |
-| `content_payload` | Opaque task-unit content payload/string for parity. |
+| `content_payload` | Opaque task-unit content payload/string for parity; SQLite validation slice stores this as text `content_payload`. |
+| `title` | Readback/parity projection field. |
+| `container_title` | Readback/parity projection field. |
+| `source_section_ids_payload` | Import/reference source-section evidence from current structured output; not hierarchy authority. |
+| `is_fallback_generated` | Readback/parity projection field. |
 | `reference_unit_id` | Optional import/reference identity from current JSON `unit_id`; not production identity. |
 | `metadata_payload` | Optional non-authoritative task-unit metadata. |
 
@@ -414,7 +430,7 @@ Relationship rules:
 - `content_blocks` links to `task_units` and remains derived.
 - `artifacts` links to validated targets and remains interaction output.
 - `document_profile` belongs to `documents` and remains advisory.
-- `raw_source_metadata` belongs to `documents`; raw bytes remain file-backed/object-backed.
+- `raw_source_metadata` belongs to `documents`; raw bytes and extracted raw text remain file-backed/object-backed.
 - `parse_events` belongs to `documents` and remains provenance only.
 - `structured_document_snapshots` belongs to `documents` and remains validation/parity/debug only.
 

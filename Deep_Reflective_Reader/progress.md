@@ -37,7 +37,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `db/` | package + design module | `db/module-checklist.md` | 34 | 0 | Implementation Slice Captured |
+| `db/` | package + design module | `db/module-checklist.md` | 35 | 0 | Implementation Slice Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -198,7 +198,7 @@ No unresolved confirmation items identified in module checklist.
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
 - Status: `Implementation Slice Captured`
-- Completed item count: `34`
+- Completed item count: `35`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -244,7 +244,7 @@ No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
-- [ ] Future production DB migration remains pending and must be derived from the Phase 1 planning docs and isolated SQLite validation slice; the current implemented schema is validation-only and does not provide production migration rollout, ORM, repository interface, runtime behavior, or API changes.
+- [ ] Future production DB rollout remains pending; the current PostgreSQL migration shape and isolated SQLite validation slice do not provide ORM, repository interface, runtime behavior, API changes, or backend selection.
 - [ ] Future DB implementation must not production-migrate current JSON `unit_id` as stable identity.
 - [ ] Future DB implementation must keep DB-generated IDs as default internal identity and add public/domain IDs only for concrete external stability requirements.
 - [ ] Future hard reparse implementation must validate candidate hierarchy before transaction cutover and must explicitly delete all document-derived content blocks and artifacts after version advancement in the same transaction.
@@ -834,8 +834,15 @@ No unresolved confirmation items identified in module checklist.
   Status: `Implementation Slice Captured`
   Type: `Implementation + Validation`
   Implementation Impact: `Isolated DB validation only`
-  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/db/phase_1_core_schema.py`; `Deep_Reflective_Reader/db/sqlite_core_document_store.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_core_hierarchy_persistence.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
-  Notes: Implements an isolated SQLite-backed core hierarchy persistence slice for new-document validation: schema application, accepted hierarchy write, raw-source metadata row, initial parse event, and current hierarchy readback with DB-generated document/chapter/section/task-unit IDs. It does not enable production runtime DB reads/writes, profile persistence, content-block persistence, artifact persistence, hard reparse transaction behavior, JSONB runtime fallback, public/domain IDs, existing JSON production migration, PostgreSQL rollout, ORM mappings, or backend selection.
+  Evidence: `Deep_Reflective_Reader/db/sqlite_validation/phase_1_core_hierarchy_schema.sql`; `Deep_Reflective_Reader/db/phase_1_core_schema.py`; `Deep_Reflective_Reader/db/sqlite_core_document_store.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_core_hierarchy_persistence.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Keeps SQLite isolated under `db/sqlite_validation/` for new-document hierarchy validation only: schema application, accepted hierarchy write, required namespace/document-name identity, raw-source metadata row, initial parse event, no `documents.raw_text`, and current hierarchy readback with DB-generated document/chapter/section/task-unit IDs. It does not enable production runtime DB reads/writes, profile persistence, content-block persistence, artifact persistence, hard reparse transaction behavior, JSONB runtime fallback, public/domain IDs, existing JSON production migration, ORM mappings, or backend selection.
+
+- [x] Phase 1 PostgreSQL DDL Surface Completion
+  Status: `Implementation Slice Captured`
+  Type: `Implementation + Static Validation`
+  Implementation Impact: `PostgreSQL DDL shape only`
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Completes the PostgreSQL-targeted Phase 1 DDL surface for documents, raw-source metadata, advisory document profile, parse events, current hierarchy rows, lazy content blocks, common artifacts, and optional structured-document parity snapshots. It preserves raw-source metadata-only storage, one common artifact table, application-level polymorphic artifact target validation, and no runtime backend switch.
 
 ## 8. Cross-Module Needs Confirmation
 

@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This document defines the Phase 1 persistence plan for raw-source metadata while raw document bytes remain file-backed or object-backed.
+This document defines the Phase 1 persistence plan for raw-source metadata while raw document bytes and extracted raw text remain file-backed or object-backed.
 
 It is documentation-only. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, object storage integration, or backend selection.
 
 ## Ownership Boundary
 
-Raw uploaded documents remain canonical user-owned source files outside the DB for Phase 1.
+Raw uploaded documents and extracted raw text remain canonical user-owned source files outside the DB for Phase 1.
 
 The DB stores metadata only:
 
@@ -22,7 +22,7 @@ The DB stores metadata only:
 - ownership scope when applicable
 - source parser or ingestion mode when available
 
-The metadata row explains where the raw source lives. It does not contain raw bytes and does not become parser authority.
+The metadata row explains where the raw source lives. It does not contain raw bytes or extracted raw text and does not become parser authority.
 
 ## Candidate Write Flow
 
@@ -31,7 +31,7 @@ The metadata row explains where the raw source lives. It does not contain raw by
 3. A future raw-source metadata storage adapter persists metadata linked to `documents.id`.
 4. Structured parsing uses the stored source through existing preparation boundaries.
 
-The DB write should happen only after raw-source storage succeeds. A failed metadata write must not imply that raw bytes were deleted unless a separate cleanup policy explicitly owns that behavior.
+The DB write should happen only after raw-source storage succeeds. A failed metadata write must not imply that raw bytes or extracted raw text were deleted unless a separate cleanup policy explicitly owns that behavior.
 
 ## Candidate Read Flow
 

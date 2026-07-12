@@ -26,7 +26,7 @@ The goal is to plan how future ORM models should map to physical table candidate
 | ORM Model Candidate | Table Candidate | Role | Authority Boundary |
 |---|---|---|---|
 | `DocumentRecord` | `documents` | Document lifecycle and current structure version persistence. | Authoritative only for DB document row identity and `current_structure_version`; not parser authority. |
-| `RawSourceMetadataRecord` | `raw_source_metadata` | Metadata-only raw source reference. | Does not store raw bytes or define raw storage policy. |
+| `RawSourceMetadataRecord` | `raw_source_metadata` | Metadata-only raw source reference. | Does not store raw bytes or extracted raw text or define raw storage policy. |
 | `DocumentProfileRecord` | `document_profile` | Advisory document-scoped profile snapshot. | Profile metadata only; not hierarchy, parser, retrieval, or artifact authority. |
 | `ChapterRecord` | `chapters` | Current chapter row. | Persistence representation of current hierarchy after validation. |
 | `SectionRecord` | `sections` | Current section row. | Persistence representation under a chapter; no root section authority. |
@@ -71,12 +71,13 @@ Relationship rules:
 Responsibilities:
 
 - Map DB document row identity.
-- Store `current_structure_version`.
+- Store required `namespace`, required `document_name`, and `current_structure_version`.
 - Own ORM relationships to document-scoped records.
 
 Non-responsibilities:
 
 - Does not parse raw input.
+- Does not store raw text or raw bytes in the document row.
 - Does not derive hierarchy from profile, artifacts, or snapshots.
 - Does not create public document identity in Phase 1.
 
@@ -148,7 +149,7 @@ Responsibilities:
 
 Non-responsibilities:
 
-- Does not store raw bytes.
+- Does not store raw bytes or extracted raw text.
 - Does not define object storage behavior.
 - Does not imply cross-user source sharing.
 
@@ -229,7 +230,7 @@ Validation that should happen before ORM write:
 - Chapter, section, and task-unit ordering is valid.
 - Artifact target type/id is hierarchy-aware and resolved.
 - Profile payload is advisory and document-scoped.
-- Raw-source metadata does not contain raw bytes.
+- Raw-source metadata does not contain raw bytes or extracted raw text.
 
 Validation that remains application-level after read:
 

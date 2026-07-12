@@ -69,6 +69,8 @@ def test_create_and_load_current_hierarchy() -> None:
 
     result = store.create_document_with_initial_structure(
         _build_document(),
+        namespace="tenant-a",
+        document_name="db-core-slice",
         raw_source_metadata=RawSourceMetadata(
             source_location="data/raw/db-core-slice.txt",
             original_filename="db-core-slice.txt",
@@ -91,9 +93,27 @@ def test_create_and_load_current_hierarchy() -> None:
         lifecycle["current_structure_version"] == 1,
         "document lifecycle should expose current structure version",
     )
+    _assert(lifecycle["namespace"] == "tenant-a", "document namespace is required")
+    _assert(
+        lifecycle["document_name"] == "db-core-slice",
+        "document_name should be namespace-facing identity",
+    )
+    _assert(
+        store.find_document_by_name(
+            namespace="tenant-a",
+            document_name="db-core-slice",
+        )
+        == result.document_id,
+        "namespace/document_name lookup should resolve document",
+    )
 
     loaded = store.load_current_structure(result.document_id)
     _assert(loaded.document_id == "1", "loaded document should expose DB id")
+    _assert(loaded.raw_text == "", "raw text should not be stored in documents")
+    _assert(
+        loaded.source_path == "data/raw/db-core-slice.txt",
+        "source path should come from raw_source_metadata",
+    )
     _assert(loaded.chapters[0].chapter_id == "1", "chapter id should be DB-generated")
     _assert(
         loaded.chapters[0].sections[0].section_id == "1",
@@ -121,6 +141,30 @@ def test_create_and_load_current_hierarchy() -> None:
         (result.document_id,),
     ).fetchone()[0]
     _assert(raw_count == 1, "raw-source metadata should be persisted")
+
+    document_columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(documents)").fetchall()
+    }
+    _assert("raw_text" not in document_columns, "documents must not store raw text")
+    _assert("namespace" in document_columns, "documents must include namespace")
+    _assert(
+        "document_name" in document_columns,
+        "documents must include document_name",
+    )
+
+    second_result = store.create_document_with_initial_structure(
+        _build_document(),
+        namespace="tenant-b",
+        document_name="db-core-slice",
+        raw_source_metadata=RawSourceMetadata(
+            source_location="data/raw/db-core-slice-tenant-b.txt",
+        ),
+    )
+    _assert(
+        second_result.document_id == 2,
+        "same document_name should be allowed in a different namespace",
+    )
 
     parse_event = connection.execute(
         """

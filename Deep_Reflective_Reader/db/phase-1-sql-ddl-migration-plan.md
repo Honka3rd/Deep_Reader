@@ -4,7 +4,7 @@
 
 This document converts `db/phase-1-schema-design.md` into a SQL/DDL migration planning reference.
 
-It is documentation-only. It does not create SQL files, migration scripts, ORM models, repository interfaces, runtime read/write behavior, fixtures, tests, API changes, or backend selection.
+This document is the planning reference. Later implementation materializes the first core PostgreSQL migration shape in `db/migrations/001_phase_1_core_hierarchy.sql`; this document still does not define ORM models, repository interfaces, runtime read/write behavior, fixtures, API changes, or backend selection.
 
 The goal is to define the minimum migration sequence, DDL work units, dependency order, rollback expectations, and validation gates that a future implementation task must follow.
 
@@ -57,12 +57,12 @@ Phase 1 migration planning covers future DDL work units for:
 
 Out of scope:
 
-- Executable SQL DDL.
+- Complete executable SQL DDL for every Phase 1 entity beyond the first core hierarchy subset.
 - ORM class definitions.
 - Repository/storage interfaces.
 - Runtime read/write switching.
 - Production migration of existing JSON identities.
-- DB storage of raw document bytes.
+- DB storage of raw document bytes or extracted raw text.
 - Retrieval index physical storage.
 - Category-specific artifact tables.
 - Public document UUID/key/slug.
@@ -138,7 +138,7 @@ Document deletion:
 
 - Deleting a document should remove document-scoped DB rows.
 - Parse events are retained only for the lifetime of the document.
-- Raw-source metadata should be removed with the document, while raw bytes remain governed by the raw file/object storage deletion policy.
+- Raw-source metadata should be removed with the document, while raw bytes and extracted raw text remain governed by the raw file/object storage deletion policy.
 
 Hard reparse:
 
@@ -162,7 +162,7 @@ Future DDL rollback should reverse creation order:
 4. Drop document-scoped metadata/provenance tables.
 5. Drop document lifecycle table last.
 
-Rollback planning must preserve file-backed source data. Since this plan does not move raw bytes into the DB and does not production-migrate existing JSON identity, a failed DB rollout must not invalidate existing file-backed structured outputs.
+Rollback planning must preserve file-backed source data. Since this plan does not move raw bytes or extracted raw text into the DB and does not production-migrate existing JSON identity, a failed DB rollout must not invalidate existing file-backed structured outputs.
 
 Rollback must not depend on rehydrating hierarchy from artifacts, profile metadata, parse events, or JSONB parity snapshots. Those surfaces are not hierarchy authority.
 
@@ -191,7 +191,7 @@ Future migration implementation may choose one or more migration files, but the 
 4. Phase 1 optional parity snapshot DDL.
 5. Phase 1 validation fixtures and migration smoke checks.
 
-This document does not prescribe file names, migration framework, backend-specific SQL syntax, or ORM migration tooling.
+The first core hierarchy implementation uses `db/migrations/001_phase_1_core_hierarchy.sql` as the PostgreSQL-targeted DDL shape and keeps SQLite-only validation SQL under `db/sqlite_validation/`. This plan still does not prescribe a migration framework or ORM migration tooling.
 
 ## 11. Governance Validation
 
@@ -206,14 +206,13 @@ This migration plan does not introduce:
 - category-specific artifact tables in Phase 1
 - DB schema as parser authority
 - runtime read/write switch
-- executable SQL DDL
 - ORM models
 - repository interfaces
 - migration scripts
 
 ## 12. Completion Boundary
 
-The checklist item "Convert Phase 1 schema design into SQL/DDL migration plan" is complete when this document is present and linked from `db/module-checklist.md`.
+The checklist item "Convert Phase 1 schema design into SQL/DDL migration plan" is complete when this document is present and linked from `db/module-checklist.md`. The later core hierarchy implementation is tracked separately by the implementation-slice checklist evidence.
 
 The following remain separate unchecked implementation-planning tasks:
 

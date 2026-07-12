@@ -39,7 +39,7 @@ Purpose:
 |---|---|---:|---|
 | `id` | `bigint identity` | yes | Internal primary key. |
 | `document_name` | `text` | yes | Current application document name or namespace-facing identifier. |
-| `namespace` | `text` | no | Storage namespace / isolation key candidate. |
+| `namespace` | `text` | yes | Required storage namespace / isolation key for user/tenant-ready document isolation. |
 | `current_structure_version` | `integer` | yes | Authoritative current hierarchy version; starts at `1` after initial parse. |
 | `status` | `text` | no | Optional lifecycle status candidate. |
 | `metadata_payload` | `json/jsonb` | no | Non-authoritative operational metadata. |
@@ -52,8 +52,8 @@ Foreign-key candidates:
 
 Uniqueness candidates:
 
-- `unique(namespace, document_name)` if namespace-based document lookup remains runtime-facing.
-- If `namespace` is absent in implementation, use `unique(document_name)` only if document names must be globally unique.
+- `unique(namespace, document_name)` is required for Phase 1 namespace/document isolation.
+- Do not use global `unique(document_name)`; the same document name must be allowed in different namespaces.
 
 Index candidates:
 
@@ -63,14 +63,14 @@ Index candidates:
 Delete behavior candidates:
 
 - document delete removes document-scoped DB rows.
-- raw bytes remain governed by raw file/object storage policy.
+- raw bytes and raw text remain governed by raw file/object storage policy and must not be stored in `documents`.
 
 ### 3.2 `raw_source_metadata`
 
 Purpose:
 
 - Track metadata-only references to file-backed/object-backed raw sources.
-- Keep raw bytes outside the DB.
+- Keep raw bytes and extracted raw text outside the DB.
 
 | Column | Type Candidate | Required | Notes |
 |---|---|---:|---|
@@ -81,8 +81,8 @@ Purpose:
 | `mime_type` | `text` | no | MIME type when available. |
 | `file_size` | `integer` | no | File size candidate; widen later if needed. |
 | `checksum` | `text` | no | Source checksum/fingerprint. |
-| `uploaded_at` | `timestamp` | no | Upload/import timestamp. |
-| `ownership_scope` | `text` | no | User/tenant/scope metadata candidate. |
+| `uploaded_at` | `timestamp` | yes | Upload/import timestamp. |
+| `ownership_scope` | `text` | no | User/tenant/scope metadata candidate; SQLite validation slice may omit until user table exists. |
 | `metadata_payload` | `json/jsonb` | no | Non-authoritative source metadata. |
 
 Foreign-key candidates:
@@ -91,8 +91,8 @@ Foreign-key candidates:
 
 Uniqueness candidates:
 
-- optional `unique(document_id)` if Phase 1 stores one raw-source metadata row per document.
-- optional `unique(document_id, source_location)` if multiple raw-source records may be retained.
+- `unique(document_id)` for the Phase 1 core validation slice: one canonical raw-source metadata row per document.
+- `unique(document_id, source_location)` may replace this only if multiple raw-source records are deliberately retained later.
 
 Index candidates:
 
@@ -102,7 +102,7 @@ Index candidates:
 Delete behavior candidates:
 
 - delete with owning document.
-- do not imply raw-byte deletion unless raw storage policy explicitly requires it.
+- do not imply raw-byte or extracted-text deletion unless raw storage policy explicitly requires it.
 
 ### 3.3 `document_profile`
 
@@ -158,6 +158,9 @@ Purpose:
 | `document_id` | `bigint` | yes | Owning document. |
 | `chapter_order` | `integer` | yes | Order within document. |
 | `title` | `text` | no | Display title. |
+| `level` | `integer` | yes | Readback/parity projection field from current hierarchy model; not parser authority. |
+| `chapter_role` | `text` | no | Readback/parity projection field. |
+| `reference_chapter_id` | `text` | no | Import/reference evidence only; not production identity. |
 | `source_anchor` | `json/jsonb` | no | Source/span/page anchor candidate. |
 | `metadata_payload` | `json/jsonb` | no | Non-authoritative chapter metadata. |
 
@@ -191,7 +194,16 @@ Purpose:
 | `chapter_id` | `bigint` | yes | Parent chapter. |
 | `section_order` | `integer` | yes | Order within chapter. |
 | `title` | `text` | no | Display title. |
-| `source_anchor` | `json/jsonb` | no | Source/span/page anchor candidate. |
+| `level` | `integer` | yes | Readback/parity projection field from current hierarchy model; not parser authority. |
+| `content` | `text` | yes | Accepted structured section content for current hierarchy readback; not raw document storage and not a content-block hierarchy level. |
+| `char_start` | `integer` | yes | Source span start for accepted section. |
+| `char_end` | `integer` | yes | Source span end for accepted section. |
+| `container_title` | `text` | no | Readback/parity projection field. |
+| `section_role` | `text` | no | Readback/parity projection field. |
+| `section_kind` | `text` | no | Readback/parity projection field. |
+| `is_implicit_section` | `boolean` | yes | Readback/parity projection field. |
+| `reference_section_id` | `text` | no | Import/reference evidence only; not production identity. |
+| `source_anchor` | `json/jsonb` | no | Future normalized source/span/page anchor; SQLite validation slice currently uses explicit span columns. |
 | `metadata_payload` | `json/jsonb` | no | Non-authoritative section metadata. |
 
 Foreign-key candidates:
@@ -226,7 +238,11 @@ Purpose:
 | `document_id` | `bigint` | yes | Owning document for cleanup/query scope. |
 | `section_id` | `bigint` | yes | Parent section. |
 | `task_unit_order` | `integer` | yes | Order within section. |
-| `content_payload` | `json/jsonb` or `text` | no | Opaque content payload/string candidate. |
+| `content_payload` | `json/jsonb` or `text` | yes | Accepted task-unit content payload/string for Phase 1 readback; SQLite validation slice uses text `content_payload`. |
+| `title` | `text` | no | Readback/parity projection field. |
+| `container_title` | `text` | no | Readback/parity projection field. |
+| `source_section_ids_payload` | `json/jsonb` | no | Import/reference source-section evidence from current model; SQLite validation slice uses `source_section_ids_payload`. |
+| `is_fallback_generated` | `boolean` | yes | Readback/parity projection field. |
 | `reference_unit_id` | `text` | no | Import/reference evidence from existing JSON; not production identity. |
 | `metadata_payload` | `json/jsonb` | no | Non-authoritative task-unit metadata. |
 

@@ -31,7 +31,7 @@ The goal is to define future storage boundaries before code exists.
 | `ArtifactStoragePort` | `document_structure` artifact lifecycle + `shared` target refs | Persist and read common artifacts. | Must require hierarchy-aware target validation before write. |
 | `ParseEventStoragePort` | `document_structure` lifecycle provenance | Store minimal parse provenance. | Provenance only, not event sourcing. |
 | `DocumentProfileStoragePort` | `profile` semantics | Store advisory document-scoped profile snapshot. | Advisory metadata only. |
-| `RawSourceMetadataStoragePort` | raw source metadata boundary | Store metadata-only raw source reference. | Does not store raw bytes. |
+| `RawSourceMetadataStoragePort` | raw source metadata boundary | Store metadata-only raw source reference. | Does not store raw bytes or extracted raw text. |
 | `StructuredDocumentSnapshotStoragePort` | DB validation/parity track | Store optional parity/debug snapshot. | Not runtime hierarchy fallback. |
 
 These names are candidates. Future code may choose different names if ownership and authority boundaries remain intact.
@@ -181,7 +181,7 @@ Required boundaries:
 
 Purpose:
 
-- Persist raw-source metadata while raw bytes remain file-backed/object-backed.
+- Persist raw-source metadata while raw bytes and extracted raw text remain file-backed/object-backed.
 
 Candidate operations:
 
@@ -192,7 +192,7 @@ load_raw_source_metadata(document_id) -> raw_source_metadata_read_model | not_fo
 
 Required boundaries:
 
-- No raw bytes in DB.
+- No raw bytes or extracted raw text in DB.
 - No cross-user sharing implication.
 - Raw file/object deletion policy remains separate.
 

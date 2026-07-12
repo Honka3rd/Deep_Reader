@@ -184,8 +184,12 @@ It is used to:
   Notes: Documentation-only failure-mode plan covering initial parse failure, hard reparse validation failure, hard reparse transaction failure, and derived cleanup failure. It does not create Python code, SQL DDL, ORM models, repository interfaces, migrations, fixtures, tests, runtime behavior, API changes, or backend selection.
 
 - [x] Implement Phase 1 core DB hierarchy persistence slice for new-document isolated validation.
-  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/db/phase_1_core_schema.py`; `Deep_Reflective_Reader/db/sqlite_core_document_store.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_core_hierarchy_persistence.py`.
-  Notes: Implements an isolated SQLite-backed validation slice for `documents`, `raw_source_metadata`, `parse_events`, `chapters`, `sections`, and `task_units`, including schema application, accepted hierarchy write, DB-generated identity readback, and initial parse provenance validation. It does not enable production runtime DB reads/writes, profile persistence, content-block persistence, artifact persistence, JSONB runtime fallback, public/domain IDs, existing JSON production migration, or backend selection.
+  Evidence: `Deep_Reflective_Reader/db/sqlite_validation/phase_1_core_hierarchy_schema.sql`; `Deep_Reflective_Reader/db/phase_1_core_schema.py`; `Deep_Reflective_Reader/db/sqlite_core_document_store.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_core_hierarchy_persistence.py`.
+  Notes: Keeps the executable SQLite schema under `db/sqlite_validation/` for isolated local validation. The validation slice covers schema application, accepted hierarchy write, required namespace/document-name identity, DB-generated identity readback, raw-source metadata readback, no `documents.raw_text`, and initial parse provenance validation. It does not enable production runtime DB reads/writes, profile persistence, content-block persistence, artifact persistence, JSONB runtime fallback, public/domain IDs, existing JSON production migration, or backend selection.
+
+- [x] Complete PostgreSQL Phase 1 DDL surface for remaining schema entities.
+  Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`.
+  Notes: Extends the PostgreSQL-targeted migration shape beyond the core hierarchy subset to include `document_profile`, `content_blocks`, `artifacts`, and optional `structured_document_snapshots`, while preserving raw-source metadata-only storage, one common artifact table, application-level polymorphic artifact target validation, and no runtime backend switch.
 
 ## Needs Confirmation
 

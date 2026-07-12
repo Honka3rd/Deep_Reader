@@ -15,7 +15,7 @@ This avoids treating current file identities as production DB identity and keeps
 ## Candidate Ingestion Flow
 
 1. Store raw source bytes through the existing file-backed/object-backed raw source path.
-2. Create `documents` lifecycle row.
+2. Create `documents` lifecycle row with required `namespace` and `document_name`.
 3. Persist raw-source metadata linked to the document.
 4. Parse and validate accepted hierarchy through `document_structure`.
 5. Persist current hierarchy with `current_structure_version = 1`.
