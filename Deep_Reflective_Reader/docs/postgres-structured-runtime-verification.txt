@@ -1,0 +1,184 @@
+PostgreSQL Structured Runtime Verification Notes
+================================================
+
+Purpose
+-------
+
+This note records the manual verification path for the Docker PostgreSQL
+structured-document runtime switch and the bug found during section-summary
+verification for Madame Bovary.
+
+Scope
+-----
+
+- Docker Compose defaults structured document storage to PostgreSQL.
+- Existing data/structured artifacts are not migrated by this path.
+- New structured writes should return postgres://structured/<namespace>/<doc>.
+- Runtime reads must go through the structured document store abstraction.
+- Runtime code must not treat postgres://structured/... as a local filesystem
+  path.
+
+Observed Failure Before Fix
+---------------------------
+
+Manual call:
+
+   POST /documents/section-summary
+
+Body:
+
+   {
+     "doc_name": "Madame Bovary",
+     "section_id": "section-0",
+     "task_unit_split_mode": "progressive",
+     "refresh_summary": true
+   }
+
+Observed response:
+
+   HTTP 400
+   structured document unavailable for doc_name='Madame Bovary'.
+   errors=prepare_and_load_structured_missing:postgres:/structured/default/Madame Bovary
+
+Root cause:
+
+   DocumentPreparationPipeline.prepare_and_load converted
+   postgres://structured/default/Madame Bovary into a pathlib.Path before
+   loading. pathlib normalizes the URI-like string into postgres:/structured/...
+   and the PostgreSQL store then receives the wrong target.
+
+Fix Contract
+------------
+
+prepare_and_load must:
+
+1. use structured_document_store.exists(target)
+2. use structured_document_store.load(target)
+3. pass the original target string unchanged
+4. avoid local Path checks for non-file storage targets
+5. replace section task-unit rows idempotently by section/order when resolver
+   output uses generated reference IDs, so repeated or overlapping task-layout
+   writes do not fail with uq_task_units_section_order
+
+Manual Verification
+-------------------
+
+Start services:
+
+   docker compose -f docker-compose.yml up -d --build
+
+Confirm health:
+
+   docker compose -f docker-compose.yml ps
+   curl http://localhost:8000/health
+
+Prepare Madame Bovary into PostgreSQL:
+
+   curl -sS -w '\nHTTP_STATUS:%{http_code}\n' \
+     -X POST http://localhost:8000/documents/prepare \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "doc_name": "Madame Bovary",
+       "mode": "base",
+       "force_rebuild": true,
+       "structured_parser_mode": "common"
+     }'
+
+Expected prepare result:
+
+   HTTP_STATUS:200
+   "success": true
+   "structured_document_ready": true
+   "structured_document_path": "postgres://structured/default/Madame Bovary"
+
+Confirm DB rows:
+
+   docker compose -f docker-compose.yml exec -T postgres \
+     psql -U deep_reader -d deep_reader \
+     -c "SELECT COUNT(DISTINCT d.id) AS documents,
+                COUNT(DISTINCT c.id) AS chapters,
+                COUNT(DISTINCT s.id) AS sections,
+                COUNT(DISTINCT snap.id) AS snapshots
+         FROM documents d
+         LEFT JOIN chapters c ON c.document_id=d.id
+         LEFT JOIN sections s ON s.document_id=d.id
+         LEFT JOIN structured_document_snapshots snap ON snap.document_id=d.id
+         WHERE d.namespace='default'
+           AND d.document_name='Madame Bovary';"
+
+Call section summary:
+
+   curl -sS -w '\nHTTP_STATUS:%{http_code}\n' \
+     -X POST http://localhost:8000/documents/section-summary \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "doc_name": "Madame Bovary",
+       "section_id": "section-0",
+       "task_unit_split_mode": "progressive",
+       "refresh_summary": true
+     }'
+
+Expected after fix:
+
+   The response must not contain:
+
+      prepare_and_load_structured_missing:postgres:/structured/default/Madame Bovary
+
+Find the runtime section id first. PostgreSQL readback currently exposes
+DB-generated section ids in the API/runtime model; reference_section_id is kept
+as DB reference evidence, but the section-summary endpoint expects the runtime
+section id.
+
+   docker compose -f docker-compose.yml exec -T postgres \
+     psql -U deep_reader -d deep_reader \
+     -c "SELECT s.id, s.reference_section_id, s.title
+         FROM sections s
+         JOIN documents d ON d.id=s.document_id
+         WHERE d.namespace='default'
+           AND d.document_name='Madame Bovary'
+         ORDER BY s.id
+         LIMIT 5;"
+
+For the observed Madame Bovary DB state, Chapter One used runtime section id 2.
+
+Call section summary with the runtime id:
+
+   curl -sS -w '\nHTTP_STATUS:%{http_code}\n' \
+     -X POST http://localhost:8000/documents/section-summary \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "doc_name": "Madame Bovary",
+       "section_id": "2",
+       "task_unit_split_mode": "progressive",
+       "refresh_summary": true
+     }'
+
+Observed successful result after fix:
+
+   HTTP_STATUS:200
+   "success": true
+   "cache_hit": false
+   "result": "In the opening chapter, the arrival of a new student disrupts..."
+
+Current persistence note:
+
+   The section summary cache is written into sections.metadata_payload under
+   task_artifacts. The relational artifacts table is not populated by this
+   current section-summary path.
+
+If OpenAI configuration and downstream summary generation are available, the
+request should return a successful summary response. If summary generation fails
+for LLM or artifact reasons, the failure should occur after structured document
+loading, not at postgres URI resolution.
+
+Regression Test
+---------------
+
+Run:
+
+   PYTHONPATH=Deep_Reflective_Reader \
+     python Deep_Reflective_Reader/scripts/test_postgres_structured_uri_prepare_and_load.py
+
+Expected:
+
+   postgres structured URI prepare_and_load regression passed

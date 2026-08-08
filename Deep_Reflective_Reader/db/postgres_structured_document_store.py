@@ -410,6 +410,15 @@ class PostgresStructuredDocumentStore:
                                 metadata_payload
                             )
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (section_id, task_unit_order)
+                            DO UPDATE SET
+                                reference_unit_id = EXCLUDED.reference_unit_id,
+                                title = EXCLUDED.title,
+                                container_title = EXCLUDED.container_title,
+                                content_payload = EXCLUDED.content_payload,
+                                source_section_ids_payload = EXCLUDED.source_section_ids_payload,
+                                is_fallback_generated = EXCLUDED.is_fallback_generated,
+                                metadata_payload = EXCLUDED.metadata_payload
                             RETURNING id
                         """,
                         insert_params=(

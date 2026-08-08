@@ -37,7 +37,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `db/` | package + design module | `db/module-checklist.md` | 40 | 0 | PostgreSQL Runtime Switch Captured |
+| `db/` | package + design module | `db/module-checklist.md` | 41 | 0 | PostgreSQL Section Summary Runtime Verified |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -242,6 +242,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Enforces conservative PostgreSQL numeric and span representation constraints.
 - [x] Defines PostgreSQL `updated_at` ownership as application-managed.
 - [x] Implements Docker PostgreSQL structured document runtime read/write switch for new documents.
+- [x] Fixes PostgreSQL structured runtime read path for section-summary verification.
 
 #### Needs Confirmation
 
@@ -254,6 +255,12 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Future DB implementation must keep DB-generated IDs as default internal identity and add public/domain IDs only for concrete external stability requirements.
 - [ ] Future hard reparse implementation must validate candidate hierarchy before transaction cutover and must explicitly delete all document-derived content blocks and artifacts after version advancement in the same transaction.
 - [ ] Future production DB implementation remains pending for ORM mappings if needed, hard reparse transaction behavior, derived-resource persistence beyond the structured-document path, existing JSON migration, and broader tests; the current implementation is limited to new-document structured persistence behind explicit backend selection.
+
+#### Latest Verification Detail
+
+- [x] `Madame Bovary` `/documents/section-summary` now reads the PostgreSQL structured document through the storage abstraction and returns HTTP 200 for runtime section id `2`.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/scripts/test_postgres_structured_uri_prepare_and_load.py`; `Deep_Reflective_Reader/docs/postgres-structured-runtime-verification.txt`; Docker API verification on `2026-08-08`.
+  Notes: The fix prevents `postgres://structured/default/Madame Bovary` from being normalized to `postgres:/structured/default/Madame Bovary`, and makes DB task-unit writes idempotent by section/order during repeated runtime projections.
 
 ### `document_structure/`
 

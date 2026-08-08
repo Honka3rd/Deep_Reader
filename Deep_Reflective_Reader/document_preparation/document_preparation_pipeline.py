@@ -180,14 +180,16 @@ class DocumentPreparationPipeline:
         structured_document = None
         if assets.structured_document_ready and assets.structured_document_path is not None:
             try:
-                structured_path = Path(assets.structured_document_path)
-                if structured_path.exists():
+                if self.structured_document_store.exists(
+                    assets.structured_document_path
+                ):
                     structured_document = self.structured_document_store.load(
-                        str(structured_path)
+                        assets.structured_document_path
                     )
                 else:
                     assets.errors.append(
-                        f"prepare_and_load_structured_missing:{structured_path}"
+                        "prepare_and_load_structured_missing:"
+                        f"{assets.structured_document_path}"
                     )
             except Exception as error:
                 assets.errors.append(
