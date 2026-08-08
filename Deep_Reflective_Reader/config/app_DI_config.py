@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import os
 from typing import Any
 from llm.openai_llm_provider import OpenAIModelName
 
@@ -96,6 +97,30 @@ class LLMSectionPreviewPolicyConfig:
 @dataclass(frozen=True)
 class AppDIConfig:
     """Application-level DI configuration values."""
+    # Structured document persistence backend. ``file`` preserves local JSON behavior;
+    # ``postgres`` stores current StructuredDocument payloads in the configured DB.
+    structured_storage_backend: str = field(
+        default_factory=lambda: os.environ.get(
+            "DEEP_READER_STRUCTURED_STORAGE_BACKEND",
+            "file",
+        ).strip().lower()
+        or "file"
+    )
+    # PostgreSQL DSN used when structured_storage_backend is ``postgres``.
+    postgres_dsn: str = field(
+        default_factory=lambda: os.environ.get(
+            "DEEP_READER_POSTGRES_DSN",
+            "postgresql://deep_reader:deep_reader_dev@localhost:5433/deep_reader",
+        )
+    )
+    # Logical namespace for structured document rows.
+    postgres_namespace: str = field(
+        default_factory=lambda: os.environ.get(
+            "DEEP_READER_POSTGRES_NAMESPACE",
+            "default",
+        ).strip()
+        or "default"
+    )
     # Max characters/tokens per chunk before indexing.
     # Introduced to balance retrieval granularity and semantic completeness.
     chunk_size: int = 300
@@ -423,6 +448,9 @@ class AppDIConfig:
         enhanced_parse_policy = self.enhanced_parse_policy()
         llm_section_preview_policy = self.llm_section_preview_policy()
         return {
+            "structured_storage_backend": self.structured_storage_backend,
+            "postgres_dsn": self.postgres_dsn,
+            "postgres_namespace": self.postgres_namespace,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
             "embedding_model": self.embedding_model,

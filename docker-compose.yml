@@ -1,0 +1,51 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEP_READER_STRUCTURED_STORAGE_BACKEND: ${DEEP_READER_STRUCTURED_STORAGE_BACKEND:-postgres}
+      DEEP_READER_POSTGRES_DSN: postgresql://${POSTGRES_USER:-deep_reader}:${POSTGRES_PASSWORD:-deep_reader_dev}@postgres:5432/${POSTGRES_DB:-deep_reader}
+    ports:
+      - "${DEEP_READER_API_PORT:-8000}:8000"
+    volumes:
+      - ${DEEP_READER_DATA_DIR:-./Deep_Reflective_Reader/data}:/app/Deep_Reflective_Reader/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-deep_reader}
+      POSTGRES_USER: ${POSTGRES_USER:-deep_reader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deep_reader_dev}
+    ports:
+      - "${DEEP_READER_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - deep_reader_postgres_data:/var/lib/postgresql/data
+      - ./Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql:/docker-entrypoint-initdb.d/001_phase_1_core_hierarchy.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  deep_reader_postgres_data:

@@ -286,13 +286,13 @@ class DocumentPreparationPipeline:
             return False, None
 
         storage_config = StructuredDocumentStorageConfig(namespace=doc_name)
-        structured_document_path = storage_config.get_raw_document_path()
+        structured_document_path = self.structured_document_store.location(storage_config)
         try:
             # TODO: Pass document_profile.parser_metadata hints into structured parser
             # once parser-side consumption is implemented.
             _ = document_profile
             should_rebuild = force_rebuild or parser_mode == SectionSplitterMode.LLM_ENHANCED
-            if storage_config.exists() and not should_rebuild:
+            if self.structured_document_store.exists(storage_config) and not should_rebuild:
                 try:
                     self.structured_document_store.load(storage_config)
                     return True, structured_document_path
@@ -338,14 +338,17 @@ class DocumentPreparationPipeline:
         """Enrich profile with post-structure metadata without blocking prepare."""
         try:
             structured_path = Path(structured_document_path)
-            if not structured_path.exists():
+            if (
+                not str(structured_document_path).startswith("postgres://")
+                and not structured_path.exists()
+            ):
                 assets.errors.append(
                     f"post_structure_enrichment_missing_structured:{structured_document_path}"
                 )
                 return None
 
             structured_document = self.structured_document_store.load(
-                str(structured_path)
+                structured_document_path
             )
             enriched_profile = self.post_structure_enricher.enrich(
                 profile=profile,
@@ -379,19 +382,9 @@ class DocumentPreparationPipeline:
         storage_config: StructuredDocumentStorageConfig,
     ) -> None:
         """Atomically replace structured artifact to prevent half-written corruption."""
-        target_path = Path(storage_config.get_raw_document_path())
-        temp_path = target_path.with_suffix(f"{target_path.suffix}.tmp")
-        try:
-            self.structured_document_store.save(document=document, target=str(temp_path))
-            # Read-back validation before replacing primary artifact path.
-            self.structured_document_store.load(str(temp_path))
-            temp_path.replace(target_path)
-        finally:
-            if temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except OSError:
-                    pass
+        self.structured_document_store.save(document=document, target=storage_config)
+        # Read-back validation before reporting structured readiness.
+        self.structured_document_store.load(storage_config)
 
     def _prepare_faiss(
         self,

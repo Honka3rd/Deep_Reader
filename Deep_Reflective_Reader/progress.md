@@ -37,7 +37,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `db/` | package + design module | `db/module-checklist.md` | 39 | 0 | Implementation Slice Captured |
+| `db/` | package + design module | `db/module-checklist.md` | 40 | 0 | PostgreSQL Runtime Switch Captured |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -197,8 +197,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
-- Status: `Implementation Slice Captured`
-- Completed item count: `39`
+- Status: `PostgreSQL Runtime Switch Captured`
+- Completed item count: `40`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -241,6 +241,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Enforces PostgreSQL parse_event event-specific row-shape constraints.
 - [x] Enforces conservative PostgreSQL numeric and span representation constraints.
 - [x] Defines PostgreSQL `updated_at` ownership as application-managed.
+- [x] Implements Docker PostgreSQL structured document runtime read/write switch for new documents.
 
 #### Needs Confirmation
 
@@ -248,11 +249,11 @@ No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
-- [ ] Future production DB rollout remains pending; the current PostgreSQL migration shape and isolated SQLite validation slice do not provide ORM, repository interface, runtime behavior, API changes, or backend selection.
+- [ ] Future production DB rollout remains pending for broader hard-reparse transaction behavior, relational artifact/content-block persistence beyond structured-document payload metadata, profile persistence wiring, existing JSON migration tooling if required, and broader API/path regression coverage.
 - [ ] Future DB implementation must not production-migrate current JSON `unit_id` as stable identity.
 - [ ] Future DB implementation must keep DB-generated IDs as default internal identity and add public/domain IDs only for concrete external stability requirements.
 - [ ] Future hard reparse implementation must validate candidate hierarchy before transaction cutover and must explicitly delete all document-derived content blocks and artifacts after version advancement in the same transaction.
-- [ ] Future production DB implementation remains pending for ORM mappings, production repository/storage code, backend runtime policy, hard reparse transaction behavior, derived-resource persistence, existing JSON migration, and broader tests; the implemented slice is isolated validation only.
+- [ ] Future production DB implementation remains pending for ORM mappings if needed, hard reparse transaction behavior, derived-resource persistence beyond the structured-document path, existing JSON migration, and broader tests; the current implementation is limited to new-document structured persistence behind explicit backend selection.
 
 ### `document_structure/`
 
@@ -876,6 +877,13 @@ No unresolved confirmation items identified in module checklist.
   Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/module-checklist.md`.
   Notes: Chooses application-managed `updated_at` ownership. PostgreSQL may initialize insert defaults, but document and artifact mutations must set `updated_at` explicitly in repository/service update statements. No timestamp trigger or lifecycle trigger was introduced.
 
+- [x] Docker PostgreSQL Structured Document Runtime Switch
+  Status: `Runtime Switch Captured`
+  Type: `Implementation + Docker Validation`
+  Implementation Impact: `New-document structured persistence can run through PostgreSQL in Docker`
+  Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/db/postgres_structured_document_artifact_repository.py`; `Deep_Reflective_Reader/config/app_DI_config.py`; `Deep_Reflective_Reader/config/container.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `docker-compose.yml`; Docker smoke validation confirming rows in `documents`, `chapters`, `sections`, `task_units`, and `structured_document_snapshots`; container health check; `Deep_Reflective_Reader/db/module-checklist.md`.
+  Notes: Adds explicit `file` / `postgres` structured storage backend selection. Docker defaults structured document read/write to PostgreSQL through `DEEP_READER_STRUCTURED_STORAGE_BACKEND=postgres` and `DEEP_READER_POSTGRES_DSN`; local default remains file-backed. Runtime hierarchy reads are rebuilt from relational current hierarchy rows, while optional `structured_document_snapshots` remain parity/debug evidence only and are not runtime hierarchy authority. Existing `data/structured` files are not migrated by this implementation.
+
 ## 8. Cross-Module Needs Confirmation
 
 No unresolved cross-module confirmation items identified.
@@ -883,7 +891,7 @@ No unresolved cross-module confirmation items identified.
 ## 9. Missing or Weak Checklists
 
 - No checklist files are missing in this pass.
-- `db/` now has DB-era planning memory plus an isolated Phase 1 core hierarchy validation implementation slice.
+- `db/` now has DB-era planning memory, an isolated Phase 1 core hierarchy validation implementation slice, and a Docker PostgreSQL structured-document runtime switch for new documents.
 - No module checklist has insufficient completed item count in this pass.
 - No completed checklist evidence formatting gaps were detected in this pass.
 
@@ -913,11 +921,11 @@ No unresolved cross-module confirmation items identified.
 - Most aggregated module checklists report completed baseline items with no unresolved confirmation items in this aggregation pass.
 - Global status currently reflects checklist aggregation, not roadmap completion.
 - Hierarchy-first and pure-hierarchy persistence direction is consistently represented across structure, preparation, and task modules.
-- DB-centric persistence migration is documented as future-direction planning only; SQL/DDL migration planning is captured, but no executable DB migration or implementation work is marked completed.
-- Existing `data/` file storage remains valid during migration planning and must not be removed until DB readiness validation supports gradual retirement.
+- DB-centric persistence now has PostgreSQL DDL shape validation and a Docker structured-document read/write switch for new documents; existing structured JSON migration remains out of scope.
+- Existing `data/` file storage remains valid for local/default compatibility and migration/reference use; Docker structured document read/write can use PostgreSQL for new documents without production-migrating existing `data/structured` files.
 - Storage Contract Inventory Documentation is completed as documentation-only work with no implementation impact.
-- Storage abstraction boundary is documented as future-direction planning only; no storage abstraction implementation, repository interface, schema, dual-write, read-path switch, API change, or runtime change is complete.
-- DB-era identity/versioning/reparse policy now has a dedicated documentation-only golden source in `db/module-detailed-design.md`; no DB implementation work is marked complete.
+- Storage abstraction boundary remains guarded: backend selection is explicit, Docker structured read/write can target PostgreSQL, and no hidden dual-write or silent fallback is introduced.
+- DB-era identity/versioning/reparse policy remains governed by `db/module-detailed-design.md`; the current runtime switch covers new-document structured persistence only and does not complete hard-reparse or existing JSON migration.
 - Phase 1 logical DB schema proposal is captured in `db/module-detailed-design.md`; it is documentation-only and has no unresolved Phase 1 logical schema confirmation items in `db/module-checklist.md`.
 - Profile metadata and post-structure enrichment boundaries are captured as advisory signals, not parser authority.
 - Task-layout projection boundary is documented as read/projection-focused in current docs/checklists.

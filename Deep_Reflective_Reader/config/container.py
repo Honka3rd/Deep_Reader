@@ -35,6 +35,10 @@ from document_structure.section_splitter import CommonSectionSplitter
 from document_structure.section_splitter_selector import SectionSplitterSelector
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from document_structure.structured_document_store import StructuredDocumentStore
+from db.postgres_structured_document_artifact_repository import (
+    PostgresStructuredDocumentArtifactRepository,
+)
+from db.postgres_structured_document_store import PostgresStructuredDocumentStore
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile_evidence_builder import DocumentProfileEvidenceBuilder
@@ -262,12 +266,31 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         section_splitter_selector=section_splitter_selector,
     )
 
-    structured_document_store = providers.Singleton(
+    file_structured_document_store = providers.Singleton(
         StructuredDocumentStore,
     )
-    structured_document_artifact_repository = providers.Singleton(
+    postgres_structured_document_store = providers.Singleton(
+        PostgresStructuredDocumentStore,
+        dsn=config.postgres_dsn,
+        namespace=config.postgres_namespace,
+    )
+    structured_document_store = providers.Selector(
+        config.structured_storage_backend,
+        file=file_structured_document_store,
+        postgres=postgres_structured_document_store,
+    )
+    file_structured_document_artifact_repository = providers.Singleton(
         StructuredDocumentArtifactRepository,
         store=structured_document_store,
+    )
+    postgres_structured_document_artifact_repository = providers.Singleton(
+        PostgresStructuredDocumentArtifactRepository,
+        store=postgres_structured_document_store,
+    )
+    structured_document_artifact_repository = providers.Selector(
+        config.structured_storage_backend,
+        file=file_structured_document_artifact_repository,
+        postgres=postgres_structured_document_artifact_repository,
     )
 
     bundle_provider = providers.Singleton(

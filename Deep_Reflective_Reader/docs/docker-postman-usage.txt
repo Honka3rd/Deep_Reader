@@ -1,0 +1,211 @@
+Deep Reader Docker and Postman Usage Guide
+==========================================
+
+Purpose
+-------
+
+This guide explains how to manually start the containerized Deep Reader
+development environment and test the API with Postman.
+
+The Docker Compose stack starts:
+
+- api: FastAPI application, exposed on host port DEEP_READER_API_PORT.
+- postgres: PostgreSQL database, exposed on host port DEEP_READER_POSTGRES_PORT.
+
+Current scope note:
+
+- PostgreSQL is available as a containerized executable database environment.
+- Docker Compose defaults structured document read/write to PostgreSQL through
+  DEEP_READER_STRUCTURED_STORAGE_BACKEND=postgres.
+- Existing data/structured files are not migrated by this Docker path; new
+  structured document writes go to PostgreSQL when the postgres backend is
+  active.
+
+
+Prerequisites
+-------------
+
+1. Docker Desktop is installed and running.
+2. You are in the repository root:
+
+   cd /Users/wangzeli/Desktop/resources/Business/Deep_Reader
+
+3. Configure environment variables.
+
+   Option A: export OPENAI_API_KEY in your shell:
+
+   export OPENAI_API_KEY=your_key_here
+
+   Option B: copy .env.example to .env and edit it:
+
+   cp .env.example .env
+
+Do not commit real API keys into repository files.
+
+Default local ports:
+
+   DEEP_READER_API_PORT=8000
+   DEEP_READER_POSTGRES_PORT=5433
+
+Default local PostgreSQL credentials:
+
+   POSTGRES_DB=deep_reader
+   POSTGRES_USER=deep_reader
+   POSTGRES_PASSWORD=deep_reader_dev
+
+Structured storage backend:
+
+   DEEP_READER_STRUCTURED_STORAGE_BACKEND=postgres
+
+
+Start API and Database
+----------------------
+
+Run:
+
+   docker compose -f docker-compose.yml up -d --build
+
+Check service status:
+
+   docker compose -f docker-compose.yml ps
+
+Expected state:
+
+   api        running (healthy)   0.0.0.0:8000->8000/tcp
+   postgres   running (healthy)   0.0.0.0:5433->5432/tcp
+
+
+Postman Test 1: Health Check
+----------------------------
+
+Method:
+
+   GET
+
+URL:
+
+   http://localhost:8000/health
+
+Expected response:
+
+   {
+     "status": "ok",
+     "message": "Deep Reader API is running"
+   }
+
+
+Postman Test 2: Task Layout
+---------------------------
+
+This request uses an existing local sample document named APPLE.
+
+Method:
+
+   POST
+
+URL:
+
+   http://localhost:8000/documents/task-layout
+
+Headers:
+
+   Content-Type: application/json
+
+Body:
+
+Choose raw JSON in Postman and use:
+
+   {
+     "doc_name": "APPLE",
+     "refresh_task_units": false
+   }
+
+Expected response shape:
+
+   {
+     "title": "...",
+     "document_id": "...",
+     "chapters": [...]
+   }
+
+The exact response is large. A successful response should include a chapters
+array and return HTTP 200.
+
+
+Database Connection
+-------------------
+
+Use these settings in DBeaver, TablePlus, Postico, DataGrip, or another
+PostgreSQL client:
+
+   Host: localhost
+   Port: value of DEEP_READER_POSTGRES_PORT, default 5433
+   Database: value of POSTGRES_DB, default deep_reader
+   User: value of POSTGRES_USER, default deep_reader
+   Password: value of POSTGRES_PASSWORD, default deep_reader_dev
+
+Command-line psql through Docker:
+
+   docker compose -f docker-compose.yml exec postgres psql -U deep_reader -d deep_reader
+
+Useful psql commands:
+
+   \dt public.*
+   SELECT namespace, document_name, current_structure_version FROM documents;
+   \d+ documents
+   \d+ chapters
+   \d+ sections
+   \d+ task_units
+   \q
+
+
+Useful Docker Commands
+----------------------
+
+View API logs:
+
+   docker compose -f docker-compose.yml logs -f api
+
+View PostgreSQL logs:
+
+   docker compose -f docker-compose.yml logs -f postgres
+
+Restart API:
+
+   docker compose -f docker-compose.yml restart api
+
+Start only PostgreSQL:
+
+   docker compose -f docker-compose.yml up -d postgres
+
+Start only API:
+
+   docker compose -f docker-compose.yml up -d api
+
+Stop services:
+
+   docker compose -f docker-compose.yml down
+
+
+Troubleshooting
+---------------
+
+Docker daemon is not running:
+
+   Start Docker Desktop first, then rerun Docker Compose commands.
+
+Port 5432 is already in use:
+
+   This project maps PostgreSQL to host port 5433 to avoid common local
+   PostgreSQL conflicts. Connect to localhost:5433 from host tools.
+
+API container exits immediately:
+
+   Confirm OPENAI_API_KEY is set in the shell used to run Docker Compose.
+
+API health check fails from the host:
+
+   Check container health and logs:
+
+      docker compose -f docker-compose.yml ps
+      docker compose -f docker-compose.yml logs -f api

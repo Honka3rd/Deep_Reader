@@ -207,6 +207,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_relational_consistency_smoke.py`; `Deep_Reflective_Reader/db/phase-1-schema-design.md`; `Deep_Reflective_Reader/db/phase-1-physical-schema-candidates.md`; `Deep_Reflective_Reader/db/phase-1-orm-model-mapping-plan.md`; `Deep_Reflective_Reader/db/phase-1-repository-storage-interface-plan.md`.
   Notes: Chooses application-managed timestamps for Phase 1. `documents.updated_at` keeps its insert default but must be explicitly set by document mutation statements. `artifacts.updated_at` remains nullable until the first explicit artifact mutation. No PostgreSQL timestamp trigger, lifecycle trigger, hidden ORM hook, or domain mutation trigger was introduced.
 
+- [x] Implement Docker PostgreSQL structured document runtime read/write switch for new documents.
+  Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/db/postgres_structured_document_artifact_repository.py`; `Deep_Reflective_Reader/config/app_DI_config.py`; `Deep_Reflective_Reader/config/container.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `docker-compose.yml`; Docker smoke validation against `documents`, `chapters`, `sections`, `task_units`, and `structured_document_snapshots`; `python -m py_compile`; `Deep_Reflective_Reader/scripts/test_db_phase_1_core_hierarchy_persistence.py`; `Deep_Reflective_Reader/scripts/test_db_phase_1_postgresql_migration_shape.py`.
+  Notes: Adds an explicit `file` / `postgres` structured storage backend switch, with Docker defaulting to PostgreSQL and local runtime defaulting to file storage. PostgreSQL writes current hierarchy rows and reads runtime hierarchy from relational `documents -> chapters -> sections -> task_units` rows; optional `structured_document_snapshots` remain parity/debug evidence only, not runtime authority. Existing `data/structured` files are not production-migrated and remain outside this new-document DB path.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -215,7 +219,7 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-No unchecked future tasks remain in this checklist after the current implementation pass.
+- [ ] Production DB rollout still needs broader hard-reparse transaction implementation, relational artifact/content-block persistence beyond structured-document payload metadata, profile persistence wiring, existing JSON migration tooling if required, and broader API/path regression coverage.
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 
