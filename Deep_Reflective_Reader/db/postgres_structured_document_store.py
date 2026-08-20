@@ -6,6 +6,7 @@ from typing import Any
 
 from config.storage_namespace_helper import StorageNamespaceHelper
 from config.structured_document_storage_config import StructuredDocumentStorageConfig
+from document_structure.document_artifact_repository import DocumentListItem
 from document_structure.section_role import SectionRole
 from document_structure.structured_document import (
     StructuredChapter,
@@ -47,8 +48,15 @@ class PostgresStructuredDocumentStore:
         self,
         document: StructuredDocument,
         target: str | StructuredDocumentStorageConfig | PostgresStructuredDocumentTarget,
+        *,
+        replace_existing_hierarchy: bool = True,
     ) -> None:
-        """Persist the current structured document payload in PostgreSQL."""
+        """Persist the current structured document payload in PostgreSQL.
+
+        ``replace_existing_hierarchy`` is reserved for parser-level replacement
+        saves. Repository metadata/task-layout updates preserve the current
+        document structure version.
+        """
         resolved = self._resolve_target(target)
         payload = document.to_dict()
         metadata_payload = {
@@ -57,6 +65,7 @@ class PostgresStructuredDocumentStore:
             "source_path": document.source_path,
             "structure_error_code": document.structure_error_code,
             "structure_error_message": document.structure_error_message,
+            "parse_provenance": dict(document.parse_provenance),
             "document_task_artifacts": (
                 None
                 if document.document_task_artifacts is None
@@ -66,35 +75,126 @@ class PostgresStructuredDocumentStore:
         psycopg, dict_row, Jsonb = self._load_psycopg()
         with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
             with connection.transaction():
-                row = connection.execute(
+                existing_row = connection.execute(
                     """
-                    INSERT INTO documents (
-                        namespace,
-                        document_name,
-                        current_structure_version,
-                        status,
-                        metadata_payload,
-                        updated_at
-                    )
-                    VALUES (%s, %s, 1, 'active', %s, NOW())
-                    ON CONFLICT (namespace, document_name)
-                    DO UPDATE SET
-                        status = 'active',
-                        metadata_payload = EXCLUDED.metadata_payload,
-                        updated_at = NOW()
-                    RETURNING id, current_structure_version
+                    SELECT id,
+                           current_structure_version
+                    FROM documents
+                    WHERE namespace = %s
+                      AND document_name = %s
+                    FOR UPDATE
                     """,
-                    (
-                        resolved.namespace,
-                        resolved.document_name,
-                        Jsonb(metadata_payload),
-                    ),
+                    (resolved.namespace, resolved.document_name),
                 ).fetchone()
-                if row is None:
-                    raise RuntimeError("PostgresStructuredDocumentStore.save: document upsert failed")
+                if existing_row is None:
+                    row = connection.execute(
+                        """
+                        INSERT INTO documents (
+                            namespace,
+                            document_name,
+                            current_structure_version,
+                            status,
+                            metadata_payload,
+                            updated_at
+                        )
+                        VALUES (%s, %s, 1, 'active', %s, NOW())
+                        RETURNING id, current_structure_version
+                        """,
+                        (
+                            resolved.namespace,
+                            resolved.document_name,
+                            Jsonb(metadata_payload),
+                        ),
+                    ).fetchone()
+                    if row is None:
+                        raise RuntimeError(
+                            "PostgresStructuredDocumentStore.save: document insert failed"
+                        )
+                    document_id = int(row["id"])
+                    previous_structure_version = None
+                    structure_version = int(row["current_structure_version"])
+                    event_type = "initial_parse"
+                    invalidated_artifact_count = 0
+                    invalidated_content_block_count = 0
+                else:
+                    document_id = int(existing_row["id"])
+                    previous_structure_version = int(
+                        existing_row["current_structure_version"]
+                    )
+                    if replace_existing_hierarchy:
+                        structure_version = previous_structure_version + 1
+                        invalidated_artifact_count = self._count_rows(
+                            connection=connection,
+                            table_name="artifacts",
+                            document_id=document_id,
+                        )
+                        invalidated_content_block_count = self._count_rows(
+                            connection=connection,
+                            table_name="content_blocks",
+                            document_id=document_id,
+                        )
+                        connection.execute(
+                            """
+                            UPDATE documents
+                            SET current_structure_version = %s,
+                                status = 'active',
+                                metadata_payload = %s,
+                                updated_at = NOW()
+                            WHERE id = %s
+                            """,
+                            (structure_version, Jsonb(metadata_payload), document_id),
+                        )
+                        self._delete_current_hierarchy_and_derived_rows(
+                            connection=connection,
+                            document_id=document_id,
+                        )
+                        event_type = "hard_reparse"
+                    else:
+                        structure_version = previous_structure_version
+                        event_type = None
+                        invalidated_artifact_count = None
+                        invalidated_content_block_count = None
+                        connection.execute(
+                            """
+                            UPDATE documents
+                            SET status = 'active',
+                                metadata_payload = %s,
+                                updated_at = NOW()
+                            WHERE id = %s
+                            """,
+                            (Jsonb(metadata_payload), document_id),
+                        )
 
-                document_id = int(row["id"])
-                structure_version = int(row["current_structure_version"])
+                if event_type is not None:
+                    connection.execute(
+                        """
+                        INSERT INTO parse_events (
+                            document_id,
+                            event_type,
+                            previous_structure_version,
+                            new_structure_version,
+                            trigger_source,
+                            parser_mode,
+                            reparse_reason,
+                            invalidated_artifact_count,
+                            invalidated_content_block_count,
+                            metadata_payload
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            document_id,
+                            event_type,
+                            previous_structure_version,
+                            structure_version,
+                            "postgres_structured_document_store.save",
+                            self._effective_parser_mode(document.parse_provenance),
+                            None if event_type == "initial_parse" else "force_rebuild",
+                            invalidated_artifact_count,
+                            invalidated_content_block_count,
+                            Jsonb(metadata_payload),
+                        ),
+                    )
                 self._replace_current_hierarchy(
                     connection=connection,
                     document=document,
@@ -235,6 +335,60 @@ class PostgresStructuredDocumentStore:
             section_rows=section_rows,
             task_unit_rows=task_unit_rows,
         )
+
+    def list_documents(
+        self,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> list[DocumentListItem]:
+        """List lightweight active structured document candidates from PostgreSQL."""
+        bounded_limit = max(1, min(limit, 200))
+        normalized_query = (query or "").strip()
+        psycopg, dict_row, _ = self._load_psycopg()
+        query_filter = f"%{normalized_query}%"
+        with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+            if normalized_query:
+                rows = connection.execute(
+                    """
+                    SELECT document_name,
+                           metadata_payload
+                    FROM documents
+                    WHERE namespace = %s
+                      AND status = 'active'
+                      AND (
+                          document_name ILIKE %s
+                          OR COALESCE(metadata_payload->>'title', '') ILIKE %s
+                      )
+                    ORDER BY document_name
+                    LIMIT %s
+                    """,
+                    (self._namespace, query_filter, query_filter, bounded_limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT document_name,
+                           metadata_payload
+                    FROM documents
+                    WHERE namespace = %s
+                      AND status = 'active'
+                    ORDER BY document_name
+                    LIMIT %s
+                    """,
+                    (self._namespace, bounded_limit),
+                ).fetchall()
+        items: list[DocumentListItem] = []
+        for row in rows:
+            metadata_payload = self._dict_payload(row.get("metadata_payload"))
+            title = metadata_payload.get("title")
+            items.append(
+                DocumentListItem(
+                    doc_name=str(row["document_name"]),
+                    title=title if isinstance(title, str) and title.strip() else None,
+                    source="structured_postgres",
+                )
+            )
+        return items
 
     def _replace_current_hierarchy(
         self,
@@ -523,6 +677,37 @@ class PostgresStructuredDocumentStore:
         )
 
     @staticmethod
+    def _count_rows(
+        *,
+        connection: Any,
+        table_name: str,
+        document_id: int,
+    ) -> int:
+        row = connection.execute(
+            f"SELECT COUNT(*) AS row_count FROM {table_name} WHERE document_id = %s",
+            (document_id,),
+        ).fetchone()
+        return 0 if row is None else int(row["row_count"])
+
+    @staticmethod
+    def _delete_current_hierarchy_and_derived_rows(
+        *,
+        connection: Any,
+        document_id: int,
+    ) -> None:
+        for table_name in (
+            "artifacts",
+            "content_blocks",
+            "task_units",
+            "sections",
+            "chapters",
+        ):
+            connection.execute(
+                f"DELETE FROM {table_name} WHERE document_id = %s",
+                (document_id,),
+            )
+
+    @staticmethod
     def _is_positive_int_text(value: str) -> bool:
         try:
             return int(value) > 0 and str(int(value)) == str(value)
@@ -633,6 +818,11 @@ class PostgresStructuredDocumentStore:
             document_task_artifacts=DocumentTaskArtifacts.from_dict(
                 document_metadata.get("document_task_artifacts")
             ),
+            parse_provenance=(
+                {}
+                if not isinstance(document_metadata.get("parse_provenance"), dict)
+                else dict(document_metadata.get("parse_provenance"))
+            ),
         )
 
     def exists(
@@ -709,3 +899,13 @@ class PostgresStructuredDocumentStore:
                 "Install project requirements or use structured_storage_backend='file'."
             ) from error
         return psycopg, dict_row, Jsonb
+
+    @staticmethod
+    def _effective_parser_mode(parse_provenance: dict[str, Any]) -> str | None:
+        value = parse_provenance.get("effective_parser_mode")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        value = parse_provenance.get("requested_parser_mode")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None

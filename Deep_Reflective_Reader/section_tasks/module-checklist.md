@@ -79,6 +79,14 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/section_tasks/module-detailed-design.md`; `Deep_Reflective_Reader/progress.md`
   Notes: 強化 omitted/false/true segmented flag 行為矩陣、compatibility regression、deterministic block id/metadata key 驗證，並新增 CJK/mixed-format fixture coverage（Chinese/Japanese paragraph、mixed paragraph+list、heading-like、table-like）；未修改 task-layout payload/persistence/artifact repository/retrieval/LLM/evaluated_answer。
 
+- [x] Suppress duplicated section/chapter heading line in segmented content endpoint projection
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; live API validation for `/documents/Madame%20Bovary/task-units/2703/content?segmented=true`
+  Notes: `segmented=true` response no longer exposes a duplicated leading hierarchy title inside `content_blocks[0].content`; metadata spans remain mapped to original task-unit content. This is render projection only and does not change task-layout payload, parser authority, hierarchy truth, or artifact persistence.
+
+- [x] Add lightweight parse provenance DTO to task-layout projection
+  Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: `DocumentTaskLayout` carries optional `ParseProvenanceDTO` with requested/effective parser mode and fallback metadata. It does not add heavy content and does not alter Chapter -> Section -> Task Unit hierarchy rendering.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

@@ -21,6 +21,7 @@
 3. section/chapter summary/quiz route 映射。 **[Code-Confirmed]**
 4. task-layout route 將 internal layout DTO 映射為 public chapters-first response。 **[Code-Confirmed]**
 5. 統一 exception -> HTTP status translation（部分路徑）。 **[Code-Confirmed]**
+6. 暴露 lightweight document list/search route，供 UI 取得可選 `doc_name` 候選；不返回 hierarchy/content heavy payload。 **[Code-Confirmed]**
 
 ## 5. Non-Responsibilities
 
@@ -38,6 +39,7 @@
 | Endpoint | Coordinator / Service Entry | Path Type |
 |---|---|---|
 | `GET /health` | direct route handler | stateless read |
+| `GET /documents` | `DocumentArtifactRepository.list_documents` | lightweight read/search |
 | `POST /documents/prepare` | prepare pipeline via coordinator path | write-capable orchestration |
 | `POST /documents/ask` | `QACoordinator` | runtime QA |
 | `POST /documents/task-layout` | `SectionTaskCoordinator.get_document_task_layout` | projection/read-centric |
@@ -52,6 +54,37 @@
 1. `/documents/task-layout`：projection/read path，不應 hidden mutation。 **[Code-Confirmed] + [From HLD]**
 2. diagnostics 是 runtime projection，不應在 route 層回寫 profile。 **[Code-Confirmed] + [From HLD]**
 3. summary/quiz/reparse 端點屬明確 mutation path。 **[Code-Confirmed]**
+4. `GET /documents`：lightweight discovery/read path，只返回 document metadata candidates；不讀取或返回 chapter/section/task-unit content。 **[Code-Confirmed]**
+
+## 8.1 Document List API Contract
+
+`GET /documents` supports the Reader UI document combo box without changing task-layout. The UI opens the combo box by calling the list form without `q`:
+
+```http
+GET /documents?limit=200
+```
+
+Query parameters:
+
+- `q`: optional case-insensitive substring query against `doc_name` and title; not required for the Reader UI combo-box open behavior.
+- `limit`: optional bounded result count.
+
+Response shape:
+
+- `items[]`: ordered document candidates.
+- each item includes `doc_name`, optional `title`, and `source`.
+- `query`: normalized query string used for filtering.
+- `total`: number of items returned after filtering and limit.
+
+Boundary:
+
+- read-only
+- no hidden prepare/reparse
+- no hierarchy mutation
+- no profile diagnostics write-back
+- no task-layout heavy payload
+- no `content_blocks`
+- backend storage implementation remains behind repository/container selection
 
 ## 9. Manual Reparse Policy
 

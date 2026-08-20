@@ -1,10 +1,12 @@
 from uuid import uuid4
+from pathlib import Path
 import re
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from pydantic import ValidationError
 
 from app.qa_coordinator import QACoordinator
+from document_structure.document_artifact_repository import DocumentListItem
 from api_schemas import (
     ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS,
     ArtifactTargetRefResponse,
@@ -16,10 +18,13 @@ from api_schemas import (
     PrepareDocumentResponse,
     AskDocumentRequest,
     AskDocumentResponse,
+    DocumentListItemResponse,
+    DocumentListResponse,
     DocumentTaskLayoutResponse,
     EnhancedParseRecommendationResponse,
     GetDocumentTaskLayoutRequest,
     GetTaskUnitContentRequest,
+    ParseProvenanceResponse,
     ProfileStructureDiagnosticsResponse,
     QuizQuestionResponse,
     ReparseDocumentStructureRequest,
@@ -45,6 +50,91 @@ app = FastAPI(
 # ⭐ QA coordinator 是自由問答主線 singleton
 qa_coordinator = QACoordinator()
 section_task_coordinator = qa_coordinator.container.section_task_coordinator()
+document_artifact_repository = qa_coordinator.container.structured_document_artifact_repository()
+
+_RAW_DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")
+_RAW_DOCUMENT_BASE_DIR = Path("data/raw")
+
+
+def _raw_document_doc_name(path: Path, sibling_counts: dict[str, int]) -> str:
+    """Return stable API doc_name for a raw file candidate."""
+    if sibling_counts.get(path.stem, 0) > 1:
+        return path.name
+    return path.stem
+
+
+def _list_raw_documents(
+    query: str | None = None,
+    limit: int = 200,
+    base_dir: Path = _RAW_DOCUMENT_BASE_DIR,
+) -> list[DocumentListItem]:
+    """List raw document files as lightweight discovery candidates."""
+    bounded_limit = max(1, min(limit, 200))
+    normalized_query = (query or "").strip().casefold()
+    if not base_dir.exists():
+        return []
+
+    raw_paths = [
+        path
+        for path in sorted(base_dir.iterdir(), key=lambda candidate: candidate.name.casefold())
+        if path.is_file() and path.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS
+    ]
+    sibling_counts: dict[str, int] = {}
+    for path in raw_paths:
+        sibling_counts[path.stem] = sibling_counts.get(path.stem, 0) + 1
+
+    candidates: list[DocumentListItem] = []
+    for path in raw_paths:
+        doc_name = _raw_document_doc_name(path, sibling_counts)
+        title = path.stem
+        searchable = f"{doc_name} {title}".casefold()
+        if normalized_query and normalized_query not in searchable:
+            continue
+        candidates.append(
+            DocumentListItem(
+                doc_name=doc_name,
+                title=title,
+                source=f"raw{path.suffix.casefold()}",
+            )
+        )
+        if len(candidates) >= bounded_limit:
+            break
+    return candidates
+
+
+def _merge_document_candidates(
+    structured_items: list[DocumentListItem],
+    raw_items: list[DocumentListItem],
+    limit: int,
+) -> list[DocumentListItem]:
+    """Merge structured and raw candidates without duplicating the same doc_name."""
+    bounded_limit = max(1, min(limit, 200))
+    merged_by_name: dict[str, DocumentListItem] = {}
+
+    for item in structured_items:
+        merged_by_name[item.doc_name] = item
+
+    for item in raw_items:
+        existing = merged_by_name.get(item.doc_name)
+        if existing is None:
+            merged_by_name[item.doc_name] = item
+            continue
+        existing_sources = {
+            source.strip()
+            for source in existing.source.split("+")
+            if source.strip()
+        }
+        existing_sources.add(item.source)
+        merged_by_name[item.doc_name] = DocumentListItem(
+            doc_name=existing.doc_name,
+            title=existing.title or item.title,
+            source="+".join(sorted(existing_sources)),
+        )
+
+    return sorted(
+        merged_by_name.values(),
+        key=lambda item: item.doc_name.casefold(),
+    )[:bounded_limit]
 
 
 def _filter_artifact_target_metadata(metadata: object) -> dict[str, object] | None:
@@ -137,6 +227,54 @@ Returns:
         status="ok",
         message="Deep Reader API is running",
     )
+
+
+@app.get("/documents", response_model=DocumentListResponse)
+def list_documents(
+    q: str | None = Query(
+        None,
+        description="Optional case-insensitive substring query against document name/title.",
+    ),
+    limit: int = Query(
+        50,
+        ge=1,
+        le=200,
+        description="Maximum number of document candidates to return.",
+    ),
+):
+    """List lightweight document candidates for UI document search."""
+    normalized_query = None if q is None or not q.strip() else q.strip()
+    try:
+        items = document_artifact_repository.list_documents(
+            query=normalized_query,
+            limit=200,
+        )
+        raw_items = _list_raw_documents(
+            query=normalized_query,
+            limit=200,
+        )
+        merged_items = _merge_document_candidates(
+            structured_items=items,
+            raw_items=raw_items,
+            limit=limit,
+        )
+        response_items = [
+            DocumentListItemResponse(
+                doc_name=item.doc_name,
+                title=item.title,
+                source=item.source,
+            )
+            for item in merged_items
+        ]
+        return DocumentListResponse(
+            items=response_items,
+            query=normalized_query,
+            total=len(response_items),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
 
 
 @app.post("/documents/prepare", response_model=PrepareDocumentResponse)
@@ -489,6 +627,17 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                     parser_post_shape_mismatch=layout.profile_diagnostics.parser_post_shape_mismatch,
                     enhanced_parse_hint=layout.profile_diagnostics.enhanced_parse_hint,
                     warnings=list(layout.profile_diagnostics.warnings),
+                )
+            ),
+            parse_provenance=(
+                None
+                if layout.parse_provenance is None
+                else ParseProvenanceResponse(
+                    requested_parser_mode=layout.parse_provenance.requested_parser_mode,
+                    effective_parser_mode=layout.parse_provenance.effective_parser_mode,
+                    fallback_used=layout.parse_provenance.fallback_used,
+                    fallback_reason=layout.parse_provenance.fallback_reason,
+                    source=layout.parse_provenance.source,
                 )
             ),
         )

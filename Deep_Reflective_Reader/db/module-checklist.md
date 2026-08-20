@@ -215,6 +215,18 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/scripts/test_postgres_structured_uri_prepare_and_load.py`; `Deep_Reflective_Reader/docs/postgres-structured-runtime-verification.txt`; Docker verification of `/documents/task-layout` returning HTTP 200 after the URI fix; Docker verification of `/documents/section-summary` for `Madame Bovary` runtime section id `2` returning HTTP 200.
   Notes: Preserves `postgres://structured/...` targets through the structured store abstraction instead of converting them through local filesystem `Path` handling, and makes PostgreSQL task-unit writes idempotent on `(section_id, task_unit_order)` to avoid duplicate-key failures during repeated or overlapping task-layout writes. The fix keeps relational hierarchy rows as runtime authority and does not introduce JSONB snapshot fallback.
 
+- [x] Add PostgreSQL lightweight document list/search support
+  Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/db/postgres_structured_document_artifact_repository.py`; `Deep_Reflective_Reader/main.py`
+  Notes: Adds `list_documents(query, limit)` against active `documents` rows with namespace scoping and title/name filtering. The API remains read-only and no-heavy-payload; it does not alter hierarchy persistence, parser authority, or task-layout semantics.
+
+- [x] Fix PostgreSQL hard reparse replacement and task-layout id alignment.
+  Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/db/postgres_structured_document_artifact_repository.py`; Docker verification of `/documents/reparse-structure` for `Madame Bovary` with `parser_mode=llm_enhanced` returning HTTP 200 and `section_count=29`; Docker verification of `/documents/task-layout` with `refresh_task_units=true` returning DB task-unit id `1364`; Docker verification of `/documents/Madame%20Bovary/task-units/1364/content?segmented=true` returning HTTP 200 with 8 content blocks.
+  Notes: Existing-document parser replacement now clears current hierarchy and derived rows inside the PostgreSQL save transaction before inserting the accepted candidate hierarchy and writing a `hard_reparse` parse event. Repository task-layout/artifact saves preserve `current_structure_version`, and PostgreSQL task-layout refresh returns reloaded DB-generated task-unit ids that the content endpoint can resolve.
+
+- [x] Persist PostgreSQL structured parse provenance for task-layout observability
+  Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; live reparse validation for `Madame Bovary`; live `/documents/task-layout` validation showing `requested_parser_mode=llm_enhanced`, `effective_parser_mode=common`, `fallback_used=true`, `fallback_reason=abnormal_section_output`
+  Notes: PostgreSQL document metadata stores `parse_provenance`, and parse events record the effective parser mode. This is provenance only; `documents.current_structure_version` remains hierarchy version authority.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

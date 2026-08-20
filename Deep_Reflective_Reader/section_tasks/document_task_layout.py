@@ -230,6 +230,27 @@ class ProfileStructureDiagnosticsDTO:
 
 
 @dataclass(frozen=True)
+class ParseProvenanceDTO:
+    """Lightweight parser provenance for task-layout observability."""
+
+    requested_parser_mode: str | None = None
+    effective_parser_mode: str | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    source: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize parser provenance into JSON-friendly dictionary."""
+        return {
+            "requested_parser_mode": self.requested_parser_mode,
+            "effective_parser_mode": self.effective_parser_mode,
+            "fallback_used": self.fallback_used,
+            "fallback_reason": self.fallback_reason,
+            "source": self.source,
+        }
+
+
+@dataclass(frozen=True)
 class DocumentTaskLayout:
     """Frontend-consumable layout with hierarchy-first chapters tree.
 
@@ -247,6 +268,7 @@ class DocumentTaskLayout:
     chapter_artifacts: dict[str, ArtifactAvailabilityDTO] = field(default_factory=dict)
     enhanced_parse_recommendation: EnhancedParseRecommendationDTO | None = None
     profile_diagnostics: ProfileStructureDiagnosticsDTO | None = None
+    parse_provenance: ParseProvenanceDTO | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize layout into JSON-friendly dictionary."""
@@ -270,5 +292,10 @@ class DocumentTaskLayout:
                 None
                 if self.profile_diagnostics is None
                 else self.profile_diagnostics.to_dict()
+            ),
+            "parse_provenance": (
+                None
+                if self.parse_provenance is None
+                else self.parse_provenance.to_dict()
             ),
         }

@@ -30,6 +30,8 @@
 ## 6. Important Data Structures / Contracts
 
 - `PrepareDocumentRequest/Response`
+- `DocumentListItemResponse`
+- `DocumentListResponse`
 - `GetDocumentTaskLayoutRequest`
 - `DocumentTaskLayoutResponse`
 - `SummarizeChapterRequest`, `ChapterQuizRequest`
@@ -61,6 +63,16 @@
 - 問答逐題全文內容
 
 **[Code-Confirmed] + [From HLD]**
+
+`DocumentListResponse` follows the same lightweight API principle for document discovery:
+
+- returns document candidates only
+- does not expose raw text
+- does not expose chapter/section/task-unit hierarchy
+- does not expose task-unit content or `content_blocks`
+- does not include diagnostics/profile payload
+
+**[Code-Confirmed]**
 
 ## 10. Cache/Validity Reason Code Surface (Current)
 

@@ -39,6 +39,14 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: `get_task_unit_content(..., segmented: bool = False)` 新增顯式 passthrough；`segmented=true` 使用 shared segmentation helper，`segmented=false/省略` 保持舊行為；未新增 fallback/hidden mutation/profile write-back。
 
+- [x] Suppress duplicated leading hierarchy title in segmented render blocks
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; live API validation for `/documents/Madame%20Bovary/task-units/2703/content?segmented=true`
+  Notes: coordinator 在 `segmented=true` content projection 中移除首個 block 內與 section/chapter title 相同的 leading line，保留原 `TaskUnit.content` 與 quote-span 回溯語義；不改 task-layout、不寫 persistence、不改 parser hierarchy。
+
+- [x] Project structured parse provenance through task-layout coordinator response
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; live API validation for `/documents/task-layout` and `/api/documents/task-layout`
+  Notes: `get_document_task_layout` exposes advisory `parse_provenance` from the accepted `StructuredDocument`; this is read-only projection and does not control parser behavior or mutate hierarchy/profile state.
+
 - [x] Implements QA orchestration via `QACoordinator` across prepare, retrieval, prompt, and session update paths.
   Evidence: `Deep_Reflective_Reader/app/qa_coordinator.py; Deep_Reflective_Reader/app/module-detailed-design.md (Main Responsibilities)`
   Notes: Coordinator layer exists as application orchestration, not API schema code.

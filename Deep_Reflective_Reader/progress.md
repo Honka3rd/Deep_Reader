@@ -32,14 +32,14 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 7 | 0 | Completed Baseline Captured |
+| `app/` | package | `app/module-checklist.md` | 9 | 0 | Task Layout Parse Provenance Verified |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `db/` | package + design module | `db/module-checklist.md` | 41 | 0 | PostgreSQL Section Summary Runtime Verified |
+| `db/` | package + design module | `db/module-checklist.md` | 45 | 0 | PostgreSQL Parse Provenance Runtime Verified |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 11 | 0 | Completed Baseline Captured |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 15 | 0 | Parser Provenance Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -49,14 +49,14 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 13 | 0 | Completed Baseline Captured |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 15 | 0 | Task Layout Parse Provenance Verified |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 10 | 0 | Completed Baseline Captured |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 12 | 0 | Task Layout Parse Provenance Verified |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 9 | 0 | Completed Baseline Captured |
+| `main.py` | root-python-module | `main.module-checklist.md` | 11 | 0 | Task Layout Parse Provenance Verified |
 
 ## 5. Package Module Progress
 
@@ -64,8 +64,8 @@ It is used to:
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `7`
+- Status: `Task Layout Parse Provenance Verified`
+- Completed item count: `9`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -77,6 +77,8 @@ It is used to:
 - [x] Exposes task-unit content lookup through coordinator boundary with hierarchy-only id resolution.
 - [x] Passes through additive `content_blocks` in task-unit content coordinator response via `TaskUnit.to_content_blocks()`.
 - [x] Passes through explicit `segmented` option in task-unit content coordinator response (`segmented=true` uses shared segmentation helper; default/false keeps compatibility-safe block behavior).
+- [x] Suppresses duplicated leading hierarchy title in segmented render blocks while preserving quote-span traceability.
+- [x] Projects accepted structured parse provenance through task-layout coordinator response without mutating hierarchy/profile state.
 
 #### Needs Confirmation
 
@@ -197,8 +199,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
-- Status: `PostgreSQL Runtime Switch Captured`
-- Completed item count: `40`
+- Status: `PostgreSQL Parse Provenance Runtime Verified`
+- Completed item count: `45`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -243,6 +245,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines PostgreSQL `updated_at` ownership as application-managed.
 - [x] Implements Docker PostgreSQL structured document runtime read/write switch for new documents.
 - [x] Fixes PostgreSQL structured runtime read path for section-summary verification.
+- [x] Persists structured parse provenance in PostgreSQL metadata and exposes effective parser mode through parse events for task-layout observability.
 
 #### Needs Confirmation
 
@@ -266,8 +269,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `11`
+- Status: `Parser Provenance Captured`
+- Completed item count: `15`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -283,6 +286,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Removed `allow_legacy_fallback` API surface and enforced hierarchy-only runtime lookup.
 - [x] Isolated legacy read compatibility from normal model/repository boundaries via strict hierarchy read contract + explicit migration-only loaders.
 - [x] Defined hierarchy-aware artifact target validation boundary as future-direction governance contract (`ArtifactTargetRef` metadata-only semantics, validation lifecycle, stale-ref/error taxonomy, allowed target combinations, and metadata glossary alignment).
+- [x] Rejects LLM split plans that resolve main-body sections to TOC-only spans and falls back before hierarchy persistence.
+- [x] Records requested/effective parser mode and LLM fallback reason as advisory `StructuredDocument` parse provenance.
 
 #### Needs Confirmation
 
@@ -485,8 +490,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `13`
+- Status: `Task Layout Parse Provenance Verified`
+- Completed item count: `15`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -504,6 +509,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Documents minimum artifact target metadata glossary and allowed target combinations for content endpoint pass-through boundary.
 - [x] Prepares section_tasks segmentation design direction for future content-block projection behavior (endpoint projection semantics, failure/validation boundary, identity constraints, and artifact-target alignment guardrails) without runtime/API changes.
 - [x] Hardens segmented task-unit content endpoint behavior with deterministic flag-matrix regression and multilingual segmentation fixtures (Chinese/Japanese paragraphs, mixed paragraph+list, heading-like, table-like) without task-layout/persistence/artifact/retrieval/LLM/evaluated_answer changes.
+- [x] Suppresses duplicated section/chapter heading line in segmented content endpoint projection without changing hierarchy truth or task-layout payload.
+- [x] Adds optional `ParseProvenanceDTO` to task-layout projection without adding heavy content or changing hierarchy nodes.
 
 #### Needs Confirmation
 
@@ -574,8 +581,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `10`
+- Status: `Task Layout Parse Provenance Verified`
+- Completed item count: `12`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -590,6 +597,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Reduces raw content exposure by making `content` compatibility/debug-oriented and introducing explicit `include_raw_content` opt-in while keeping `content_blocks` primary.
 - [x] Validates content-block artifact target metadata response schema with explicit enum/constraint fail-fast behavior.
 - [x] Reuses shared artifact target level contract to remove duplicated enum definitions across shared/API schema boundaries.
+- [x] Defines lightweight document list/search API schemas.
+- [x] Defines optional task-layout `parse_provenance` response schema with requested/effective parser mode and fallback metadata.
 
 #### Needs Confirmation
 
@@ -659,8 +668,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `9`
+- Status: `Task Layout Parse Provenance Verified`
+- Completed item count: `11`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -674,6 +683,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Stops returning raw task-unit `content` by default and adds explicit `include_raw_content` compatibility flag.
 - [x] Normalizes rich-content endpoint response mapping with official top-level content block schema usage.
 - [x] Maps content-block artifact target metadata in task-unit content endpoint response with safe glossary-key filtering.
+- [x] Adds lightweight document list/search endpoint.
+- [x] Maps optional task-layout parse provenance to public REST response and validates it through backend and UI proxy routes.
 
 #### Needs Confirmation
 

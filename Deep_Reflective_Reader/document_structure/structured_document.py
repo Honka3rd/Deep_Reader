@@ -158,6 +158,7 @@ class StructuredDocument:
     structure_error_code: str | None = None
     structure_error_message: str | None = None
     document_task_artifacts: DocumentTaskArtifacts | None = None
+    parse_provenance: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(
         self,
@@ -175,6 +176,7 @@ class StructuredDocument:
             "chapters": [chapter.to_dict() for chapter in self.chapters],
             "structure_error_code": self.structure_error_code,
             "structure_error_message": self.structure_error_message,
+            "parse_provenance": dict(self.parse_provenance),
             "document_task_artifacts": (
                 None
                 if self.document_task_artifacts is None
@@ -236,6 +238,11 @@ class StructuredDocument:
             ),
             document_task_artifacts=DocumentTaskArtifacts.from_dict(
                 data.get("document_task_artifacts")
+            ),
+            parse_provenance=(
+                {}
+                if not isinstance(data.get("parse_provenance"), dict)
+                else dict(data.get("parse_provenance"))
             ),
         )
 

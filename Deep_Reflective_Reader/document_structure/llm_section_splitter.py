@@ -62,9 +62,21 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         language: LanguageCode = LanguageCode.UNKNOWN,
     ) -> list[StructuredSection]:
         """Split by LLM-generated plan, with safe fallback to common splitter."""
+        sections, _provenance = self.split_with_provenance(
+            raw_text=raw_text,
+            language=language,
+        )
+        return sections
+
+    def split_with_provenance(
+        self,
+        raw_text: str,
+        language: LanguageCode = LanguageCode.UNKNOWN,
+    ) -> tuple[list[StructuredSection], dict[str, object]]:
+        """Split by LLM plan and return advisory parser provenance."""
         try:
             plan = self.build_split_plan(raw_text=raw_text, language=language)
-            return self.apply_split_plan(
+            return self.apply_split_plan_with_provenance(
                 raw_text=raw_text,
                 language=language,
                 split_plan=plan,
@@ -74,7 +86,11 @@ class LLMSectionSplitter(AbstractSectionSplitter):
                 "LLMSectionSplitter#split_fallback_common:",
                 f"reason={error}",
             )
-            return self.common_splitter.split(raw_text=raw_text, language=language)
+            return self._fallback_common_with_provenance(
+                raw_text=raw_text,
+                language=language,
+                reason=f"exception:{type(error).__name__}",
+            )
 
     def build_split_plan(
         self,
@@ -117,23 +133,53 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         split_plan: SectionSplitPlan,
     ) -> list[StructuredSection]:
         """Apply LLM split plan locally; fallback to common splitter when unresolved."""
-        def fallback_common(reason: str) -> list[StructuredSection]:
-            print(
-                "LLMSectionSplitter#apply_fallback_common:",
-                f"reason={reason}",
-            )
-            return self.common_splitter.split(raw_text=raw_text, language=language)
+        sections, _provenance = self.apply_split_plan_with_provenance(
+            raw_text=raw_text,
+            language=language,
+            split_plan=split_plan,
+        )
+        return sections
 
+    def apply_split_plan_with_provenance(
+        self,
+        *,
+        raw_text: str,
+        language: LanguageCode,
+        split_plan: SectionSplitPlan,
+    ) -> tuple[list[StructuredSection], dict[str, object]]:
+        """Apply LLM split plan and return advisory fallback provenance."""
         if language == LanguageCode.UNKNOWN:
             raise ValueError("bad_request: unsupported document structure language 'unknown'")
         if not raw_text:
-            return [self.common_splitter._single_fallback_section(raw_text)]
+            return self._fallback_common_with_provenance(
+                raw_text=raw_text,
+                language=language,
+                reason="empty_raw_text",
+            )
         if not split_plan.sections:
-            return fallback_common("empty_split_instructions")
+            fallback_reason = (
+                str(split_plan.metadata.get("fallback_reason"))
+                if isinstance(split_plan.metadata, dict)
+                and split_plan.metadata.get("fallback_reason") is not None
+                else "empty_split_instructions"
+            )
+            return self._fallback_common_with_provenance(
+                raw_text=raw_text,
+                language=language,
+                reason=fallback_reason,
+            )
 
         line_infos = self.common_splitter._build_line_infos(raw_text)
         if not line_infos:
-            return fallback_common("empty_line_infos")
+            return self._fallback_common_with_provenance(
+                raw_text=raw_text,
+                language=language,
+                reason="empty_line_infos",
+            )
+        common_sections = self._build_common_baseline_sections(
+            raw_text=raw_text,
+            language=language,
+        )
 
         boundary_items: list[tuple[int, str, int, SectionRole | None, str | None]] = []
         for instruction in split_plan.sections:
@@ -155,7 +201,11 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             )
 
         if not boundary_items:
-            return fallback_common("no_resolved_boundaries")
+            return self._fallback_common_with_provenance(
+                raw_text=raw_text,
+                language=language,
+                reason="no_resolved_boundaries",
+            )
 
         ordered_boundaries: list[tuple[int, str, int, SectionRole | None, str | None]] = []
         seen_starts: set[int] = set()
@@ -175,19 +225,77 @@ class LLMSectionSplitter(AbstractSectionSplitter):
                 raw_text=raw_text,
                 language=language,
                 resolved_boundaries=ordered_boundaries,
+                common_sections=common_sections,
             )
         if len(ordered_boundaries) < 2:
-            return fallback_common("resolved_boundaries_too_few_after_augmentation")
+            return self._fallback_common_with_provenance(
+                raw_text=raw_text,
+                language=language,
+                reason="resolved_boundaries_too_few_after_augmentation",
+            )
         if not self._is_strictly_increasing_boundaries(ordered_boundaries):
-            return fallback_common("boundaries_not_strictly_increasing")
+            return self._fallback_common_with_provenance(
+                raw_text=raw_text,
+                language=language,
+                reason="boundaries_not_strictly_increasing",
+            )
+
+        ordered_boundaries = self._merge_boundaries_with_common_baseline(
+            resolved_boundaries=ordered_boundaries,
+            common_sections=common_sections,
+        )
 
         sections = self._build_sections_from_boundaries(
             raw_text=raw_text,
             boundaries=ordered_boundaries,
         )
         if not self._is_sections_output_reasonable(raw_text=raw_text, sections=sections):
-            return fallback_common("abnormal_section_output")
-        return sections
+            return self._fallback_common_with_provenance(
+                raw_text=raw_text,
+                language=language,
+                reason="abnormal_section_output",
+            )
+        return sections, self._build_parse_provenance(
+            requested_parser_mode=SectionParserMode.LLM_ENHANCED.value,
+            effective_parser_mode=SectionParserMode.LLM_ENHANCED.value,
+            fallback_used=False,
+            fallback_reason=None,
+        )
+
+    def _fallback_common_with_provenance(
+        self,
+        *,
+        raw_text: str,
+        language: LanguageCode,
+        reason: str,
+    ) -> tuple[list[StructuredSection], dict[str, object]]:
+        print(
+            "LLMSectionSplitter#apply_fallback_common:",
+            f"reason={reason}",
+        )
+        sections = self.common_splitter.split(raw_text=raw_text, language=language)
+        return sections, self._build_parse_provenance(
+            requested_parser_mode=SectionParserMode.LLM_ENHANCED.value,
+            effective_parser_mode=SectionParserMode.COMMON.value,
+            fallback_used=True,
+            fallback_reason=reason,
+        )
+
+    @staticmethod
+    def _build_parse_provenance(
+        *,
+        requested_parser_mode: str,
+        effective_parser_mode: str,
+        fallback_used: bool,
+        fallback_reason: str | None,
+    ) -> dict[str, object]:
+        return {
+            "requested_parser_mode": requested_parser_mode,
+            "effective_parser_mode": effective_parser_mode,
+            "fallback_used": fallback_used,
+            "fallback_reason": fallback_reason,
+            "source": "llm_section_splitter",
+        }
 
     def _build_split_plan_prompt(self, *, raw_text: str, language: LanguageCode) -> str:
         """Build strict JSON-only prompt for region-aware structure planning."""
@@ -281,16 +389,14 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         raw_text: str,
         language: LanguageCode,
         resolved_boundaries: list[tuple[int, str, int, SectionRole | None, str | None]],
+        common_sections: list[StructuredSection] | None = None,
     ) -> list[tuple[int, str, int, SectionRole | None, str | None]]:
         """Augment partial LLM boundaries with conservative common-split boundaries."""
-        try:
-            common_sections = self.common_splitter.split(raw_text=raw_text, language=language)
-        except Exception as error:
-            print(
-                "LLMSectionSplitter#boundary_augmentation_skipped:",
-                f"reason=common_split_failed error={error}",
-            )
-            return resolved_boundaries
+        common_sections = (
+            common_sections
+            if common_sections is not None
+            else self._build_common_baseline_sections(raw_text=raw_text, language=language)
+        )
 
         merged_by_start: dict[int, tuple[int, str, int, SectionRole | None, str | None]] = {
             item[0]: item for item in resolved_boundaries
@@ -318,6 +424,92 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             f"resolved={len(resolved_boundaries)} augmented={len(augmented)}",
         )
         return augmented
+
+    def _merge_boundaries_with_common_baseline(
+        self,
+        *,
+        resolved_boundaries: list[tuple[int, str, int, SectionRole | None, str | None]],
+        common_sections: list[StructuredSection],
+    ) -> list[tuple[int, str, int, SectionRole | None, str | None]]:
+        """Use common split as boundary baseline while preserving same-anchor LLM metadata."""
+        common_boundaries = self._build_common_boundary_items(common_sections)
+        if len(common_boundaries) < 2:
+            return resolved_boundaries
+
+        resolved_by_start = {item[0]: item for item in resolved_boundaries}
+        merged: list[tuple[int, str, int, SectionRole | None, str | None]] = []
+        overlay_count = 0
+        for common_item in common_boundaries:
+            resolved_item = resolved_by_start.get(common_item[0])
+            if resolved_item is None:
+                merged.append(common_item)
+                continue
+            merged.append(resolved_item)
+            overlay_count += 1
+
+        common_starts = {item[0] for item in common_boundaries}
+        llm_special_only = [
+            item
+            for item in resolved_boundaries
+            if item[0] not in common_starts
+            and SectionRole.resolve(item[3]) in {
+                SectionRole.TOC,
+                SectionRole.FRONT_MATTER,
+                SectionRole.APPENDIX,
+                SectionRole.BACK_MATTER,
+            }
+        ]
+        if llm_special_only:
+            merged.extend(llm_special_only)
+            merged.sort(key=lambda item: item[0])
+
+        if len(merged) > len(resolved_boundaries) or overlay_count < len(resolved_boundaries):
+            print(
+                "LLMSectionSplitter#hybrid_common_baseline:",
+                f"resolved={len(resolved_boundaries)} common={len(common_boundaries)} "
+                f"merged={len(merged)} overlays={overlay_count}",
+            )
+        return merged
+
+    def _build_common_baseline_sections(
+        self,
+        *,
+        raw_text: str,
+        language: LanguageCode,
+    ) -> list[StructuredSection]:
+        try:
+            return self.common_splitter.split(raw_text=raw_text, language=language)
+        except Exception as error:
+            print(
+                "LLMSectionSplitter#common_baseline_skipped:",
+                f"reason=common_split_failed error={error}",
+            )
+            return []
+
+    def _build_common_boundary_items(
+        self,
+        common_sections: list[StructuredSection],
+    ) -> list[tuple[int, str, int, SectionRole | None, str | None]]:
+        boundaries: list[tuple[int, str, int, SectionRole | None, str | None]] = []
+        seen_starts: set[int] = set()
+        for section in common_sections:
+            title = (section.title or "").strip()
+            if not title:
+                continue
+            start = int(section.char_start)
+            if start < 0 or start in seen_starts:
+                continue
+            seen_starts.add(start)
+            boundaries.append(
+                (
+                    start,
+                    title,
+                    max(1, int(section.level)),
+                    SectionRole.resolve(section.section_role),
+                    self._normalize_optional_text(section.container_title),
+                )
+            )
+        return sorted(boundaries, key=lambda item: item[0])
 
     def _parse_split_plan_response(self, response_text: str) -> SectionSplitPlan:
         """Parse LLM response to SectionSplitPlan with tolerant JSON extraction."""
@@ -498,7 +690,70 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             return False
         if sections[-1].char_end != text_length:
             return False
+        if not LLMSectionSplitter._has_reasonable_main_body_density(
+            raw_text=raw_text,
+            sections=sections,
+        ):
+            return False
         return True
+
+    @staticmethod
+    def _has_reasonable_main_body_density(
+        *,
+        raw_text: str,
+        sections: list[StructuredSection],
+    ) -> bool:
+        """Reject LLM plans that resolved duplicated headings into TOC-only spans."""
+        if len(raw_text.strip()) < 5_000:
+            return True
+
+        main_body_sections = [
+            section
+            for section in sections
+            if SectionRole.resolve(section.section_role) == SectionRole.MAIN_BODY
+        ]
+        if len(main_body_sections) < 5:
+            return True
+
+        tiny_sections = [
+            section
+            for section in main_body_sections
+            if len(section.content.strip()) < 120
+        ]
+        if len(tiny_sections) / len(main_body_sections) > 0.65:
+            return False
+
+        substantive_sections = [
+            section
+            for section in main_body_sections
+            if LLMSectionSplitter._has_substantive_body_text(section)
+        ]
+        return len(substantive_sections) / len(main_body_sections) >= 0.35
+
+    @staticmethod
+    def _has_substantive_body_text(section: StructuredSection) -> bool:
+        """Return whether a main-body section contains more than heading/list text."""
+        lines = [line.strip() for line in section.content.splitlines() if line.strip()]
+        if not lines:
+            return False
+
+        excluded = {
+            LLMSectionSplitter._normalize_line(value)
+            for value in (section.title, section.container_title)
+            if value
+        }
+        body_lines = [
+            line
+            for line in lines
+            if LLMSectionSplitter._normalize_line(line) not in excluded
+        ]
+        if not body_lines:
+            return False
+
+        body_text = " ".join(body_lines)
+        if len(body_text) < 80:
+            return False
+        return len(re.findall(r"\w+", body_text, flags=re.UNICODE)) >= 10
 
     @staticmethod
     def _normalize_line(value: str) -> str:

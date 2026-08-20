@@ -3,6 +3,7 @@ from enum import StrEnum
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
 from document_structure.llm_section_splitter import LLMSectionSplitter
 from document_structure.section_splitter import CommonSectionSplitter
+from document_structure.structured_document import StructuredSection
 from language.language_code import LanguageCode
 
 
@@ -61,3 +62,26 @@ class SectionSplitterSelector:
         """Convenience method: split by selected mode."""
         splitter = self.get_splitter(mode=mode)
         return splitter.split(raw_text=raw_text, language=language)
+
+    def split_with_provenance(
+        self,
+        *,
+        raw_text: str,
+        language: LanguageCode,
+        mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
+    ) -> tuple[list[StructuredSection], dict[str, object]]:
+        """Split by selected mode and return advisory parse provenance."""
+        resolved_mode = SectionSplitterMode.resolve(mode)
+        if resolved_mode == SectionSplitterMode.LLM_ENHANCED:
+            return self.llm_splitter.split_with_provenance(
+                raw_text=raw_text,
+                language=language,
+            )
+        sections = self.common_splitter.split(raw_text=raw_text, language=language)
+        return sections, {
+            "requested_parser_mode": SectionSplitterMode.COMMON.value,
+            "effective_parser_mode": SectionSplitterMode.COMMON.value,
+            "fallback_used": False,
+            "fallback_reason": None,
+            "source": "common_section_splitter",
+        }

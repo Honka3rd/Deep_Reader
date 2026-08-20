@@ -71,6 +71,18 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/document_structure/module-detailed-design.md (Future Direction Note: Artifact Target Validation Boundary Preparation)`; `Deep_Reflective_Reader/shared/module-detailed-design.md`; `Deep_Reflective_Reader/section_tasks/module-detailed-design.md`; `Deep_Reflective_Reader/progress.md`
   Notes: 明確收斂 ArtifactTargetRef 為 metadata/target intent（非 persistence truth），並固定 future repository trust boundary 必須先做 hierarchy-aware validation；補齊 stale-ref 語義、allowed target combinations、metadata glossary 與 fail-fast error boundary 的 future-direction 契約。
 
+- [x] Add lightweight document discovery repository contract
+  Evidence: `Deep_Reflective_Reader/document_structure/document_artifact_repository.py`; `Deep_Reflective_Reader/document_structure/structured_document_artifact_repository.py`; `Deep_Reflective_Reader/scripts/test_document_list_search_api.py`
+  Notes: 新增 `DocumentListItem` 與 `list_documents(query, limit)`；file-backed implementation 掃描 `*.structured.json` 並只讀 title metadata，不把 hierarchy/content 作 list API payload。
+
+- [x] Reject LLM split plans that resolve main-body sections to TOC-only spans
+  Evidence: `Deep_Reflective_Reader/document_structure/llm_section_splitter.py`; `Deep_Reflective_Reader/scripts/test_llm_section_splitter_region_plan.py`; `PYTHONPATH=Deep_Reflective_Reader python Deep_Reflective_Reader/scripts/test_llm_section_splitter_region_plan.py`; `python -m py_compile Deep_Reflective_Reader/document_structure/llm_section_splitter.py Deep_Reflective_Reader/scripts/test_llm_section_splitter_region_plan.py`
+  Notes: LLM split plan remains advisory; local deterministic validation rejects high-ratio tiny/heading-only `main_body` outputs and falls back to the common splitter instead of persisting a TOC-only hierarchy.
+
+- [x] Record structured parser provenance on accepted StructuredDocument output
+  Evidence: `Deep_Reflective_Reader/document_structure/structured_document.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/document_structure/section_splitter_selector.py`; `Deep_Reflective_Reader/document_structure/llm_section_splitter.py`; `Deep_Reflective_Reader/scripts/test_llm_section_splitter_region_plan.py`
+  Notes: Structured build records requested/effective parser mode and LLM fallback reason as advisory provenance; fallback validation remains deterministic and metadata does not become parser authority.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

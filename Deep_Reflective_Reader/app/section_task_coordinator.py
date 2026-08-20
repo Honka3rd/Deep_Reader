@@ -37,6 +37,7 @@ from section_tasks.document_task_layout import (
     DocumentTaskLayout,
     DocumentTaskLayoutSectionDTO,
     EnhancedParseRecommendationDTO,
+    ParseProvenanceDTO,
     ProfileStructureDiagnosticsDTO,
     SectionTaskMode,
     TaskUnitDTO,
@@ -51,6 +52,7 @@ from section_tasks.task_unit_id_normalizer import TaskUnitIdNormalizer
 from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from shared.task_artifacts import QuizArtifact, SummaryArtifact, TaskArtifacts
+from shared.task_unit_model import TaskUnitContentBlock, build_default_content_block_id
 
 
 @dataclass(frozen=True)
@@ -690,6 +692,9 @@ class SectionTaskCoordinator:
                 document_profile=document_profile,
                 sections=effective_sections,
             ),
+            parse_provenance=self._build_parse_provenance(
+                cached_document.parse_provenance
+            ),
         )
 
     def get_task_unit_content(
@@ -747,7 +752,11 @@ class SectionTaskCoordinator:
             )
 
         content_blocks = (
-            selected_task_unit.segment_content_blocks()
+            self._build_segmented_content_blocks_for_rendering(
+                task_unit=selected_task_unit,
+                section=selected_section,
+                chapter=selected_chapter,
+            )
             if segmented
             else selected_task_unit.to_content_blocks()
         )
@@ -768,6 +777,113 @@ class SectionTaskCoordinator:
             chapter_title=(None if selected_chapter is None else selected_chapter.title),
             is_fallback_generated=selected_task_unit.is_fallback_generated,
         )
+
+    @classmethod
+    def _build_segmented_content_blocks_for_rendering(
+        cls,
+        *,
+        task_unit: TaskUnit,
+        section: StructuredSection,
+        chapter: StructuredChapter | None,
+    ) -> list[TaskUnitContentBlock]:
+        """Build segmented render blocks without duplicating leading hierarchy titles."""
+        content_blocks = task_unit.segment_content_blocks()
+        if not content_blocks:
+            return []
+
+        leading_titles = {
+            cls._normalize_render_heading(value)
+            for value in (section.title, chapter.title if chapter is not None else None)
+            if value
+        }
+        leading_titles.discard("")
+        if not leading_titles:
+            return content_blocks
+
+        adjusted_blocks: list[TaskUnitContentBlock] = []
+        for index, content_block in enumerate(content_blocks):
+            if index == 0:
+                content_block = cls._drop_leading_render_heading(
+                    task_unit_id=task_unit.unit_id,
+                    content_block=content_block,
+                    leading_titles=leading_titles,
+                )
+                if content_block is None:
+                    continue
+            adjusted_blocks.append(content_block)
+
+        return [
+            replace(
+                content_block,
+                block_id=build_default_content_block_id(
+                    task_unit_id=task_unit.unit_id,
+                    block_index=index,
+                ),
+                metadata=cls._reindex_content_block_metadata(
+                    metadata=content_block.metadata,
+                    task_unit_id=task_unit.unit_id,
+                    block_index=index,
+                ),
+            )
+            for index, content_block in enumerate(adjusted_blocks)
+        ]
+
+    @classmethod
+    def _drop_leading_render_heading(
+        cls,
+        *,
+        task_unit_id: str,
+        content_block: TaskUnitContentBlock,
+        leading_titles: set[str],
+    ) -> TaskUnitContentBlock | None:
+        """Remove a leading section/chapter title line from a segmented render block."""
+        lines = content_block.content.splitlines(keepends=True)
+        if len(lines) < 2:
+            return content_block
+
+        first_line = lines[0].strip()
+        if cls._normalize_render_heading(first_line) not in leading_titles:
+            return content_block
+
+        trimmed_content = "".join(lines[1:]).strip()
+        if not trimmed_content:
+            return None
+
+        metadata = None if content_block.metadata is None else dict(content_block.metadata)
+        if metadata is not None and isinstance(metadata.get("quote_span_start"), int):
+            metadata["quote_span_start"] = metadata["quote_span_start"] + len(lines[0])
+
+        return replace(
+            content_block,
+            block_id=build_default_content_block_id(
+                task_unit_id=task_unit_id,
+                block_index=0,
+            ),
+            content=trimmed_content,
+            metadata=metadata,
+        )
+
+    @staticmethod
+    def _reindex_content_block_metadata(
+        *,
+        metadata: dict | None,
+        task_unit_id: str,
+        block_index: int,
+    ) -> dict | None:
+        """Keep metadata content block id aligned after render-only block reindexing."""
+        if metadata is None:
+            return None
+        updated = dict(metadata)
+        updated["content_block_id"] = build_default_content_block_id(
+            task_unit_id=task_unit_id,
+            block_index=block_index,
+        )
+        return updated
+
+    @staticmethod
+    def _normalize_render_heading(value: str | None) -> str:
+        """Normalize heading text for render-only duplicate-title suppression."""
+        return " ".join((value or "").strip().lower().split())
 
     def _compute_current_task_unit_coverage(
         self,
@@ -879,6 +995,34 @@ class SectionTaskCoordinator:
             parser_post_shape_mismatch=parser_post_shape_mismatch,
             enhanced_parse_hint=enhanced_parse_hint,
             warnings=warnings,
+        )
+
+    @staticmethod
+    def _build_parse_provenance(
+        parse_provenance: dict[str, object],
+    ) -> ParseProvenanceDTO | None:
+        """Build task-layout parser provenance projection from structured metadata."""
+        if not isinstance(parse_provenance, dict) or not parse_provenance:
+            return None
+
+        requested = parse_provenance.get("requested_parser_mode")
+        effective = parse_provenance.get("effective_parser_mode")
+        fallback_reason = parse_provenance.get("fallback_reason")
+        source = parse_provenance.get("source")
+        return ParseProvenanceDTO(
+            requested_parser_mode=(
+                requested if isinstance(requested, str) and requested.strip() else None
+            ),
+            effective_parser_mode=(
+                effective if isinstance(effective, str) and effective.strip() else None
+            ),
+            fallback_used=bool(parse_provenance.get("fallback_used", False)),
+            fallback_reason=(
+                fallback_reason
+                if isinstance(fallback_reason, str) and fallback_reason.strip()
+                else None
+            ),
+            source=source if isinstance(source, str) and source.strip() else None,
         )
 
     def _build_chapter_layouts(

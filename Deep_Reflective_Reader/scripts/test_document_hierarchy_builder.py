@@ -41,6 +41,7 @@ def _section(
     role: SectionRole | None,
     content: str,
     task_units: list[TaskUnit],
+    container_title: str | None = None,
 ) -> StructuredSection:
     return StructuredSection(
         section_id=section_id,
@@ -50,6 +51,7 @@ def _section(
         content=content,
         char_start=0,
         char_end=len(content),
+        container_title=container_title,
         section_role=role,
         task_units=task_units,
     )
@@ -331,12 +333,156 @@ def test_no_id_drift_and_no_fake_sections() -> None:
     _assert(built.sections == [], "built document should not keep legacy flat sections mirror")
 
 
+def test_part_container_sections_group_into_parent_chapters() -> None:
+    sections = [
+        _section(
+            section_id="section-0",
+            section_index=0,
+            title="Contents",
+            level=1,
+            role=SectionRole.TOC,
+            content="Contents\nPart I\nChapter One",
+            task_units=[_task_unit("task-unit-0", "Contents", "section-0")],
+        ),
+        _section(
+            section_id="section-1",
+            section_index=1,
+            title="Chapter One",
+            level=2,
+            role=SectionRole.MAIN_BODY,
+            content="Chapter One\nPart one chapter one body.",
+            task_units=[_task_unit("task-unit-1", "body 1", "section-1")],
+            container_title="Part I",
+        ),
+        _section(
+            section_id="section-2",
+            section_index=2,
+            title="Chapter Two",
+            level=2,
+            role=SectionRole.MAIN_BODY,
+            content="Chapter Two\nPart one chapter two body.",
+            task_units=[_task_unit("task-unit-2", "body 2", "section-2")],
+            container_title="Part I",
+        ),
+        _section(
+            section_id="section-3",
+            section_index=3,
+            title="Chapter One",
+            level=2,
+            role=SectionRole.MAIN_BODY,
+            content="Chapter One\nPart two chapter one body.",
+            task_units=[_task_unit("task-unit-3", "body 3", "section-3")],
+            container_title="Part II",
+        ),
+        _section(
+            section_id="section-4",
+            section_index=4,
+            title="Chapter Two",
+            level=2,
+            role=SectionRole.MAIN_BODY,
+            content="Chapter Two\nPart two chapter two body.",
+            task_units=[_task_unit("task-unit-4", "body 4", "section-4")],
+            container_title="Part II",
+        ),
+    ]
+    doc = StructuredDocument(
+        document_id="part-chapter-doc",
+        title="Part Chapter",
+        source_path=None,
+        language="en",
+        raw_text="\n".join(section.content for section in sections),
+        sections=sections,
+    )
+    built = DocumentHierarchyBuilder().build(doc)
+
+    _assert(len(built.chapters) == 3, "toc plus two part chapters should be materialized")
+    _assert(built.chapters[0].chapter_role == "toc", "toc should keep special chapter behavior")
+    body_chapters = built.chapters[1:]
+    _assert([chapter.title for chapter in body_chapters] == ["Part I", "Part II"], "parts should become data chapters")
+    _assert(
+        [[section.title for section in chapter.sections] for chapter in body_chapters]
+        == [["Chapter One", "Chapter Two"], ["Chapter One", "Chapter Two"]],
+        "local chapters should become sections inside each part chapter",
+    )
+    for chapter in body_chapters:
+        _assert(chapter.level == 1, "container chapters should be level 1")
+        _assert(chapter.metadata.get("container_grouping_source") == "container_title", "grouping should be observable metadata")
+        for section in chapter.sections:
+            _assert(section.parent_chapter_id == chapter.chapter_id, "nested section parent should point to part chapter")
+            _assert(section.section_kind == "chapter_body", "local chapter section should retain chapter_body kind")
+            _assert(section.is_implicit_section is False, "container-grouped sections should be explicit")
+            _assert(len(section.task_units) == 1, "task units should be preserved under local chapter sections")
+
+
+def test_container_title_without_parent_pattern_does_not_group() -> None:
+    sections = [
+        _section(
+            section_id="section-0",
+            section_index=0,
+            title="Chapter One",
+            level=2,
+            role=SectionRole.MAIN_BODY,
+            content="Chapter One\nBody",
+            task_units=[_task_unit("task-unit-0", "body 0", "section-0")],
+            container_title="Collected Essays",
+        ),
+        _section(
+            section_id="section-1",
+            section_index=1,
+            title="Chapter Two",
+            level=2,
+            role=SectionRole.MAIN_BODY,
+            content="Chapter Two\nBody",
+            task_units=[_task_unit("task-unit-1", "body 1", "section-1")],
+            container_title="Collected Essays",
+        ),
+        _section(
+            section_id="section-2",
+            section_index=2,
+            title="Chapter Three",
+            level=2,
+            role=SectionRole.MAIN_BODY,
+            content="Chapter Three\nBody",
+            task_units=[_task_unit("task-unit-2", "body 2", "section-2")],
+            container_title="Collected Essays",
+        ),
+        _section(
+            section_id="section-3",
+            section_index=3,
+            title="Chapter Four",
+            level=2,
+            role=SectionRole.MAIN_BODY,
+            content="Chapter Four\nBody",
+            task_units=[_task_unit("task-unit-3", "body 3", "section-3")],
+            container_title="Collected Essays",
+        ),
+    ]
+    doc = StructuredDocument(
+        document_id="single-container-doc",
+        title="Single Container",
+        source_path=None,
+        language="en",
+        raw_text="\n".join(section.content for section in sections),
+        sections=sections,
+    )
+    built = DocumentHierarchyBuilder().build(doc)
+
+    _assert(len(built.chapters) == 4, "single non-parent container should preserve chapter-only behavior")
+    _assert(
+        [chapter.title for chapter in built.chapters]
+        == ["Chapter One", "Chapter Two", "Chapter Three", "Chapter Four"],
+        "chapter titles should remain chapter-level",
+    )
+
+
 def main() -> None:
     test_chapter_only_chinese_novel()
     test_chapter_with_subsections()
     test_old_json_compatibility()
     test_nested_roundtrip()
     test_no_id_drift_and_no_fake_sections()
+    test_part_container_sections_group_into_parent_chapters()
+    test_container_title_without_parent_pattern_does_not_group()
     print(
         json.dumps(
             {
@@ -347,6 +493,8 @@ def main() -> None:
                     "old_json_compatibility",
                     "nested_roundtrip",
                     "no_id_drift_and_no_fake_sections",
+                    "part_container_sections_group_into_parent_chapters",
+                    "container_title_without_parent_pattern_does_not_group",
                 ],
             },
             ensure_ascii=False,

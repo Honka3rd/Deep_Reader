@@ -222,6 +222,13 @@ def _build_cache_valid_document(*, duplicate_unit_id: bool = False) -> Structure
         ],
         sections=[],
         structure_nodes=[],
+        parse_provenance={
+            "requested_parser_mode": "llm_enhanced",
+            "effective_parser_mode": "common",
+            "fallback_used": True,
+            "fallback_reason": "abnormal_section_output",
+            "source": "llm_section_splitter",
+        },
     )
 
     source_hash = SectionTaskCoordinator._compute_source_hash(document)
@@ -368,6 +375,17 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         )
         _assert(layout_response.status_code == 200, "task-layout should succeed")
         layout_payload = layout_response.json()
+        _assert(
+            layout_payload["parse_provenance"]
+            == {
+                "requested_parser_mode": "llm_enhanced",
+                "effective_parser_mode": "common",
+                "fallback_used": True,
+                "fallback_reason": "abnormal_section_output",
+                "source": "llm_section_splitter",
+            },
+            "task-layout should expose lightweight parser provenance",
+        )
         unit_id = layout_payload["chapters"][0]["sections"][0]["task_units"][0]["unit_id"]
         _assert(
             "content_blocks" not in layout_payload["chapters"][0]["sections"][0]["task_units"][0],
@@ -542,6 +560,80 @@ def test_task_unit_content_segmented_true_returns_deterministic_multi_blocks() -
         main.section_task_coordinator = original
 
 
+def test_task_unit_content_segmented_true_suppresses_leading_hierarchy_title() -> None:
+    content = (
+        "Chapter Three\n"
+        "One morning old Rouault brought Charles the money for setting his leg.\n\n"
+        "Charles followed his advice."
+    )
+    coordinator, repository = _build_coordinator(
+        StructuredDocument(
+            document_id="doc-heading-trim",
+            title="Doc Heading Trim",
+            source_path=None,
+            language="en",
+            raw_text=content,
+            chapters=[
+                StructuredChapter(
+                    chapter_id="chapter-three",
+                    title="Chapter Three",
+                    level=2,
+                    chapter_role="main_body",
+                    sections=[
+                        _build_section(
+                            section_id="section-three",
+                            chapter_id="chapter-three",
+                            title="Chapter Three",
+                            unit_id="task-unit-heading-trim",
+                            content=content,
+                        )
+                    ],
+                )
+            ],
+            sections=[],
+            structure_nodes=[],
+        )
+    )
+    client = TestClient(main.app)
+    original = main.section_task_coordinator
+    main.section_task_coordinator = coordinator
+    try:
+        response = client.get(
+            "/documents/Doc Heading Trim/task-units/task-unit-heading-trim/content",
+            params={"segmented": "true"},
+        )
+        _assert(response.status_code == 200, "heading-trim segmented lookup should succeed")
+        payload = response.json()
+
+        first_block = payload["content_blocks"][0]
+        expected_first_content = (
+            "One morning old Rouault brought Charles the money for setting his leg."
+        )
+        _assert(
+            first_block["content"] == expected_first_content,
+            "segmented first block should not duplicate the hierarchy title",
+        )
+        _assert(
+            first_block["metadata"]["quote_span_start"] == len("Chapter Three\n"),
+            "trimmed first block span should start after the hierarchy title line",
+        )
+        _assert(
+            content[
+                first_block["metadata"]["quote_span_start"]:
+                first_block["metadata"]["quote_span_end"]
+            ]
+            == first_block["content"],
+            "trimmed first block quote span should still map to original task-unit content",
+        )
+        _assert(
+            payload["content_blocks"][1]["content"] == "Charles followed his advice.",
+            "second block should remain unchanged",
+        )
+        _assert(repository.write_calls == 0, "heading-trim lookup must not write persistence")
+    finally:
+        main.section_task_coordinator = original
+
+
 def test_task_unit_content_segmented_true_supports_multilingual_paragraph_split() -> None:
     coordinator, repository = _build_coordinator(_build_multilingual_segmentable_document())
     client = TestClient(main.app)
@@ -677,6 +769,7 @@ def test_artifact_target_schema_level_constraints_fail_fast() -> None:
 if __name__ == "__main__":
     test_task_layout_id_then_content_lookup_success()
     test_task_unit_content_segmented_true_returns_deterministic_multi_blocks()
+    test_task_unit_content_segmented_true_suppresses_leading_hierarchy_title()
     test_task_unit_content_segmented_true_supports_multilingual_paragraph_split()
     test_task_unit_content_missing_id_returns_404()
     test_task_unit_content_duplicate_id_fails_fast()

@@ -2,10 +2,14 @@ import os
 import tempfile
 from collections.abc import Callable
 from dataclasses import replace
+import json
 from pathlib import Path
 
 from config.storage_namespace_helper import StorageNamespaceHelper
-from document_structure.document_artifact_repository import DocumentArtifactRepository
+from document_structure.document_artifact_repository import (
+    DocumentArtifactRepository,
+    DocumentListItem,
+)
 from document_structure.document_hierarchy_index import (
     build_section_index_from_chapters,
     flatten_sections_from_chapters,
@@ -37,6 +41,35 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ):
         self.store = store or StructuredDocumentStore()
         self.base_dir = Path(base_dir)
+
+    def list_documents(
+        self,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> list[DocumentListItem]:
+        """List structured document files as lightweight discovery candidates."""
+        bounded_limit = max(1, min(limit, 200))
+        normalized_query = (query or "").strip().casefold()
+        if not self.base_dir.exists():
+            return []
+
+        candidates: list[DocumentListItem] = []
+        for path in sorted(self.base_dir.glob("*.structured.json")):
+            doc_name = path.name[: -len(".structured.json")]
+            title = self._read_document_title(path)
+            searchable = " ".join(part for part in [doc_name, title] if part).casefold()
+            if normalized_query and normalized_query not in searchable:
+                continue
+            candidates.append(
+                DocumentListItem(
+                    doc_name=doc_name,
+                    title=title,
+                    source="structured_file",
+                )
+            )
+            if len(candidates) >= bounded_limit:
+                break
+        return candidates
 
     def load_document(self, doc_name: str) -> StructuredDocument:
         """Load structured document by logical doc name."""
@@ -369,6 +402,18 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             fallback_namespace=StorageNamespaceHelper.DEFAULT_NAMESPACE,
         )
         return self.base_dir / f"{normalized_name}.structured.json"
+
+    @staticmethod
+    def _read_document_title(path: Path) -> str | None:
+        """Read only lightweight title metadata from structured JSON."""
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        title = payload.get("title")
+        return title.strip() if isinstance(title, str) and title.strip() else None
 
     @staticmethod
     def _atomic_save(document: StructuredDocument, path: Path) -> None:

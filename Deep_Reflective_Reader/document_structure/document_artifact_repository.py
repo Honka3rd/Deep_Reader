@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from document_structure.structured_document import StructuredDocument
 from shared.task_artifacts import (
@@ -10,8 +11,26 @@ from shared.task_artifacts import (
 from shared.task_unit_model import TaskUnit
 
 
+@dataclass(frozen=True)
+class DocumentListItem:
+    """Lightweight document metadata for API discovery/search surfaces."""
+
+    doc_name: str
+    title: str | None = None
+    source: str = "structured"
+
+
 class DocumentArtifactRepository(ABC):
     """Repository contract for structured-document task-artifact persistence."""
+
+    @abstractmethod
+    def list_documents(
+        self,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> list[DocumentListItem]:
+        """List lightweight structured document candidates for discovery/search."""
+        raise NotImplementedError
 
     @abstractmethod
     def load_document(self, doc_name: str) -> StructuredDocument:

@@ -67,6 +67,14 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/api_schemas.py; Deep_Reflective_Reader/api_schemas.module-detailed-design.md (Main Responsibilities)`
   Notes: Schema-level validation supports chapter targeting constraints.
 
+- [x] Define lightweight document list/search API schemas
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_document_list_search_api.py`
+  Notes: 新增 `DocumentListItemResponse` / `DocumentListResponse`；response 只返回 document candidates，不暴露 hierarchy/content/diagnostics heavy payload。
+
+- [x] Define task-layout parse provenance response schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; live `/api/documents/task-layout` validation
+  Notes: `DocumentTaskLayoutResponse` includes optional `parse_provenance` with requested/effective parser mode and fallback metadata. The field is lightweight observability metadata and does not expose raw text or task-unit content.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

@@ -225,6 +225,81 @@ def main() -> None:
         "valid plan metadata should be retained under partial-plan acceptance",
     )
 
+    bad_toc_plan_payload = {
+        "parser_mode": "llm_enhanced",
+        "sections": [
+            {
+                "title": f"Chapter {index}",
+                "level": 2,
+                "section_role": "main_body",
+                "container_title": "Part I",
+                "start_anchor_text": f"Chapter {index}",
+                "anchor_match_mode": "exact",
+                "anchor_occurrence": 1,
+            }
+            for index in range(1, 7)
+        ],
+    }
+    bad_toc_raw_text = (
+        "CONTENTS\n"
+        "Chapter 1\n"
+        "Chapter 2\n"
+        "Chapter 3\n"
+        "Chapter 4\n"
+        "Chapter 5\n"
+        "Chapter 6\n\n"
+        "Chapter 1\n"
+        + ("This real chapter opening contains narrative prose and character detail. " * 30)
+        + "\n\nChapter 2\n"
+        + ("The second chapter continues with sustained story text beyond a heading list. " * 30)
+        + "\n\nChapter 3\n"
+        + ("Another body chapter has prose sentences that should not be confused with TOC rows. " * 30)
+        + "\n\nChapter 4\n"
+        + ("More narrative prose appears here with enough density to pass common parsing. " * 30)
+        + "\n\nChapter 5\n"
+        + ("This chapter keeps the raw document long enough for density validation. " * 30)
+        + "\n\nChapter 6\n"
+        + ("Final chapter prose confirms the body starts after the table of contents. " * 30)
+    )
+    bad_toc_splitter = LLMSectionSplitter(
+        llm_provider=_FakeLLMProvider(bad_toc_plan_payload),
+        common_splitter=CommonSectionSplitter(),
+    )
+    bad_toc_sections, bad_toc_provenance = bad_toc_splitter.split_with_provenance(
+        raw_text=bad_toc_raw_text,
+        language=LanguageCode.EN,
+    )
+    bad_toc_main_body = [
+        section
+        for section in bad_toc_sections
+        if section.section_role == "main_body" and (section.title or "").startswith("Chapter")
+    ]
+    _assert(
+        bad_toc_main_body,
+        "bad TOC fixture should still produce main-body sections via fallback",
+    )
+    _assert(
+        min(section.char_start for section in bad_toc_main_body)
+        >= bad_toc_raw_text.index("Chapter 1", bad_toc_raw_text.index("\n\n") + 2),
+        "LLM plan that anchors main_body to TOC headings should be rejected",
+    )
+    _assert(
+        bad_toc_provenance["requested_parser_mode"] == "llm_enhanced",
+        "bad TOC fallback should preserve requested parser mode",
+    )
+    _assert(
+        bad_toc_provenance["effective_parser_mode"] == "llm_enhanced",
+        "bad TOC hybrid should keep enhanced provenance when common baseline repairs boundaries",
+    )
+    _assert(
+        bad_toc_provenance["fallback_used"] is False,
+        "bad TOC hybrid should not report fallback when common baseline repairs boundaries",
+    )
+    _assert(
+        bad_toc_provenance["fallback_reason"] is None,
+        "bad TOC hybrid should not expose fallback reason",
+    )
+
     print(
         json.dumps(
             {

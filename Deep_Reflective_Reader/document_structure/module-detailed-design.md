@@ -20,8 +20,8 @@
 | `document_structure/llm_section_splitter.py` | llm enhanced parser split 實作 | 作為 selector 另一條路徑 **[Code-Confirmed]** |
 | `document_structure/section_splitter_selector.py` | common/llm split mode 選擇 | parser mode contract 中樞 **[Code-Confirmed]** |
 | `document_structure/structured_document_store.py` | structured JSON load/save | normal load 經 strict hierarchy contract 校驗 **[Code-Confirmed]** |
-| `document_structure/document_artifact_repository.py` | artifact repository 抽象介面 | section/chapter/task-unit/document-level methods **[Code-Confirmed]** |
-| `document_structure/structured_document_artifact_repository.py` | 具體 artifact repository（hierarchy-aware） | normal read/write 路徑要求 chapters；legacy 讀取僅 explicit migration helper **[Code-Confirmed]** |
+| `document_structure/document_artifact_repository.py` | artifact repository 抽象介面 | lightweight document discovery plus section/chapter/task-unit/document-level methods **[Code-Confirmed]** |
+| `document_structure/structured_document_artifact_repository.py` | 具體 artifact repository（hierarchy-aware） | normal read/write 路徑要求 chapters；legacy 讀取僅 explicit migration helper；可列出 structured file candidates **[Code-Confirmed]** |
 | `document_structure/enhanced_parse_trigger_evaluator.py` | enhanced parse recommendation 評估器 | recommendation only，非 auto-switch **[Code-Confirmed] + [From HLD]** |
 | `document_structure/document_structure_language_registry.py` | parser/regional/profile-evidence 用語言標記 registry | multi-consumer registry **[Code-Confirmed]** |
 
@@ -32,6 +32,7 @@
 3. 提供 hierarchy-first 查找與一致性檢查 helper。 **[Code-Confirmed]**
 4. 管理 structured artifact 讀寫與 hierarchy-aware artifact 更新。 **[Code-Confirmed]**
 5. 提供 enhanced parse recommendation 訊號。 **[Code-Confirmed]**
+6. 提供 lightweight structured document discovery contract，供 API list/search 使用；不返回 hierarchy/content heavy payload。 **[Code-Confirmed]**
 
 ## 5. Non-Responsibilities
 
@@ -48,6 +49,7 @@
 - `StructuredSection`
 - `SectionSplitterMode`
 - `DocumentArtifactRepository` (interface)
+- `DocumentListItem`
 - `EnhancedParseTriggerDecision`
 
 以上是本 module 的高層契約代表。 **[Code-Confirmed]**

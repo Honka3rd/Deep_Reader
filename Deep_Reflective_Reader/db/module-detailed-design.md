@@ -29,6 +29,8 @@ The existing file-backed runtime remains valid until DB readiness, rollout, and 
 | `db/sqlite_validation/phase_1_core_hierarchy_schema.sql` | SQLite validation-only schema mirroring the core hierarchy subset | Used only by the isolated local validation adapter for accepted hierarchy write/read checks; not a production migration and not the full Phase 1 DDL surface |
 | `db/phase_1_core_schema.py` | Applies the isolated SQLite validation schema to a SQLite connection | Validation helper only; no production runtime switch |
 | `db/sqlite_core_document_store.py` | Minimal SQLite-backed accepted hierarchy write/read adapter | Uses DB-generated IDs on readback; not a production repository abstraction or backend selection mechanism |
+| `db/postgres_structured_document_store.py` | PostgreSQL-backed current StructuredDocument persistence bridge | Supports runtime structured save/load/exists/location and lightweight document list/search for the selected PostgreSQL backend |
+| `db/postgres_structured_document_artifact_repository.py` | PostgreSQL-backed artifact repository adapter | Delegates structured document load/save, task-layout cache updates, and lightweight document list/search to PostgreSQL store |
 
 ## 4. Main Responsibilities
 
@@ -71,6 +73,8 @@ Implemented scope:
 - enforces parse-event row-shape invariants with PostgreSQL CHECK constraints while keeping `documents.current_structure_version` authoritative
 - enforces numeric and span representation integrity with conservative PostgreSQL CHECK constraints without inferring or repairing parser output
 - defines application-managed `updated_at` ownership for PostgreSQL rows without timestamp triggers or hidden lifecycle mutation
+- supports parser-level PostgreSQL hard reparse replacement by clearing current hierarchy/derived rows inside the save transaction before inserting the accepted candidate hierarchy
+- keeps PostgreSQL repository task-layout/artifact updates separate from hard reparse by preserving `current_structure_version` on non-parser repository saves and reloading DB-generated task-unit ids after task-layout cache writes
 
 Out of scope:
 
@@ -78,7 +82,6 @@ Out of scope:
 - profile persistence
 - content-block persistence
 - artifact persistence
-- hard reparse transaction implementation
 - JSONB parity snapshot implementation
 - migration of existing JSON outputs
 - public/domain identity introduction

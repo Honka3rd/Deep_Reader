@@ -66,6 +66,22 @@ class StatusResponse(BaseModel):
     message: str
 
 
+class DocumentListItemResponse(BaseModel):
+    """Lightweight document candidate for document list/search API."""
+
+    doc_name: str
+    title: str | None = None
+    source: str
+
+
+class DocumentListResponse(BaseModel):
+    """Response payload for lightweight document discovery/search."""
+
+    items: list[DocumentListItemResponse]
+    query: str | None = None
+    total: int
+
+
 class SectionTaskRequest(BaseModel):
     """Request payload for section-summary / section-quiz endpoints."""
 
@@ -473,6 +489,31 @@ class ProfileStructureDiagnosticsResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ParseProvenanceResponse(BaseModel):
+    """Lightweight parser provenance for task-layout observability."""
+
+    requested_parser_mode: str | None = Field(
+        None,
+        description="Parser mode requested for the accepted structured hierarchy.",
+    )
+    effective_parser_mode: str | None = Field(
+        None,
+        description="Parser mode that actually produced the accepted hierarchy.",
+    )
+    fallback_used: bool = Field(
+        False,
+        description="True when requested parsing fell back before acceptance.",
+    )
+    fallback_reason: str | None = Field(
+        None,
+        description="Stable reason code when parser fallback was used.",
+    )
+    source: str | None = Field(
+        None,
+        description="Internal provenance source for debugging only.",
+    )
+
+
 class DocumentTaskLayoutResponse(BaseModel):
     """Response payload for reading current effective task-layout snapshot."""
 
@@ -482,6 +523,7 @@ class DocumentTaskLayoutResponse(BaseModel):
     chapters: list[DocumentTaskLayoutChapterResponse]
     enhanced_parse_recommendation: EnhancedParseRecommendationResponse | None
     profile_diagnostics: ProfileStructureDiagnosticsResponse | None = None
+    parse_provenance: ParseProvenanceResponse | None = None
 
 
 class ReparseDocumentStructureRequest(BaseModel):

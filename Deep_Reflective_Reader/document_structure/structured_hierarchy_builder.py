@@ -23,6 +23,26 @@ _EN_SUBSECTION_PATTERN = re.compile(r"^\d+(?:\.\d+)+\b")
 _ZH_SUBSECTION_PATTERN = re.compile(
     r"^第[一二三四五六七八九十百千万两兩〇零0-9]+(?:节|節|部|篇)\b"
 )
+_CONTAINER_PARENT_HEADING_PATTERN = re.compile(
+    r"^(?:part|book|volume|vol\.?|act)\s+"
+    r"(?:\d+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+    r"nineteen|twenty)\b",
+    re.IGNORECASE,
+)
+_LOCAL_CHILD_HEADING_PATTERN = re.compile(
+    r"^(?:chapter|chap\.|scene)\s+"
+    r"(?:\d+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+    r"nineteen|twenty)\b",
+    re.IGNORECASE,
+)
+_ZH_CONTAINER_PARENT_PATTERN = re.compile(
+    r"^(?:第[一二三四五六七八九十百千万两兩〇零0-9]+[部卷篇]|[上下中][部卷篇])\b"
+)
+_ZH_LOCAL_CHILD_PATTERN = re.compile(
+    r"^(?:第[一二三四五六七八九十百千万两兩〇零0-9]+[章节節幕场場])\b"
+)
 
 
 class DocumentHierarchyBuilder:
@@ -43,6 +63,10 @@ class DocumentHierarchyBuilder:
     def build(self, document: StructuredDocument) -> StructuredDocument:
         if not document.sections:
             return replace(document, chapters=[], structure_nodes=[], sections=[])
+
+        container_grouped = self._build_container_grouped_hierarchy(document)
+        if container_grouped is not None:
+            return container_grouped
 
         mutable_chapters: list[_MutableChapter] = []
         current_chapter: _MutableChapter | None = None
@@ -152,6 +176,104 @@ class DocumentHierarchyBuilder:
             for chapter in mutable_chapters
         ]
 
+        return replace(
+            document,
+            chapters=chapters,
+            structure_nodes=[],
+            sections=[],
+        )
+
+    def _build_container_grouped_hierarchy(
+        self,
+        document: StructuredDocument,
+    ) -> StructuredDocument | None:
+        if not _should_group_by_container_title(document.sections):
+            return None
+
+        mutable_chapters: list[_MutableChapter] = []
+        chapter_by_container: dict[str, _MutableChapter] = {}
+        current_special_chapter: _MutableChapter | None = None
+        special_chapter_counts: dict[str, int] = {}
+
+        for section in document.sections:
+            role = section.section_role
+            is_main_body = role in (None, SectionRole.MAIN_BODY)
+            if is_main_body:
+                current_special_chapter = None
+                container_key = _normalize_grouping_title(section.container_title)
+                if container_key:
+                    chapter = chapter_by_container.get(container_key)
+                    if chapter is None:
+                        chapter_id = f"chapter-{len(mutable_chapters)}"
+                        chapter = _MutableChapter(
+                            chapter_id=chapter_id,
+                            title=(section.container_title or "").strip(),
+                            level=1,
+                            chapter_role=SectionRole.MAIN_BODY.value,
+                            sections=[],
+                        )
+                        chapter.metadata["container_grouping_source"] = "container_title"
+                        chapter_by_container[container_key] = chapter
+                        mutable_chapters.append(chapter)
+
+                    nested = self._with_section_parent(
+                        section=section,
+                        parent_chapter_id=chapter.chapter_id,
+                        section_kind="chapter_body",
+                        is_implicit_section=False,
+                    )
+                    chapter.sections.append(nested)
+                    continue
+
+                fallback_chapter = self._ensure_main_body_fallback_chapter(
+                    mutable_chapters=mutable_chapters,
+                    section=section,
+                )
+                standalone_main_body = self._with_section_parent(
+                    section=section,
+                    parent_chapter_id=fallback_chapter.chapter_id,
+                    section_kind="chapter_body" if not fallback_chapter.sections else "subsection",
+                    is_implicit_section=not fallback_chapter.sections,
+                )
+                fallback_chapter.sections.append(standalone_main_body)
+                continue
+
+            special_role = _resolve_special_chapter_role(section)
+            if (
+                current_special_chapter is None
+                or current_special_chapter.chapter_role != special_role
+            ):
+                special_index = special_chapter_counts.get(special_role, 0)
+                special_chapter_counts[special_role] = special_index + 1
+                current_special_chapter = _MutableChapter(
+                    chapter_id=f"{special_role.replace('_', '-')}-{special_index}",
+                    title=self._SPECIAL_CHAPTER_LABELS.get(special_role, "Other Sections"),
+                    level=max(1, int(section.level)),
+                    chapter_role=special_role,
+                    sections=[],
+                )
+                mutable_chapters.append(current_special_chapter)
+
+            standalone = self._with_section_parent(
+                section=section,
+                parent_chapter_id=current_special_chapter.chapter_id,
+                section_kind=_resolve_special_section_kind(section),
+                is_implicit_section=False,
+            )
+            current_special_chapter.sections.append(standalone)
+
+        chapters = [
+            StructuredChapter(
+                chapter_id=chapter.chapter_id,
+                title=chapter.title,
+                level=chapter.level,
+                chapter_role=chapter.chapter_role,
+                sections=list(chapter.sections),
+                task_artifacts=chapter.task_artifacts,
+                metadata=dict(chapter.metadata),
+            )
+            for chapter in mutable_chapters
+        ]
         return replace(
             document,
             chapters=chapters,
@@ -373,6 +495,82 @@ def _is_subsection_heading(title: str) -> bool:
     return bool(
         _EN_SUBSECTION_PATTERN.match(title)
         or _ZH_SUBSECTION_PATTERN.match(title)
+    )
+
+
+def _should_group_by_container_title(sections: list[StructuredSection]) -> bool:
+    main_body_sections = [
+        section
+        for section in sections
+        if section.section_role in (None, SectionRole.MAIN_BODY)
+    ]
+    if len(main_body_sections) < 2:
+        return False
+
+    container_sections = [
+        section
+        for section in main_body_sections
+        if _normalize_grouping_title(section.container_title)
+    ]
+    if len(container_sections) < 2:
+        return False
+    if len(container_sections) / len(main_body_sections) < 0.6:
+        return False
+
+    containers: dict[str, str] = {}
+    title_container_counts: dict[str, set[str]] = {}
+    child_heading_count = 0
+    for section in container_sections:
+        container_key = _normalize_grouping_title(section.container_title)
+        title_key = _normalize_grouping_title(section.title)
+        if not container_key:
+            continue
+        containers.setdefault(container_key, (section.container_title or "").strip())
+        if title_key:
+            title_container_counts.setdefault(title_key, set()).add(container_key)
+        if _is_local_child_heading(section.title or ""):
+            child_heading_count += 1
+
+    if len(containers) < 2:
+        return False
+
+    parent_heading_count = sum(
+        1 for title in containers.values() if _is_container_parent_heading(title)
+    )
+    repeated_local_title_count = sum(
+        1 for container_keys in title_container_counts.values() if len(container_keys) >= 2
+    )
+    child_heading_ratio = child_heading_count / len(container_sections)
+
+    return (
+        parent_heading_count >= 2
+        and (repeated_local_title_count >= 1 or child_heading_ratio >= 0.6)
+    )
+
+
+def _normalize_grouping_title(title: str | None) -> str:
+    if title is None:
+        return ""
+    return re.sub(r"\s+", " ", title.strip().casefold())
+
+
+def _is_container_parent_heading(title: str) -> bool:
+    stripped = title.strip()
+    if not stripped:
+        return False
+    return bool(
+        _CONTAINER_PARENT_HEADING_PATTERN.match(stripped)
+        or _ZH_CONTAINER_PARENT_PATTERN.match(stripped)
+    )
+
+
+def _is_local_child_heading(title: str) -> bool:
+    stripped = title.strip()
+    if not stripped:
+        return False
+    return bool(
+        _LOCAL_CHILD_HEADING_PATTERN.match(stripped)
+        or _ZH_LOCAL_CHILD_PATTERN.match(stripped)
     )
 
 
