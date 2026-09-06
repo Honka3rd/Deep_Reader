@@ -184,9 +184,14 @@ def test_ocr_cache_reuses_text_for_matching_provenance() -> None:
             )
 
             first_text = loader.load("暗水幽灵")
+            boundaries = loader.load_page_text_boundaries("暗水幽灵")
             second_text = loader.load("暗水幽灵")
 
             _assert(first_text == "Cached OCR text", "first OCR pass should return recognized text")
+            _assert(
+                boundaries[0].text == "Cached OCR text",
+                "page-boundary load should reuse page-aware OCR cache",
+            )
             _assert(second_text == first_text, "second OCR pass should reuse cached text")
             _assert(count_file.read_text(encoding="utf-8") == "1", "OCR command should run only once")
         finally:

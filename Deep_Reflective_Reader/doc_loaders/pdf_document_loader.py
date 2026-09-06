@@ -509,40 +509,16 @@ Returns:
             )
             return cached_text
 
-        texts: list[str] = []
-        page_limit = self.ocr_page_limit or len(reader.pages)
-        with tempfile.TemporaryDirectory(prefix="deep-reader-pdf-ocr-") as temp_dir:
-            temp_path = Path(temp_dir)
-            for page_index, page in enumerate(reader.pages[:page_limit]):
-                image_paths = self._render_page_images(
-                    file_path=file_path,
-                    page_index=page_index,
-                    output_dir=temp_path,
-                )
-                for image_path in image_paths:
-                    recognized_text = self._ocr_image_text(
-                        image_path=image_path,
-                        doc_name=doc_name,
-                        page_index=page_index,
-                    )
-                    if recognized_text:
-                        texts.append(recognized_text)
-                if (page_index + 1) % 10 == 0 or page_index + 1 == page_limit:
-                    logger.info(
-                        "ocr_progress doc=%s page=%s/%s recognized_chars=%s",
-                        doc_name,
-                        page_index + 1,
-                        page_limit,
-                        sum(len(text) for text in texts),
-                    )
-
-        ocr_text = "\n\n".join(texts)
+        pages = self._load_pages_with_ocr(
+            doc_name=doc_name,
+            file_path=file_path,
+            reader=reader,
+        )
+        ocr_text = "\n\n".join(pages)
         if not ocr_text.strip():
             logger.error("ocr_failed doc=%s detail=empty_ocr_text", doc_name)
             raise RawTextOcrFailedError(doc_name=doc_name, detail="empty_ocr_text")
         self._write_cached_ocr_text(provenance=provenance, text=ocr_text)
-        self.last_ocr_provenance = provenance
-        self.last_ocr_pages = None
         logger.info(
             "ocr_completed doc=%s text_chars=%s cache_path=%s",
             doc_name,
@@ -603,6 +579,14 @@ Returns:
                     if recognized_text:
                         recognized_parts.append(recognized_text)
                 pages.append("\n\n".join(recognized_parts))
+                if (page_index + 1) % 10 == 0 or page_index + 1 == page_limit:
+                    logger.info(
+                        "ocr_progress doc=%s page=%s/%s recognized_chars=%s",
+                        doc_name,
+                        page_index + 1,
+                        page_limit,
+                        sum(len(page_text) for page_text in pages),
+                    )
 
         if not any(page.strip() for page in pages):
             raise RawTextOcrFailedError(doc_name=doc_name, detail="empty_ocr_pages")
