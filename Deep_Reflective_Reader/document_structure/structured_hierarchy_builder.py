@@ -78,6 +78,24 @@ class DocumentHierarchyBuilder:
             title = (section.title or "").strip()
             is_main_body = role in (None, SectionRole.MAIN_BODY)
 
+            if (
+                current_chapter is not None
+                and is_main_body
+                and section.section_kind == "toc_subsection"
+            ):
+                subsection = self._with_section_parent(
+                    section=section,
+                    parent_chapter_id=current_chapter.chapter_id,
+                    section_kind="subsection",
+                    is_implicit_section=False,
+                )
+                current_chapter.sections.append(subsection)
+                current_chapter.sections[0] = replace(
+                    current_chapter.sections[0],
+                    is_implicit_section=False,
+                )
+                continue
+
             if is_main_body and (
                 _is_chapter_heading(title) or section.section_kind == "toc_chapter"
             ):

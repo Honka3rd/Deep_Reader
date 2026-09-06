@@ -51,10 +51,10 @@ class StructuredDocumentBuilder:
         """Build a structured document with fallback on split errors."""
         try:
             resolved_mode = SectionSplitterMode.resolve(parser_mode)
-            outline_sections = (
+            outline_sections, outline_projection = (
                 self._project_outline_sections(raw_text, outline, page_boundaries)
                 if outline is not None and outline.usable
-                else []
+                else ([], None)
             )
             if outline_sections:
                 sections = outline_sections
@@ -87,6 +87,8 @@ class StructuredDocumentBuilder:
                 )
             if outline is not None:
                 parse_provenance["outline"] = outline.to_dict()
+            if outline_projection is not None:
+                parse_provenance["outline_projection"] = outline_projection
             if outline_sections:
                 toc_result = None
             else:
@@ -253,19 +255,33 @@ class StructuredDocumentBuilder:
         raw_text: str,
         outline: PdfOutlineResult,
         page_boundaries: list[PdfPageTextBoundary] | None,
-    ) -> list[StructuredSection]:
+    ) -> tuple[list[StructuredSection], dict[str, object] | None]:
         """Project a validated native Outline into page-backed section ranges."""
         if not page_boundaries or not outline.entries:
-            return []
+            return [], None
         separator_text = "\n\n" if "\n\n" in raw_text else "\n"
-        boundary_texts = [boundary.text for boundary in page_boundaries if boundary.text]
-        if separator_text.join(boundary_texts) != raw_text:
-            return []
+        all_boundary_text = separator_text.join(
+            boundary.text for boundary in page_boundaries
+        )
+        non_empty_boundary_text = separator_text.join(
+            boundary.text for boundary in page_boundaries if boundary.text
+        )
+        if raw_text not in {all_boundary_text, non_empty_boundary_text}:
+            return [], None
         page_by_index = {boundary.page_index: boundary for boundary in page_boundaries}
         starts: list[tuple[PdfOutlineEntry, int]] = []
+        levels = sorted({entry.level for entry in outline.entries})
+        minimum_outline_level = levels[0]
+        root_wrapper_skipped = (
+            len(levels) > 1
+            and sum(1 for entry in outline.entries if entry.level == minimum_outline_level) == 1
+        )
+        normalized_chapter_level = levels[1] if root_wrapper_skipped else minimum_outline_level
+        skipped_duplicate_start_count = 0
+        previous_start: int | None = None
         for entry in outline.entries:
             if entry.page_index is None or entry.page_index not in page_by_index:
-                return []
+                return [], None
             boundary = page_by_index[entry.page_index]
             normalized_title = normalize_ocr_text(entry.title).strip()
             page_text = normalize_ocr_text(boundary.text)
@@ -273,12 +289,22 @@ class StructuredDocumentBuilder:
             if relative < 0:
                 relative = page_text.find(normalized_title)
             start = boundary.char_start if relative < 0 else boundary.char_start + relative
+            if previous_start is not None and start < previous_start:
+                return [], None
+            if previous_start is not None and start == previous_start:
+                skipped_duplicate_start_count += 1
+                continue
             starts.append((entry, start))
+            previous_start = start
         if not starts:
-            return []
-        top_level = [(entry, start) for entry, start in starts if entry.level == 1]
-        if len(top_level) < 2:
-            return []
+            return [], None
+        top_level = [
+            (entry, start)
+            for entry, start in starts
+            if entry.level == normalized_chapter_level
+        ]
+        if not top_level:
+            return [], None
         sections: list[StructuredSection] = []
         section_index = 0
         for top_index, (chapter, chapter_start) in enumerate(top_level):
@@ -286,7 +312,7 @@ class StructuredDocumentBuilder:
             children = [
                 (entry, start)
                 for entry, start in starts
-                if entry.level > chapter.level and chapter_start <= start < chapter_end
+                if entry.level > normalized_chapter_level and chapter_start <= start < chapter_end
             ]
             ranges = (
                 [(chapter, chapter_start)]
@@ -300,7 +326,7 @@ class StructuredDocumentBuilder:
                     else chapter_end
                 )
                 if end <= start:
-                    return []
+                    return [], None
                 sections.append(
                     StructuredSection(
                         section_id=f"outline-section-{section_index}",
@@ -315,7 +341,16 @@ class StructuredDocumentBuilder:
                     )
                 )
                 section_index += 1
-        return sections
+        return sections, {
+            "source": "native_pdf_outline",
+            "normalized_chapter_level": normalized_chapter_level,
+            "minimum_outline_level": minimum_outline_level,
+            "root_wrapper_skipped": root_wrapper_skipped,
+            "section_count": len(sections),
+            "outline_entry_count": len(outline.entries),
+            "skipped_duplicate_start_count": skipped_duplicate_start_count,
+            "compression": "minimum_outline_level_as_chapter_descendants_as_sections",
+        }
 
     @staticmethod
     def _serialize_toc_detection(result: object) -> dict[str, object]:
