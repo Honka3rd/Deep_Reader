@@ -329,6 +329,7 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Storage abstraction boundary planning clarifies that `document_structure` owns `StructuredDocument` hierarchy truth and domain persistence semantics, not backend selection or DB rollout strategy.
 - [x] Deterministic TOC detection contract and atomic projection rejection are implemented in `document_structure/module-checklist.md`; shape projection, page boundary validation, multi-page grouping, and global validation remain staged future work.
 - [ ] TOC-derived hierarchy must remain `chapters[].sections[]`; metadata and LLM classification remain advisory and cannot become parser authority.
+- [ ] Native PDF Outline normalization for scanned-image books is captured as unchecked future work: use minimum outline level as normalized chapter, flatten descendants into sections, map content by PDF page index plus OCR page boundaries, and reject incomplete projections atomically.
 - [ ] Universal page-level TOC scoring, layout-hypothesis normalization, multi-page grouping, and global validation are captured as unchecked future work in `document_structure/module-checklist.md`.
 - [ ] TOC projection implementation details are recorded as unchecked work: page-to-character boundary mapping, two-level hierarchy compression, multi-page termination, global validation, and reliable PDF fixture requirements.
 
