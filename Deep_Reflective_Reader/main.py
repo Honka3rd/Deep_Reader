@@ -1,11 +1,14 @@
 from uuid import uuid4
 from pathlib import Path
 import re
+import logging
+import time
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from pydantic import ValidationError
 
 from app.qa_coordinator import QACoordinator
+from logging_config import configure_logging
 from document_structure.document_artifact_repository import DocumentListItem
 from api_schemas import (
     ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS,
@@ -16,6 +19,7 @@ from api_schemas import (
     ChapterQuizResponse,
     PrepareDocumentRequest,
     PrepareDocumentResponse,
+    PrepareTaskLayoutRequest,
     AskDocumentRequest,
     AskDocumentResponse,
     DocumentListItemResponse,
@@ -41,6 +45,9 @@ from api_schemas import (
     StatusResponse,
 )
 
+configure_logging()
+logger = logging.getLogger(__name__)
+
 # 建立 FastAPI app
 app = FastAPI(
     title="Deep Reader API",
@@ -51,6 +58,26 @@ app = FastAPI(
 qa_coordinator = QACoordinator()
 section_task_coordinator = qa_coordinator.container.section_task_coordinator()
 document_artifact_repository = qa_coordinator.container.structured_document_artifact_repository()
+
+
+@app.middleware("http")
+async def request_logging_middleware(request, call_next):
+    """Log request lifecycle without recording request bodies or credentials."""
+    started_at = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("request_failed method=%s path=%s", request.method, request.url.path)
+        raise
+    duration_ms = (time.perf_counter() - started_at) * 1000
+    logger.info(
+        "request_completed method=%s path=%s status=%s duration_ms=%.1f",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
 
 _RAW_DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")
 _RAW_DOCUMENT_BASE_DIR = Path("data/raw")
@@ -310,6 +337,36 @@ def prepare_document(request: PrepareDocumentRequest, response: Response):
             bundle_ready=assets.bundle_ready,
             errors=list(assets.errors),
         )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/documents/prepare-task-layout", response_model=DocumentTaskLayoutResponse)
+def prepare_task_layout(request: PrepareTaskLayoutRequest):
+    """Prepare a document when needed, then return its task-layout projection."""
+    try:
+        assets = qa_coordinator.document_preparation_pipeline.prepare(
+            doc_name=request.doc_name,
+            force_rebuild=request.force_rebuild,
+            mode="base",
+            structured_parser_mode=request.structured_parser_mode,
+        )
+        if not assets.structured_document_ready:
+            detail = " | ".join(assets.errors) or "structured document preparation failed"
+            raise HTTPException(status_code=400, detail=detail)
+
+        return get_document_task_layout(
+            GetDocumentTaskLayoutRequest(
+                doc_name=request.doc_name,
+                refresh_task_units=request.refresh_task_units,
+                task_unit_split_mode=request.task_unit_split_mode,
+                semantic_top_k_candidates=request.semantic_top_k_candidates,
+            )
+        )
+    except HTTPException:
+        raise
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:

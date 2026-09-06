@@ -3,10 +3,17 @@ from pathlib import Path
 from bundle_provider import BundleProvider
 from config.faiss_storage_config import FaissStorageConfig
 from config.structured_document_storage_config import StructuredDocumentStorageConfig
+from doc_loaders.document_load_errors import (
+    RawTextOcrFailedError,
+    RawTextRequiresOcrError,
+)
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
+from doc_loaders.pdf_page_evidence import PdfPageLayoutEvidence, PdfPageTextBoundary
+from doc_loaders.pdf_outline import PdfOutlineResult
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from document_structure.structured_document_store import StructuredDocumentStore
 from document_structure.section_splitter_selector import SectionSplitterMode
+from document_structure.text_normalization import normalize_ocr_text
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
 from document_preparation.preparation_mode import PreparationMode
 from document_preparation.prepared_document_result import PreparedDocumentResult
@@ -233,6 +240,16 @@ class DocumentPreparationPipeline:
                 )
                 return None
             return raw_text
+        except RawTextRequiresOcrError:
+            assets.errors.append(
+                f"load_raw_text_requires_ocr:{doc_name}"
+            )
+            return None
+        except RawTextOcrFailedError as error:
+            assets.errors.append(
+                f"load_raw_text_ocr_failed:{doc_name}:{error.detail or 'unknown'}"
+            )
+            return None
         except Exception as error:
             assets.errors.append(
                 f"load_raw_text_failed:{doc_name}:{error}"
@@ -252,7 +269,7 @@ class DocumentPreparationPipeline:
             return None
 
         try:
-            language = self.language_detector.detect(raw_text)
+            language = self.language_detector.detect(normalize_ocr_text(raw_text))
             normalized_language = language.strip().lower() if language else None
             if not normalized_language:
                 assets.errors.append("detect_language_empty_result")
@@ -303,12 +320,18 @@ class DocumentPreparationPipeline:
                         f"prepare_structured_document_reload_failed:{doc_name}:{load_error}"
                     )
 
+            page_evidence = self._load_page_layout_evidence(doc_name)
+            page_boundaries = self._load_page_text_boundaries(doc_name)
+            outline = self._load_outline(doc_name)
             structured_document = self.structured_document_builder.build(
                 document_id=doc_name,
                 title=doc_name,
                 raw_text=raw_text,
                 language=language_code,
                 parser_mode=parser_mode,
+                page_evidence=page_evidence,
+                page_boundaries=page_boundaries,
+                outline=outline,
             )
             if (
                 parser_mode == SectionSplitterMode.LLM_ENHANCED
@@ -324,10 +347,78 @@ class DocumentPreparationPipeline:
                 document=structured_document,
                 storage_config=storage_config,
             )
+            self._persist_ocr_run(
+                doc_name=doc_name,
+                raw_text=raw_text,
+                assets=assets,
+            )
             return True, structured_document_path
         except Exception as error:
             assets.errors.append(f"prepare_structured_document_failed:{error}")
             return False, None
+
+    def _persist_ocr_run(
+        self,
+        *,
+        doc_name: str,
+        raw_text: str,
+        assets: PreparedDocumentAssets,
+    ) -> None:
+        """Persist OCR provenance after the document row exists; never controls parsing."""
+        loader = self.loader_factory.get(doc_name)
+        provenance = getattr(loader, "last_ocr_provenance", None)
+        save_ocr_run = getattr(self.structured_document_store, "save_ocr_run", None)
+        if not isinstance(provenance, dict) or not callable(save_ocr_run):
+            return
+        try:
+            save_ocr_run(
+                doc_name=doc_name,
+                provenance=provenance,
+                full_text=raw_text,
+                pages=getattr(loader, "last_ocr_pages", None),
+            )
+        except Exception as error:
+            assets.errors.append(f"persist_ocr_run_failed:{doc_name}:{error}")
+
+    def _load_page_layout_evidence(
+        self,
+        doc_name: str,
+    ) -> list[PdfPageLayoutEvidence] | None:
+        """Load bounded PDF layout evidence without making it parser authority."""
+        try:
+            loader = self.loader_factory.get(doc_name)
+            load_evidence = getattr(loader, "load_page_layout_evidence", None)
+            if load_evidence is None:
+                return None
+            return load_evidence(doc_name, candidate_page_limit=30)
+        except Exception:
+            # Layout analysis is enrichment; raw text preparation remains usable.
+            return None
+
+    def _load_page_text_boundaries(
+        self,
+        doc_name: str,
+    ) -> list[PdfPageTextBoundary] | None:
+        """Load page spans for exact TOC page-to-character projection."""
+        try:
+            loader = self.loader_factory.get(doc_name)
+            load_boundaries = getattr(loader, "load_page_text_boundaries", None)
+            if load_boundaries is None:
+                return None
+            return load_boundaries(doc_name)
+        except Exception:
+            return None
+
+    def _load_outline(self, doc_name: str) -> PdfOutlineResult | None:
+        """Load native PDF outline evidence before visual TOC analysis."""
+        try:
+            loader = self.loader_factory.get(doc_name)
+            load_outline = getattr(loader, "load_outline", None)
+            if load_outline is None:
+                return None
+            return load_outline(doc_name)
+        except Exception:
+            return None
 
     def _enrich_profile_with_structured_document(
         self,

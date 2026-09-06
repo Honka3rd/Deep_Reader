@@ -53,6 +53,7 @@ from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from shared.task_artifacts import QuizArtifact, SummaryArtifact, TaskArtifacts
 from shared.task_unit_model import TaskUnitContentBlock, build_default_content_block_id
+from document_structure.text_normalization import normalize_ocr_text
 
 
 @dataclass(frozen=True)
@@ -74,7 +75,7 @@ class TaskUnitResolveOptions:
 class SectionTaskCoordinator:
     """Coordinator for section/chapter task orchestration and layout projection."""
     _TASK_LAYOUT_METADATA_KEY = "task_layout"
-    _TASK_LAYOUT_RESOLVER_VERSION = "task_unit_resolver_v2"
+    _TASK_LAYOUT_RESOLVER_VERSION = "task_unit_resolver_v3_section_scoped"
     _SECTION_SUMMARY_PROMPT_VERSION = "section_summary_v1"
     _CHAPTER_SUMMARY_PROMPT_VERSION = "chapter_summary_v1"
     _SECTION_QUIZ_PROMPT_VERSION = "section_quiz_v1"
@@ -760,6 +761,7 @@ class SectionTaskCoordinator:
             if segmented
             else selected_task_unit.to_content_blocks()
         )
+        content_blocks = self._normalize_content_blocks_for_rendering(content_blocks)
 
         return TaskUnitContentDTO(
             document_id=structured_document.document_id,
@@ -777,6 +779,28 @@ class SectionTaskCoordinator:
             chapter_title=(None if selected_chapter is None else selected_chapter.title),
             is_fallback_generated=selected_task_unit.is_fallback_generated,
         )
+
+    @staticmethod
+    def _normalize_content_blocks_for_rendering(
+        content_blocks: list[TaskUnitContentBlock],
+    ) -> list[TaskUnitContentBlock]:
+        """Return cleaned OCR display text while retaining raw span provenance."""
+        normalized_blocks: list[TaskUnitContentBlock] = []
+        for block in content_blocks:
+            normalized_content = normalize_ocr_text(block.content)
+            if normalized_content == block.content:
+                normalized_blocks.append(block)
+                continue
+            metadata = dict(block.metadata or {})
+            metadata["display_normalization"] = "ocr_whitespace_v1"
+            normalized_blocks.append(
+                replace(
+                    block,
+                    content=normalized_content,
+                    metadata=metadata,
+                )
+            )
+        return normalized_blocks
 
     @classmethod
     def _build_segmented_content_blocks_for_rendering(
@@ -1518,17 +1542,31 @@ class SectionTaskCoordinator:
             )
             return structured_document
 
-        resolved_task_units = self.task_unit_resolver.resolve_with_options(
-            document=replace(
-                structured_document,
-                sections=self._resolve_task_layout_sections(
-                    document=structured_document,
-                    context="SectionTaskCoordinator#task_layout_cache_write_source",
-                ),
+        task_layout_document = replace(
+            structured_document,
+            sections=self._resolve_task_layout_sections(
+                document=structured_document,
+                context="SectionTaskCoordinator#task_layout_cache_write_source",
             ),
-            split_mode=resolve_options.split_mode,
-            semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
         )
+        layout_resolver = getattr(
+            self.task_unit_resolver,
+            "resolve_for_task_layout",
+            None,
+        )
+        if callable(layout_resolver):
+            resolved_task_units = layout_resolver(
+                document=task_layout_document,
+                split_mode=resolve_options.split_mode,
+                semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
+            )
+        else:
+            # Keep lightweight test/double resolvers compatible with the coordinator.
+            resolved_task_units = self.task_unit_resolver.resolve_with_options(
+                document=task_layout_document,
+                split_mode=resolve_options.split_mode,
+                semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
+            )
         sections_for_write = self._resolve_task_layout_sections(
             document=structured_document,
             context="SectionTaskCoordinator#task_layout_cache_write_target",

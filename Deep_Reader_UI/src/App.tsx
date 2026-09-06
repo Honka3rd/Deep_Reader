@@ -16,9 +16,9 @@ import type { MouseEvent } from "react";
 import { useMemo, useRef, useState } from "react";
 import {
   fetchDocumentList,
+  prepareTaskLayout,
   fetchTaskLayout,
   fetchTaskUnitContent,
-  prepareDocument,
   reparseDocumentStructure,
 } from "./api/client";
 import { DocumentSearch } from "./components/DocumentSearch";
@@ -54,11 +54,6 @@ export default function App() {
   const documentOptions = useMemo(
     () => backendDocuments.map((item) => item.doc_name),
     [backendDocuments],
-  );
-
-  const selectedBackendDocument = useMemo(
-    () => backendDocuments.find((item) => item.doc_name === docName.trim()) || null,
-    [backendDocuments, docName],
   );
 
   function resolveLayoutParserMode(nextLayout: DocumentTaskLayout): StructureParserMode {
@@ -100,28 +95,7 @@ export default function App() {
     setLayoutStatus("loading");
 
     try {
-      if (selectedBackendDocument && !selectedBackendDocument.source.includes("structured")) {
-        const prepareResult = await prepareDocument(trimmedDocName, "common");
-        if (!prepareResult.success || !prepareResult.structured_document_ready) {
-          const detail = prepareResult.errors.length > 0
-            ? prepareResult.errors.join("; ")
-            : "Document preparation failed";
-          throw new Error(detail);
-        }
-        setBackendDocuments((items) =>
-          items.map((item) =>
-            item.doc_name === trimmedDocName
-              ? {
-                  ...item,
-                  source: item.source.includes("structured")
-                    ? item.source
-                    : `${item.source}+structured`,
-                }
-              : item,
-          ),
-        );
-      }
-      const nextLayout = await fetchTaskLayout(trimmedDocName);
+      const nextLayout = await prepareTaskLayout(trimmedDocName);
       setLayout(nextLayout);
       setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
       setLayoutStatus("success");

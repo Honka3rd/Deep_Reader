@@ -36,10 +36,10 @@ It is used to:
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 10 | 0 | Renderer-First OCR Implemented |
 | `db/` | package + design module | `db/module-checklist.md` | 45 | 0 | PostgreSQL Parse Provenance Runtime Verified |
-| `document_preparation/` | package | `document_preparation/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 15 | 0 | Parser Provenance Captured |
+| `document_preparation/` | package | `document_preparation/module-checklist.md` | 5 | 0 | OCR Layout Enhancement Design Captured |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 17 | 0 | OCR TOC Reconstruction Design Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -49,7 +49,7 @@ It is used to:
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 15 | 0 | Task Layout Parse Provenance Verified |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 15 | 0 | Universal PDF Layout Evidence Governance Planned |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 12 | 0 | Task Layout Parse Provenance Verified |
@@ -156,8 +156,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `doc_loaders/module-checklist.md`
 - Detailed Design: `doc_loaders/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `Renderer-First OCR Implemented`
+- Completed item count: `10`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -165,17 +165,34 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines loader abstraction via `AbstractDocumentLoader.load(doc_name) -> str`.
 - [x] Implements TXT loader and PDF loader for canonical raw text extraction.
 - [x] Implements loader selection through `DocumentLoaderFactory` with extension/path heuristics and historical TXT default.
+- [x] Detect scanned-image PDFs before prepare treats them as generic empty raw text.
+- [x] Add explicit requires-OCR raw-load failure reason.
+- [x] Design and implement optional OCR fallback behind explicit configuration or request option.
+- [x] Deploy multilingual OCR language packages and align OCR language selection with project language-code strategy.
+- [x] Cache OCR text output with provenance-aware invalidation.
+
+- [x] Detect and expose native PDF Outline/bookmark structure before OCR, including validated destinations and nesting.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_outline.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`; `许三观卖血记.pdf` container verification.
 
 #### Needs Confirmation
 
 No unresolved confirmation items identified in module checklist.
 
+#### Future Direction Preparation
+
+- [ ] Page-aware OCR provenance and stable page boundaries for future TOC detection are captured as unchecked future work in `doc_loaders/module-checklist.md`.
+- [x] Native PDF Outline/bookmark inspection and the `Outline -> OCR TOC -> keyword matching` precedence chain are implemented and recorded in the corresponding module checklists.
+- [ ] Universal PDF page-layout evidence, competing orientation hypotheses, region metadata, and tiered OCR cost policy remain future work in `doc_loaders/module-checklist.md`.
+  Notes: The current implementation exposes limited page layout evidence and deterministic vertical/RTL selection; it does not yet preserve competing rotation hypotheses or full region geometry.
+- [x] Renderer-first PDF page normalization for OCR is implemented and recorded in `doc_loaders/module-checklist.md`.
+  Evidence: `Dockerfile`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `docker-compose.yml`; `國富論.pdf` page 5 renderer/OCR verification.
+
 ### `document_preparation/`
 
 - Checklist: `document_preparation/module-checklist.md`
 - Detailed Design: `document_preparation/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `Ordered PDF Structure Discovery Implemented`
+- Completed item count: `5`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -183,6 +200,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Implements ordered prepare pipeline with profile-before-structured sequencing.
 - [x] Supports `base` and `free_qa` preparation modes with explicit mode contract.
 - [x] Collects non-blocking profile/enrichment errors while preserving structured readiness semantics.
+- [x] Discovers native PDF Outline before OCR/layout TOC analysis and preserves conservative fallback behavior.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`.
 
 #### Needs Confirmation
 
@@ -194,6 +213,9 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Future direction preserves current file-based prepare outputs during migration.
 - [ ] Future storage abstraction boundary must separately account for structured/profile/retrieval artifacts; this pass is documentation/checklist preparation only.
 - [ ] Future storage independence note clarifies that preparation should prepare artifacts without permanently assuming file-path persistence as the only possible destination.
+- [x] TOC-aware preparation orchestration and conservative fallback policy are implemented in `document_preparation/module-checklist.md`, with bounded page-evidence handoff and conservative parser fallback.
+- [x] Universal page inventory, candidate-page analysis, cache reuse, cost budgets, and layout/TOC failure fallback are captured as unchecked future work in `document_preparation/module-checklist.md`.
+  Notes: Documentation only; no new preparation runtime behavior is claimed complete.
 
 ### `db/`
 
@@ -269,8 +291,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `Parser Provenance Captured`
-- Completed item count: `15`
+- Status: `TOC Projection Design Captured`
+- Completed item count: `16`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -305,6 +327,10 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Future DB migration planning preserves hierarchy-first `StructuredDocument` semantics across file and DB storage.
 - [ ] File-backed structured JSON remains valid compatibility/fallback/migration source until DB readiness validation; no runtime read/write behavior changed.
 - [ ] Storage abstraction boundary planning clarifies that `document_structure` owns `StructuredDocument` hierarchy truth and domain persistence semantics, not backend selection or DB rollout strategy.
+- [x] Deterministic TOC detection contract and atomic projection rejection are implemented in `document_structure/module-checklist.md`; shape projection, page boundary validation, multi-page grouping, and global validation remain staged future work.
+- [ ] TOC-derived hierarchy must remain `chapters[].sections[]`; metadata and LLM classification remain advisory and cannot become parser authority.
+- [ ] Universal page-level TOC scoring, layout-hypothesis normalization, multi-page grouping, and global validation are captured as unchecked future work in `document_structure/module-checklist.md`.
+- [ ] TOC projection implementation details are recorded as unchecked work: page-to-character boundary mapping, two-level hierarchy compression, multi-page termination, global validation, and reliable PDF fixture requirements.
 
 ### `embeddings/`
 
@@ -524,6 +550,8 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Duplicate/missing content-block validation behavior remains future implementation work.
 - [ ] Segmented block artifact-target alignment behavior remains future implementation work.
 - [ ] Future-direction items above remain planning-only; current additive content-block endpoint integration is captured in completed checklist items.
+- [ ] Section-scoped task-layout ownership for TOC-derived hierarchy is captured as unchecked future work in `section_tasks/module-checklist.md`.
+- [ ] Task-layout consumption of page/layout-derived hierarchy is captured as unchecked future work in `section_tasks/module-checklist.md`; task-layout remains projection-only and does not reconstruct TOC structure.
 
 ### `session/`
 

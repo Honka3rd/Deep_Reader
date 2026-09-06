@@ -16,11 +16,11 @@ from document_structure.section_role import SectionRole
 from document_structure.section_splitter import CommonSectionSplitter
 from document_structure.section_splitter_dto import LineInfo
 from document_structure.structured_document import StructuredSection
+from document_structure.text_normalization import normalize_ocr_text
 from language.language_code import LanguageCode
 from llm.llm_provider import LLMProvider
 
 _JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
-_WHITESPACE_COLLAPSE_PATTERN = re.compile(r"\s+")
 
 
 class LLMSectionSplitter(AbstractSectionSplitter):
@@ -758,12 +758,12 @@ class LLMSectionSplitter(AbstractSectionSplitter):
     @staticmethod
     def _normalize_line(value: str) -> str:
         """Normalize line text for exact/contains anchor matching."""
-        return _WHITESPACE_COLLAPSE_PATTERN.sub(" ", value.strip().lower())
+        return normalize_ocr_text(value).lower()
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:
         """Normalize optional text to either None or non-empty string."""
-        normalized = (value or "").strip()
+        normalized = normalize_ocr_text(value or "")
         if not normalized:
             return None
         return normalized

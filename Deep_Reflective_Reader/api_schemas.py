@@ -44,6 +44,35 @@ class PrepareDocumentResponse(BaseModel):
     errors: list[str]
 
 
+class PrepareTaskLayoutRequest(BaseModel):
+    """Request payload for prepare-if-needed task-layout orchestration."""
+
+    doc_name: str = Field(..., description="Document name")
+    force_rebuild: bool = Field(
+        False,
+        description="When true, rebuild preparation artifacts before loading layout.",
+    )
+    structured_parser_mode: str = Field(
+        "common",
+        description="Structured parser mode: common | llm_enhanced",
+    )
+    refresh_task_units: bool = Field(
+        False,
+        description="When true, recompute task units for the returned layout.",
+    )
+    task_unit_split_mode: str | None = Field(
+        None,
+        description=(
+            "Task-unit split mode: semantic_safe | progressive | llm_enhanced. "
+            "This controls task-unit resolution only."
+        ),
+    )
+    semantic_top_k_candidates: int | None = Field(
+        None,
+        description="Optional semantic rerank top-k for semantic_safe task splitting.",
+    )
+
+
 class AskDocumentRequest(BaseModel):
     """Request payload for document QA endpoint."""
     doc_name: str = Field(..., description="Document name")

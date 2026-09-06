@@ -12,6 +12,7 @@ from document_structure.section_splitter_dto import (
 )
 from document_structure.section_role import SectionRole
 from document_structure.structured_document import StructuredSection
+from document_structure.text_normalization import normalize_ocr_text
 from language.language_code import LanguageCode
 
 
@@ -583,7 +584,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
     @classmethod
     def _normalize_heading_title(cls, heading: str) -> str:
         """Normalize heading text for duplicate matching between TOC and body."""
-        normalized = cls._WHITESPACE_COLLAPSE_PATTERN.sub(" ", heading.strip().lower())
+        normalized = normalize_ocr_text(heading).lower()
         return normalized.rstrip(".:：;；")
 
     @classmethod

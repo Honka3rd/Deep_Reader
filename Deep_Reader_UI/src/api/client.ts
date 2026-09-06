@@ -50,6 +50,19 @@ export function fetchTaskLayout(docName: string): Promise<DocumentTaskLayout> {
   });
 }
 
+export function prepareTaskLayout(docName: string): Promise<DocumentTaskLayout> {
+  return requestJson<DocumentTaskLayout>("/documents/prepare-task-layout", {
+    method: "POST",
+    body: JSON.stringify({
+      doc_name: docName,
+      force_rebuild: false,
+      structured_parser_mode: "common",
+      refresh_task_units: false,
+      task_unit_split_mode: "progressive",
+    }),
+  });
+}
+
 export function fetchDocumentList(query: string, limit = 20): Promise<DocumentListResponse> {
   const params = new URLSearchParams();
   const normalizedQuery = query.trim();

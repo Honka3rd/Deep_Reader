@@ -108,6 +108,60 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Validate hierarchy parity criteria defined by the evaluation document
 - [ ] Resolve readiness-audit gaps before Phase 1 StructuredDocument JSONB-first evaluation
 - [ ] Define DB-era task-unit identity strategy before schema design
+- [x] Define deterministic table-of-contents detection contract
+  Evidence needed: detection rules, confidence thresholds, evidence fields, and rejection conditions for missing, malformed, or ambiguous TOCs.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: Detection and global validation are deterministic parser evidence. Missing page anchors, non-monotonic pages, invalid ranges, missing candidate groups, and insufficient matches reject projection; metadata and LLM classification remain advisory.
+
+- [x] Define PDF structure-source precedence and fallback chain
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`; container verification on `Deep_Reflective_Reader/data/raw/许三观卖血记.pdf`.
+  Notes: `/Outlines` with valid destinations has priority over visual TOC inference. A malformed, empty, destination-less, or structurally inconsistent Outline is rejected rather than merged with OCR guesses. OCR TOC may authorize projection only after page/character validation; keyword matching remains the final conservative fallback.
+- [ ] Define TOC shape classification and hierarchy projection
+  Evidence needed: flat chapter, chapter-section, and deeper hierarchy cases map deterministically to `chapters[].sections[]` without reintroducing root `sections[]` or `structure_nodes` as primary flow.
+  Notes: Required mapping: flat chapter entries become one chapter with one section; chapter/section entries become one chapter with multiple sections; levels deeper than 2 collapse into the nearest section and concatenate content in source order. Preserve original TOC level, printed page range, source page indices, and merge reason in parse provenance only. Task-unit generation remains downstream of the resulting sections.
+- [ ] Define TOC-based page/character boundary validation and atomic fallback
+  Evidence needed: monotonic page order, fuzzy title matching, non-overlapping spans, empty-range rejection, and all-or-nothing fallback to current parsing when evidence is insufficient.
+  Notes: Convert printed page numbers to document page anchors using an explicit front-matter offset hypothesis, validate that hypothesis against body-title matches, then map sibling ranges to raw-text offsets. Reject missing or ambiguous anchors, reversed/overlapping ranges, empty ranges, low title recall, and incompatible offsets. Persist either the complete TOC hierarchy or the unchanged current-parser result.
+
+- [ ] Define universal page-level TOC candidate scoring
+  Evidence needed: deterministic scoring covers horizontal/vertical text, left-to-right/right-to-left ordering, missing TOC markers, dotted leaders, separated page-number columns, circled page numbers, and OCR-fragmented titles.
+  Notes: Evidence includes document-relative position, short-title density, repeated alignment, leader-line/shape evidence, page-number evidence, layout confidence, and body-title matches. `detected` and `usable_for_splitting` are separate decisions.
+
+- [ ] Define geometry-first TOC entry reconstruction
+  Evidence needed: candidate pages reconstruct entries from title regions, leader lines, page-number regions, and column geometry even when linear OCR text is incomplete.
+  Notes: Vertical RTL pages cluster regions by column and descending x-coordinate. Horizontal pages order rows by y-coordinate and columns by reading direction. Associate title and page number by aligned geometry or leader-line endpoint. Circular/boxed numbers require a bounded number-region OCR pass; linear OCR alone is insufficient.
+
+- [ ] Define logical reading-order normalization with coordinate preservation
+  Evidence needed: normalized TOC candidates expose logical title/page pairs while retaining page index, region boxes, raw OCR, rotation, writing mode, and order hypothesis.
+  Notes: The normalized stream is detection-only. It must not replace raw text or become a second hierarchy source. Every pair carries evidence and a confidence decomposition for audit.
+
+- [ ] Define TOC-specific OCR quality gates
+  Evidence needed: “page looks like TOC” is separated from “entries are reliable enough to split,” using title completeness, page-number coverage, geometric pairing, ordering consistency, and body-title recall.
+  Notes: A high-scoring page with missing/corrupt page numbers remains `detected=true, usable=false`. Never infer unreadable page numbers from sequence alone. Preserve rejection reasons and unchanged current-parser output.
+
+- [ ] Define page-number region recognition and global validation
+  Evidence needed: Arabic, Chinese, Roman, circled, boxed, multi-digit, and fragmented page numbers map to document anchors under explicit offset hypotheses.
+  Notes: Number recognition is region-scoped and may use preprocessing, rotation candidates, and character whitelists. Validate offsets using multiple body-title matches, monotonicity, plausible range, and non-overlapping spans. Reject ambiguous offsets atomically.
+
+- [ ] Define OCR layout regression and negative fixtures
+  Evidence needed: tests cover `暗水幽靈.pdf` artistic vertical TOC, `國富論.pdf` vertical body page, horizontal/multi-page TOC, circular numbers, artwork-only pages, and low-quality scans.
+  Notes: Expected results include orientation/order, candidate pages, entry coverage, accepted/rejected projection, and fallback provenance. A visually obvious TOC with unreliable extraction is a required negative projection case.
+
+- [ ] Define layout-hypothesis normalization before TOC matching
+  Evidence needed: OCR regions can be converted to logical reading order while retaining raw page coordinates and source offsets; horizontal, vertical, rotated, and mixed regions have explicit ordering rules.
+  Notes: The normalized view is for detection/matching only. Raw OCR text, quote spans, page identity, and source hashes remain traceable.
+
+- [ ] Define multi-page TOC grouping and termination rules
+  Evidence needed: adjacent candidate pages can be grouped into one TOC region, with explicit start/end evidence and rejection when a page is front matter, artwork, or正文.
+  Notes: Group contiguous or near-contiguous high-confidence candidates. Start evidence is a TOC marker or repeated title/page-number geometry; continuation requires stable writing mode, column order, title density, and page-number alignment. Terminate on layout change,正文 density, artwork-only page, page-number loss beyond tolerance, or validated body transition. Store group start/end page indices and per-page evidence; proximity alone is insufficient.
+
+- [ ] Define TOC global validation and parser authority boundary
+  Evidence needed: acceptance requires title recall, page-order monotonicity, page-range plausibility, body-anchor matches, non-overlapping ranges, and minimum confidence thresholds.
+  Notes: Run after grouping and before projection. Require entry count, page-number coverage, monotonic pages, plausible range, normalized body-title recall, unique non-overlapping anchors, and consistent group confidence. `detected` means evidence exists; `usable` means the complete plan passed all checks. Metadata, OCR classification, and LLM suggestions remain advisory.
+
+- [ ] Prepare reliable TOC PDF fixtures before enabling broad regression coverage
+  Evidence needed: born-digital flat TOC, scanned horizontal TOC, vertical right-to-left TOC, multi-page TOC, chapter-section TOC, deeper hierarchy requiring merge, and negative artwork/front-matter cases.
+  Notes: Each fixture must define expected TOC pages, printed page numbers, hierarchy levels, page/character ranges, and fallback behavior. `暗水幽靈.pdf` is currently a layout-identification case only because its OCR page-number anchors are unreliable.
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

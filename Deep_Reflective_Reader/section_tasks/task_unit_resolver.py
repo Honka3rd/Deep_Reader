@@ -28,6 +28,31 @@ class TaskUnitResolver:
         """Resolve usable task units from one structured document."""
         return self.resolve_with_options(document=document)
 
+    def resolve_for_task_layout(
+        self,
+        *,
+        document: StructuredDocument,
+        split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
+    ) -> list[TaskUnit]:
+        """Resolve units without merging across persisted section boundaries."""
+        effective_sections = get_effective_sections(document)
+        if not effective_sections:
+            return []
+
+        resolved_document_language = LanguageCodeResolver.resolve(document.language)
+        resolved_split_mode = (
+            self.split_mode
+            if split_mode is None
+            else TaskUnitSplitMode.resolve(split_mode)
+        )
+        return self._expand_sections_to_base_units(
+            effective_sections,
+            split_mode=resolved_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
+            language_code=resolved_document_language,
+        )
+
     def resolve_with_options(
         self,
         *,

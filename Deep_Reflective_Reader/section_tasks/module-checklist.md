@@ -101,6 +101,13 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define segmented content-block endpoint projection semantics
 - [ ] Define duplicate/missing content-block validation behavior
 - [ ] Define segmented block artifact-target alignment behavior
+- [ ] Preserve section-scoped task-layout ownership for TOC-derived hierarchy
+  Evidence needed: every persisted task unit belongs to exactly one effective section in task-layout projection; cross-section content merging remains unavailable on the layout path.
+  Notes: TOC-aware parsing may change section boundaries, but must not change the `chapters[].sections[].task_units[]` ownership contract.
+
+- [ ] Define task-layout consumption contract for page/layout-derived hierarchy
+  Evidence needed: task-layout consumes only validated `chapters[].sections[].task_units[]` hierarchy and may expose page/layout provenance as advisory metadata without reconstructing structure.
+  Notes: Orientation, reading order, TOC scores, and OCR evidence do not become task-layout authority; root `sections[]` and `structure_nodes` remain excluded from the primary flow.
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

@@ -78,7 +78,9 @@ class DocumentHierarchyBuilder:
             title = (section.title or "").strip()
             is_main_body = role in (None, SectionRole.MAIN_BODY)
 
-            if is_main_body and _is_chapter_heading(title):
+            if is_main_body and (
+                _is_chapter_heading(title) or section.section_kind == "toc_chapter"
+            ):
                 current_special_chapter = None
                 chapter_id = f"chapter-{len(mutable_chapters)}"
                 chapter_section = self._with_section_parent(

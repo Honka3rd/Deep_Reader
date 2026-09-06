@@ -18,6 +18,7 @@ venv/
 
 # Secrets
 .env
+.env.local
 
 # Data / Index / Cache
 data/

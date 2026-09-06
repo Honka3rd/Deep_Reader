@@ -8,6 +8,11 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DEEP_READER_STRUCTURED_STORAGE_BACKEND: ${DEEP_READER_STRUCTURED_STORAGE_BACKEND:-postgres}
       DEEP_READER_POSTGRES_DSN: postgresql://${POSTGRES_USER:-deep_reader}:${POSTGRES_PASSWORD:-deep_reader_dev}@postgres:5432/${POSTGRES_DB:-deep_reader}
+      DEEP_READER_PDF_OCR_ENABLED: ${DEEP_READER_PDF_OCR_ENABLED:-1}
+      DEEP_READER_PDF_OCR_LANGUAGE: ${DEEP_READER_PDF_OCR_LANGUAGE:-eng+chi_sim+chi_tra}
+      DEEP_READER_PDF_OCR_CACHE_ENABLED: ${DEEP_READER_PDF_OCR_CACHE_ENABLED:-1}
+      DEEP_READER_PDF_RENDERER_CMD: ${DEEP_READER_PDF_RENDERER_CMD:-pdftoppm}
+      DEEP_READER_PDF_RENDER_DPI: ${DEEP_READER_PDF_RENDER_DPI:-200}
     ports:
       - "${DEEP_READER_API_PORT:-8000}:8000"
     volumes:
@@ -37,6 +42,7 @@ services:
     volumes:
       - deep_reader_postgres_data:/var/lib/postgresql/data
       - ./Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql:/docker-entrypoint-initdb.d/001_phase_1_core_hierarchy.sql:ro
+      - ./Deep_Reflective_Reader/db/migrations/002_ocr_runs.sql:/docker-entrypoint-initdb.d/002_ocr_runs.sql:ro
     healthcheck:
       test:
         [

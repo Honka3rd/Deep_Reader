@@ -250,6 +250,70 @@ class PostgresStructuredDocumentStore:
                         ),
                     )
 
+    def save_ocr_run(
+        self,
+        *,
+        doc_name: str,
+        provenance: dict[str, object],
+        full_text: str | None,
+        pages: list[str] | None = None,
+    ) -> None:
+        """Persist OCR output and provenance without making it hierarchy authority."""
+        resolved = self.target_for_doc_name(doc_name)
+        psycopg, dict_row, Jsonb = self._load_psycopg()
+        with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+            with connection.transaction():
+                document = connection.execute(
+                    """
+                    SELECT id FROM documents
+                    WHERE namespace = %s AND document_name = %s
+                    """,
+                    (resolved.namespace, resolved.document_name),
+                ).fetchone()
+                if document is None:
+                    raise FileNotFoundError(
+                        "PostgresStructuredDocumentStore.save_ocr_run: document not found: "
+                        f"{resolved.namespace}/{resolved.document_name}"
+                    )
+                run = connection.execute(
+                    """
+                    INSERT INTO ocr_runs (
+                        document_id, source_file_sha256, ocr_engine,
+                        ocr_engine_version, ocr_language, renderer, render_dpi,
+                        page_count, page_limit, status, full_text, metadata_payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        int(document["id"]),
+                        str(provenance.get("source_file_sha256", "")),
+                        str(provenance.get("ocr_engine", "tesseract")),
+                        provenance.get("ocr_engine_version"),
+                        str(provenance.get("ocr_language", "")),
+                        provenance.get("pdf_renderer"),
+                        provenance.get("pdf_render_dpi"),
+                        int(provenance.get("page_count", 0)),
+                        provenance.get("ocr_page_limit"),
+                        "completed",
+                        full_text,
+                        Jsonb(provenance),
+                    ),
+                ).fetchone()
+                if run is None:
+                    raise RuntimeError("PostgresStructuredDocumentStore.save_ocr_run: insert failed")
+                if pages is not None:
+                    connection.executemany(
+                        """
+                        INSERT INTO ocr_pages (ocr_run_id, page_index, text, metadata_payload)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        [
+                            (int(run["id"]), index, page, Jsonb({"source": "tesseract"}))
+                            for index, page in enumerate(pages)
+                        ],
+                    )
+
     def load(
         self,
         target: str | StructuredDocumentStorageConfig | PostgresStructuredDocumentTarget,
