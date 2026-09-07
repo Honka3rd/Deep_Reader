@@ -37,8 +37,8 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 12 | 0 | OCR File Cache Removed |
-| `db/` | package + design module | `db/module-checklist.md` | 45 | 0 | PostgreSQL Parse Provenance Runtime Verified |
-| `document_preparation/` | package | `document_preparation/module-checklist.md` | 5 | 0 | OCR Layout Enhancement Design Captured |
+| `db/` | package + design module | `db/module-checklist.md` | 46 | 0 | OCR Run Page Persistence Fixed |
+| `document_preparation/` | package | `document_preparation/module-checklist.md` | 6 | 0 | Structured Reuse Before Raw Load |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 18 | 0 | Native PDF Outline Normalization Implemented |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -48,7 +48,7 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `scripts/` | package | `scripts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `scripts/` | package | `scripts/module-checklist.md` | 4 | 0 | Structured Reuse Regression Added |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 15 | 0 | Universal PDF Layout Evidence Governance Planned |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
@@ -192,8 +192,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_preparation/module-checklist.md`
 - Detailed Design: `document_preparation/module-detailed-design.md`
-- Status: `Ordered PDF Structure Discovery Implemented`
-- Completed item count: `5`
+- Status: `Structured Reuse Before Raw Load`
+- Completed item count: `6`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -203,6 +203,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Collects non-blocking profile/enrichment errors while preserving structured readiness semantics.
 - [x] Discovers native PDF Outline before OCR/layout TOC analysis and preserves conservative fallback behavior.
   Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`.
+- [x] Reuses existing structured documents before expensive raw loading in base/common/non-force preparation.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/scripts/test_prepare_structured_reuse_before_raw_load.py`; `國富論lite.pdf` container API verification.
 
 #### Needs Confirmation
 
@@ -222,8 +224,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
-- Status: `PostgreSQL Parse Provenance Runtime Verified`
-- Completed item count: `45`
+- Status: `OCR Run Page Persistence Fixed`
+- Completed item count: `46`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -269,6 +271,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Implements Docker PostgreSQL structured document runtime read/write switch for new documents.
 - [x] Fixes PostgreSQL structured runtime read path for section-summary verification.
 - [x] Persists structured parse provenance in PostgreSQL metadata and exposes effective parser mode through parse events for task-layout observability.
+- [x] Persists OCR run pages through PostgreSQL cursor batching.
+  Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `國富論lite` `/documents/prepare` container verification; PostgreSQL `ocr_runs` and `ocr_pages` row verification.
 
 #### Needs Confirmation
 
@@ -501,8 +505,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `Structured Reuse Regression Added`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -510,6 +514,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Maintains regression script suite for hierarchy, task-layout, artifact persistence, and profile metadata.
 - [x] Includes real-document and REST smoke script coverage for end-to-end verification paths.
 - [x] Covers profile/metadata and language registry hardening through dedicated regression scripts.
+- [x] Covers structured-document reuse before raw-load preparation.
+  Evidence: `Deep_Reflective_Reader/scripts/test_prepare_structured_reuse_before_raw_load.py`.
 
 #### Needs Confirmation
 

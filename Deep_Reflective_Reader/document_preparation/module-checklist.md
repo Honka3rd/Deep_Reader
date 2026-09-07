@@ -59,6 +59,10 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`; container verification on `Deep_Reflective_Reader/data/raw/许三观卖血记.pdf`.
   Notes: The precedence chain is `native_outline -> validated_ocr_toc -> current_keyword_heading_parser`. A lower-priority source must not overwrite an accepted higher-priority hierarchy. All rejected-source reasons remain advisory provenance, and raw text remains unchanged.
 
+- [x] Reuse existing structured documents before expensive raw loading in base preparation
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/scripts/test_prepare_structured_reuse_before_raw_load.py`; container verification with `Deep_Reflective_Reader/data/raw/國富論lite.pdf`.
+  Notes: `base` preparation now validates and reuses an existing structured document before raw text loading when `force_rebuild=false` and parser mode is common. This prevents scanned PDFs from entering OCR on repeated `prepare-task-layout` or content-read preparation paths while preserving force rebuild and LLM enhanced reparse behavior.
+
 - [ ] Define universal PDF layout-analysis preparation stages
   Evidence needed: preparation runs page inventory, cheap layout inspection, candidate-page OCR, optional high-cost verification, and structure handoff in deterministic order for every PDF type.
   Notes: Planned order: inventory every page, normalize layout hypotheses, score candidates, group candidates, run optional high-cost verification, perform global TOC validation, then hand evidence to structure parsing. Native-text and scanned PDFs share one evidence contract; OCR is used only when required. No stage may mutate raw text.

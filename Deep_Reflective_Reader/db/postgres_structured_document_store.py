@@ -303,16 +303,22 @@ class PostgresStructuredDocumentStore:
                 if run is None:
                     raise RuntimeError("PostgresStructuredDocumentStore.save_ocr_run: insert failed")
                 if pages is not None:
-                    connection.executemany(
-                        """
-                        INSERT INTO ocr_pages (ocr_run_id, page_index, text, metadata_payload)
-                        VALUES (%s, %s, %s, %s)
-                        """,
-                        [
-                            (int(run["id"]), index, page, Jsonb({"source": "tesseract"}))
-                            for index, page in enumerate(pages)
-                        ],
-                    )
+                    with connection.cursor() as cursor:
+                        cursor.executemany(
+                            """
+                            INSERT INTO ocr_pages (ocr_run_id, page_index, text, metadata_payload)
+                            VALUES (%s, %s, %s, %s)
+                            """,
+                            [
+                                (
+                                    int(run["id"]),
+                                    index,
+                                    page,
+                                    Jsonb({"source": "tesseract"}),
+                                )
+                                for index, page in enumerate(pages)
+                            ],
+                        )
 
     def load(
         self,

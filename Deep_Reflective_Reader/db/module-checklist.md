@@ -227,6 +227,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; live reparse validation for `Madame Bovary`; live `/documents/task-layout` validation showing `requested_parser_mode=llm_enhanced`, `effective_parser_mode=common`, `fallback_used=true`, `fallback_reason=abnormal_section_output`
   Notes: PostgreSQL document metadata stores `parse_provenance`, and parse events record the effective parser mode. This is provenance only; `documents.current_structure_version` remains hierarchy version authority.
 
+- [x] Persist OCR run pages through PostgreSQL cursor batching
+  Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; container `/documents/prepare` verification for `國富論lite`; PostgreSQL verification showing one completed `ocr_runs` row and three `ocr_pages` rows for `國富論lite`.
+  Notes: OCR run persistence now uses cursor-level `executemany`, avoiding the previous psycopg connection-method failure. OCR text and pages are persisted as OCR provenance/output only and do not become parser or hierarchy authority.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

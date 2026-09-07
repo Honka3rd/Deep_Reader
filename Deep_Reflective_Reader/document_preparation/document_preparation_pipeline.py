@@ -94,6 +94,17 @@ class DocumentPreparationPipeline:
             errors=[],
         )
 
+        if (
+            preparation_mode == PreparationMode.BASE
+            and self._try_reuse_existing_structured_document(
+                doc_name=doc_name,
+                assets=assets,
+                force_rebuild=force_rebuild,
+                parser_mode=parser_mode,
+            )
+        ):
+            return assets
+
         # Step 1. Load canonical raw text.
         raw_text = self._load_raw_text(
             doc_name=doc_name,
@@ -310,15 +321,15 @@ class DocumentPreparationPipeline:
             # TODO: Pass document_profile.parser_metadata hints into structured parser
             # once parser-side consumption is implemented.
             _ = document_profile
-            should_rebuild = force_rebuild or parser_mode == SectionSplitterMode.LLM_ENHANCED
-            if self.structured_document_store.exists(storage_config) and not should_rebuild:
-                try:
-                    self.structured_document_store.load(storage_config)
-                    return True, structured_document_path
-                except Exception as load_error:
-                    assets.errors.append(
-                        f"prepare_structured_document_reload_failed:{doc_name}:{load_error}"
-                    )
+            if self._try_reuse_existing_structured_document(
+                doc_name=doc_name,
+                assets=assets,
+                force_rebuild=force_rebuild,
+                parser_mode=parser_mode,
+                storage_config=storage_config,
+                structured_document_path=structured_document_path,
+            ):
+                return True, structured_document_path
 
             page_evidence = self._load_page_layout_evidence(doc_name)
             page_boundaries = self._load_page_text_boundaries(doc_name)
@@ -356,6 +367,40 @@ class DocumentPreparationPipeline:
         except Exception as error:
             assets.errors.append(f"prepare_structured_document_failed:{error}")
             return False, None
+
+    def _try_reuse_existing_structured_document(
+        self,
+        *,
+        doc_name: str,
+        assets: PreparedDocumentAssets,
+        force_rebuild: bool,
+        parser_mode: SectionSplitterMode,
+        storage_config: StructuredDocumentStorageConfig | None = None,
+        structured_document_path: str | None = None,
+    ) -> bool:
+        """Reuse a valid structured document before any expensive raw load work."""
+        if force_rebuild or parser_mode == SectionSplitterMode.LLM_ENHANCED:
+            return False
+
+        try:
+            resolved_storage_config = storage_config or StructuredDocumentStorageConfig(
+                namespace=doc_name
+            )
+            resolved_path = structured_document_path or self.structured_document_store.location(
+                resolved_storage_config
+            )
+            if not self.structured_document_store.exists(resolved_storage_config):
+                return False
+            self.structured_document_store.load(resolved_storage_config)
+        except Exception as reuse_error:
+            assets.errors.append(
+                f"prepare_structured_document_reload_failed:{doc_name}:{reuse_error}"
+            )
+            return False
+
+        assets.structured_document_ready = True
+        assets.structured_document_path = resolved_path
+        return True
 
     def _persist_ocr_run(
         self,
