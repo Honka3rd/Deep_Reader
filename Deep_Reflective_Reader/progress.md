@@ -56,7 +56,7 @@ It is used to:
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 11 | 0 | Task Layout Parse Provenance Verified |
+| `main.py` | root-python-module | `main.module-checklist.md` | 12 | 0 | Health Request Logging Suppressed |
 
 ## 5. Package Module Progress
 
@@ -699,8 +699,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
-- Status: `Task Layout Parse Provenance Verified`
-- Completed item count: `11`
+- Status: `Health Request Logging Suppressed`
+- Completed item count: `12`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -716,6 +716,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Maps content-block artifact target metadata in task-unit content endpoint response with safe glossary-key filtering.
 - [x] Adds lightweight document list/search endpoint.
 - [x] Maps optional task-layout parse provenance to public REST response and validates it through backend and UI proxy routes.
+- [x] Suppresses successful `/health` request lifecycle logs while preserving non-health request completion logs and exception logs.
 
 #### Needs Confirmation
 

@@ -60,6 +60,11 @@ section_task_coordinator = qa_coordinator.container.section_task_coordinator()
 document_artifact_repository = qa_coordinator.container.structured_document_artifact_repository()
 
 
+def _should_suppress_success_request_log(path: str) -> bool:
+    """Return whether successful request lifecycle logging should be suppressed."""
+    return path == "/health"
+
+
 @app.middleware("http")
 async def request_logging_middleware(request, call_next):
     """Log request lifecycle without recording request bodies or credentials."""
@@ -70,13 +75,14 @@ async def request_logging_middleware(request, call_next):
         logger.exception("request_failed method=%s path=%s", request.method, request.url.path)
         raise
     duration_ms = (time.perf_counter() - started_at) * 1000
-    logger.info(
-        "request_completed method=%s path=%s status=%s duration_ms=%.1f",
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-    )
+    if not _should_suppress_success_request_log(request.url.path):
+        logger.info(
+            "request_completed method=%s path=%s status=%s duration_ms=%.1f",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
     return response
 
 _RAW_DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")

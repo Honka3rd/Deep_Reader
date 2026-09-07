@@ -79,6 +79,10 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
+- [x] Suppress successful health-check request lifecycle logs
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_main_request_logging.py`; live API verification that repeated `/health` calls do not append `request_completed path=/health` lines.
+  Notes: Health probes are high-frequency operational noise and can hide useful OCR/prepare logs.
+
 After implementation, the task owner must update this checklist and mark the task as completed:
 
 No coding task should be considered complete unless the corresponding module checklist is updated.
