@@ -17,7 +17,7 @@
 | `doc_loaders/pdf_document_loader.py` | 讀取 `data/raw/*.pdf` 並抽取全文 | `pypdf` pages join **[Code-Confirmed]** |
 | `doc_loaders/document_loader_factory.py` | loader 選擇器 | extension/path existence 判斷 **[Code-Confirmed]** |
 | `doc_loaders/pdf_document_loader.py` OCR path | 掃描圖片 PDF optional OCR fallback | 透過 explicit config gate 啟用本地 Tesseract OCR；預設關閉 **[Code-Confirmed]** |
-| `doc_loaders/pdf_document_loader.py` OCR cache | OCR text cache + provenance validation | `data/ocr_text/*.json`；以 raw hash / OCR engine / language / page limit 驗證 **[Code-Confirmed]** |
+| `doc_loaders/pdf_document_loader.py` OCR provenance | OCR provenance + page text handoff | OCR output is retained in memory during one prepare pass and handed to structured-store OCR run persistence; `data/ocr_text` file cache is not an active persistence path. **[Code-Confirmed]** |
 
 ## 4. Main Responsibilities
 
@@ -80,9 +80,10 @@ Current OCR behavior：
 4. 目前 gate 可透過 `DEEP_READER_PDF_OCR_ENABLED=1` 啟用；OCR language 預設讀取 `DEEP_READER_PDF_OCR_LANGUAGE`，未配置時為 `eng+chi_sim+chi_tra`；Tesseract binary 可由 `DEEP_READER_TESSERACT_CMD` 指定，未配置時為 `tesseract`。 **[Code-Confirmed]**
 5. OCR 目前走本地 Tesseract CLI：loader 逐頁抽取 embedded image，寫入暫存檔，呼叫 `tesseract <image> stdout -l <language>`，將非空 stdout join 成 raw text。 **[Code-Confirmed]**
 6. OCR 成功產出的文字可作為 raw text input；OCR failure 會映射為 `load_raw_text_ocr_failed:<doc_name>:<reason>`。 **[Code-Confirmed]**
-7. OCR cache 預設啟用，可透過 `DEEP_READER_PDF_OCR_CACHE_ENABLED=0` 關閉；cache 預設寫入 `data/ocr_text`。 **[Code-Confirmed]**
-8. OCR cache payload 保存 `provenance` 與 `text`；cache key 由 provenance JSON hash 產生。provenance 至少包含 `doc_name`、source filename、raw PDF SHA-256、OCR engine、OCR engine version、OCR language、OCR page limit、page count。payload provenance 不匹配、JSON 損壞、或 text 為空時一律忽略並重新 OCR。 **[Code-Confirmed]**
-9. OCR language 應由配置或顯式 request 決定；後續可加入 heuristic，但不應依賴 LLM 分類作硬控制。 **[From HLD] + [Future Direction]**
+7. OCR file cache has been removed as an active persistence path; loader must not read or write `data/ocr_text`. **[Code-Confirmed]**
+8. OCR output is retained in memory only within the active loader instance so `load()` and page-boundary loading in the same prepare pass do not run OCR twice. Durable OCR output/provenance belongs to the structured-store `save_ocr_run` path after document creation. **[Code-Confirmed]**
+9. OCR provenance includes `doc_name`, source filename, raw PDF SHA-256, OCR engine, OCR engine version, OCR language, OCR page limit, page count, renderer, and render DPI. **[Code-Confirmed]**
+10. OCR language 應由配置或顯式 request 決定；後續可加入 heuristic，但不應依賴 LLM 分類作硬控制。 **[From HLD] + [Future Direction]**
 
 Suggested implementation shape（future）：
 
@@ -91,8 +92,8 @@ PdfDocumentLoader
   -> native pypdf text extraction
   -> pdf inspection metrics
   -> if native text exists: return text
-  -> if scanned-image signature and OCR enabled: load valid OCR cache or run local Tesseract OCR
-  -> if OCR succeeds: write provenance-validated OCR cache
+  -> if scanned-image signature and OCR enabled: run local Tesseract OCR
+  -> if OCR succeeds: expose text/pages/provenance for structured-store OCR run persistence
   -> if scanned-image signature and OCR disabled: fail with requires_ocr reason
 ```
 

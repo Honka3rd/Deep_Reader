@@ -55,9 +55,9 @@ It is used to:
   Evidence: `Dockerfile`; `docker-compose.yml`; `.env.example`; `Deep_Reflective_Reader/doc_loaders/pdf_ocr_language_policy.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`
   Notes: Docker runtime installs Tesseract English, simplified Chinese, and traditional Chinese language data; PDF OCR defaults to `eng+chi_sim+chi_tra` for unknown-language raw loading while preserving explicit env/constructor override.
 
-- [x] Cache OCR text output with provenance-aware invalidation
-  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `docker-compose.yml`; `.env.example`
-  Notes: OCR text is cached under `data/ocr_text` by a hash of provenance containing `doc_name`, raw PDF SHA-256, Tesseract engine/version, OCR language, page limit, and page count; mismatched or invalid cache payloads are ignored and regenerated.
+- [x] Retire OCR text file-cache persistence after OCR run storage
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `docker-compose.yml`; `.env.example`
+  Notes: `PdfDocumentLoader` no longer reads or writes `data/ocr_text`. OCR output is retained only in memory during a single prepare pass and is durably persisted through the structured store `save_ocr_run` path after document creation.
 
 - [x] Use renderer-first PDF page normalization for OCR when embedded image decoding is unreliable
   Evidence: `Dockerfile`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `docker-compose.yml`; container verification on `國富論.pdf` page 5.
@@ -74,6 +74,9 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Stabilize raw data directory resolution across API container and repo-root scripts
   Evidence needed: `DocumentLoaderFactory` resolves `data/raw` consistently regardless of current working directory.
   Notes: Current relative `Path("data/raw")` can choose different loader behavior when run outside `Deep_Reflective_Reader` working directory.
+- [x] Remove OCR file-cache persistence from PDF loading
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `docker-compose.yml`; `.env.example`; container verification that `DEEP_READER_PDF_OCR_CACHE_ENABLED` is absent and OCR memory reuse does not create a cache directory.
+  Notes: OCR cache was a temporary bootstrap mechanism. It is removed as a second persistence surface now that OCR run storage exists.
 - [ ] Preserve page-aware OCR provenance for future table-of-contents detection
   Evidence needed: OCR output can expose stable page boundaries, page numbers, source hashes, and page-level text without changing the public raw-text loading contract.
   Notes: Planning-only. Page boundaries are required to use TOC page numbers as anchors for noisy/scanned documents.

@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 import hashlib
-import json
 import logging
 import os
 import shutil
@@ -74,8 +73,6 @@ class PdfDocumentLoader(AbstractDocumentLoader):
         tesseract_cmd: str | None = None,
         ocr_page_limit: int | None = None,
         ocr_timeout_seconds: int = 60,
-        ocr_cache_enabled: bool | None = None,
-        ocr_cache_dir: str | None = None,
         pdf_renderer_cmd: str | None = None,
         pdf_render_dpi: int = 200,
     ):
@@ -104,16 +101,6 @@ Args:
         )
         self.ocr_page_limit = ocr_page_limit
         self.ocr_timeout_seconds = ocr_timeout_seconds
-        self.ocr_cache_enabled = (
-            self._env_flag("DEEP_READER_PDF_OCR_CACHE_ENABLED", default=True)
-            if ocr_cache_enabled is None
-            else ocr_cache_enabled
-        )
-        self.ocr_cache_dir = (
-            Path(ocr_cache_dir)
-            if ocr_cache_dir is not None
-            else self.base_dir.parent / "ocr_text"
-        )
         self.pdf_renderer_cmd = (
             pdf_renderer_cmd
             or os.environ.get("DEEP_READER_PDF_RENDERER_CMD", "pdftoppm").strip()
@@ -153,11 +140,10 @@ Returns:
         if metrics.is_predominantly_scanned_image_pdf:
             if self.ocr_enabled:
                 logger.info(
-                    "ocr_started doc=%s language=%s page_limit=%s cache_enabled=%s",
+                    "ocr_started doc=%s language=%s page_limit=%s persistence=memory_then_ocr_runs",
                     doc_name,
                     self.ocr_language,
                     self.ocr_page_limit or len(reader.pages),
-                    self.ocr_cache_enabled,
                 )
                 return self._load_text_with_ocr(
                     doc_name=doc_name,
@@ -492,23 +478,11 @@ Returns:
                 detail=f"tesseract_not_found:{self.tesseract_cmd}",
             )
 
-        provenance = self._build_ocr_cache_provenance(
+        provenance = self._build_ocr_provenance(
             doc_name=doc_name,
             file_path=file_path,
             page_count=len(reader.pages),
         )
-        cached_text = self._load_cached_ocr_text(provenance)
-        if cached_text is not None:
-            self.last_ocr_provenance = provenance
-            self.last_ocr_pages = None
-            logger.info(
-                "ocr_cache_hit doc=%s cache_path=%s text_chars=%s",
-                doc_name,
-                self._ocr_cache_path(provenance),
-                len(cached_text),
-            )
-            return cached_text
-
         pages = self._load_pages_with_ocr(
             doc_name=doc_name,
             file_path=file_path,
@@ -518,12 +492,10 @@ Returns:
         if not ocr_text.strip():
             logger.error("ocr_failed doc=%s detail=empty_ocr_text", doc_name)
             raise RawTextOcrFailedError(doc_name=doc_name, detail="empty_ocr_text")
-        self._write_cached_ocr_text(provenance=provenance, text=ocr_text)
         logger.info(
-            "ocr_completed doc=%s text_chars=%s cache_path=%s",
+            "ocr_completed doc=%s text_chars=%s persistence=ocr_runs",
             doc_name,
             len(ocr_text),
-            self._ocr_cache_path(provenance),
         )
         return ocr_text
 
@@ -534,30 +506,26 @@ Returns:
         file_path: Path,
         reader: PdfReader,
     ) -> list[str]:
-        """OCR one page at a time and cache page-preserving output."""
+        """OCR one page at a time and retain page-preserving output in memory."""
         if shutil.which(self.tesseract_cmd) is None:
             raise RawTextOcrFailedError(
                 doc_name=doc_name,
                 detail=f"tesseract_not_found:{self.tesseract_cmd}",
             )
 
-        provenance = self._build_ocr_cache_provenance(
+        provenance = self._build_ocr_provenance(
             doc_name=doc_name,
             file_path=file_path,
             page_count=len(reader.pages),
             schema_version=2,
         )
-        cached_pages = self._load_cached_ocr_pages(provenance)
-        if cached_pages is not None:
-            self.last_ocr_provenance = provenance
-            self.last_ocr_pages = list(cached_pages)
+        if self.last_ocr_provenance == provenance and self.last_ocr_pages is not None:
             logger.info(
-                "ocr_pages_cache_hit doc=%s cache_path=%s pages=%s",
+                "ocr_pages_memory_hit doc=%s pages=%s",
                 doc_name,
-                self._ocr_cache_path(provenance),
-                len(cached_pages),
+                len(self.last_ocr_pages),
             )
-            return cached_pages
+            return list(self.last_ocr_pages)
 
         pages: list[str] = []
         page_limit = self.ocr_page_limit or len(reader.pages)
@@ -590,15 +558,13 @@ Returns:
 
         if not any(page.strip() for page in pages):
             raise RawTextOcrFailedError(doc_name=doc_name, detail="empty_ocr_pages")
-        self._write_cached_ocr_pages(provenance=provenance, pages=pages)
         self.last_ocr_provenance = provenance
         self.last_ocr_pages = list(pages)
         logger.info(
-            "ocr_pages_completed doc=%s pages=%s text_chars=%s cache_path=%s",
+            "ocr_pages_completed doc=%s pages=%s text_chars=%s persistence=memory_then_ocr_runs",
             doc_name,
             len(pages),
             sum(len(page) for page in pages),
-            self._ocr_cache_path(provenance),
         )
         return pages
 
@@ -740,7 +706,7 @@ Returns:
                 return True
         return False
 
-    def _build_ocr_cache_provenance(
+    def _build_ocr_provenance(
         self,
         *,
         doc_name: str,
@@ -761,105 +727,6 @@ Returns:
             "pdf_renderer": self.pdf_renderer_cmd,
             "pdf_render_dpi": self.pdf_render_dpi,
         }
-
-    def _load_cached_ocr_pages(
-        self,
-        provenance: dict[str, object],
-    ) -> list[str] | None:
-        if not self.ocr_cache_enabled:
-            return None
-        cache_path = self._ocr_cache_path(provenance)
-        if not cache_path.exists():
-            return None
-        try:
-            payload = json.loads(cache_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
-        if payload.get("provenance") != provenance:
-            return None
-        pages = payload.get("pages")
-        if not isinstance(pages, list) or not all(isinstance(page, str) for page in pages):
-            return None
-        return list(pages)
-
-    def _write_cached_ocr_pages(
-        self,
-        *,
-        provenance: dict[str, object],
-        pages: list[str],
-    ) -> None:
-        if not self.ocr_cache_enabled:
-            return
-        cache_path = self._ocr_cache_path(provenance)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"provenance": provenance, "pages": pages}
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=str(cache_path.parent),
-            delete=False,
-            prefix=f".{cache_path.name}.",
-            suffix=".tmp",
-        ) as temp_file:
-            json.dump(payload, temp_file, ensure_ascii=False, indent=2, sort_keys=True)
-            temp_file.write("\n")
-            temp_name = temp_file.name
-        Path(temp_name).replace(cache_path)
-
-    def _load_cached_ocr_text(self, provenance: dict[str, object]) -> str | None:
-        if not self.ocr_cache_enabled:
-            return None
-
-        cache_path = self._ocr_cache_path(provenance)
-        if not cache_path.exists():
-            return None
-
-        try:
-            payload = json.loads(cache_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
-
-        if payload.get("provenance") != provenance:
-            return None
-
-        text = payload.get("text")
-        if not isinstance(text, str) or not text.strip():
-            return None
-        return text
-
-    def _write_cached_ocr_text(
-        self,
-        *,
-        provenance: dict[str, object],
-        text: str,
-    ) -> None:
-        if not self.ocr_cache_enabled:
-            return
-
-        cache_path = self._ocr_cache_path(provenance)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "provenance": provenance,
-            "text": text,
-        }
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=str(cache_path.parent),
-            delete=False,
-            prefix=f".{cache_path.name}.",
-            suffix=".tmp",
-        ) as temp_file:
-            json.dump(payload, temp_file, ensure_ascii=False, indent=2, sort_keys=True)
-            temp_file.write("\n")
-            temp_name = temp_file.name
-        Path(temp_name).replace(cache_path)
-
-    def _ocr_cache_path(self, provenance: dict[str, object]) -> Path:
-        cache_key = hashlib.sha256(
-            json.dumps(provenance, sort_keys=True, ensure_ascii=False).encode("utf-8")
-        ).hexdigest()
-        return self.ocr_cache_dir / f"{cache_key}.json"
 
     def _file_sha256(self, file_path: Path) -> str:
         digest = hashlib.sha256()

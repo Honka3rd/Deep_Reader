@@ -142,22 +142,22 @@ def test_real_scanned_pdf_can_use_explicit_ocr_fallback() -> None:
             tesseract_cmd=str(fake_tesseract),
             ocr_language="eng",
             ocr_page_limit=1,
-            ocr_cache_dir=str(Path(temp_dir) / "ocr-cache"),
         )
 
         text = loader.load("暗水幽灵")
         _assert(text == "OCR fallback text", f"unexpected OCR text: {text!r}")
 
 
-def test_ocr_cache_reuses_text_for_matching_provenance() -> None:
-    raw_dir = Path(__file__).resolve().parents[1] / "data" / "raw"
-    fixture = raw_dir / "暗水幽灵.pdf"
-    if not fixture.exists():
-        return
+def test_ocr_uses_memory_pages_without_file_cache() -> None:
+    class _Reader:
+        pages = [object()]
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
+        pdf_path = temp_path / "sample.pdf"
+        pdf_path.write_bytes(b"not a real pdf; private OCR helper regression")
         count_file = temp_path / "ocr-count"
+        cache_dir = temp_path / "ocr-cache"
         fake_tesseract = temp_path / "fake-tesseract"
         fake_tesseract.write_text(
             "#!/bin/sh\n"
@@ -166,7 +166,7 @@ def test_ocr_cache_reuses_text_for_matching_provenance() -> None:
             "count=$(cat \"$count_file\" 2>/dev/null || printf '0')\n"
             "count=$((count + 1))\n"
             "printf '%s' \"$count\" > \"$count_file\"\n"
-            "printf 'Cached OCR text\\n'\n",
+            "printf 'Memory OCR text\\n'\n",
             encoding="utf-8",
         )
         fake_tesseract.chmod(0o755)
@@ -175,25 +175,29 @@ def test_ocr_cache_reuses_text_for_matching_provenance() -> None:
         os.environ["FAKE_TESSERACT_COUNT_FILE"] = str(count_file)
         try:
             loader = PdfDocumentLoader(
-                base_dir=str(raw_dir),
+                base_dir=str(temp_path),
                 ocr_enabled=True,
                 tesseract_cmd=str(fake_tesseract),
                 ocr_language="eng",
                 ocr_page_limit=1,
-                ocr_cache_dir=str(temp_path / "ocr-cache"),
+            )
+            loader._render_page_images = lambda **kwargs: [temp_path / "page.png"]
+
+            first_pages = loader._load_pages_with_ocr(
+                doc_name="sample",
+                file_path=pdf_path,
+                reader=_Reader(),
+            )
+            second_pages = loader._load_pages_with_ocr(
+                doc_name="sample",
+                file_path=pdf_path,
+                reader=_Reader(),
             )
 
-            first_text = loader.load("暗水幽灵")
-            boundaries = loader.load_page_text_boundaries("暗水幽灵")
-            second_text = loader.load("暗水幽灵")
-
-            _assert(first_text == "Cached OCR text", "first OCR pass should return recognized text")
-            _assert(
-                boundaries[0].text == "Cached OCR text",
-                "page-boundary load should reuse page-aware OCR cache",
-            )
-            _assert(second_text == first_text, "second OCR pass should reuse cached text")
+            _assert(first_pages == ["Memory OCR text"], "first OCR pass should return recognized text")
+            _assert(second_pages == first_pages, "second OCR pass should reuse in-memory OCR pages")
             _assert(count_file.read_text(encoding="utf-8") == "1", "OCR command should run only once")
+            _assert(not cache_dir.exists(), "OCR file cache must not create cache directory")
         finally:
             if previous is None:
                 os.environ.pop("FAKE_TESSERACT_COUNT_FILE", None)
@@ -235,7 +239,7 @@ if __name__ == "__main__":
     test_real_scanned_pdf_inspection_for_dark_water_fixture()
     test_real_scanned_pdf_load_requires_ocr()
     test_real_scanned_pdf_can_use_explicit_ocr_fallback()
-    test_ocr_cache_reuses_text_for_matching_provenance()
+    test_ocr_uses_memory_pages_without_file_cache()
     test_ocr_language_policy_uses_project_language_codes()
     test_pdf_loader_defaults_to_multilingual_ocr_language()
     print("OK: PDF document loader inspection tests passed")
