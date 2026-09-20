@@ -16,3 +16,13 @@ class RawTextOcrFailedError(ValueError):
         self.detail = detail
         message = doc_name if detail is None else f"{doc_name}:{detail}"
         super().__init__(message)
+
+
+class RawTextOcrLowQualityError(ValueError):
+    """Raised when OCR produced text but failed deterministic quality gates."""
+
+    def __init__(self, doc_name: str, detail: str | None = None):
+        self.doc_name = doc_name
+        self.detail = detail
+        message = doc_name if detail is None else f"{doc_name}:{detail}"
+        super().__init__(message)

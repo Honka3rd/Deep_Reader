@@ -36,7 +36,7 @@ It is used to:
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 12 | 0 | OCR File Cache Removed |
+| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 16 | 0 | OCR Quality Gate Implemented |
 | `db/` | package + design module | `db/module-checklist.md` | 46 | 0 | OCR Run Page Persistence Fixed |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 6 | 0 | Structured Reuse Before Raw Load |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 18 | 0 | Native PDF Outline Normalization Implemented |
@@ -156,8 +156,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `doc_loaders/module-checklist.md`
 - Detailed Design: `doc_loaders/module-detailed-design.md`
-- Status: `OCR File Cache Removed`
-- Completed item count: `12`
+- Status: `OCR Quality Gate Implemented`
+- Completed item count: `16`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -187,6 +187,14 @@ No unresolved confirmation items identified in module checklist.
 - [x] Renderer-first PDF page normalization for OCR is implemented and recorded in `doc_loaders/module-checklist.md`.
   Evidence: `Dockerfile`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `docker-compose.yml`; `國富論.pdf` page 5 renderer/OCR verification.
 - [x] OCR file-cache persistence is removed from PDF loading; OCR pages are reused only in memory during the active prepare pass and durable OCR output goes through structured-store OCR run persistence.
+- [x] Multi-PSM OCR candidate selection is implemented for scanned PDF raw loading; default Tesseract output is no longer accepted solely because it is non-empty.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`.
+- [x] Low-quality OCR raw-load failure gate is implemented and maps through preparation as `load_raw_text_ocr_low_quality:<doc_name>:<reason>`.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/document_load_errors.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`.
+- [x] Vertical Chinese OCR raw-text handoff now allows deterministic candidate scoring to reject or supersede noisy default PSM output without becoming parser authority.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; container OCR verification on `國富論lite`.
+- [x] `國富論lite` OCR quality regression is covered by tests and container prepare verification; force rebuild now rejects low-quality OCR before structured hierarchy persistence.
+  Evidence: `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; container prepare API verification returned `structured_document_ready=false` with `load_raw_text_ocr_low_quality`.
 
 ### `document_preparation/`
 

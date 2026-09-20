@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -11,7 +12,11 @@ from dataclasses import replace
 from pypdf import PdfReader
 
 from .abstract_document_loader import AbstractDocumentLoader
-from .document_load_errors import RawTextOcrFailedError, RawTextRequiresOcrError
+from .document_load_errors import (
+    RawTextOcrFailedError,
+    RawTextOcrLowQualityError,
+    RawTextRequiresOcrError,
+)
 from .pdf_ocr_language_policy import normalize_tesseract_language_config
 from .pdf_outline import PdfOutlineEntry, PdfOutlineResult
 from .pdf_page_evidence import PdfPageLayoutEvidence, PdfPageTextBoundary, analyze_ocr_tsv
@@ -59,6 +64,21 @@ class PdfInspectionMetrics:
             and self.image_page_ratio >= 0.8
             and self.font_page_ratio <= 0.1
         )
+
+
+@dataclass(frozen=True)
+class OcrCandidateQuality:
+    """Deterministic quality summary for one OCR candidate."""
+
+    psm: str
+    text: str
+    score: float
+    passed: bool
+    reasons: list[str]
+    cjk_ratio: float
+    latin_ratio: float
+    symbol_ratio: float
+    single_token_ratio: float
 
 
 class PdfDocumentLoader(AbstractDocumentLoader):
@@ -111,6 +131,7 @@ Args:
         )
         self.last_ocr_provenance: dict[str, object] | None = None
         self.last_ocr_pages: list[str] | None = None
+        self.last_ocr_quality: list[dict[str, object]] = []
 
     def load(self, doc_name: str) -> str:
         """Load persisted artifact and return parsed object/data.
@@ -528,25 +549,34 @@ Returns:
             return list(self.last_ocr_pages)
 
         pages: list[str] = []
+        quality_by_page: list[dict[str, object]] = []
         page_limit = self.ocr_page_limit or len(reader.pages)
         with tempfile.TemporaryDirectory(prefix="deep-reader-pdf-ocr-pages-") as temp_dir:
             temp_path = Path(temp_dir)
             for page_index, page in enumerate(reader.pages[:page_limit]):
                 recognized_parts: list[str] = []
+                page_candidates: list[OcrCandidateQuality] = []
                 image_paths = self._render_page_images(
                     file_path=file_path,
                     page_index=page_index,
                     output_dir=temp_path,
                 )
                 for image_path in image_paths:
-                    recognized_text = self._ocr_image_text(
+                    recognized_text, candidates = self._ocr_image_text_with_quality(
                         image_path=image_path,
                         doc_name=doc_name,
                         page_index=page_index,
                     )
+                    page_candidates.extend(candidates)
                     if recognized_text:
                         recognized_parts.append(recognized_text)
                 pages.append("\n\n".join(recognized_parts))
+                quality_by_page.append(
+                    self._summarize_page_ocr_quality(
+                        page_index=page_index,
+                        candidates=page_candidates,
+                    )
+                )
                 if (page_index + 1) % 10 == 0 or page_index + 1 == page_limit:
                     logger.info(
                         "ocr_progress doc=%s page=%s/%s recognized_chars=%s",
@@ -557,9 +587,19 @@ Returns:
                     )
 
         if not any(page.strip() for page in pages):
+            if self._has_nonempty_ocr_candidate(quality_by_page):
+                self._raise_if_ocr_quality_unusable(
+                    doc_name=doc_name,
+                    quality_by_page=quality_by_page,
+                )
             raise RawTextOcrFailedError(doc_name=doc_name, detail="empty_ocr_pages")
+        self._raise_if_ocr_quality_unusable(
+            doc_name=doc_name,
+            quality_by_page=quality_by_page,
+        )
         self.last_ocr_provenance = provenance
         self.last_ocr_pages = list(pages)
+        self.last_ocr_quality = list(quality_by_page)
         logger.info(
             "ocr_pages_completed doc=%s pages=%s text_chars=%s persistence=memory_then_ocr_runs",
             doc_name,
@@ -569,9 +609,24 @@ Returns:
         return pages
 
     def _ocr_image_text(self, *, image_path: Path, doc_name: str, page_index: int) -> str:
-        """Use the default segmentation first, then a vertical-text fallback."""
-        outputs: list[str] = []
-        for psm in (None, "5"):
+        """Return the best OCR candidate text for one rendered page image."""
+        text, _ = self._ocr_image_text_with_quality(
+            image_path=image_path,
+            doc_name=doc_name,
+            page_index=page_index,
+        )
+        return text
+
+    def _ocr_image_text_with_quality(
+        self,
+        *,
+        image_path: Path,
+        doc_name: str,
+        page_index: int,
+    ) -> tuple[str, list[OcrCandidateQuality]]:
+        """Compare bounded Tesseract segmentation candidates deterministically."""
+        candidates: list[OcrCandidateQuality] = []
+        for psm in (None, "5", "6", "11"):
             command = [self.tesseract_cmd, str(image_path), "stdout", "-l", self.ocr_language]
             if psm is not None:
                 command.extend(["--psm", psm])
@@ -586,11 +641,158 @@ Returns:
                 detail = result.stderr.strip() or f"exit_code={result.returncode}"
                 raise RawTextOcrFailedError(doc_name=doc_name, detail=detail)
             text = result.stdout.strip()
-            if text:
-                outputs.append(text)
-            if text:
-                break
-        return max(outputs, key=len, default="")
+            candidates.append(
+                self._score_ocr_candidate(
+                    psm="default" if psm is None else psm,
+                    text=text,
+                )
+            )
+        selected = max(candidates, key=lambda candidate: candidate.score, default=None)
+        selected_text = selected.text if selected is not None and selected.passed else ""
+        logger.info(
+            "ocr_candidate_selected doc=%s page=%s psm=%s score=%s passed=%s reasons=%s",
+            doc_name,
+            page_index + 1,
+            selected.psm if selected is not None else "none",
+            round(selected.score, 4) if selected is not None else 0.0,
+            selected.passed if selected is not None else False,
+            ",".join(selected.reasons) if selected is not None else "no_candidates",
+        )
+        return selected_text, candidates
+
+    def _score_ocr_candidate(self, *, psm: str, text: str) -> OcrCandidateQuality:
+        normalized = text.strip()
+        cjk_count = len(re.findall(r"[\u3400-\u9fff]", normalized))
+        latin_count = len(re.findall(r"[A-Za-z]", normalized))
+        digit_count = len(re.findall(r"[0-9]", normalized))
+        signal_count = cjk_count + latin_count + digit_count
+        non_space_count = len(re.findall(r"\S", normalized))
+        symbol_count = max(0, non_space_count - signal_count)
+        tokens = re.findall(r"\S+", normalized)
+        single_tokens = [token for token in tokens if len(token) <= 2]
+        cjk_ratio = cjk_count / signal_count if signal_count else 0.0
+        latin_ratio = latin_count / signal_count if signal_count else 0.0
+        symbol_ratio = symbol_count / non_space_count if non_space_count else 1.0
+        single_token_ratio = len(single_tokens) / len(tokens) if tokens else 1.0
+        multilingual_or_chinese = "chi" in self.ocr_language.casefold()
+
+        if multilingual_or_chinese:
+            score = (
+                (0.55 * cjk_ratio)
+                + min(cjk_count / 120.0, 0.25)
+                + min(non_space_count / 500.0, 0.1)
+                - (0.35 * latin_ratio)
+                - (0.25 * symbol_ratio)
+                - (0.3 * single_token_ratio)
+            )
+            threshold = 0.28
+        else:
+            score = (
+                (0.45 * min((latin_count + digit_count) / 80.0, 1.0))
+                + (0.25 * (1.0 - symbol_ratio))
+                + min(non_space_count / 500.0, 0.15)
+                - (0.25 * single_token_ratio)
+            )
+            threshold = 0.22
+
+        reasons: list[str] = []
+        if not normalized:
+            reasons.append("empty_text")
+        if multilingual_or_chinese and cjk_ratio < 0.35:
+            reasons.append("low_cjk_ratio")
+        if multilingual_or_chinese and latin_ratio > 0.45:
+            reasons.append("latin_heavy")
+        if symbol_ratio > 0.35:
+            reasons.append("symbol_heavy")
+        if single_token_ratio > 0.82 and len(tokens) >= 20:
+            reasons.append("fragmented_tokens")
+        if non_space_count < 20:
+            reasons.append("too_short")
+        passed = bool(normalized) and score >= threshold
+        if passed:
+            reasons.append("quality_passed")
+        else:
+            reasons.append("quality_rejected")
+        return OcrCandidateQuality(
+            psm=psm,
+            text=normalized,
+            score=round(score, 4),
+            passed=passed,
+            reasons=reasons,
+            cjk_ratio=round(cjk_ratio, 4),
+            latin_ratio=round(latin_ratio, 4),
+            symbol_ratio=round(symbol_ratio, 4),
+            single_token_ratio=round(single_token_ratio, 4),
+        )
+
+    def _summarize_page_ocr_quality(
+        self,
+        *,
+        page_index: int,
+        candidates: list[OcrCandidateQuality],
+    ) -> dict[str, object]:
+        selected = max(candidates, key=lambda candidate: candidate.score, default=None)
+        return {
+            "page_index": page_index,
+            "selected_psm": selected.psm if selected is not None else None,
+            "selected_score": selected.score if selected is not None else 0.0,
+            "selected_passed": selected.passed if selected is not None else False,
+            "candidate_count": len(candidates),
+            "candidates": [
+                {
+                    "psm": candidate.psm,
+                    "score": candidate.score,
+                    "passed": candidate.passed,
+                    "reasons": list(candidate.reasons),
+                    "cjk_ratio": candidate.cjk_ratio,
+                    "latin_ratio": candidate.latin_ratio,
+                    "symbol_ratio": candidate.symbol_ratio,
+                    "single_token_ratio": candidate.single_token_ratio,
+                    "text_chars": len(candidate.text),
+                }
+                for candidate in candidates
+            ],
+        }
+
+    def _raise_if_ocr_quality_unusable(
+        self,
+        *,
+        doc_name: str,
+        quality_by_page: list[dict[str, object]],
+    ) -> None:
+        if not quality_by_page:
+            raise RawTextOcrLowQualityError(doc_name=doc_name, detail="no_quality_evidence")
+        passed_pages = [
+            page
+            for page in quality_by_page
+            if bool(page.get("selected_passed"))
+        ]
+        required_passed_pages = max(1, int((len(quality_by_page) * 0.35) + 0.999))
+        if len(passed_pages) >= required_passed_pages:
+            return
+        best_page = max(
+            quality_by_page,
+            key=lambda page: float(page.get("selected_score", 0.0)),
+        )
+        detail = (
+            "document_quality_gate_failed:"
+            f"passed_pages={len(passed_pages)}/{len(quality_by_page)},"
+            f"best_psm={best_page.get('selected_psm')},"
+            f"best_score={best_page.get('selected_score')}"
+        )
+        logger.warning("ocr_low_quality doc=%s detail=%s", doc_name, detail)
+        self.last_ocr_quality = list(quality_by_page)
+        raise RawTextOcrLowQualityError(doc_name=doc_name, detail=detail)
+
+    def _has_nonempty_ocr_candidate(self, quality_by_page: list[dict[str, object]]) -> bool:
+        for page in quality_by_page:
+            candidates = page.get("candidates")
+            if not isinstance(candidates, list):
+                continue
+            for candidate in candidates:
+                if isinstance(candidate, dict) and int(candidate.get("text_chars", 0)) > 0:
+                    return True
+        return False
 
     def _render_page_images(
         self,

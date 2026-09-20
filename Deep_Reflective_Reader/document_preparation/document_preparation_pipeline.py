@@ -5,6 +5,7 @@ from config.faiss_storage_config import FaissStorageConfig
 from config.structured_document_storage_config import StructuredDocumentStorageConfig
 from doc_loaders.document_load_errors import (
     RawTextOcrFailedError,
+    RawTextOcrLowQualityError,
     RawTextRequiresOcrError,
 )
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
@@ -259,6 +260,11 @@ class DocumentPreparationPipeline:
         except RawTextOcrFailedError as error:
             assets.errors.append(
                 f"load_raw_text_ocr_failed:{doc_name}:{error.detail or 'unknown'}"
+            )
+            return None
+        except RawTextOcrLowQualityError as error:
+            assets.errors.append(
+                f"load_raw_text_ocr_low_quality:{doc_name}:{error.detail or 'unknown'}"
             )
             return None
         except Exception as error:

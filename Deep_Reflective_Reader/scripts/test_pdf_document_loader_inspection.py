@@ -16,6 +16,7 @@ from doc_loaders.pdf_document_loader import (  # noqa: E402
     PdfInspectionMetrics,
 )
 from doc_loaders.document_load_errors import RawTextRequiresOcrError  # noqa: E402
+from doc_loaders.document_load_errors import RawTextOcrLowQualityError  # noqa: E402
 from doc_loaders.pdf_ocr_language_policy import (  # noqa: E402
     DEFAULT_TESSERACT_OCR_LANGUAGE,
     get_tesseract_language_for_document_language,
@@ -143,6 +144,7 @@ def test_real_scanned_pdf_can_use_explicit_ocr_fallback() -> None:
             ocr_language="eng",
             ocr_page_limit=1,
         )
+        loader._render_page_images = lambda **kwargs: [Path(temp_dir) / "page.png"]
 
         text = loader.load("暗水幽灵")
         _assert(text == "OCR fallback text", f"unexpected OCR text: {text!r}")
@@ -196,13 +198,121 @@ def test_ocr_uses_memory_pages_without_file_cache() -> None:
 
             _assert(first_pages == ["Memory OCR text"], "first OCR pass should return recognized text")
             _assert(second_pages == first_pages, "second OCR pass should reuse in-memory OCR pages")
-            _assert(count_file.read_text(encoding="utf-8") == "1", "OCR command should run only once")
+            _assert(count_file.read_text(encoding="utf-8") == "4", "OCR candidates should run only once per PSM")
             _assert(not cache_dir.exists(), "OCR file cache must not create cache directory")
         finally:
             if previous is None:
                 os.environ.pop("FAKE_TESSERACT_COUNT_FILE", None)
             else:
                 os.environ["FAKE_TESSERACT_COUNT_FILE"] = previous
+
+
+def test_ocr_candidate_selection_does_not_accept_first_non_empty_output() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        image_path = temp_path / "page.png"
+        image_path.write_bytes(b"fake image")
+        fake_tesseract = temp_path / "fake-tesseract"
+        fake_tesseract.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"--version\" ]; then printf 'tesseract 5.5.0\\n'; exit 0; fi\n"
+            "case \"$*\" in\n"
+            "  *'--psm 6'*) printf '國富論分工市場價格自然價格貨幣資本勞動土地租稅\\n' ;;\n"
+            "  *'--psm 5'*) printf 'UAE RG Rl Qo JOGA ol 8 TAN ts SS NS RS ot\\n' ;;\n"
+            "  *'--psm 11'*) printf '國\\n富\\n論\\n' ;;\n"
+            "  *) printf 'UAE RG Rl Qo JOGA ol 8 TAN ts SS NS RS ot\\n' ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        fake_tesseract.chmod(0o755)
+
+        loader = PdfDocumentLoader(
+            base_dir=str(temp_path),
+            ocr_enabled=True,
+            tesseract_cmd=str(fake_tesseract),
+            ocr_language="chi_tra+eng",
+        )
+
+        text = loader._ocr_image_text(
+            image_path=image_path,
+            doc_name="國富論lite",
+            page_index=0,
+        )
+
+        _assert("國富論分工" in text, "higher-quality psm 6 output should beat non-empty default garbage")
+        _assert("UAE RG" not in text, "default garbage should not be accepted just because it is non-empty")
+
+
+def test_ocr_candidate_selection_suppresses_rejected_text() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        image_path = temp_path / "page.png"
+        image_path.write_bytes(b"fake image")
+        fake_tesseract = temp_path / "fake-tesseract"
+        fake_tesseract.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"--version\" ]; then printf 'tesseract 5.5.0\\n'; exit 0; fi\n"
+            "printf 'UAE RG Rl Qo JOGA ol 8 TAN ts SS NS RS ot HEME RRKSERRRERM\\n'\n",
+            encoding="utf-8",
+        )
+        fake_tesseract.chmod(0o755)
+
+        loader = PdfDocumentLoader(
+            base_dir=str(temp_path),
+            ocr_enabled=True,
+            tesseract_cmd=str(fake_tesseract),
+            ocr_language="chi_tra+eng",
+        )
+
+        text = loader._ocr_image_text(
+            image_path=image_path,
+            doc_name="國富論lite",
+            page_index=0,
+        )
+
+        _assert(text == "", "rejected OCR candidate text must not enter raw-text handoff")
+
+
+def test_ocr_quality_gate_rejects_non_empty_garbage_pages() -> None:
+    class _Reader:
+        pages = [object(), object(), object()]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        pdf_path = temp_path / "sample.pdf"
+        pdf_path.write_bytes(b"not a real pdf; private OCR quality regression")
+        fake_tesseract = temp_path / "fake-tesseract"
+        fake_tesseract.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"--version\" ]; then printf 'tesseract 5.5.0\\n'; exit 0; fi\n"
+            "printf 'UAE RG Rl Qo JOGA ol 8 TAN ts SS NS RS ot HEME RRKSERRRERM\\n'\n",
+            encoding="utf-8",
+        )
+        fake_tesseract.chmod(0o755)
+
+        loader = PdfDocumentLoader(
+            base_dir=str(temp_path),
+            ocr_enabled=True,
+            tesseract_cmd=str(fake_tesseract),
+            ocr_language="chi_tra+eng",
+            ocr_page_limit=3,
+        )
+        loader._render_page_images = lambda **kwargs: [temp_path / "page.png"]
+
+        try:
+            loader._load_pages_with_ocr(
+                doc_name="國富論lite",
+                file_path=pdf_path,
+                reader=_Reader(),
+            )
+        except RawTextOcrLowQualityError as error:
+            _assert(error.doc_name == "國富論lite", "low-quality OCR error should preserve doc_name")
+            _assert(
+                (error.detail or "").startswith("document_quality_gate_failed:"),
+                f"unexpected low-quality detail: {error.detail}",
+            )
+            return
+        raise AssertionError("non-empty garbage OCR should fail the document quality gate")
 
 
 def test_ocr_language_policy_uses_project_language_codes() -> None:
@@ -240,6 +350,9 @@ if __name__ == "__main__":
     test_real_scanned_pdf_load_requires_ocr()
     test_real_scanned_pdf_can_use_explicit_ocr_fallback()
     test_ocr_uses_memory_pages_without_file_cache()
+    test_ocr_candidate_selection_does_not_accept_first_non_empty_output()
+    test_ocr_candidate_selection_suppresses_rejected_text()
+    test_ocr_quality_gate_rejects_non_empty_garbage_pages()
     test_ocr_language_policy_uses_project_language_codes()
     test_pdf_loader_defaults_to_multilingual_ocr_language()
     print("OK: PDF document loader inspection tests passed")

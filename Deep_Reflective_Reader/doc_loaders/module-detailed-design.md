@@ -85,6 +85,24 @@ Current OCR behavior：
 9. OCR provenance includes `doc_name`, source filename, raw PDF SHA-256, OCR engine, OCR engine version, OCR language, OCR page limit, page count, renderer, and render DPI. **[Code-Confirmed]**
 10. OCR language 應由配置或顯式 request 決定；後續可加入 heuristic，但不應依賴 LLM 分類作硬控制。 **[From HLD] + [Future Direction]**
 
+Observed OCR quality failure（`國富論lite.pdf`）：
+
+1. `國富論lite.pdf` 是無 native text layer 的 scanned-image PDF；runtime log 顯示 `pages=3 native_text_chars=0 image_pages=3 font_pages=0 scanned=True`。 **[Code-Confirmed]**
+2. OCR enabled 時，`PdfDocumentLoader` 成功產生約 `1727` characters，prepare 因 raw text 非空而繼續 language/profile/structured build。 **[Code-Confirmed]**
+3. API task-unit content 返回的 `chapter_title` / `section_title` / `title` 出現 `HE mm姐1]`，表示 corrupted OCR text 已進入 structured hierarchy 並被 task-layout/content read path 投影。 **[Maintainer-Provided] + [Inferred]**
+4. Container spot check 顯示同一頁在不同 Tesseract PSM 下品質差異明顯：default PSM 產生大量 Latin-like garbage，`--psm 6` 產生較多中文但仍存在順序與噪聲問題，`--psm 11` 產生碎字。 **[Code-Confirmed]**
+5. `_ocr_image_text()` 目前是 default PSM 先行，只要 default PSM 有非空文字就停止；因此直排/混排頁面可能被低品質 default PSM 輸出截斷後續候選。 **[Code-Confirmed] + [Inferred]**
+
+Implemented OCR quality remediation：
+
+1. OCR raw-text handoff 不再只以「非空」作成功標準；low-quality OCR gate 會阻止 corrupted OCR 成為 canonical raw text。 **[Code-Confirmed]**
+2. `_ocr_image_text()` 會比較多個候選，而不是 default PSM 非空即接受；目前候選包含 default、`--psm 5`、`--psm 6`、`--psm 11`。 **[Code-Confirmed]**
+3. 候選選擇使用 deterministic quality scoring：CJK ratio、Latin-like garbage ratio、符號/括號/重複碎片密度、字數下限與 OCR candidate score。 **[Code-Confirmed]**
+4. OCR quality scoring 是 loader-level raw-text quality decision，不是 parser authority；不決定 chapter/section split，也不把 OCR/profile/LLM metadata 升格為 hierarchy truth。 **[Code-Confirmed] + [From HLD]**
+5. 對直排中文與 mixed-layout pages，default PSM 不再能 silent win；另一候選若有更強 deterministic evidence 可勝出。Full region-first ordering 與 competing layout hypothesis retention 仍屬後續 deeper layout work。 **[Code-Confirmed] + [Future Direction]**
+6. 當 OCR 產生文字但低於 quality gate 時，prepare 會收到明確 raw-load failure：`load_raw_text_ocr_low_quality:<doc_name>:<reason>`，並跳過 language/profile/structured build。 **[Code-Confirmed]**
+7. 已被 corrupted OCR 產物污染的文件（例如 `國富論lite`）需要 explicit `force_rebuild=true` 重新產生 structured artifacts；task-layout read path 不承擔修復持久化資料的責任。 **[Code-Confirmed]**
+
 Suggested implementation shape（future）：
 
 ```text
@@ -92,8 +110,10 @@ PdfDocumentLoader
   -> native pypdf text extraction
   -> pdf inspection metrics
   -> if native text exists: return text
-  -> if scanned-image signature and OCR enabled: run local Tesseract OCR
-  -> if OCR succeeds: expose text/pages/provenance for structured-store OCR run persistence
+  -> if scanned-image signature and OCR enabled: render pages and run bounded OCR candidates
+  -> score candidates and reject low-quality OCR before raw-text handoff
+  -> if OCR quality passes: expose text/pages/provenance for structured-store OCR run persistence
+  -> if OCR is low quality: fail with explicit low-quality OCR reason
   -> if scanned-image signature and OCR disabled: fail with requires_ocr reason
 ```
 
@@ -127,15 +147,27 @@ Container/runtime implication：目前 `requirements.txt` 只包含 `pypdf`，Do
 - why：API container 工作目錄與 repo-root script 工作目錄不同
 - guardrail：將 raw base dir 收斂為配置或 package-relative/project-root-aware path **[Future Direction]**
 
+6. risk：OCR non-empty output 被誤當作 trusted raw text
+- why：直排/混排掃描頁可能在 default Tesseract PSM 下產生大量亂碼；非空亂碼會污染 language/profile/structured hierarchy，並在 task-layout/content read path 中被投影
+- guardrail：比較多 PSM OCR candidates，加入 deterministic quality scoring 與 low-quality raw-load failure，低品質 OCR 不得進入 structured persistence **[Code-Confirmed]**
+
+7. risk：直排中文閱讀順序未被 raw OCR path 正確處理
+- why：頁面可能需要 vertical/right-to-left column ordering 或 region-first OCR；單一線性 OCR output 無法可靠代表 canonical body text
+- guardrail：目前已加入 candidate PSM scoring 與 rejection reason evidence；更完整的 page-level orientation、writing mode、reading order、region-first OCR 仍屬 future deeper layout work；layout evidence 保持 advisory/provenance，不作 parser authority **[Code-Confirmed] + [Future Direction]**
+
 ## 13. Open Questions for Maintainer
 
 1. 同名 `.txt` 與 `.pdf` 並存時是否要 fail-fast 而非預設 txt？ **[Needs Confirmation]**
 2. OCR fallback 是否應作為 prepare request option、environment config，或獨立 `/documents/ocr` 類明確 mutation endpoint？ **[Needs Confirmation]**
 3. 中文 OCR 預設語言包應包含 `chi_sim`、`chi_tra`，還是由使用者在文件層指定？ **[Needs Confirmation]**
 4. OCR text cache 長期是否要升級為 preparation artifact cache，而不是 `doc_loaders/` local raw-text cache？ **[Needs Confirmation]**
+5. Low-quality OCR 應新增專用 exception type，還是重用 `RawTextOcrFailedError` 並以 stable detail code 表示？ **[Needs Confirmation]**
+6. OCR quality threshold 應固定於 `doc_loaders/`，還是由 runtime config 控制？ **[Needs Confirmation]**
+7. Low-quality OCR diagnostics 應只經 prepare response 暴露，還是後續需要獨立 diagnostics endpoint？ **[Needs Confirmation]**
 
 ## 14. Suggested Next Documentation Improvements
 
 1. 補 raw source naming convention 文件。
 2. 補 raw-load failure reason taxonomy（missing file / empty native text / scanned requires OCR / OCR failed / unsupported encrypted PDF）。
 3. 補 OCR dependency and deployment matrix（local dev / Docker / production）。
+4. 補 OCR quality gate taxonomy（empty OCR / low-confidence OCR / symbol-heavy OCR / implausible-language OCR / ambiguous vertical reading order）。

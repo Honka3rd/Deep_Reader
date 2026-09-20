@@ -109,6 +109,26 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence needed: normalized spans trace to page index, region id, OCR output, confidence, bounding box, and normalization version.
   Notes: Flag low-confidence, symbol-heavy, repeated-garbage, and implausible-language spans. Whitespace normalization must not erase punctuation, page identity, or source traceability. Low-quality OCR cannot become trusted structure evidence.
 
+- [x] Define multi-PSM OCR candidate selection for scanned PDF raw loading
+  Evidence needed: `_ocr_image_text()` compares bounded Tesseract candidates instead of accepting the first non-empty default output.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`.
+  Notes: `_ocr_image_text()` now compares default, `--psm 5`, `--psm 6`, and `--psm 11` instead of accepting the first non-empty default output. Selection is deterministic and records candidate score/rejection reason as OCR provenance only.
+
+- [x] Define low-quality OCR raw-load failure gate
+  Evidence needed: non-empty but low-quality OCR output maps to an explicit raw-load failure before language/profile/structured build.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/document_load_errors.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`; container prepare API verification on `國富論lite`.
+  Notes: Non-empty but low-quality OCR now raises `RawTextOcrLowQualityError` and maps to `load_raw_text_ocr_low_quality:<doc_name>:<reason>` before language/profile/structured build.
+
+- [x] Define vertical Chinese OCR reading-order remediation for raw text handoff
+  Evidence needed: vertical/mixed scanned pages preserve writing-mode and reading-order hypotheses, and default PSM cannot silently win when another candidate has stronger deterministic evidence.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; container OCR verification on `國富論lite`.
+  Notes: Default PSM can no longer silently win for vertical/mixed scanned Chinese raw text when another candidate has stronger deterministic evidence. This remains loader-level quality control and does not decide chapter/section hierarchy.
+
+- [x] Add OCR quality regression coverage for `國富論lite`
+  Evidence needed: tests or container verification prove `國富論lite` no longer produces corrupted hierarchy titles such as `HE mm姐1]` after force rebuild.
+  Evidence: `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`; container prepare API verification returned `structured_document_ready=false` and `load_raw_text_ocr_low_quality` for `國富論lite` with `force_rebuild=true`.
+  Notes: Regression covers candidate selection, low-quality rejection, explicit prepare error mapping, OCR memory reuse, and non-empty garbage rejection. `國富論lite` low-quality OCR is rejected before structured hierarchy persistence.
+
 - [ ] Prepare OCR layout and renderer-failure fixtures
   Evidence needed: fixtures cover `暗水幽靈.pdf` artistic vertical TOC, `國富論.pdf` vertical body text, horizontal scans, mixed orientation, circular page numbers, leader lines, and renderer decode failure.
   Notes: Each fixture defines expected orientation/order, candidate regions, known limitations, and fallback behavior. Artistic scans need not achieve full-text equality; page/region evidence and conservative rejection are required.

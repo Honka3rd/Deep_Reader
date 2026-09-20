@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from doc_loaders.document_load_errors import (  # noqa: E402
     RawTextOcrFailedError,
+    RawTextOcrLowQualityError,
     RawTextRequiresOcrError,
 )
 from document_preparation.document_preparation_pipeline import (  # noqa: E402
@@ -31,6 +32,14 @@ class _RequiresOcrLoader:
 class _OcrFailedLoader:
     def load(self, doc_name: str) -> str:
         raise RawTextOcrFailedError(doc_name, detail="tesseract_not_found:tesseract")
+
+
+class _OcrLowQualityLoader:
+    def load(self, doc_name: str) -> str:
+        raise RawTextOcrLowQualityError(
+            doc_name,
+            detail="document_quality_gate_failed:passed_pages=0/3",
+        )
 
 
 class _LoaderFactory:
@@ -99,7 +108,39 @@ def test_ocr_failed_error_maps_to_specific_prepare_reason() -> None:
     )
 
 
+def test_ocr_low_quality_error_maps_to_specific_prepare_reason() -> None:
+    pipeline = DocumentPreparationPipeline.__new__(DocumentPreparationPipeline)
+    pipeline.loader_factory = _LoaderFactory(_OcrLowQualityLoader())
+    assets = PreparedDocumentAssets(
+        doc_name="Scanned PDF",
+        raw_text=None,
+        language=None,
+        structured_document_ready=False,
+        faiss_ready=False,
+        profile_ready=False,
+        bundle_ready=False,
+        structured_document_path=None,
+        faiss_namespace=None,
+        errors=[],
+    )
+
+    raw_text = pipeline._load_raw_text(
+        doc_name="Scanned PDF",
+        assets=assets,
+    )
+
+    _assert(raw_text is None, "low-quality OCR should not return raw text")
+    _assert(
+        assets.errors == [
+            "load_raw_text_ocr_low_quality:Scanned PDF:"
+            "document_quality_gate_failed:passed_pages=0/3"
+        ],
+        f"unexpected OCR low-quality errors: {assets.errors}",
+    )
+
+
 if __name__ == "__main__":
     test_requires_ocr_error_maps_to_specific_prepare_reason()
     test_ocr_failed_error_maps_to_specific_prepare_reason()
+    test_ocr_low_quality_error_maps_to_specific_prepare_reason()
     print("OK: document preparation raw-load error tests passed")

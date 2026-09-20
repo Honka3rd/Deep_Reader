@@ -23,8 +23,12 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 set -a
+EXISTING_OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 # shellcheck disable=SC1090
 source "${ENV_FILE}"
+if [[ -n "${EXISTING_OPENAI_API_KEY}" && -z "${OPENAI_API_KEY:-}" ]]; then
+  OPENAI_API_KEY="${EXISTING_OPENAI_API_KEY}"
+fi
 set +a
 
 : "${DEEP_READER_UI_PORT:?DEEP_READER_UI_PORT is required in .env.local}"
