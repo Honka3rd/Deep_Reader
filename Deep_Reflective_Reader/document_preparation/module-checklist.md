@@ -113,6 +113,18 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence needed: Outline PDFs, scanned horizontal PDFs, vertical RTL PDFs, mixed-layout PDFs, artistic TOCs, and renderer-failure PDFs are evaluated through prepare, task-layout, and task-unit content APIs.
   Notes: Measure structural accuracy separately from OCR text accuracy: boundary precision, page-anchor validity, hierarchy shape, fallback correctness, UI payload compatibility, latency, and cache reuse. `暗水幽靈.pdf` and `國富論.pdf` are diagnostic fixtures with expected limitations.
 
+- [x] Add prepare reuse regression for existing structured documents on read-like flows
+  Evidence: `Deep_Reflective_Reader/scripts/test_prepare_structured_reuse_before_raw_load.py`; validation: `docker compose exec api python scripts/test_prepare_structured_reuse_before_raw_load.py`.
+  Notes: Regression now covers both `prepare(base)` and `prepare_and_load(base)`. When `force_rebuild=false`, parser mode is common, and a valid structured document already exists, the pipeline does not call the raw loader, language detector, profile store/builder, or structured builder before returning the existing structured document.
+
+- [ ] Define language detection cache source priority
+  Evidence needed: language detection receives the storage/config context required to reuse profile or retrieval-record language evidence before falling back to LLM detection.
+  Notes: The intended priority is existing profile/records/source metadata first, deterministic fallback second, LLM fallback last. Repeated UI document selection should not call LLM solely because language cache context was unavailable.
+
+- [ ] Add observability for prepare cache-boundary misses
+  Evidence needed: prepare logs expose reason codes for structured artifact miss, source hash mismatch, parser/schema version mismatch, profile cache miss, language cache miss, forced rebuild, and storage-backend mismatch.
+  Notes: If `task_layout_cache_hit` appears before OCR or LLM work for the same document request, logs should make the cache boundary that failed explicit.
+
 After implementation, the task owner must update this checklist and mark the task as completed:
 
 - [x] <completed task>

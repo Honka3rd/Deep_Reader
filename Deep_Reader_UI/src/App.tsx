@@ -74,6 +74,7 @@ export default function App() {
   const {
     selectedSection,
     contentBlocks,
+    contentGroups,
     contentStatus,
     contentError,
     selectSection,
@@ -331,6 +332,7 @@ export default function App() {
                   contentStatus={contentStatus}
                   selectedSection={selectedSection}
                   contentBlocks={contentBlocks}
+                  contentGroups={contentGroups}
                   error={contentError}
                 />
               }
@@ -343,6 +345,7 @@ export default function App() {
                   contentStatus={contentStatus}
                   selectedSection={selectedSection}
                   contentBlocks={contentBlocks}
+                  contentGroups={contentGroups}
                   error={contentError}
                 />
               }

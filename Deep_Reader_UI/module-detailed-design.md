@@ -32,6 +32,7 @@ The first-phase responsibilities are:
 - Future artifact, annotation, and question interactions are out of scope for this phase.
 - Backend schema/API changes are out of scope for this module slice.
 - Manual TOC editing uses explicit validation and hard-reparse submit paths, not hidden task-layout mutation.
+- Selecting an already prepared backend document should prefer the read-centric task-layout route; prepare-then-read is a fallback or explicit repair path, not the default meaning of "open document."
 
 ## First Vertical Slice
 
@@ -63,6 +64,87 @@ Document input
 - Section buttons update local selection state while retaining internal task-unit ids.
 - Reader panel fetches each task-unit content for the selected section on demand and renders aggregated `content_blocks`.
 - Empty-state views handle missing document, missing hierarchy, missing task units, and missing content blocks.
+
+### Reading Content Pagination
+
+Reading content pagination is a frontend-only viewport projection. It exists to prevent
+very long chapters or sections from overwhelming the reading surface, especially on
+small screens or when a user uses larger type. It should improve reading rhythm without
+changing backend hierarchy, backend task-unit semantics, or task-layout projection.
+
+The backend should continue to provide ordered task units and ordered `content_blocks`.
+It should not calculate how many task units belong on one UI page, because page capacity
+depends on frontend-only runtime conditions such as reader pane width and height, font
+size, line height, browser zoom, device density, and responsive layout. A UI page is not
+a backend page, not a document hierarchy node, and not parser authority.
+
+The reader-content feature owns pagination as local UI state:
+
+- `content_blocks` remain the render/input units received from backend task-unit content.
+- frontend pages are derived from the current `content_blocks` plus current viewport and
+  typography conditions.
+- section selection resets the current reader page to the first page for that section.
+- viewport resize, responsive breakpoint changes, or future reader typography changes
+  should trigger repagination.
+- page state must not be persisted as backend truth and must not mutate task-layout,
+  task units, content blocks, profile diagnostics, or parser artifacts.
+
+The first implementation should use block-level pagination: `content_blocks` are the
+smallest non-splittable page units. A frontend page may contain blocks from multiple task
+units, and one task unit may span multiple frontend pages. If a single content block is
+larger than the available reader page, the initial behavior may keep the block intact and
+allow that page to overflow locally; block-internal soft splitting can be a later
+enhancement after the basic page model is stable.
+
+The page packing rule should be that the current rendered task-unit/content-block group
+does not make `.reader-content-block-list` contain hidden, unreachable, or clipped content
+that requires the whole reading panel to scroll. Pagination should choose the largest
+ordered group that fits the visible reader page. The explicit exception is when one
+individual task unit or one non-splittable content block is itself longer than the
+available page. In that case the UI should render that single unit/block as the page
+content and allow local scrolling for that oversized page, rather than combining it with
+additional units that would make the overflow worse.
+
+The expected evolution is:
+
+1. start with deterministic block-level pagination using a conservative estimate or
+   simple measurement strategy;
+2. add DOM measurement pagination based on actual rendered block heights;
+3. repaginate on reader-pane resize and future typography changes;
+4. preserve stable block/task-unit identifiers so future reading progress, annotation,
+   or selection features can map back to backend-provided content targets without making
+   frontend page numbers backend truth.
+
+### Scroll Containment
+
+The Reader UI should keep document-level scrolling disabled during normal app use. The
+browser `html` / `body` surface is the viewport shell, while `.reader-layout` is the
+main scroll container for reader workspace overflow.
+
+This matters because the top app shell combines a fixed-height viewport, a sticky
+topbar, grid padding, and independently constrained navigation/content panes. If
+`html`, `body`, `#root`, or `.app-shell` use only `min-height` without a bounded height
+and overflow policy, the reader workspace can push the full document taller than the
+viewport and create page-level scrolling. That makes pagination and TOC editor range
+workspaces feel unstable because scrolling occurs outside the reader workspace.
+
+Expected layout behavior:
+
+- `html`, `body`, and `#root` occupy the viewport and do not become the primary scroll
+  surface.
+- `.app-shell` is a viewport-height flex container with `min-height: 0`.
+- `.reader-layout` owns workspace overflow and may scroll when the combined navigation,
+  reader content, or TOC editor workspace exceeds the available viewport.
+- child panes such as `.navigation-pane` and `.content-pane` should size from the
+  available `.reader-layout` space rather than independently adding another
+  `calc(100vh - ...)` height on top of grid padding.
+- oversized single reader pages may still scroll locally inside
+  `.reader-content-block-list-oversized`, but ordinary page overflow should remain
+  contained by `.reader-layout`.
+
+This is a frontend-only viewport contract. It must not change backend hierarchy,
+task-layout payloads, task-unit content APIs, profile diagnostics, parser artifacts, or
+manual TOC commit semantics.
 
 ### Feature Module Structure
 
@@ -170,6 +252,19 @@ Content-Type: application/json
   "task_unit_split_mode": "progressive"
 }
 ```
+
+Document-open policy:
+
+- For an API-returned document candidate, the UI should treat document selection as an
+  existing-layout read first.
+- The preferred route for existing layout display is `POST /documents/task-layout`.
+- `POST /documents/prepare-task-layout` should be reserved for first-time prepare,
+  explicit repair/retry, or fallback when the read-centric layout route reports that the
+  layout is missing or unavailable.
+- The UI should not rely on prepare-then-read as a hidden way to repair cache,
+  structured-document, language, profile, or OCR state during ordinary document open.
+- This policy avoids surprising OCR/LLM-backed backend work during normal document
+  selection while preserving backend hierarchy as the source of truth.
 
 Task-unit content, issued once per selected section task unit:
 

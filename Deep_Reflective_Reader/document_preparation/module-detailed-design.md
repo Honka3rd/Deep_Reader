@@ -129,6 +129,18 @@ Step 6  Prepare runtime bundle
 - why：若變成阻塞會改變 API 行為
 - guardrail：固定 non-blocking 行為測試
 
+5. risk：cache hit 被誤解為完整 prepare reuse
+- why：`task_layout_cache_hit` 或 OCR/page text cache hit 只證明該層資料可重用，不等同於 language/profile/structured preparation 已全部短路。若 route 仍進入 prepare flow，可能再次觸發 raw/OCR 讀取、language detection、profile build，甚至間接 LLM call。 **[Code-Observed] + [Inferred]**
+- guardrail：將 cache hit log 分層命名；明確區分 raw/OCR cache、structured artifact reuse、profile/language cache、task-layout projection cache。read-like caller 不應把任何單一 cache hit 當作整條 prepare pipeline 完成。 **[Future Direction]**
+
+6. risk：base preparation 在既有文檔讀取場景未完全避免昂貴 path
+- why：UI 選擇既有文檔時，若只是要讀取當前 task-layout，進入 `base` prepare 可能因 structured/profile/language reuse 條件不成立而重新載入 PDF/OCR，並間接觸發 LLM-backed language/profile 分析。 **[Code-Observed] + [Inferred]**
+- guardrail：`force_rebuild=false`、common parser、既有 structured artifact 可用時，應優先 short-circuit 到既有 hierarchy；若 task-layout cache 可用但 structured reuse 失敗，應記錄為 cache-boundary inconsistency 供排查，而不是安靜走昂貴 prepare。 **[Future Direction]**
+
+7. risk：language detection cache 無法被有效使用
+- why：language detection 若未接收可用的 storage/config context，可能無法從 profile 或 retrieval records reuse 既有語言結果，只能 fallback 到 LLM detector。 **[Code-Observed] + [Inferred]**
+- guardrail：language detection 應有明確 cache source priority（profile/records/source metadata -> deterministic fallback -> LLM fallback），並以測試保證既有文檔的 read-like path 不重複呼叫 LLM。 **[Future Direction]**
+
 ## 15. Open Questions for Maintainer
 
 1. cache-first 命名標準化與實作命名遷移先標註、後落地的時程是否固定？ **[From HLD] + [Needs Confirmation]**
@@ -177,3 +189,15 @@ Step 6  Prepare runtime bundle
 6. Preparation must not decide user-defined hierarchy semantics; it only supplies evidence. Projection and hierarchy draft building remain owned by `document_structure/`. **[From HLD] + [Code-Confirmed]**
 7. Page evidence remains supporting evidence, not parser authority by itself. Ambiguous, incomplete, or stale page evidence must be reported explicitly and must not authorize partial hierarchy persistence. **[From HLD] + [Future Direction]**
 8. `char_range` remains available when page evidence is unavailable or rejected. **[Maintainer-Provided] + [Code-Confirmed]**
+
+## 20. Future Direction Note: Prepare Reuse And LLM Cost Boundary
+
+> 本節記錄本輪運維觀察後的 cache/prepare governance；不代表目前 implementation 已完成。 **[Code-Observed] + [Future Direction]**
+
+1. A task-layout cache hit is a projection-layer reuse signal, not proof that document preparation has been fully skipped. **[Code-Observed]**
+2. OCR/page-text cache hits are raw-source reuse signals. They do not by themselves guarantee language/profile/structured reuse. **[Code-Observed] + [Inferred]**
+3. For read-like flows that only need the current active hierarchy or task-layout, preparation should avoid re-entering expensive OCR/LLM-backed stages when a valid structured artifact and compatible task-layout projection already exist. **[Future Direction]**
+4. Language detection should receive enough storage/config context to reuse existing language evidence from profile or retrieval records before calling LLM-backed detection. **[Future Direction]**
+5. Profile building/classification may use LLM as fallback, but repeated UI document selection should not implicitly rebuild profile metadata when source hash, parser mode, and structured artifact are unchanged. **[Future Direction]**
+6. If `task_layout_cache_hit` is observed before a later prepare-stage OCR or LLM call for the same document request, logs should expose whether the cause was forced rebuild, structured artifact miss, source hash mismatch, parser/schema version mismatch, profile cache miss, language cache miss, or storage-backend mismatch. **[Future Direction]**
+7. This note does not change parser authority: metadata and LLM classification remain advisory, and hierarchy truth remains `chapters[].sections[].task_units[]`. **[From HLD]**

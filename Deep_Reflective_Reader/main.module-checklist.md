@@ -106,6 +106,10 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
   Notes: `/documents/reparse-structure` with `parser_mode=manual_structure` returns stable page-backed manual-structure statuses: `422` for missing/unsupported page evidence, `422` for out-of-range/unprojectable page anchors, `409` for stale source evidence, and `200` for successful page-backed commit mapping. `/documents/task-layout` remains projection-only and does not accept edits or trigger hidden reparse.
 
+- [ ] Separate existing-layout read flow from prepare-then-read flow
+  Evidence needed: route behavior or client-facing contract makes it clear that `/documents/task-layout` is the preferred existing-layout read path, while `/documents/prepare-task-layout` is reserved for first-time prepare, explicit repair, or fallback.
+  Notes: Repeated UI selection of an already prepared document should not implicitly enter OCR/language/profile or LLM-backed work merely to display the current layout. Route observability should report whether prepare-then-read reused existing structured artifacts or performed expensive preparation.
+
 After implementation, the task owner must update this checklist and mark the task as completed:
 
 No coding task should be considered complete unless the corresponding module checklist is updated.

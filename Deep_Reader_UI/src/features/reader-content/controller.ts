@@ -2,7 +2,11 @@ import { useRef, useState } from "react";
 import type { ContentBlock, RequestStatus, SectionSelection } from "../../types/api";
 import type { TaskUnitContentService } from "../../services";
 import { taskUnitContentService } from "../../services";
-import { aggregateContentBlocks } from "./model";
+import {
+  aggregateContentBlocks,
+  buildContentGroups,
+  type ReaderContentGroup,
+} from "./model";
 
 interface UseReaderContentControllerOptions {
   docName: string;
@@ -15,6 +19,7 @@ export function useReaderContentController({
 }: UseReaderContentControllerOptions) {
   const [selectedSection, setSelectedSection] = useState<SectionSelection | null>(null);
   const [contentBlocks, setContentBlocks] = useState<ContentBlock[]>([]);
+  const [contentGroups, setContentGroups] = useState<ReaderContentGroup[]>([]);
   const [contentStatus, setContentStatus] = useState<RequestStatus>("initial");
   const [contentError, setContentError] = useState("");
   const contentRequestIdRef = useRef(0);
@@ -23,6 +28,7 @@ export function useReaderContentController({
     contentRequestIdRef.current += 1;
     setSelectedSection(null);
     setContentBlocks([]);
+    setContentGroups([]);
     setContentError("");
     setContentStatus("initial");
   }
@@ -32,6 +38,7 @@ export function useReaderContentController({
     contentRequestIdRef.current = requestId;
     setSelectedSection(selection);
     setContentBlocks([]);
+    setContentGroups([]);
     setContentError("");
     if (selection.taskUnits.length === 0) {
       setContentStatus("empty");
@@ -50,6 +57,7 @@ export function useReaderContentController({
         return;
       }
       setContentBlocks(nextBlocks);
+      setContentGroups(buildContentGroups(taskUnitContents));
       setContentStatus(nextBlocks.length > 0 ? "success" : "empty");
     } catch (error) {
       if (contentRequestIdRef.current !== requestId) {
@@ -63,6 +71,7 @@ export function useReaderContentController({
   return {
     selectedSection,
     contentBlocks,
+    contentGroups,
     contentStatus,
     contentError,
     selectSection,

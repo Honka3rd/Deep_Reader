@@ -111,14 +111,22 @@ class _StructuredStore:
 
 
 class _LanguageDetector:
+    def __init__(self) -> None:
+        self.detect_calls = 0
+
     def detect(self, raw_text: str) -> str:
         _ = raw_text
+        self.detect_calls += 1
         return "zh"
 
 
 class _ProfileBuilder:
+    def __init__(self) -> None:
+        self.build_calls = 0
+
     def build(self, *, text: str, document_language: str) -> DocumentProfile:
         _ = text
+        self.build_calls += 1
         return DocumentProfile(
             topic="test",
             summary="test",
@@ -127,11 +135,18 @@ class _ProfileBuilder:
 
 
 class _ProfileStore:
+    def __init__(self) -> None:
+        self.exists_calls = 0
+        self.load_calls = 0
+        self.save_calls = 0
+
     def exists(self, config: object) -> bool:
         _ = config
+        self.exists_calls += 1
         return False
 
     def load(self, config: object) -> DocumentProfile:
+        self.load_calls += 1
         raise AssertionError(f"profile load should not be called: {config}")
 
     def clear(self, config: object) -> None:
@@ -139,10 +154,15 @@ class _ProfileStore:
 
     def save(self, profile: DocumentProfile, config: object) -> None:
         _ = (profile, config)
+        self.save_calls += 1
 
 
 class _StructuredBuilder:
+    def __init__(self) -> None:
+        self.build_calls = 0
+
     def build(self, **kwargs: Any) -> StructuredDocument:
+        self.build_calls += 1
         return _fake_document(str(kwargs["document_id"]))
 
 
@@ -255,6 +275,58 @@ def test_base_prepare_reuses_existing_structured_before_raw_load() -> None:
     _assert(assets.errors == [], f"unexpected errors: {assets.errors}")
 
 
+def test_base_prepare_and_load_reuses_existing_structured_before_raw_load() -> None:
+    document = _fake_document()
+    store = _StructuredStore(exists_value=True, document=document)
+    pipeline = _build_pipeline(loader=_FailIfLoadedLoader(), store=store)
+    language_detector = pipeline.language_detector
+    profile_builder = pipeline.profile_builder
+    profile_store = pipeline.profile_store
+    structured_builder = pipeline.structured_document_builder
+
+    result = pipeline.prepare_and_load(
+        doc_name="國富論lite",
+        force_rebuild=False,
+        mode=PreparationMode.BASE,
+        structured_parser_mode=SectionSplitterMode.COMMON,
+    )
+
+    loader_factory = pipeline.loader_factory
+    _assert(
+        getattr(loader_factory, "get_calls") == 0,
+        "prepare_and_load(base) should not use raw loader factory on structured reuse",
+    )
+    _assert(
+        getattr(language_detector, "detect_calls") == 0,
+        "prepare_and_load(base) should not detect language on structured reuse",
+    )
+    _assert(
+        getattr(profile_builder, "build_calls") == 0,
+        "prepare_and_load(base) should not build profile on structured reuse",
+    )
+    _assert(
+        getattr(profile_store, "exists_calls") == 0,
+        "prepare_and_load(base) should not check profile cache on structured reuse",
+    )
+    _assert(
+        getattr(structured_builder, "build_calls") == 0,
+        "prepare_and_load(base) should not rebuild structured document",
+    )
+    _assert(
+        result.structured_document is document,
+        "prepare_and_load(base) should load and return the existing structured document",
+    )
+    _assert(
+        result.assets.structured_document_ready is True,
+        "structured should be ready after prepare_and_load reuse",
+    )
+    _assert(
+        result.assets.raw_text is None,
+        "raw text should remain unloaded after prepare_and_load structured reuse",
+    )
+    _assert(result.assets.errors == [], f"unexpected errors: {result.assets.errors}")
+
+
 def test_force_rebuild_keeps_raw_load_and_rebuild_behavior() -> None:
     document = _fake_document()
     loader = _TextLoader()
@@ -279,5 +351,6 @@ def test_force_rebuild_keeps_raw_load_and_rebuild_behavior() -> None:
 
 if __name__ == "__main__":
     test_base_prepare_reuses_existing_structured_before_raw_load()
+    test_base_prepare_and_load_reuses_existing_structured_before_raw_load()
     test_force_rebuild_keeps_raw_load_and_rebuild_behavior()
     print("prepare structured reuse before raw-load checks passed")

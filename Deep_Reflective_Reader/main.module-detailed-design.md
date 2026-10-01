@@ -43,6 +43,7 @@
 | `POST /documents/prepare` | prepare pipeline via coordinator path | write-capable orchestration |
 | `POST /documents/ask` | `QACoordinator` | runtime QA |
 | `POST /documents/task-layout` | `SectionTaskCoordinator.get_document_task_layout` | projection/read-centric |
+| `POST /documents/prepare-task-layout` | prepare pipeline + task-layout projection | prepare-then-read orchestration |
 | `POST /documents/section-summary` | `SectionTaskCoordinator.summarize_section` | write path |
 | `POST /documents/section-quiz` | `SectionTaskCoordinator.generate_section_quiz` | write path |
 | `POST /documents/summarize-chapter` | chapter summary path | write path |
@@ -129,6 +130,10 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
 - why：性能與隱私風險
 - guardrail：持續 no-heavy-payload regression tests
 
+4. risk：prepare-then-read route 被 UI 當成普通 read route 使用
+- why：`/documents/prepare-task-layout` may first execute document preparation before returning task-layout. For already prepared documents, repeated UI selection can therefore enter OCR/language/profile stages and indirectly call LLM even when the client only expects to read an existing layout. **[Code-Observed] + [Inferred]**
+- guardrail：document selection/read flows should prefer `/documents/task-layout` when an active structured document/layout exists. `/documents/prepare-task-layout` should be reserved for explicit prepare, first-time load, repair, or fallback flows with clear observability. **[Future Direction]**
+
 ## 14. Open Questions for Maintainer
 
 1. 是否要把 endpoint failure reason code 系統化（尤其 cache invalidation 可觀測性）？
@@ -166,3 +171,13 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
 4. `POST /documents/reparse-structure` with `parser_mode=manual_structure` should continue to be the explicit mutation path; page-backed commit must fail before persistence when page evidence is missing, stale, ambiguous, or unprojectable. **[Future Direction]**
 5. No route may accept manual TOC edits through `/documents/task-layout`, and no route may trigger hidden reparse from task-layout read. **[From HLD] + [Maintainer-Provided]**
 6. Anchor evidence route mapping does not expose raw text, page text, OCR geometry, task-unit content, or content blocks. **[Code-Confirmed]**
+
+## 18. Future Direction Note: Task-Layout Read Versus Prepare Boundary
+
+> 本節記錄 task-layout route governance；不代表目前 implementation 已改變。 **[Code-Observed] + [Future Direction]**
+
+1. `/documents/task-layout` is the read-centric projection route for the current active structured hierarchy. It must not accept manual TOC edits and must not trigger hidden reparse. **[Code-Confirmed] + [From HLD]**
+2. `/documents/prepare-task-layout` is a prepare-then-read convenience route. It may be appropriate for first-time preparation or explicit repair/fallback, but it is not equivalent to a pure task-layout read. **[Code-Observed] + [Inferred]**
+3. UI document selection for an already known backend document should prefer the pure task-layout route and only use prepare-then-read when the read path reports missing/unavailable layout or when the user explicitly starts a prepare/repair flow. **[Future Direction]**
+4. Route-level observability should expose whether a prepare-then-read request actually reused existing structured artifacts or entered raw/OCR/language/profile work. **[Future Direction]**
+5. This boundary preserves the existing architecture rule that API routes dispatch to coordinator/service behavior and do not implement parser/cache authority directly. **[From HLD]**

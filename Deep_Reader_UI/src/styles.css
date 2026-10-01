@@ -1,20 +1,28 @@
 html {
+  height: 100%;
   min-width: 320px;
+  overflow: hidden;
   background: #f7f8f8;
 }
 
 body {
+  height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .topbar {
@@ -49,11 +57,13 @@ body {
 }
 
 .reader-layout {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(300px, 36%) minmax(0, 1fr);
   gap: 16px;
   padding: 16px;
+  overflow: auto;
 }
 
 .navigation-pane,
@@ -63,14 +73,20 @@ body {
 }
 
 .navigation-pane {
-  max-height: calc(100vh - 93px);
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   padding: 16px;
 }
 
 .content-pane {
   padding: 28px;
   overflow-wrap: anywhere;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .state-view {
@@ -148,6 +164,48 @@ body {
   border-bottom: 1px solid #d9e1e6;
   padding-bottom: 18px;
   margin-bottom: 22px;
+  flex: 0 0 auto;
+}
+
+.reader-content {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.reader-content-pagination-bar {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+.reader-content-block-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.reader-content-block-list-oversized {
+  overflow: auto;
+  padding-right: 8px;
+}
+
+.reader-content-pagination-measure {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.reader-content-measure-group {
+  width: 100%;
 }
 
 .eyebrow {
