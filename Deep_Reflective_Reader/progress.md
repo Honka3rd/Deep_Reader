@@ -32,14 +32,14 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 9 | 0 | Task Layout Parse Provenance Verified |
+| `app/` | package | `app/module-checklist.md` | 16 | 0 | Manual Structure Explicit Commit Captured |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 16 | 0 | OCR Quality Gate Implemented |
+| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 19 | 0 | PDF Page Layout Metadata Captured |
 | `db/` | package + design module | `db/module-checklist.md` | 46 | 0 | OCR Run Page Persistence Fixed |
-| `document_preparation/` | package | `document_preparation/module-checklist.md` | 6 | 0 | Structured Reuse Before Raw Load |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 18 | 0 | Native PDF Outline Normalization Implemented |
+| `document_preparation/` | package | `document_preparation/module-checklist.md` | 12 | 0 | Layout Failure Fallback Contract Captured |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 25 | 0 | Multi-Page TOC Grouping Captured |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -48,15 +48,15 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `scripts/` | package | `scripts/module-checklist.md` | 4 | 0 | Structured Reuse Regression Added |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 15 | 0 | Universal PDF Layout Evidence Governance Planned |
+| `scripts/` | package | `scripts/module-checklist.md` | 17 | 0 | Page-Backed Manual Structure Route Regression Added |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 17 | 0 | Page/Layout Task-Layout Consumption Contract Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 12 | 0 | Task Layout Parse Provenance Verified |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 16 | 0 | Page-Backed Manual Structure Schema Semantics Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 12 | 0 | Health Request Logging Suppressed |
+| `main.py` | root-python-module | `main.module-checklist.md` | 17 | 0 | Page-Backed Manual Structure Route Mapping Captured |
 
 ## 5. Package Module Progress
 
@@ -64,8 +64,8 @@ It is used to:
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `Task Layout Parse Provenance Verified`
-- Completed item count: `9`
+- Status: `Manual Structure Explicit Commit Captured`
+- Completed item count: `16`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -79,6 +79,11 @@ It is used to:
 - [x] Passes through explicit `segmented` option in task-unit content coordinator response (`segmented=true` uses shared segmentation helper; default/false keeps compatibility-safe block behavior).
 - [x] Suppresses duplicated leading hierarchy title in segmented render blocks while preserving quote-span traceability.
 - [x] Projects accepted structured parse provenance through task-layout coordinator response without mutating hierarchy/profile state.
+- [x] Defines manual structure commit coordinator DTO/result boundary before persistence orchestration.
+- [x] Gates manual structure commit path with document_structure projection validation before persistence orchestration.
+- [x] Gates manual structure commit path with raw source evidence loading and stale source-hash rejection.
+- [x] Builds manual structure draft hierarchy after source evidence gates before repository persistence.
+- [x] Orchestrates explicit manual structure reparse commit through the structured-document repository save boundary.
 
 #### Needs Confirmation
 
@@ -89,6 +94,11 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Added unchecked future tasks for app-layer rich content interaction API preparation in `app/module-checklist.md`.
 - [ ] App-layer future direction keeps task-layout lightweight and separates on-demand rich-content read path from task-layout projection path.
 - [ ] Future-direction items above remain planning-only; current additive content-block runtime integration is captured in completed checklist items.
+- [x] Explicit manual structure commit orchestration now validates and saves a normal hierarchy-only `StructuredDocument` through the repository boundary.
+- [x] App-layer manual structure path keeps validation/preview non-mutating and commit reparse as an explicit mutation path separate from task-layout.
+- [x] App-layer source-agnostic manual structure validation now delegates projection semantics to `document_structure/` and does not mutate task-layout/profile/artifacts.
+- [x] Manual structure source evidence gate now rejects missing source evidence and stale `source_hash` before persistence orchestration.
+- [x] Manual structure draft-build gate now validates raw-text-backed anchors before repository save.
 
 ### `auth/`
 
@@ -156,8 +166,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `doc_loaders/module-checklist.md`
 - Detailed Design: `doc_loaders/module-detailed-design.md`
-- Status: `OCR Quality Gate Implemented`
-- Completed item count: `16`
+- Status: `OCR Layout Fixtures Captured`
+- Completed item count: `25`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -170,6 +180,23 @@ No unresolved confirmation items identified in module checklist.
 - [x] Design and implement optional OCR fallback behind explicit configuration or request option.
 - [x] Deploy multilingual OCR language packages and align OCR language selection with project language-code strategy.
 - [x] Retire OCR text file-cache persistence after OCR run storage.
+- [x] Stabilizes raw data directory resolution so default `data/raw` loading is package/project-root anchored rather than process-cwd dependent.
+- [x] Preserves page-aware OCR/page-boundary provenance for future TOC detection while keeping the public raw-text loading contract unchanged.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_preparation_handoff.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+- [x] Defines universal PDF page-layout evidence metadata for source identity, page metrics, layout hypotheses, OCR confidence, and schema version.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+- [x] Defines deterministic orientation and reading-order evidence with rotation hypotheses, writing-mode confidence, reading-order confidence, and ambiguous-orientation retention.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+- [x] Defines page-level orientation and reading-order evidence contract with region count, OCR confidence, schema version, and serialized layout hypotheses.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+- [x] Defines OCR quality and character provenance contract for OCR token traceability and bounded quality flags.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+- [x] Defines tiered PDF inspection and OCR cost policy for cheap inventory, coordinate OCR candidates, cache keys, and bounded high-cost analysis policy.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`.
+- [x] Defines region-first OCR evidence for mixed and vertical layouts, including bounded OCR regions with source coordinates, local reading order, raw OCR, normalized logical text, rotation metadata, confidence, and quality flags.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+- [x] Prepares OCR layout and renderer-failure fixtures for artistic vertical TOC, vertical body text, horizontal scans, mixed orientation, circular page numbers, leader lines, and renderer decode fallback.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_ocr_layout_fixtures.py`; `Deep_Reflective_Reader/scripts/test_pdf_ocr_layout_fixtures.py`.
 
 - [x] Detect and expose native PDF Outline/bookmark structure before OCR, including validated destinations and nesting.
   Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_outline.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`; `许三观卖血记.pdf` container verification.
@@ -180,10 +207,23 @@ No unresolved confirmation items identified in module checklist.
 
 #### Future Direction Preparation
 
-- [ ] Page-aware OCR provenance and stable page boundaries for future TOC detection are captured as unchecked future work in `doc_loaders/module-checklist.md`.
+- [x] Page-aware OCR provenance and stable page boundaries for future TOC detection are implemented in `doc_loaders/module-checklist.md`.
+  Notes: Loader evidence carries page index, optional label/page number, source hash, raw-text span, and page text; it remains supporting evidence and does not become parser authority.
 - [x] Native PDF Outline/bookmark inspection and the `Outline -> OCR TOC -> keyword matching` precedence chain are implemented and recorded in the corresponding module checklists.
-- [ ] Universal PDF page-layout evidence, competing orientation hypotheses, region metadata, and tiered OCR cost policy remain future work in `doc_loaders/module-checklist.md`.
-  Notes: The current implementation exposes limited page layout evidence and deterministic vertical/RTL selection; it does not yet preserve competing rotation hypotheses or full region geometry.
+- [x] Universal PDF page-layout evidence metadata is implemented in `doc_loaders/module-checklist.md`.
+  Notes: Every page-layout evidence entry can carry source file name, source SHA-256, schema version, dimensions, native text/image metrics, orientation, writing mode, reading order, OCR confidence/text, analysis stage, and bounded evidence reasons. Full region metadata and tiered OCR cost policy remain separate future work.
+- [x] Deterministic orientation and reading-order evidence is implemented in `doc_loaders/module-checklist.md`.
+  Notes: Page-level layout evidence now records selected rotation degrees when deterministic, preserves competing portrait/landscape hypotheses for ambiguous pages, and exposes confidence for horizontal/vertical writing mode and left-to-right/right-to-left reading order. This remains provenance evidence and does not authorize hierarchy splitting by itself.
+- [x] Page-level orientation and reading-order evidence contract is implemented in `doc_loaders/module-checklist.md`.
+  Notes: Serialized page-layout evidence now includes dimensions, rotation hypotheses, horizontal/vertical mode, left-to-right/right-to-left order, region count, OCR confidence, word boxes, and schema version. Empty OCR pages retain zero regions; coordinate OCR pages expose bounded region counts as provenance only.
+- [x] OCR quality and character provenance contract is implemented in `doc_loaders/module-checklist.md`.
+  Notes: OCR token evidence now preserves page index, region id, raw and normalized OCR text, confidence, bounding box, normalization version, TSV hierarchy numbers, and low-confidence/symbol-heavy/repeated-garbage quality flags. Token provenance remains supporting evidence and does not become parser authority.
+- [x] Tiered PDF inspection and OCR cost policy is implemented in `doc_loaders/module-checklist.md`.
+  Notes: Page-layout evidence distinguishes cheap inventory from coordinate OCR with explicit analysis cost tier, stage, OCR engine/language, render DPI, OCR pass count, cache key, cache hit/miss, failure reason, and high-cost permission metadata. Every page receives cheap inventory evidence; coordinate OCR remains bounded to candidate pages; high-cost analysis is not silently triggered.
+- [x] Region-first OCR evidence is implemented in `doc_loaders/module-checklist.md`.
+  Notes: Page-layout evidence now serializes bounded OCR regions with page-local coordinates, region type, writing mode, reading order, raw OCR, normalized logical text, rotation metadata, confidence, token count, and quality flags. Vertical/right-to-left columns and header/footer bands are retained as provenance regions only; they do not become parser authority or task-layout truth.
+- [x] OCR layout and renderer-failure fixtures are implemented in `doc_loaders/module-checklist.md`.
+  Notes: Synthetic OCR layout fixtures now define expected orientation, reading order, region types, TOC reconstruction behavior, known limitations, and fallback reasons for `暗水幽灵`, `國富論`, horizontal scans, mixed orientation, circular page numbers, leader lines, and renderer decode failure. These fixtures preserve page/region evidence expectations and conservative rejection behavior without promoting OCR evidence to parser authority.
 - [x] Renderer-first PDF page normalization for OCR is implemented and recorded in `doc_loaders/module-checklist.md`.
   Evidence: `Dockerfile`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `docker-compose.yml`; `國富論.pdf` page 5 renderer/OCR verification.
 - [x] OCR file-cache persistence is removed from PDF loading; OCR pages are reused only in memory during the active prepare pass and durable OCR output goes through structured-store OCR run persistence.
@@ -200,8 +240,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_preparation/module-checklist.md`
 - Detailed Design: `document_preparation/module-detailed-design.md`
-- Status: `Structured Reuse Before Raw Load`
-- Completed item count: `6`
+- Status: `Layout Failure Fallback Contract Captured`
+- Completed item count: `12`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -213,6 +253,18 @@ No unresolved confirmation items identified in module checklist.
   Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`.
 - [x] Reuses existing structured documents before expensive raw loading in base/common/non-force preparation.
   Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/scripts/test_prepare_structured_reuse_before_raw_load.py`; `國富論lite.pdf` container API verification.
+- [x] Provides source-agnostic manual structure reparse source evidence handoff.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_preparation_handoff.py`.
+- [x] Defines manual structure validation and source-evidence failure behavior before commit persistence.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+- [x] Provides current-structure anchor evidence handoff for task-layout projection without exposing raw/page text in the task-layout DTO or mutating persisted hierarchy/profile/task-layout state.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/document_structure/structure_anchor_evidence.py`; `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/scripts/test_task_layout_anchor_evidence_dto.py`.
+- [x] Defines preparation handoff for layout hypotheses without making preparation/profile/LLM metadata parser authority.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`.
+- [x] Defines layout/TOC failure and fallback matrix without persisting partial speculative hierarchy.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+- [x] Defines layout failure and user-visible fallback contract without allowing task-layout to persist speculative TOC hierarchy.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
 
 #### Needs Confirmation
 
@@ -224,9 +276,19 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Future direction preserves current file-based prepare outputs during migration.
 - [ ] Future storage abstraction boundary must separately account for structured/profile/retrieval artifacts; this pass is documentation/checklist preparation only.
 - [ ] Future storage independence note clarifies that preparation should prepare artifacts without permanently assuming file-path persistence as the only possible destination.
+- [x] Source-agnostic manual structure reparse preparation handoff is implemented in `document_preparation/module-checklist.md`.
+- [x] Manual structure preparation supports raw-text character anchors for any loader-backed document type and optional page/OCR evidence placeholders when available, without making evidence parser authority.
 - [x] TOC-aware preparation orchestration and conservative fallback policy are implemented in `document_preparation/module-checklist.md`, with bounded page-evidence handoff and conservative parser fallback.
-- [x] Universal page inventory, candidate-page analysis, cache reuse, cost budgets, and layout/TOC failure fallback are captured as unchecked future work in `document_preparation/module-checklist.md`.
+- [x] Universal page inventory, candidate-page analysis, cache reuse, and cost budgets are captured as unchecked future work in `document_preparation/module-checklist.md`.
   Notes: Documentation only; no new preparation runtime behavior is claimed complete.
+- [x] Current-structure anchor evidence handoff for task-layout projection is implemented in `document_preparation/module-checklist.md`.
+  Notes: Preparation/app layers provide validated page evidence to the read-only anchor projector so UI prefill can use lightweight page/char anchors without raw text exposure or hidden mutation.
+- [x] Preparation handoff for layout hypotheses is implemented in `document_preparation/module-checklist.md`.
+  Notes: Preparation supplies page layout evidence, page boundaries, and Outline evidence to the structure builder; structure-layer validation remains responsible for detection, usability, projection authority, and atomic fallback.
+- [x] Layout/TOC failure and fallback matrix is implemented in `document_preparation/module-checklist.md`.
+  Notes: OCR/raw-load failures surface as preparation errors; TOC/layout failures including missing page anchors, incomplete page numbers, ambiguous orientation, page-order failures, low body-title recall, and failed global projection remain advisory and preserve current parser fallback unless the TOC projection is globally authorized.
+- [x] Layout failure and user-visible fallback contract is implemented in `document_preparation/module-checklist.md`.
+  Notes: Renderer/OCR raw-load failures, empty/artwork OCR, ambiguous orientation, corrupted page numbers, low-confidence evidence, and incomplete multi-page grouping expose explicit error or provenance reasons while preserving current structure parsing. Task-layout remains projection-only and manual reparse remains the explicit mutation path.
 
 ### `db/`
 
@@ -304,8 +366,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `Native PDF Outline Normalization Implemented`
-- Completed item count: `18`
+- Status: `Multi-Page TOC Grouping Captured`
+- Completed item count: `25`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -321,9 +383,27 @@ No unresolved confirmation items identified in module checklist.
 - [x] Removed `allow_legacy_fallback` API surface and enforced hierarchy-only runtime lookup.
 - [x] Isolated legacy read compatibility from normal model/repository boundaries via strict hierarchy read contract + explicit migration-only loaders.
 - [x] Defined hierarchy-aware artifact target validation boundary as future-direction governance contract (`ArtifactTargetRef` metadata-only semantics, validation lifecycle, stale-ref/error taxonomy, allowed target combinations, and metadata glossary alignment).
+- [x] Adds lightweight document discovery repository contract.
 - [x] Rejects LLM split plans that resolve main-body sections to TOC-only spans and falls back before hierarchy persistence.
 - [x] Records requested/effective parser mode and LLM fallback reason as advisory `StructuredDocument` parse provenance.
 - [x] Normalizes native PDF Outline into the current two-layer `chapters[].sections[]` hierarchy for scanned-image books, including level-0 outline chapters and single-root wrapper outlines.
+- [x] Defines deterministic manual structure validation and lightweight preview boundary before commit/persistence.
+  Evidence: `Deep_Reflective_Reader/document_structure/manual_structure_projection.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_projection.py`.
+- [x] Defines manual structure projection into the current two-layer `chapters[].sections[]` hierarchy.
+  Evidence: `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_document_builder.py`.
+- [x] Defines source-agnostic manual structure override contract.
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/manual_structure_projection.py`; `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_api_schemas.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+- [x] Defines manual reparse provenance semantics.
+  Evidence: `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+- [x] Defines PDF structure-source precedence and fallback chain.
+- [x] Defines layout-hypothesis normalization before TOC matching while preserving raw OCR/page coordinates and keeping normalized evidence detection-only.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+- [x] Defines TOC global validation and parser authority boundary with deterministic split-usability gates and atomic fallback.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+- [x] Defines OCR layout regression and negative fixtures for TOC/layout detection without promoting unreliable evidence to parser authority.
+  Evidence: `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`.
+- [x] Defines multi-page TOC grouping and termination rules with explicit page-group provenance.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
 
 #### Needs Confirmation
 
@@ -341,11 +421,20 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Future DB migration planning preserves hierarchy-first `StructuredDocument` semantics across file and DB storage.
 - [ ] File-backed structured JSON remains valid compatibility/fallback/migration source until DB readiness validation; no runtime read/write behavior changed.
 - [ ] Storage abstraction boundary planning clarifies that `document_structure` owns `StructuredDocument` hierarchy truth and domain persistence semantics, not backend selection or DB rollout strategy.
-- [x] Deterministic TOC detection contract and atomic projection rejection are implemented in `document_structure/module-checklist.md`; shape projection, page boundary validation, multi-page grouping, and global validation remain staged future work.
+- [x] Source-agnostic manual structure override is implemented as explicit parser input for any loader-backed document type, not OCR-only and not task-layout mutation.
+- [x] `document_structure/module-detailed-design.md` captures the source-agnostic manual structure override boundary: user-supplied structure is explicit parser input for any document type, not OCR-only and not a second hierarchy source.
+- [x] Manual structure draft building now produces standard `chapters[].sections[]` hierarchy from char-range anchors, rejects unsupported page-range draft building until page-boundary mapping exists, and keeps provenance advisory.
+- [x] Manual structure validation/preview boundary is implemented as a deterministic pure document_structure helper with explicit issue codes and no persistence mutation.
+- [x] Deterministic TOC detection contract and atomic projection rejection are implemented in `document_structure/module-checklist.md`; shape projection, page boundary validation, multi-page grouping, and global validation are implemented.
 - [ ] TOC-derived hierarchy must remain `chapters[].sections[]`; metadata and LLM classification remain advisory and cannot become parser authority.
 - [x] Native PDF Outline normalization for scanned-image books is implemented: use normalized outline chapter level, flatten descendants into sections, map content by PDF page index plus OCR page boundaries, and reject incomplete projections atomically.
-- [ ] Universal page-level TOC scoring, layout-hypothesis normalization, multi-page grouping, and global validation are captured as unchecked future work in `document_structure/module-checklist.md`.
-- [ ] TOC projection implementation details are recorded as unchecked work: page-to-character boundary mapping, two-level hierarchy compression, multi-page termination, global validation, and reliable PDF fixture requirements.
+- [x] Layout-hypothesis normalization before TOC matching is implemented in `document_structure/module-checklist.md`; normalized logical token/pair evidence preserves page identity, raw OCR, coordinates, rotation/orientation, writing mode, reading order, and order hypothesis without becoming parser authority.
+- [x] OCR layout regression and negative fixtures are implemented in `document_structure/module-checklist.md`.
+  Notes: Coverage includes vertical RTL ordering, horizontal/circled page-number candidates, OCR-fragmented title candidates without page anchors, artwork-only pages, low-quality OCR scans, ambiguous orientation rejection, non-monotonic page-number rejection, and fallback provenance for layout-looking TOCs that are not projection-safe.
+- [x] Multi-page grouping is implemented in `document_structure/module-checklist.md`.
+  Notes: Adjacent layout-stable TOC candidates form explicit page groups; artwork-only,正文-like, non-candidate, layout-change, or gap pages terminate grouping, and projection records accepted group spans as provenance.
+- [ ] TOC projection implementation details still pending as unchecked work: reliable PDF fixture requirements.
+- [x] TOC global validation and parser authority boundary is implemented in `document_structure/module-checklist.md`; detection and OCR/layout evidence remain advisory until deterministic split-usability gates pass.
 
 ### `embeddings/`
 
@@ -513,8 +602,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `Structured Reuse Regression Added`
-- Completed item count: `4`
+- Status: `Page-Backed Manual Structure Route Regression Added`
+- Completed item count: `17`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -524,6 +613,32 @@ No unresolved confirmation items identified in module checklist.
 - [x] Covers profile/metadata and language registry hardening through dedicated regression scripts.
 - [x] Covers structured-document reuse before raw-load preparation.
   Evidence: `Deep_Reflective_Reader/scripts/test_prepare_structured_reuse_before_raw_load.py`.
+- [x] Covers manual structure API request, validation/preview response, and commit reparse request schema validation.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_api_schemas.py`.
+- [x] Covers manual structure validation route behavior.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`.
+- [x] Covers deterministic manual structure projection behavior.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_projection.py`.
+- [x] Covers manual structure validation route delegation to projector.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`.
+- [x] Covers manual structure commit validation gate before persistence.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`.
+- [x] Covers manual structure commit source evidence gates.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+- [x] Covers manual structure StructuredDocument draft building.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_document_builder.py`.
+- [x] Covers manual structure commit draft-build gate.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+- [x] Covers manual structure commit persistence gate.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+- [x] Covers manual structure commit route success mapping.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`.
+- [x] Covers page-backed manual structure route status mapping.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`.
+- [x] Covers manual structure preparation source-evidence handoff.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_preparation_handoff.py`.
+- [x] Covers manual structure commit provenance from preparation evidence.
+  Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
 
 #### Needs Confirmation
 
@@ -533,8 +648,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
-- Status: `Task Layout Parse Provenance Verified`
-- Completed item count: `15`
+- Status: `Page/Layout Task-Layout Consumption Contract Captured`
+- Completed item count: `17`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -554,6 +669,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Hardens segmented task-unit content endpoint behavior with deterministic flag-matrix regression and multilingual segmentation fixtures (Chinese/Japanese paragraphs, mixed paragraph+list, heading-like, table-like) without task-layout/persistence/artifact/retrieval/LLM/evaluated_answer changes.
 - [x] Suppresses duplicated section/chapter heading line in segmented content endpoint projection without changing hierarchy truth or task-layout payload.
 - [x] Adds optional `ParseProvenanceDTO` to task-layout projection without adding heavy content or changing hierarchy nodes.
+- [x] Preserves section-scoped task-layout ownership for TOC-derived hierarchy: task-layout consumes effective `chapters[].sections[].task_units[]` ownership and does not merge content across sections or create a second ownership model.
+- [x] Defines task-layout consumption contract for page/layout-derived hierarchy: task-layout may expose lightweight advisory `anchor_evidence`, but does not reconstruct TOC structure from orientation, reading order, TOC scores, OCR/page text, geometry, root `sections[]`, or `structure_nodes`.
 
 #### Needs Confirmation
 
@@ -567,8 +684,8 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Duplicate/missing content-block validation behavior remains future implementation work.
 - [ ] Segmented block artifact-target alignment behavior remains future implementation work.
 - [ ] Future-direction items above remain planning-only; current additive content-block endpoint integration is captured in completed checklist items.
-- [ ] Section-scoped task-layout ownership for TOC-derived hierarchy is captured as unchecked future work in `section_tasks/module-checklist.md`.
-- [ ] Task-layout consumption of page/layout-derived hierarchy is captured as unchecked future work in `section_tasks/module-checklist.md`; task-layout remains projection-only and does not reconstruct TOC structure.
+- [x] Section-scoped task-layout ownership for TOC-derived hierarchy is captured as completed contract work in `section_tasks/module-checklist.md`.
+- [x] Task-layout consumption of page/layout-derived hierarchy is captured as completed contract work in `section_tasks/module-checklist.md`; task-layout remains projection-only and does not reconstruct TOC structure.
 
 ### `session/`
 
@@ -626,8 +743,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
-- Status: `Task Layout Parse Provenance Verified`
-- Completed item count: `12`
+- Status: `Page-Backed Manual Structure Schema Semantics Captured`
+- Completed item count: `16`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -644,6 +761,10 @@ No unresolved confirmation items identified in module checklist.
 - [x] Reuses shared artifact target level contract to remove duplicated enum definitions across shared/API schema boundaries.
 - [x] Defines lightweight document list/search API schemas.
 - [x] Defines optional task-layout `parse_provenance` response schema with requested/effective parser mode and fallback metadata.
+- [x] Defines source-agnostic manual structure request schemas with typed `char_range` / `page_range` anchors and current `chapter -> section` maximum depth validation.
+- [x] Defines source-agnostic manual structure validation/preview response schemas with normalized entries, warnings/errors, lightweight preview chapter/section shape, and parser provenance preview.
+- [x] Defines source-agnostic manual structure commit reparse request schema with `parser_mode=manual_structure` gating and required manual plan payload.
+- [x] Defines page-backed manual-structure validation/commit schema semantics, with route regressions covering schema-valid `page_range`, missing/unsupported page evidence, out-of-range page anchors, stale source evidence, and successful page-backed commit response mapping.
 
 #### Needs Confirmation
 
@@ -654,6 +775,11 @@ No unresolved confirmation items identified in module checklist.
 - [ ] Added unchecked future tasks for rich task-unit content schema evolution in `api_schemas.module-checklist.md`.
 - [ ] API schema future direction keeps hierarchy-first contract and id-based targeting while preserving task-layout lightweight response boundary.
 - [ ] Future-direction items above remain planning-only; current additive `content_blocks` schema integration is captured in completed checklist items.
+- [x] Source-agnostic manual structure request schema is implemented in `api_schemas.py` and covered by `scripts/test_manual_structure_api_schemas.py`.
+- [x] Manual structure validation/preview response schema is implemented in `api_schemas.py` and covered by `scripts/test_manual_structure_api_schemas.py`.
+- [x] Manual structure commit reparse request schema is implemented in `api_schemas.py` and covered by `scripts/test_manual_structure_api_schemas.py`.
+- [x] Manual structure route orchestration and persistence are implemented outside `api_schemas.py` through the explicit coordinator commit path.
+- [x] Page-backed manual-structure schema semantics are covered by `scripts/test_manual_structure_api_schemas.py` and `scripts/test_manual_structure_validate_route.py`; `char_range` remains the universal fallback and task-layout remains lightweight/read-only.
 
 ### `bundle_factory.py`
 
@@ -713,8 +839,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
-- Status: `Health Request Logging Suppressed`
-- Completed item count: `12`
+- Status: `Page-Backed Manual Structure Route Mapping Captured`
+- Completed item count: `17`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -731,10 +857,24 @@ No unresolved confirmation items identified in module checklist.
 - [x] Adds lightweight document list/search endpoint.
 - [x] Maps optional task-layout parse provenance to public REST response and validates it through backend and UI proxy routes.
 - [x] Suppresses successful `/health` request lifecycle logs while preserving non-health request completion logs and exception logs.
+- [x] Adds non-mutating source-agnostic manual structure validation/preview route.
+- [x] Maps schema-valid manual structure reparse commit requests to the manual commit coordinator boundary.
+- [x] Delegates manual structure validation route projection checks to `document_structure.manual_structure_projection`.
+- [x] Supports manual structure commit through the explicit `/documents/reparse-structure` mutation route.
+- [x] Maps page-backed manual-structure validation and commit failures through stable route statuses for missing/unsupported page evidence, stale source evidence, out-of-range/unprojectable page anchors, and successful page-backed commit response mapping.
 
 #### Needs Confirmation
 
 No unresolved confirmation items identified in module checklist.
+
+#### Future Direction Preparation
+
+- [ ] Explicit manual reparse route boundary remains future work in `main.module-checklist.md`.
+- [x] Manual structure route keeps validation/preview separate from commit reparse and keeps `/documents/task-layout` projection-only.
+- [x] Manual structure validation/preview route is implemented as `POST /documents/manual-structure/validate` without hierarchy persistence, task-layout mutation, profile diagnostics write-back, artifact writes, raw text payload, or reparse execution.
+- [x] Manual structure commit route recognizes `parser_mode=manual_structure`, routes through the manual commit coordinator boundary, and maps coordinator statuses without legacy common/LLM reparse dispatch.
+- [x] Full manual structure commit orchestration is now available through the explicit reparse mutation path; `/documents/task-layout` remains projection-only.
+- [x] Page-backed manual structure route mapping is implemented for the explicit reparse mutation path; `/documents/task-layout` still does not accept TOC edits or trigger hidden reparse.
 
 ## 7. Cross-Module Completed Capabilities
 

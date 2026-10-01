@@ -87,6 +87,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: `DocumentTaskLayout` carries optional `ParseProvenanceDTO` with requested/effective parser mode and fallback metadata. It does not add heavy content and does not alter Chapter -> Section -> Task Unit hierarchy rendering.
 
+- [x] Add lightweight chapter/section anchor evidence to task-layout DTOs
+  Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/scripts/test_task_layout_anchor_evidence_dto.py`
+  Notes: `DocumentTaskLayoutChapterDTO` and `DocumentTaskLayoutSectionDTO` can carry optional `AnchorEvidenceDTO` for UI edit-existing prefill. The DTO supports page-range and char-range metadata, omits unset evidence to preserve current payload shape before API mapping, and excludes raw text, OCR text, geometry, and content blocks.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -101,13 +105,13 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define segmented content-block endpoint projection semantics
 - [ ] Define duplicate/missing content-block validation behavior
 - [ ] Define segmented block artifact-target alignment behavior
-- [ ] Preserve section-scoped task-layout ownership for TOC-derived hierarchy
-  Evidence needed: every persisted task unit belongs to exactly one effective section in task-layout projection; cross-section content merging remains unavailable on the layout path.
-  Notes: TOC-aware parsing may change section boundaries, but must not change the `chapters[].sections[].task_units[]` ownership contract.
+- [x] Preserve section-scoped task-layout ownership for TOC-derived hierarchy
+  Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `PYTHONPATH=. .venv/bin/python scripts/test_task_unit_content_endpoint.py`.
+  Notes: Task-layout projection consumes effective `chapters[].sections[].task_units[]` ownership and exposes section-scoped task-unit metadata only. TOC-aware parsing may change section boundaries upstream, but task-layout does not merge content across sections or create a second ownership model.
 
-- [ ] Define task-layout consumption contract for page/layout-derived hierarchy
-  Evidence needed: task-layout consumes only validated `chapters[].sections[].task_units[]` hierarchy and may expose page/layout provenance as advisory metadata without reconstructing structure.
-  Notes: Orientation, reading order, TOC scores, and OCR evidence do not become task-layout authority; root `sections[]` and `structure_nodes` remain excluded from the primary flow.
+- [x] Define task-layout consumption contract for page/layout-derived hierarchy
+  Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_layout_anchor_evidence_dto.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_task_layout_anchor_evidence_dto.py`; `PYTHONPATH=. .venv/bin/python scripts/test_task_unit_content_endpoint.py`.
+  Notes: Task-layout consumes only the validated active hierarchy and may expose lightweight `anchor_evidence` as advisory prefill metadata. It does not reconstruct TOC structure from orientation, reading order, TOC scores, OCR/page text, geometry, root `sections[]`, or `structure_nodes`.
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

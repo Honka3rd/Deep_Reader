@@ -108,6 +108,33 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Validate hierarchy parity criteria defined by the evaluation document
 - [ ] Resolve readiness-audit gaps before Phase 1 StructuredDocument JSONB-first evaluation
 - [ ] Define DB-era task-unit identity strategy before schema design
+- [x] Define source-agnostic manual structure override contract
+  Evidence needed: manual structure input is modeled as explicit parser input for any document type, not OCR-only and not task-layout mutation.
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/manual_structure_projection.py`; `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_api_schemas.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+  Notes: Manual structure is modeled as explicit parser input for any source handled by the document loader factory, not OCR-only or task-layout mutation. Successful commit produces a normal hierarchy-only `StructuredDocument`; validation/preview remains non-mutating.
+- [x] Define manual structure validation and preview boundary
+  Evidence needed: validation checks anchors/ranges/levels before commit and returns explicit failure reasons without overwriting current structured artifacts.
+  Evidence: `Deep_Reflective_Reader/document_structure/manual_structure_projection.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_projection.py`; `Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_manual_structure_projection.py`.
+  Notes: Validation must reject empty titles, out-of-range anchors, overlapping ranges, empty ranges, incompatible levels, and partial projections. Validation failure must not silently fallback to common parser as a successful manual reparse.
+- [x] Define manual structure projection into two-layer hierarchy
+  Evidence needed: manual entries map deterministically into `chapters[].sections[]` while preserving original entry levels only as provenance.
+  Evidence: `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_document_builder.py`; `Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_manual_structure_document_builder.py`.
+  Notes: Manual user-defined structure is limited to `chapter -> section` for now. Chapter-only plans create same-name sections; `level>2` and skipped-level plans fail-fast rather than being folded. No root `sections[]`, `structure_nodes`, flat `task_units`, or `Part -> Chapter -> Section` persistence is introduced. Draft building supports char-range anchors directly and page-range anchors when validated page-boundary evidence is available.
+- [x] Define manual reparse provenance semantics
+  Evidence needed: accepted manual reparse records requested/effective parser mode, user-supplied source, anchor type, validation summary, and entry count as advisory provenance.
+  Evidence: `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+  Notes: Accepted manual drafts record `requested_parser_mode=manual_structure`, `effective_parser_mode=manual_structure_projection`, `source=user_supplied_structure`, entry/chapter/section counts, source hash, anchor type, and validation summary as advisory `parse_provenance`. Provenance is observability only and does not become a second hierarchy source or parser authority.
+- [x] Materialize page_range manual anchors into hierarchy drafts
+  Evidence: `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+  Notes: Manual draft building now resolves validated `page_range` anchors through preparation-provided page-boundary evidence into raw-text spans and produces hierarchy-only `StructuredDocument` output. Missing page-boundary evidence fails explicitly with `page_boundaries_required`; commit path passes source evidence boundaries into the builder and preserves existing artifacts on invalid drafts.
+
+- [x] Reject ambiguous page-boundary evidence for manual page_range drafts
+  Evidence: `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+  Notes: Manual page-backed draft building now requires unique `page_index` values in preparation-provided page-boundary evidence. Duplicate page indexes fail with `ambiguous_page_boundary` before `StructuredDocument` materialization or repository save, preserving the existing structured artifact and keeping `char_range` as the explicit fallback.
+
+- [x] Project existing structure anchor evidence for TOC edit prefill
+  Evidence: `Deep_Reflective_Reader/document_structure/structure_anchor_evidence.py`; `Deep_Reflective_Reader/scripts/test_structure_anchor_evidence.py`.
+  Notes: `project_structure_anchor_evidence(...)` projects existing chapter/section hierarchy spans into lightweight read-only anchor evidence. It prefers `page_range` when validated page boundaries cover existing spans, falls back to `char_range` when page evidence is absent, and marks missing/invalid spans as explicit unavailable evidence without changing hierarchy identity or artifact persistence.
 - [x] Define deterministic table-of-contents detection contract
   Evidence needed: detection rules, confidence thresholds, evidence fields, and rejection conditions for missing, malformed, or ambiguous TOCs.
   Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
@@ -119,48 +146,57 @@ New future tasks for this module must be added here first as unchecked items:
 - [x] Define native PDF Outline two-layer normalization for scanned-image books
   Evidence: `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/document_structure/structured_hierarchy_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`; container verification with existing native PDF outline fixture and synthetic level-0 outline regression.
   Notes: Native PDF Outline projection now normalizes the chapter level from the minimum outline level, skips a single root wrapper when present, flattens descendants as sections, maps ranges through PDF page indices plus page text boundaries, and rejects incomplete/non-monotonic/empty projections atomically. The resulting hierarchy remains `chapters[].sections[]`; root `sections[]`, `structure_nodes`, and `Part -> Chapter -> Section` persistence were not introduced.
-- [ ] Define TOC shape classification and hierarchy projection
+- [x] Define TOC shape classification and hierarchy projection
   Evidence needed: flat chapter, chapter-section, and deeper hierarchy cases map deterministically to `chapters[].sections[]` without reintroducing root `sections[]` or `structure_nodes` as primary flow.
-  Notes: Required mapping: flat chapter entries become one chapter with one section; chapter/section entries become one chapter with multiple sections; levels deeper than 2 collapse into the nearest section and concatenate content in source order. Preserve original TOC level, printed page range, source page indices, and merge reason in parse provenance only. Task-unit generation remains downstream of the resulting sections.
-- [ ] Define TOC-based page/character boundary validation and atomic fallback
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/document_structure/structured_hierarchy_builder.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: Flat chapter entries become chapter-level projected sections and are materialized as one chapter with one section; chapter/section entries become one chapter with multiple sections; levels deeper than 2 collapse into the nearest projected section and concatenate content in source order. Original TOC level, projected level, printed page number, source page index, and merge reason are preserved in parse provenance only. Task-unit generation remains downstream of the resulting sections.
+- [x] Define TOC-based page/character boundary validation and atomic fallback
   Evidence needed: monotonic page order, fuzzy title matching, non-overlapping spans, empty-range rejection, and all-or-nothing fallback to current parsing when evidence is insufficient.
-  Notes: Convert printed page numbers to document page anchors using an explicit front-matter offset hypothesis, validate that hypothesis against body-title matches, then map sibling ranges to raw-text offsets. Reject missing or ambiguous anchors, reversed/overlapping ranges, empty ranges, low title recall, and incompatible offsets. Persist either the complete TOC hierarchy or the unchanged current-parser result.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: TOC projection now requires sufficient body-title matches, one compatible printed-page-to-source-page offset hypothesis, resolvable page anchors, and non-empty/monotonic/non-overlapping projected character ranges. If any gate fails, `StructuredDocumentBuilder` leaves the current parser result unchanged and does not emit `toc_projection` or claim `validated_toc_projection`.
 
-- [ ] Define universal page-level TOC candidate scoring
+- [x] Define universal page-level TOC candidate scoring
   Evidence needed: deterministic scoring covers horizontal/vertical text, left-to-right/right-to-left ordering, missing TOC markers, dotted leaders, separated page-number columns, circled page numbers, and OCR-fragmented titles.
-  Notes: Evidence includes document-relative position, short-title density, repeated alignment, leader-line/shape evidence, page-number evidence, layout confidence, and body-title matches. `detected` and `usable_for_splitting` are separate decisions.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: Page-level candidate scoring now covers document-relative early position, horizontal/vertical writing mode, left-to-right/right-to-left ordering, multiple columns, coordinate OCR availability, short-title density, dotted leaders, page-number evidence, separated page-number columns, circled/boxed page numbers, OCR-fragmented title density, and missing-marker cases. Candidate detection remains separate from projection usability; later validation still controls splitting authority.
 
-- [ ] Define geometry-first TOC entry reconstruction
+- [x] Define geometry-first TOC entry reconstruction
   Evidence needed: candidate pages reconstruct entries from title regions, leader lines, page-number regions, and column geometry even when linear OCR text is incomplete.
-  Notes: Vertical RTL pages cluster regions by column and descending x-coordinate. Horizontal pages order rows by y-coordinate and columns by reading direction. Associate title and page number by aligned geometry or leader-line endpoint. Circular/boxed numbers require a bounded number-region OCR pass; linear OCR alone is insufficient.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+  Notes: OCR TSV analysis now preserves word-level geometry as page-local evidence. `TableOfContentsDetector.reconstruct_page_entries(...)` reconstructs horizontal TOC rows by aligned title/page-number regions and leader-line endpoint evidence, and reconstructs vertical RTL TOC columns by descending x-coordinate with top-to-bottom title ordering. Circled page numbers are parsed within bounded page-number regions. Reconstruction remains detection-only; later validation still controls projection usability.
 
-- [ ] Define logical reading-order normalization with coordinate preservation
+- [x] Define logical reading-order normalization with coordinate preservation
   Evidence needed: normalized TOC candidates expose logical title/page pairs while retaining page index, region boxes, raw OCR, rotation, writing mode, and order hypothesis.
-  Notes: The normalized stream is detection-only. It must not replace raw text or become a second hierarchy source. Every pair carries evidence and a confidence decomposition for audit.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+  Notes: `TableOfContentsDetector.normalize_page_reading_order(...)` now emits logical OCR tokens with page index, logical/group indexes, raw OCR text, normalized text, original boxes, confidence, writing mode, reading order, rotation, and order hypothesis. `reconstruct_normalized_page_pairs(...)` exposes auditable title/page pairs with region boxes, raw OCR sequence, evidence, confidence, and confidence breakdown. The normalized stream remains detection-only and does not replace raw text, page evidence, or hierarchy truth.
 
-- [ ] Define TOC-specific OCR quality gates
+- [x] Define TOC-specific OCR quality gates
   Evidence needed: “page looks like TOC” is separated from “entries are reliable enough to split,” using title completeness, page-number coverage, geometric pairing, ordering consistency, and body-title recall.
-  Notes: A high-scoring page with missing/corrupt page numbers remains `detected=true, usable=false`. Never infer unreadable page numbers from sequence alone. Preserve rejection reasons and unchanged current-parser output.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+  Notes: `TableOfContentsDetector.evaluate_toc_ocr_quality(...)` now separates `detected` from `usable_for_splitting` using reconstructed entry count, title completeness, page-number coverage, geometric pairing coverage, page-number ordering consistency, and body-title recall. High-scoring TOC-like pages with missing page numbers remain detected but unusable; non-monotonic page numbers are rejected; missing body text prevents usability. The gate preserves explicit rejection reasons and does not infer unreadable page numbers or mutate parser output.
 
-- [ ] Define page-number region recognition and global validation
+- [x] Define page-number region recognition and global validation
   Evidence needed: Arabic, Chinese, Roman, circled, boxed, multi-digit, and fragmented page numbers map to document anchors under explicit offset hypotheses.
-  Notes: Number recognition is region-scoped and may use preprocessing, rotation candidates, and character whitelists. Validate offsets using multiple body-title matches, monotonicity, plausible range, and non-overlapping spans. Reject ambiguous offsets atomically.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: `TableOfContentsDetector.recognize_page_number_regions(...)` now preserves raw bounded page-number tokens, normalized value, numeral system, box, confidence, and evidence for Arabic, Chinese, Roman, circled, boxed, multi-digit, and fragmented OCR digits. `validate_page_number_anchor_offsets(...)` validates explicit printed-page-to-source-page offset hypotheses with monotonicity, plausible page anchors, multiple body-title matches, and atomic ambiguity rejection. This remains validation evidence only and does not mutate hierarchy, task-layout, profile, or artifacts.
 
-- [ ] Define OCR layout regression and negative fixtures
+- [x] Define OCR layout regression and negative fixtures
   Evidence needed: tests cover `暗水幽靈.pdf` artistic vertical TOC, `國富論.pdf` vertical body page, horizontal/multi-page TOC, circular numbers, artwork-only pages, and low-quality scans.
-  Notes: Expected results include orientation/order, candidate pages, entry coverage, accepted/rejected projection, and fallback provenance. A visually obvious TOC with unreliable extraction is a required negative projection case.
+  Evidence: `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`.
+  Notes: Regression coverage now fixes vertical RTL ordering, horizontal dotted/circled page-number candidates, OCR-fragmented title candidates without page anchors, artwork-only pages, low-quality OCR scans, ambiguous orientation rejection, non-monotonic page-number rejection, and layout-looking TOC fallback provenance. Projection remains all-or-nothing: visually obvious but unreliable TOC evidence does not emit `validated_toc_projection`, `toc_projection`, root `sections[]`, or `structure_nodes`.
 
-- [ ] Define layout-hypothesis normalization before TOC matching
-  Evidence needed: OCR regions can be converted to logical reading order while retaining raw page coordinates and source offsets; horizontal, vertical, rotated, and mixed regions have explicit ordering rules.
-  Notes: The normalized view is for detection/matching only. Raw OCR text, quote spans, page identity, and source hashes remain traceable.
+- [x] Define layout-hypothesis normalization before TOC matching
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+  Notes: `normalize_page_reading_order(...)` and `reconstruct_normalized_page_pairs(...)` convert OCR words into logical TOC tokens/pairs while preserving page index, raw OCR text, original coordinates, confidence, writing mode, reading order, rotation/orientation, and order hypothesis. The normalized view remains detection/matching evidence only; raw OCR/page evidence and hierarchy truth are not replaced.
 
-- [ ] Define multi-page TOC grouping and termination rules
+- [x] Define multi-page TOC grouping and termination rules
   Evidence needed: adjacent candidate pages can be grouped into one TOC region, with explicit start/end evidence and rejection when a page is front matter, artwork, or正文.
-  Notes: Group contiguous or near-contiguous high-confidence candidates. Start evidence is a TOC marker or repeated title/page-number geometry; continuation requires stable writing mode, column order, title density, and page-number alignment. Terminate on layout change,正文 density, artwork-only page, page-number loss beyond tolerance, or validated body transition. Store group start/end page indices and per-page evidence; proximity alone is insufficient.
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+  Notes: `group_page_candidates(...)` groups only adjacent layout-stable TOC candidates and records explicit start/end page indices plus evidence. Non-candidate pages, artwork-only pages,正文-like pages, layout changes, or gaps terminate the group; proximity alone is insufficient. Projection validation now requires at least one validated candidate group and records `toc_projection_page_group:<start>-<end>` provenance while preserving atomic fallback.
 
-- [ ] Define TOC global validation and parser authority boundary
-  Evidence needed: acceptance requires title recall, page-order monotonicity, page-range plausibility, body-anchor matches, non-overlapping ranges, and minimum confidence thresholds.
-  Notes: Run after grouping and before projection. Require entry count, page-number coverage, monotonic pages, plausible range, normalized body-title recall, unique non-overlapping anchors, and consistent group confidence. `detected` means evidence exists; `usable` means the complete plan passed all checks. Metadata, OCR classification, and LLM suggestions remain advisory.
+- [x] Define TOC global validation and parser authority boundary
+  Evidence: `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: `validate_for_projection(...)`, `evaluate_toc_ocr_quality(...)`, `validate_page_number_anchor_offsets(...)`, and the builder projection gate distinguish detection from split usability. Acceptance requires sufficient entries, page-number coverage, monotonic pages, plausible page ranges, body-title recall/body-anchor matches, compatible offset validation, non-empty projected ranges, and atomic all-or-nothing projection. Metadata, OCR classification, and LLM suggestions remain advisory; rejected plans leave the current parser result unchanged without `toc_projection`.
 
 - [ ] Prepare reliable TOC PDF fixtures before enabling broad regression coverage
   Evidence needed: born-digital flat TOC, scanned horizontal TOC, vertical right-to-left TOC, multi-page TOC, chapter-section TOC, deeper hierarchy requiring merge, and negative artwork/front-matter cases.

@@ -463,6 +463,20 @@ class TaskUnitContentResponse(BaseModel):
     is_fallback_generated: bool
 
 
+class AnchorEvidenceResponse(BaseModel):
+    """Lightweight existing-structure anchor evidence for task-layout prefill."""
+
+    anchor_type: str | None
+    status: str
+    reason: str | None = None
+    char_start: int | None = None
+    char_end: int | None = None
+    page_start_index: int | None = None
+    page_end_index: int | None = None
+    page_start_label: str | None = None
+    page_end_label: str | None = None
+
+
 class SectionTaskLayoutResponse(BaseModel):
     """Section layout response node with embedded task-unit metadata."""
 
@@ -476,6 +490,7 @@ class SectionTaskLayoutResponse(BaseModel):
     task_mode: str
     task_units: list[TaskUnitMetadataResponse]
     artifacts: ArtifactAvailabilityResponse | None = None
+    anchor_evidence: AnchorEvidenceResponse | None = None
 
 
 class DocumentTaskLayoutChapterResponse(BaseModel):
@@ -487,6 +502,7 @@ class DocumentTaskLayoutChapterResponse(BaseModel):
     chapter_role: str | None
     sections: list[SectionTaskLayoutResponse]
     artifacts: ArtifactAvailabilityResponse | None = None
+    anchor_evidence: AnchorEvidenceResponse | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
@@ -555,14 +571,401 @@ class DocumentTaskLayoutResponse(BaseModel):
     parse_provenance: ParseProvenanceResponse | None = None
 
 
+class ManualStructureAnchorRequest(BaseModel):
+    """Typed source-agnostic anchor for user-supplied structure entries."""
+
+    anchor_type: str = Field(
+        ...,
+        description="Manual structure anchor type: char_range | page_range",
+    )
+    char_start: int | None = Field(
+        None,
+        ge=0,
+        description="Inclusive raw-text character start offset for char_range anchors.",
+    )
+    char_end: int | None = Field(
+        None,
+        ge=0,
+        description="Exclusive raw-text character end offset for char_range anchors.",
+    )
+    page_start_index: int | None = Field(
+        None,
+        ge=0,
+        description="Zero-based source page start index for page_range anchors.",
+    )
+    page_end_index: int | None = Field(
+        None,
+        ge=0,
+        description="Optional zero-based source page end index for page_range anchors.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_anchor_shape(self) -> "ManualStructureAnchorRequest":
+        normalized_anchor_type = self.anchor_type.strip().lower().replace("-", "_")
+        if normalized_anchor_type not in {"char_range", "page_range"}:
+            raise ValueError("anchor_type must be char_range or page_range")
+        self.anchor_type = normalized_anchor_type
+
+        has_char_fields = self.char_start is not None or self.char_end is not None
+        has_page_fields = (
+            self.page_start_index is not None or self.page_end_index is not None
+        )
+        if has_char_fields and has_page_fields:
+            raise ValueError("manual structure anchor must not mix char and page fields")
+
+        if normalized_anchor_type == "char_range":
+            if self.char_start is None:
+                raise ValueError("char_range anchor requires char_start")
+            if self.page_start_index is not None or self.page_end_index is not None:
+                raise ValueError("char_range anchor cannot include page fields")
+            if self.char_end is not None and self.char_end <= self.char_start:
+                raise ValueError("char_end must be greater than char_start")
+            return self
+
+        if self.page_start_index is None:
+            raise ValueError("page_range anchor requires page_start_index")
+        if self.char_start is not None or self.char_end is not None:
+            raise ValueError("page_range anchor cannot include char fields")
+        if self.page_end_index is not None and self.page_end_index < self.page_start_index:
+            raise ValueError("page_end_index must be greater than or equal to page_start_index")
+        return self
+
+
+class ManualStructureEntryRequest(BaseModel):
+    """User-supplied chapter/section boundary entry for manual structure validation."""
+
+    title: str = Field(..., description="User-supplied chapter or section title.")
+    level: int = Field(
+        ...,
+        ge=1,
+        le=2,
+        description="Manual structure level: 1=chapter, 2=section.",
+    )
+    anchor: ManualStructureAnchorRequest
+    external_id: str | None = Field(
+        None,
+        description="Optional user/client id for correlating validation errors.",
+    )
+    notes: str | None = Field(
+        None,
+        description="Optional user-facing notes; not parser authority.",
+    )
+
+    @model_validator(mode="after")
+    def _normalize_entry(self) -> "ManualStructureEntryRequest":
+        normalized_title = self.title.strip()
+        if not normalized_title:
+            raise ValueError("manual structure entry title cannot be empty")
+        self.title = normalized_title
+
+        if self.external_id is not None:
+            normalized_external_id = self.external_id.strip()
+            self.external_id = normalized_external_id or None
+        if self.notes is not None:
+            normalized_notes = self.notes.strip()
+            self.notes = normalized_notes or None
+        return self
+
+
+class ManualStructurePlanRequest(BaseModel):
+    """Source-agnostic user-supplied structure plan for validation/preview."""
+
+    entries: list[ManualStructureEntryRequest] = Field(
+        ...,
+        min_length=1,
+        description="Ordered user-supplied chapter/section entries.",
+    )
+    source_hash: str | None = Field(
+        None,
+        description="Optional client-observed source hash for stale-source checks.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_entry_order(self) -> "ManualStructurePlanRequest":
+        has_chapter = False
+        for entry in self.entries:
+            if entry.level == 1:
+                has_chapter = True
+                continue
+            if not has_chapter:
+                raise ValueError("manual structure section entry requires preceding chapter")
+
+        if self.source_hash is not None:
+            normalized_source_hash = self.source_hash.strip()
+            self.source_hash = normalized_source_hash or None
+        return self
+
+
+class ManualStructureValidationRequest(BaseModel):
+    """Request payload for manual structure validation/preview."""
+
+    doc_name: str = Field(..., description="Document name")
+    manual_structure: ManualStructurePlanRequest
+
+    @model_validator(mode="after")
+    def _normalize_doc_name(self) -> "ManualStructureValidationRequest":
+        normalized_doc_name = self.doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+        self.doc_name = normalized_doc_name
+        return self
+
+
+class ManualStructureValidationIssueResponse(BaseModel):
+    """Validation/preview issue for a user-supplied manual structure plan."""
+
+    _ALLOWED_CODES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "malformed_payload",
+            "unsupported_anchor_type",
+            "out_of_range_anchor",
+            "overlapping_range",
+            "empty_projected_range",
+            "invalid_level_sequence",
+            "unsupported_depth",
+            "stale_source_evidence",
+        }
+    )
+    _ALLOWED_SEVERITIES: ClassVar[frozenset[str]] = frozenset(
+        {"error", "warning", "info"}
+    )
+
+    code: str = Field(
+        ...,
+        description="Stable manual structure validation issue code.",
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable validation or preview issue message.",
+    )
+    severity: str = Field(
+        "error",
+        description="Issue severity: error | warning | info.",
+    )
+    entry_index: int | None = Field(
+        None,
+        ge=0,
+        description="Zero-based index into manual_structure.entries when applicable.",
+    )
+    external_id: str | None = Field(
+        None,
+        description="Optional user/client id copied from the related manual entry.",
+    )
+
+    @model_validator(mode="after")
+    def _normalize_issue(self) -> "ManualStructureValidationIssueResponse":
+        normalized_code = self.code.strip().lower().replace("-", "_")
+        if normalized_code not in self._ALLOWED_CODES:
+            raise ValueError("unsupported manual structure validation issue code")
+        self.code = normalized_code
+
+        normalized_severity = self.severity.strip().lower()
+        if normalized_severity not in self._ALLOWED_SEVERITIES:
+            raise ValueError("manual structure validation issue severity must be error, warning, or info")
+        self.severity = normalized_severity
+
+        normalized_message = self.message.strip()
+        if not normalized_message:
+            raise ValueError("manual structure validation issue message cannot be empty")
+        self.message = normalized_message
+
+        if self.external_id is not None:
+            normalized_external_id = self.external_id.strip()
+            self.external_id = normalized_external_id or None
+        return self
+
+
+class ManualStructureNormalizedEntryResponse(BaseModel):
+    """Normalized manual structure entry returned by validation/preview."""
+
+    title: str
+    level: int = Field(
+        ...,
+        ge=1,
+        le=2,
+        description="Manual structure level: 1=chapter, 2=section.",
+    )
+    anchor: ManualStructureAnchorRequest
+    external_id: str | None = None
+    projected_char_start: int | None = Field(None, ge=0)
+    projected_char_end: int | None = Field(None, ge=0)
+    projected_page_start_index: int | None = Field(None, ge=0)
+    projected_page_end_index: int | None = Field(None, ge=0)
+
+    @model_validator(mode="after")
+    def _normalize_response_entry(self) -> "ManualStructureNormalizedEntryResponse":
+        normalized_title = self.title.strip()
+        if not normalized_title:
+            raise ValueError("manual structure normalized entry title cannot be empty")
+        self.title = normalized_title
+
+        if self.external_id is not None:
+            normalized_external_id = self.external_id.strip()
+            self.external_id = normalized_external_id or None
+
+        if (
+            self.projected_char_start is not None
+            and self.projected_char_end is not None
+            and self.projected_char_end <= self.projected_char_start
+        ):
+            raise ValueError("projected_char_end must be greater than projected_char_start")
+        if (
+            self.projected_page_start_index is not None
+            and self.projected_page_end_index is not None
+            and self.projected_page_end_index < self.projected_page_start_index
+        ):
+            raise ValueError(
+                "projected_page_end_index must be greater than or equal to projected_page_start_index"
+            )
+        return self
+
+
+class ManualStructurePreviewSectionResponse(BaseModel):
+    """Lightweight projected section node for manual structure preview."""
+
+    title: str
+    external_id: str | None = None
+    entry_index: int | None = Field(None, ge=0)
+
+    @model_validator(mode="after")
+    def _normalize_preview_section(self) -> "ManualStructurePreviewSectionResponse":
+        normalized_title = self.title.strip()
+        if not normalized_title:
+            raise ValueError("manual structure preview section title cannot be empty")
+        self.title = normalized_title
+        if self.external_id is not None:
+            normalized_external_id = self.external_id.strip()
+            self.external_id = normalized_external_id or None
+        return self
+
+
+class ManualStructurePreviewChapterResponse(BaseModel):
+    """Lightweight projected chapter node for manual structure preview."""
+
+    title: str
+    external_id: str | None = None
+    entry_index: int | None = Field(None, ge=0)
+    sections: list[ManualStructurePreviewSectionResponse] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _normalize_preview_chapter(self) -> "ManualStructurePreviewChapterResponse":
+        normalized_title = self.title.strip()
+        if not normalized_title:
+            raise ValueError("manual structure preview chapter title cannot be empty")
+        self.title = normalized_title
+        if self.external_id is not None:
+            normalized_external_id = self.external_id.strip()
+            self.external_id = normalized_external_id or None
+        return self
+
+
+class ManualStructurePreviewProvenanceResponse(BaseModel):
+    """Lightweight parse provenance preview for manual structure validation."""
+
+    parser_mode: str = Field(
+        "manual_structure",
+        description="Source-agnostic parser mode represented by the preview.",
+    )
+    source_hash: str | None = Field(
+        None,
+        description="Source hash used for stale-source preview checks when available.",
+    )
+    anchor_types: list[str] = Field(
+        default_factory=list,
+        description="Normalized anchor types observed in the previewed plan.",
+    )
+
+    @model_validator(mode="after")
+    def _normalize_preview_provenance(self) -> "ManualStructurePreviewProvenanceResponse":
+        normalized_parser_mode = self.parser_mode.strip().lower().replace("-", "_")
+        if normalized_parser_mode != "manual_structure":
+            raise ValueError("manual structure preview parser_mode must be manual_structure")
+        self.parser_mode = normalized_parser_mode
+
+        if self.source_hash is not None:
+            normalized_source_hash = self.source_hash.strip()
+            self.source_hash = normalized_source_hash or None
+
+        normalized_anchor_types: list[str] = []
+        for anchor_type in self.anchor_types:
+            normalized_anchor_type = anchor_type.strip().lower().replace("-", "_")
+            if normalized_anchor_type not in {"char_range", "page_range"}:
+                raise ValueError("manual structure preview anchor_types must be char_range or page_range")
+            normalized_anchor_types.append(normalized_anchor_type)
+        self.anchor_types = normalized_anchor_types
+        return self
+
+
+class ManualStructureValidationResponse(BaseModel):
+    """Response payload for manual structure validation/preview.
+
+    This schema is response-only and intentionally lightweight: it previews the
+    projected chapter/section shape without exposing raw text or task content.
+    """
+
+    doc_name: str
+    valid: bool
+    normalized_entries: list[ManualStructureNormalizedEntryResponse] = Field(
+        default_factory=list
+    )
+    errors: list[ManualStructureValidationIssueResponse] = Field(default_factory=list)
+    warnings: list[ManualStructureValidationIssueResponse] = Field(default_factory=list)
+    preview_chapters: list[ManualStructurePreviewChapterResponse] = Field(default_factory=list)
+    parse_provenance_preview: ManualStructurePreviewProvenanceResponse | None = None
+
+    @model_validator(mode="after")
+    def _normalize_validation_response(self) -> "ManualStructureValidationResponse":
+        normalized_doc_name = self.doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+        self.doc_name = normalized_doc_name
+        if self.valid and self.errors:
+            raise ValueError("manual structure validation response cannot be valid with errors")
+        return self
+
+
 class ReparseDocumentStructureRequest(BaseModel):
     """Request payload for explicit structure reparse action."""
+
+    _ALLOWED_PARSER_MODES: ClassVar[frozenset[str]] = frozenset(
+        {"common", "llm_enhanced", "manual_structure"}
+    )
 
     doc_name: str = Field(..., description="Document name")
     parser_mode: str = Field(
         ...,
-        description="Parser mode: common | llm_enhanced",
+        description="Parser mode: common | llm_enhanced | manual_structure",
     )
+    manual_structure: ManualStructurePlanRequest | None = Field(
+        None,
+        description=(
+            "Required when parser_mode=manual_structure. "
+            "Ignored by no other parser mode."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _normalize_reparse_request(self) -> "ReparseDocumentStructureRequest":
+        normalized_doc_name = self.doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+        self.doc_name = normalized_doc_name
+
+        normalized_parser_mode = self.parser_mode.strip().lower().replace("-", "_")
+        if normalized_parser_mode not in self._ALLOWED_PARSER_MODES:
+            raise ValueError(
+                "parser_mode must be common, llm_enhanced, or manual_structure"
+            )
+        self.parser_mode = normalized_parser_mode
+
+        if normalized_parser_mode == "manual_structure":
+            if self.manual_structure is None:
+                raise ValueError("manual_structure is required when parser_mode is manual_structure")
+            return self
+
+        if self.manual_structure is not None:
+            raise ValueError("manual_structure is only allowed when parser_mode is manual_structure")
+        return self
 
 
 class ReparseDocumentStructureResponse(BaseModel):

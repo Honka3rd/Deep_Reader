@@ -140,3 +140,29 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
 1. 增加 endpoint flow mapping 圖（route -> coordinator -> response）。
 2. 補 API error handling policy。
 3. 補 task-layout response contract appendix（含 diagnostics）。
+
+## 16. Future Direction Note: Manual Structure Override Route Boundary
+
+> 本節記錄 source-agnostic manual structure override 的 route-layer boundary；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. manual structure override routes should support any document type, not only OCR/PDF. **[Maintainer-Provided]**
+2. route design should separate validation/preview from commit reparse. **[Future Direction]**
+3. validation/preview route should be read/analysis-oriented: it may load raw text or page evidence through the coordinator, but must not persist hierarchy, task-layout metadata, profile diagnostics, or artifacts. **[Future Direction]**
+4. commit route should be an explicit mutation path, either by extending `/documents/reparse-structure` with `parser_mode=manual_structure` or by adding a clearly named manual-structure reparse endpoint. **[Future Direction]**
+5. `/documents/task-layout` must not accept manual structure edits and must not trigger hidden reparse; it continues to project the current active structured hierarchy. **[From HLD] + [Future Direction]**
+6. route-level validation should reject unknown manual parser modes, malformed manual plans, unsupported anchors, and requests that try to combine preview-only and commit-only semantics. **[Future Direction]**
+7. HTTP mapping should distinguish 400 malformed request, 404 missing document/source, 409 stale source evidence or conflicting active structure version, and 422 unprojectable manual structure plan. **[Future Direction]**
+8. route response should not expose raw text or heavy content payload; preview may expose normalized hierarchy labels/ranges and validation errors only. **[Future Direction]**
+9. This note does not add endpoints, source code, schema fields, or runtime behavior in this pass. **[Doc-Confirmed]**
+
+## 17. Route Mapping For TOC Anchor Evidence
+
+> 本節支援 UI TOC editor 的 page-first anchor UX。
+> 目前 `/documents/task-layout` 已可 pass through coordinator DTO anchor evidence；manual page-backed validation/commit routing 仍屬後續 checkpoint。 **[Code-Confirmed] + [Future Direction]**
+
+1. `/documents/task-layout` maps optional chapter/section anchor evidence from coordinator DTOs into public schema for UI prefill, while keeping the endpoint projection-only and lightweight. **[Code-Confirmed]**
+2. Route mapping does not compute page boundaries or char offsets itself; it pass-through maps validated DTO evidence from `section_tasks/` / `app/`. **[Code-Confirmed] + [From HLD]**
+3. `POST /documents/manual-structure/validate` should map `page_range` validation failures separately from malformed payload once backend page evidence is available. **[Future Direction]**
+4. `POST /documents/reparse-structure` with `parser_mode=manual_structure` should continue to be the explicit mutation path; page-backed commit must fail before persistence when page evidence is missing, stale, ambiguous, or unprojectable. **[Future Direction]**
+5. No route may accept manual TOC edits through `/documents/task-layout`, and no route may trigger hidden reparse from task-layout read. **[From HLD] + [Maintainer-Provided]**
+6. Anchor evidence route mapping does not expose raw text, page text, OCR geometry, task-unit content, or content blocks. **[Code-Confirmed]**

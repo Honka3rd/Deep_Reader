@@ -316,6 +316,27 @@ This check remains application-level in the first DB design. DB-level triggers o
 
 Timestamp updates follow the same explicit-write principle. `documents.updated_at` may use a DB default for initial insert, but later document mutations must set it explicitly in the repository/service update statement. `artifacts.updated_at` remains nullable until a mutable artifact update occurs, and that mutation must set the timestamp explicitly. Phase 1 does not use PostgreSQL triggers or ORM hooks for timestamp mutation. **[Maintainer-Confirmed] + [Code-Confirmed]**
 
+## 13.1 Manual Reparse Save Boundary Under PostgreSQL
+
+The PostgreSQL store has separate semantics for parser-level replacement saves and artifact/task-layout metadata saves. Replacement saves should clear current hierarchy and derived rows in the transaction, advance `documents.current_structure_version`, and append a `hard_reparse` parse event. Non-replacement repository saves should preserve the current version and existing hierarchy identity for artifact/task-layout updates. **[Code-Confirmed]**
+
+The manual `manual_structure` reparse path uses an explicit `save_reparsed_document(...)` repository boundary so existing PostgreSQL documents are saved with replacement semantics instead of the non-replacement artifact/task-layout save boundary. This avoids inserting a validated manual draft over existing hierarchy rows protected by uniqueness constraints such as `uq_chapters_document_order(document_id, chapter_order)`. **[Code-Confirmed]**
+
+Original confirmed failure example:
+
+- document: `暗水幽灵`
+- PostgreSQL `documents.id`: `13`
+- existing chapter rows: `chapter_order` includes `0`
+- manual draft first chapter order: `0`
+- failure: duplicate key on `uq_chapters_document_order`
+
+Boundary requirements:
+
+1. Keep the current-state-only hierarchy model; do not add row-level hierarchy versions or historical hierarchy tables for this bug. **[From HLD]**
+2. Keep artifact/task-layout repository saves non-replacement so ordinary interaction writes do not become hidden hard reparses. **[From HLD] + [Code-Confirmed]**
+3. Route manual structure commits under PostgreSQL to an explicit hard-reparse replacement boundary. **[Code-Confirmed]**
+4. Ensure the replacement path remains transactional: existing hierarchy/derived rows are replaced only after validation and draft materialization succeed; failed persistence rolls back with the old hierarchy still usable. **[Maintainer-Confirmed] + [Code-Confirmed]**
+
 ## 14. Relationship to Existing Planning Documents
 
 This document supersedes any interpretation that current Python-generated `unit_id` should be centered as production DB identity. Existing JSON files remain useful as reference, fixtures, and evaluation material only. **[Maintainer-Confirmed]**

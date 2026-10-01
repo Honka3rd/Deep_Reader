@@ -31,7 +31,7 @@ body {
 
 .document-search {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(220px, 1fr);
   gap: 10px;
   align-items: center;
 }
@@ -168,6 +168,62 @@ body {
   line-height: 1.72;
 }
 
+.toc-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.toc-editor-header,
+.toc-editor-mode-bar,
+.toc-editor-notice {
+  flex: 0 0 auto;
+}
+
+.toc-editor-mode-bar {
+  border-bottom: 1px solid #d9e1e6;
+  padding-bottom: 12px;
+}
+
+.toc-editor-mode-status {
+  text-align: right;
+}
+
+.toc-editor-workspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 42%) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.toc-editor-tree,
+.toc-editor-range-workspace {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.toc-editor-chapter {
+  border: 1px solid #d9e1e6;
+  border-radius: 6px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.toc-editor-section-list {
+  margin: 10px 0 0 18px;
+}
+
+.toc-editor-range-workspace {
+  border-left: 1px solid #d9e1e6;
+  padding-left: 18px;
+}
+
+.toc-editor-issue-list {
+  margin-top: 4px;
+}
+
 @media (max-width: 840px) {
   .topbar {
     grid-template-columns: 1fr;
@@ -175,11 +231,11 @@ body {
     padding: 12px;
   }
 
-  .document-search {
-    grid-template-columns: 1fr;
+  .status-region {
+    text-align: left;
   }
 
-  .status-region {
+  .toc-editor-mode-status {
     text-align: left;
   }
 
@@ -195,5 +251,16 @@ body {
 
   .content-pane {
     padding: 18px;
+  }
+
+  .toc-editor-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .toc-editor-range-workspace {
+    border-left: 0;
+    border-top: 1px solid #d9e1e6;
+    padding-left: 0;
+    padding-top: 16px;
   }
 }

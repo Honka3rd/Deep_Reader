@@ -31,6 +31,7 @@ The first-phase responsibilities are:
 - The frontend must not extend or reinterpret backend API contracts.
 - Future artifact, annotation, and question interactions are out of scope for this phase.
 - Backend schema/API changes are out of scope for this module slice.
+- Manual TOC editing uses explicit validation and hard-reparse submit paths, not hidden task-layout mutation.
 
 ## First Vertical Slice
 
@@ -57,11 +58,101 @@ Document input
 ### Component Responsibility
 
 - App shell owns state, API calls, and top-level layout.
-- Document search owns doc-name input, backend candidate lookup, empty-result list fallback, API-returned option selection, and load action.
+- Document search owns doc-name input, backend candidate lookup, empty-result list fallback, and API-returned option selection. Selecting an API-returned option triggers layout loading without a separate submit button.
 - Hierarchy navigation renders backend chapter and section projection.
 - Section buttons update local selection state while retaining internal task-unit ids.
 - Reader panel fetches each task-unit content for the selected section on demand and renders aggregated `content_blocks`.
 - Empty-state views handle missing document, missing hierarchy, missing task units, and missing content blocks.
+
+### Feature Module Structure
+
+The Reader UI is organized by user-facing responsibility:
+
+- `src/features/book-search/`: top document-search entry feature.
+- `src/features/hierarchy-navigation/`: lower-left chapter/section hierarchy navigation feature.
+- `src/features/reader-content/`: lower-right section content rendering feature.
+- `src/features/toc-editor/`: right-pane manual TOC editing feature for source documents whose table of contents is missing, incorrect, or not automatically recognized.
+
+Each feature follows a lightweight MVC-style split:
+
+- `model.ts`: pure UI/domain helpers such as option normalization, hierarchy counts, display labels, parser-mode derivation, heading selection, and content-block aggregation.
+- `controller.ts`: React state orchestration hooks and side-effect coordination for that feature.
+- `view.tsx`: MUI/DOM rendering only.
+- `index.ts`: public feature exports.
+
+`App.tsx` remains the shell/composition layer. It wires feature controllers, feature views, top-level repair controls, route selection, and layout panes without owning low-level REST request construction or content aggregation logic.
+
+### Route Structure
+
+React Router provides document-scoped routes:
+
+- `/documents/:docName`: default reader route. The right pane renders `reader-content`.
+- `/documents/:docName/toc-edit`: manual TOC editor route. The right pane is fully replaced by `toc-editor`; the reader-content DOM is not mounted for this route.
+
+The `toc-edit` route is not a cold-start entry point. It requires a loaded task layout in frontend state. If a user directly opens or refreshes `/documents/:docName/toc-edit` without a loaded layout, the right pane must show a guarded state such as "Load document first" and must not automatically prepare or load the layout. The user can return to `/documents/:docName` or the default entry flow.
+
+The TOC editor entry trigger belongs in the hierarchy navigation header, near the document title and unit count. It is enabled only when the layout has loaded successfully. Activating it routes to `/documents/:docName/toc-edit` while preserving the loaded hierarchy in the left pane as context.
+
+### TOC Editor Page Contract
+
+The TOC editor exists to support documents where automatic table-of-contents recognition is missing, failed, or needs correction. It must not be treated as a visual-only tree editor; user edits must be validated before they can produce an explicit hard reparse.
+
+The TOC editor has two draft source modes:
+
+- `from scratch`: the default mode. It starts with an empty editable tree and is optimized for the common failure case where the original TOC is missing, unreadable, or not automatically recognized.
+- `edit existing`: a secondary mode. It seeds the editable tree from the currently loaded task-layout hierarchy for the rarer case where an existing structure mostly works but needs correction.
+
+Switching modes resets the in-memory editor draft and validation state. It must not mutate task-layout or backend hierarchy until the user completes frontend validation, backend validation, and explicit hard-reparse commit.
+
+The right pane is a single integrated TOC editor, not a collection of permanent subpanels. Its main screen uses two coordinated work surfaces inside one editor:
+
+- editable TOC tree: supports `chapter -> section` editing, including add, delete, rename, and reorder operations
+- source anchor workspace: shows source context and lets the user assign anchors to the selected chapter/section item
+
+`section` is optional in the UI editing experience. A chapter-only book is represented as the special case where every chapter contains exactly one section. For display, the UI may use the single section title as the chapter display name, matching the existing reader rendering convention. Persistence and backend submission must still preserve the backend hierarchy contract rather than introducing root `sections[]` or deeper hierarchy levels.
+
+The TOC editor supports both `page_range` and `char_range` anchors. The anchor workspace is page-first when the loaded task-layout exposes reliable backend `anchor_evidence` with page boundaries, and remains character-range based when page evidence is unavailable or when the user explicitly switches to character anchors:
+
+- pageable source with reliable page evidence: default to page-number entry and submit page-backed anchors through the manual-structure flow
+- pageable source without reliable page evidence: show the parsed evidence gap and fall back to `char_range`
+- non-pageable source: use `char_range`
+- advanced/manual override: allow the user to choose `char_range` even when page entry is available
+
+`edit existing` mode should seed each chapter/section with default anchors from the current parsed structure when that evidence exists. For pageable documents, the displayed defaults should be the parsed page numbers. For non-pageable documents, or when page evidence is unavailable, the displayed defaults should be the parsed `char_start` / `char_end` range. If the current layout does not expose reliable anchor evidence, the editor should leave the anchor empty and surface validation guidance rather than inventing positions.
+
+`page_range` support depends on backend page-boundary mapping and manual-structure validation/commit support. The UI must not claim page anchors are authoritative when backend page evidence is missing; it must fall back to `char_range` or require explicit user override.
+
+The TOC editor must use an independent feature folder:
+
+- `src/features/toc-editor/model.ts`: editable TOC tree model, from-scratch draft construction, existing-layout draft construction, chapter-only normalization, anchor/range validation helpers, manual-structure request projection
+- `src/features/toc-editor/controller.ts`: route guard, draft source mode, selected TOC item, dirty state, frontend validation, backend validation, and commit confirmation orchestration
+- `src/features/toc-editor/view.tsx`: integrated TOC editor surface
+- `src/features/toc-editor/index.ts`: public feature exports
+
+### TOC Validation And Commit Flow
+
+Manual TOC editing must use a three-stage flow:
+
+1. Frontend validation:
+   - enforce the two-level maximum (`chapter -> section`)
+   - allow chapter-only as the one-section-per-chapter special case
+   - require usable titles
+   - require anchors for submitted items
+   - validate `char_start < char_end` for `char_range`
+   - validate page order and source page availability for future `page_range`
+   - reject missing, overlapping, or out-of-order anchors where they would make projection ambiguous
+2. Backend validation:
+   - call the non-mutating manual-structure validation endpoint
+   - display backend issues and preview evidence
+   - do not persist hierarchy or mutate task-layout during validation
+3. Commit / hard reparse:
+   - require successful frontend and backend validation
+   - use an explicit reparse commit route
+   - show a MUI confirmation dialog before commit
+
+Entering the TOC editor may show a low-disruption notice that submitting edits will trigger hard reparse. The destructive warning belongs at commit time: the confirmation dialog must clearly state that hard reparse replaces the current structure and derived QA, summaries, quiz artifacts, and similar generated outputs will not be preserved.
+
+Validation results and hard-reparse warnings should use MUI popup/dialog/snackbar-style interactions rather than occupying permanent space in the main editor surface.
 
 ### API Boundary
 
@@ -91,12 +182,31 @@ The frontend does not request duplicated raw content. It requests selected secti
 ### Loading / Error / Empty Behavior
 
 - Initial state shows no hierarchy until a document is loaded.
-- Layout loading disables the load button and marks the navigation area busy.
+- Layout loading disables the document search control and marks the navigation area busy.
 - Layout error shows the backend error detail and keeps the user on the document input.
 - Empty layout shows a no-content state if the backend returns no chapters, no sections, or no task units.
 - Selecting a section starts content loading for that section's task units.
 - Content error is scoped to the reader panel.
 - Empty content shows a no-content-blocks state when `content_blocks` is empty.
+
+### Error Notification Policy
+
+The UI consumes several backend error payload shapes, including FastAPI `detail`,
+operation-level `error`, task `reason`, string `errors[]`, and structured validation
+`errors[]` issue objects. Backend API normalization is out of scope for this UI module
+slice, so the frontend should normalize these payloads at the REST/client boundary for
+display only.
+
+Error presentation should avoid consuming permanent main-screen workspace, especially in
+the TOC editor where source range editing has limited space. Runtime API failures,
+validation summaries, and commit failures should use dismissible MUI popup interactions
+such as `Snackbar` + `Alert`. Destructive hard-reparse confirmation remains a `Dialog`.
+
+Main panes may keep compact state placeholders when the primary workflow cannot
+continue, but detailed backend or validation text should be surfaced through the
+dismissible notification layer. Validation issue lists may be opened from a popup or
+dialog when multiple issues need inspection, instead of being permanently rendered in
+the range workspace.
 
 ## Frontend Technical Structure
 
@@ -104,13 +214,27 @@ The frontend does not request duplicated raw content. It requests selected secti
 - UI library: MUI for app shell, combo box, buttons, navigation controls, chips, loading indicators, and alerts.
 - Build tooling: Vite with `@vitejs/plugin-react`.
 - Dev server: Vite dev server with `/api/*` proxy to the backend target from `DEEP_READER_API_URL` or `http://localhost:8000`.
-- Routing strategy: single-page application with no client router.
+- Routing strategy: React Router with document-scoped reader and TOC editor routes as described above.
 - State approach: component-local React state in `src/App.tsx`; no external state library.
-- API client organization: `src/api/client.ts` owns typed task-layout and task-unit content requests.
+- REST service organization: `src/services/RestClient.ts` owns shared request/error handling; endpoint groups are exposed through typed service classes.
 - Type organization: `src/types/api.ts` mirrors the consumed backend response fields.
-- Component organization: `src/components/DocumentSearch.tsx`, `HierarchyNavigation.tsx`, `ReaderContent.tsx`, and `StateView.tsx`.
+- Feature organization: `src/features/book-search/`, `src/features/hierarchy-navigation/`, and `src/features/reader-content/` own MVC-style model/controller/view files.
+- Shared component organization: `src/shared/components/StateView.tsx` owns cross-feature loading/error/empty state rendering.
 - Styling approach: MUI theme in `src/theme.ts` plus scoped layout CSS in `src/styles.css`.
 - Testing approach: TypeScript validation and production build through `npm run check`, HTTP smoke through the Vite dev server, and manual browser/API validation against the backend.
+
+### REST Service Classes
+
+Backend REST usage is centralized behind service classes:
+
+- `DocumentCatalogService`: `GET /documents`
+- `TaskLayoutService`: `POST /documents/task-layout`; `POST /documents/prepare-task-layout`
+- `TaskUnitContentService`: `GET /documents/{doc_name}/task-units/{task_unit_id}/content?segmented=true`
+- `StructureRepairService`: `POST /documents/reparse-structure` for common / LLM structure repair
+- `ManualStructureService`: `POST /documents/manual-structure/validate`; `POST /documents/reparse-structure` with `parser_mode=manual_structure`
+- `DocumentPreparationService`: `POST /documents/prepare`
+
+These services preserve the existing backend API contract and keep manual-structure validation/commit explicit.
 
 ### Document Combo Box
 
@@ -120,7 +244,7 @@ The first slice consumes the backend document list API for document-name candida
 
 - opening the combo box calls `GET /documents?limit=200`
 - users may type to filter the loaded API options locally
-- the loaded document must be selected from API-returned options
+- the loaded document must be selected from API-returned options, and selection immediately starts the layout load flow
 - the UI does not issue per-keystroke search requests
 - successful document names are not added as local-only options
 
@@ -139,7 +263,16 @@ This control remains a document-name entry surface, not a document library UI. I
 - ask-about-selection
 - artifact creation
 - artifact persistence UI
-- reparse UI
+- generic reparse UI outside the explicit TOC editor flow
 - enhanced parse diagnostics UI
 - authentication
 - persistent reading progress
+
+## Future Non-Goals For TOC Editor
+
+- direct cold-start editing from `/documents/:docName/toc-edit`
+- automatic layout loading from the TOC edit route guard
+- hidden task-layout mutation
+- treating frontend-edited TOC as backend truth before validation and explicit commit
+- deeper-than-two-level hierarchy editing
+- manual-structure UI support for `page_range` before page-boundary mapping is available

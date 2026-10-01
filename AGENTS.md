@@ -16,6 +16,11 @@ Before any task that changes code or documentation, read:
 - the target module `module-detailed-design.md`
 - the target module `module-checklist.md`
 
+For `Deep_Reader_UI` tasks, the target module documents are:
+
+- `Deep_Reader_UI/module-detailed-design.md`
+- `Deep_Reader_UI/module-checklist.md`
+
 ## Global architecture rules
 
 Do not reintroduce:
@@ -31,11 +36,24 @@ Do not reintroduce:
 
 Markdown files are persistent project memory.
 
-Codex must not edit markdown files unless the active skill explicitly allows that file type.
+Codex must not edit markdown files unless the active skill explicitly allows that file type or the user has explicitly requested a maintainer documentation/governance update.
 
 Audit tasks are read-only.
 
 Maintainer tasks may write only their owned markdown files.
+
+`Deep_Reader_UI` is a governed module. Its owned markdown files are:
+
+- `Deep_Reader_UI/module-detailed-design.md`
+- `Deep_Reader_UI/module-checklist.md`
+
+UI module documentation edits must preserve the frontend boundary:
+
+- backend hierarchy remains the source of truth
+- `/documents/task-layout` remains a lightweight projection
+- UI state must not become backend truth
+- UI changes must not introduce hidden backend mutation
+- UI documentation must not claim backend API or schema behavior unless implemented in the backend
 
 Every markdown edit must report:
 
@@ -51,6 +69,8 @@ Every markdown edit must report:
 
 1. the active skill explicitly owns progress synchronization, or
 2. the user explicitly requested a progress update.
+
+`Deep_Reflective_Reader/progress.md` aggregates `Deep_Reflective_Reader` module progress only. Do not update it for `Deep_Reader_UI` work unless a UI progress aggregation document is explicitly introduced.
 
 Never invent completion status.
 If evidence is insufficient, keep status as `Needs Confirmation`.

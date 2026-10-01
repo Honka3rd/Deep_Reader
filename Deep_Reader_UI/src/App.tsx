@@ -13,132 +13,143 @@ import {
   Typography,
 } from "@mui/material";
 import type { MouseEvent } from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  fetchDocumentList,
-  prepareTaskLayout,
-  fetchTaskLayout,
-  fetchTaskUnitContent,
-  reparseDocumentStructure,
-} from "./api/client";
-import { DocumentSearch } from "./components/DocumentSearch";
-import { HierarchyNavigation } from "./components/HierarchyNavigation";
-import { ReaderContent } from "./components/ReaderContent";
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+import {
+  BookSearchView,
+  useBookSearchController,
+} from "./features/book-search";
+import {
+  HierarchyNavigationView,
+  resolveLayoutParserMode,
+  useHierarchyNavigationController,
+} from "./features/hierarchy-navigation";
+import {
+  ReaderContentView,
+  useReaderContentController,
+} from "./features/reader-content";
+import { TocEditorView } from "./features/toc-editor";
+import {
+  AppNotification,
+  type AppNotificationState,
+} from "./shared/components/AppNotification";
+import {
+  structureRepairService,
+  taskLayoutService,
+} from "./services";
 import type {
-  ContentBlock,
-  DocumentListItem,
   DocumentTaskLayout,
   RequestStatus,
-  SectionSelection,
   StructureParserMode,
 } from "./types/api";
 
 export default function App() {
-  const [docName, setDocName] = useState("");
+  const navigate = useNavigate();
   const [layout, setLayout] = useState<DocumentTaskLayout | null>(null);
-  const [selectedSection, setSelectedSection] = useState<SectionSelection | null>(null);
-  const [contentBlocks, setContentBlocks] = useState<ContentBlock[]>([]);
   const [layoutStatus, setLayoutStatus] = useState<RequestStatus>("initial");
-  const [contentStatus, setContentStatus] = useState<RequestStatus>("initial");
   const [repairStatus, setRepairStatus] = useState<RequestStatus>("initial");
   const [layoutError, setLayoutError] = useState("");
-  const [contentError, setContentError] = useState("");
-  const [repairError, setRepairError] = useState("");
+  const [notification, setNotification] = useState<AppNotificationState>({
+    open: false,
+    message: "",
+    severity: "info",
+  });
   const [currentRepairMode, setCurrentRepairMode] = useState<StructureParserMode | null>(null);
   const [activeRepairMode, setActiveRepairMode] = useState<StructureParserMode | null>(null);
   const [repairMenuAnchor, setRepairMenuAnchor] = useState<HTMLElement | null>(null);
-  const [backendDocuments, setBackendDocuments] = useState<DocumentListItem[]>([]);
-  const [documentSearchLoading, setDocumentSearchLoading] = useState(false);
-  const contentRequestIdRef = useRef(0);
+  const layoutRequestIdRef = useRef(0);
+  const {
+    docName,
+    setDocName,
+    documentOptions,
+    searching: documentSearchLoading,
+    loadDocumentOptions,
+  } = useBookSearchController();
+  const {
+    selectedSection,
+    contentBlocks,
+    contentStatus,
+    contentError,
+    selectSection,
+    resetContent,
+  } = useReaderContentController({ docName });
+  const { sectionCount, unitCount } = useHierarchyNavigationController(layout);
 
-  const documentOptions = useMemo(
-    () => backendDocuments.map((item) => item.doc_name),
-    [backendDocuments],
-  );
-
-  function resolveLayoutParserMode(nextLayout: DocumentTaskLayout): StructureParserMode {
-    return nextLayout.parse_provenance?.effective_parser_mode === "llm_enhanced"
-      ? "llm_enhanced"
-      : "common";
+  function showNotification(
+    message: string,
+    severity: AppNotificationState["severity"] = "info",
+  ) {
+    setNotification({
+      open: true,
+      message,
+      severity,
+    });
   }
 
-  async function loadDocumentOptions() {
-    if (documentSearchLoading) {
-      return;
-    }
-    setDocumentSearchLoading(true);
-    try {
-      const response = await fetchDocumentList("", 200);
-      setBackendDocuments(response.items);
-    } catch {
-      setBackendDocuments([]);
-    } finally {
-      setDocumentSearchLoading(false);
-    }
+  function closeNotification() {
+    setNotification((current) => ({ ...current, open: false }));
   }
 
-  async function loadLayout() {
-    const trimmedDocName = docName.trim();
+  useEffect(() => {
+    if (contentStatus === "error" && contentError) {
+      showNotification(contentError, "error");
+    }
+  }, [contentStatus, contentError]);
+
+  async function reloadLayout(trimmedDocName: string) {
+    const nextLayout = await taskLayoutService.fetchTaskLayout(trimmedDocName);
+    setLayout(nextLayout);
+    setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
+    setLayoutStatus("success");
+  }
+
+  async function loadLayoutForDocument(nextDocName: string) {
+    const trimmedDocName = nextDocName.trim();
+    const requestId = layoutRequestIdRef.current + 1;
+    layoutRequestIdRef.current = requestId;
+
     if (!trimmedDocName || !documentOptions.includes(trimmedDocName)) {
+      const message = "Select a document returned by the document list API";
       setLayoutStatus("error");
-      setLayoutError("Select a document returned by the document list API");
+      setLayoutError(message);
+      showNotification(message, "error");
       return;
     }
 
     setLayout(null);
-    setSelectedSection(null);
-    setContentBlocks([]);
-    contentRequestIdRef.current += 1;
+    resetContent();
     setLayoutError("");
-    setContentError("");
-    setContentStatus("initial");
     setLayoutStatus("loading");
 
     try {
-      const nextLayout = await prepareTaskLayout(trimmedDocName);
+      const nextLayout = await taskLayoutService.prepareTaskLayout(trimmedDocName);
+      if (layoutRequestIdRef.current !== requestId) {
+        return;
+      }
       setLayout(nextLayout);
       setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
       setLayoutStatus("success");
+      navigate(`/documents/${encodeURIComponent(trimmedDocName)}`);
     } catch (error) {
+      if (layoutRequestIdRef.current !== requestId) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
       setLayoutStatus("error");
-      setLayoutError(error instanceof Error ? error.message : String(error));
+      setLayoutError(message);
+      showNotification(message, "error");
     }
   }
 
-  async function selectSection(selection: SectionSelection) {
-    const requestId = contentRequestIdRef.current + 1;
-    contentRequestIdRef.current = requestId;
-    setSelectedSection(selection);
-    setContentBlocks([]);
-    setContentError("");
-    if (selection.taskUnits.length === 0) {
-      setContentStatus("empty");
-      return;
-    }
-
-    try {
-      setContentStatus("loading");
-      const taskUnitContents = await Promise.all(
-        selection.taskUnits.map((taskUnit) =>
-          fetchTaskUnitContent(docName.trim(), taskUnit.unit_id),
-        ),
-      );
-      const nextBlocks = taskUnitContents.flatMap((taskUnitContent) =>
-        taskUnitContent.content_blocks || [],
-      );
-      if (contentRequestIdRef.current !== requestId) {
-        return;
-      }
-      setContentBlocks(nextBlocks);
-      const hasBlocks = nextBlocks.length > 0;
-      setContentStatus(hasBlocks ? "success" : "empty");
-    } catch (error) {
-      if (contentRequestIdRef.current !== requestId) {
-        return;
-      }
-      setContentStatus("error");
-      setContentError(error instanceof Error ? error.message : String(error));
-    }
+  function selectDocument(nextDocName: string) {
+    setDocName(nextDocName);
+    void loadLayoutForDocument(nextDocName);
   }
 
   async function repairStructure(parserMode: StructureParserMode) {
@@ -149,50 +160,31 @@ export default function App() {
 
     setRepairStatus("loading");
     setActiveRepairMode(parserMode);
-    setRepairError("");
     setLayoutError("");
-    setSelectedSection(null);
-    setContentBlocks([]);
-    setContentError("");
-    setContentStatus("initial");
-    contentRequestIdRef.current += 1;
+    resetContent();
 
     try {
-      const result = await reparseDocumentStructure(trimmedDocName, parserMode);
+      const result = await structureRepairService.reparseDocumentStructure(
+        trimmedDocName,
+        parserMode,
+      );
       if (!result.success) {
         throw new Error(result.error || "Structure repair failed");
       }
       setLayoutStatus("loading");
-      const nextLayout = await fetchTaskLayout(trimmedDocName);
-      setLayout(nextLayout);
-      setLayoutStatus("success");
+      await reloadLayout(trimmedDocName);
       setRepairStatus("success");
-      setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
+      showNotification("Structure repair completed. Layout reloaded.", "success");
     } catch (error) {
       setRepairStatus("error");
       setLayoutStatus(layout ? "success" : "error");
       const message = error instanceof Error ? error.message : String(error);
-      setRepairError(message);
+      showNotification(message, "error");
     } finally {
       setActiveRepairMode(null);
     }
   }
 
-  const unitCount =
-    layout?.chapters?.reduce(
-      (chapterTotal, chapter) =>
-        chapterTotal +
-        (chapter.sections || []).reduce(
-          (sectionTotal, section) => sectionTotal + (section.task_units || []).length,
-          0,
-        ),
-      0,
-    ) || 0;
-  const sectionCount =
-    layout?.chapters?.reduce(
-      (chapterTotal, chapter) => chapterTotal + (chapter.sections || []).length,
-      0,
-    ) || 0;
   const canRepair = layoutStatus === "success" && Boolean(layout) && repairStatus !== "loading";
   const repairMenuOpen = Boolean(repairMenuAnchor);
 
@@ -209,20 +201,39 @@ export default function App() {
     void repairStructure(parserMode);
   }
 
+  function editToc() {
+    const trimmedDocName = docName.trim();
+    if (!trimmedDocName || layoutStatus !== "success" || !layout) {
+      return;
+    }
+    navigate(`/documents/${encodeURIComponent(trimmedDocName)}/toc-edit`);
+  }
+
+  function backToReader(routeDocName: string) {
+    navigate(`/documents/${encodeURIComponent(routeDocName)}`);
+  }
+
+  async function commitTocSuccess(routeDocName: string) {
+    await reloadLayout(routeDocName);
+    resetContent();
+    navigate(`/documents/${encodeURIComponent(routeDocName)}`);
+  }
+
   return (
-    <Box className="app-shell">
-      <Paper component="header" elevation={0} className="topbar">
-        <DocumentSearch
+    <Box className="app-shell reader-app-shell">
+      <Paper component="header" elevation={0} className="topbar reader-topbar">
+        <BookSearchView
           value={docName}
           options={documentOptions}
           loading={layoutStatus === "loading"}
           searching={documentSearchLoading}
           onChange={setDocName}
           onOpen={loadDocumentOptions}
-          onLoad={loadLayout}
+          onSelect={selectDocument}
         />
-        <Box className="repair-controls">
+        <Box className="repair-controls structure-repair-controls">
           <Button
+            className="structure-repair-trigger"
             id="repair-menu-button"
             aria-controls={repairMenuOpen ? "repair-menu" : undefined}
             aria-haspopup="menu"
@@ -242,6 +253,7 @@ export default function App() {
             Repairs: {currentRepairMode === "llm_enhanced" ? "LLM" : "Common"}
           </Button>
           <Menu
+            className="structure-repair-menu"
             id="repair-menu"
             anchorEl={repairMenuAnchor}
             open={repairMenuOpen}
@@ -249,28 +261,34 @@ export default function App() {
             MenuListProps={{ "aria-labelledby": "repair-menu-button" }}
           >
             <MenuItem
+              className="structure-repair-option structure-repair-option-common"
               selected={currentRepairMode === "common"}
               onClick={() => selectRepairMode("common")}
             >
-              <ListItemIcon>
+              <ListItemIcon className="structure-repair-option-icon">
                 {currentRepairMode === "common" ? <CheckIcon fontSize="small" /> : null}
               </ListItemIcon>
-              <ListItemText>Common</ListItemText>
+              <ListItemText className="structure-repair-option-label">Common</ListItemText>
             </MenuItem>
             <MenuItem
+              className="structure-repair-option structure-repair-option-llm"
               selected={currentRepairMode === "llm_enhanced"}
               onClick={() => selectRepairMode("llm_enhanced")}
             >
-              <ListItemIcon>
+              <ListItemIcon className="structure-repair-option-icon">
                 {currentRepairMode === "llm_enhanced" ? <CheckIcon fontSize="small" /> : null}
               </ListItemIcon>
-              <ListItemText>LLM</ListItemText>
+              <ListItemText className="structure-repair-option-label">LLM</ListItemText>
             </MenuItem>
           </Menu>
         </Box>
-        <Typography aria-live="polite" className="status-region" color="text.secondary">
+        <Typography
+          aria-live="polite"
+          className="status-region reader-status-region"
+          color="text.secondary"
+        >
           {repairStatus === "loading" ? "Repairing structure" : ""}
-          {repairStatus === "error" ? `Repair failed: ${repairError}` : ""}
+          {repairStatus === "error" ? "Repair failed" : ""}
           {repairStatus !== "loading" && repairStatus !== "error" && layoutStatus === "success"
             ? `${sectionCount} sections / ${unitCount} internal units`
             : ""}
@@ -279,38 +297,93 @@ export default function App() {
         </Typography>
       </Paper>
 
-      <Box component="main" className="reader-layout">
+      <Box component="main" className="reader-layout reader-workspace">
         <Paper
           component="aside"
           elevation={0}
-          className="navigation-pane"
+          className="navigation-pane hierarchy-navigation-pane"
           aria-label="Document hierarchy"
           aria-busy={layoutStatus === "loading"}
         >
-          <HierarchyNavigation
+          <HierarchyNavigationView
             layout={layout}
             selectedSectionId={selectedSection?.section.section_id || null}
             status={layoutStatus}
-            error={layoutError}
+            error={layoutError ? "Open the error notification for details." : ""}
+            canEditToc={layoutStatus === "success" && Boolean(layout)}
             onSelectSection={selectSection}
+            onEditToc={editToc}
           />
         </Paper>
         <Paper
           component="section"
           elevation={0}
-          className="content-pane"
+          className="content-pane reader-content-pane"
           aria-label="Reading content"
           aria-busy={contentStatus === "loading"}
         >
-          <ReaderContent
-            layoutStatus={layoutStatus}
-            contentStatus={contentStatus}
-            selectedSection={selectedSection}
-            contentBlocks={contentBlocks}
-            error={contentError}
-          />
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ReaderContentView
+                  layoutStatus={layoutStatus}
+                  contentStatus={contentStatus}
+                  selectedSection={selectedSection}
+                  contentBlocks={contentBlocks}
+                  error={contentError}
+                />
+              }
+            />
+            <Route
+              path="/documents/:routeDocName"
+              element={
+                <ReaderContentView
+                  layoutStatus={layoutStatus}
+                  contentStatus={contentStatus}
+                  selectedSection={selectedSection}
+                  contentBlocks={contentBlocks}
+                  error={contentError}
+                />
+              }
+            />
+            <Route
+              path="/documents/:routeDocName/toc-edit"
+              element={
+                <TocEditorRoutePane
+                  layout={layout}
+                  onBackToReader={backToReader}
+                  onCommitSuccess={commitTocSuccess}
+                />
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </Paper>
       </Box>
+      <AppNotification notification={notification} onClose={closeNotification} />
     </Box>
+  );
+}
+
+function TocEditorRoutePane({
+  layout,
+  onBackToReader,
+  onCommitSuccess,
+}: {
+  layout: DocumentTaskLayout | null;
+  onBackToReader: (docName: string) => void;
+  onCommitSuccess: (docName: string) => Promise<void>;
+}) {
+  const { routeDocName = "" } = useParams();
+  const docName = decodeURIComponent(routeDocName);
+
+  return (
+    <TocEditorView
+      docName={docName}
+      layout={layout}
+      onBackToReader={() => onBackToReader(docName)}
+      onCommitSuccess={() => onCommitSuccess(docName)}
+    />
   );
 }

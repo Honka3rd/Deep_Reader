@@ -376,3 +376,176 @@ future validation boundary 應 fail-fast 於以下類型：
 4. retrieval records / FAISS artifacts 是 retrieval persistence concern，需要獨立 DB migration track。 **[Maintainer-Provided] + [Future Direction]**
 5. raw files / user-uploaded documents 是 user-scoped ownership/copyright concern；DB migration 不代表跨使用者共享文件內容。 **[Maintainer-Provided]**
 6. 本節不引入 DB schema、DB dependency、repository implementation、runtime/API behavior change、data migration tooling、或 `data/` retirement execution。 **[Doc-Confirmed]**
+
+## 23. Future Direction Note: Source-Agnostic Manual Structure Override
+
+> 本節記錄「任何文檔解析失敗時」的人工結構修正方向，不限於 OCR/scanned PDF。這是 future-direction design，不代表目前已有 API 或 parser implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+### 23.1 Problem Scope
+
+1. 任何 raw source 都可能產生錯誤 hierarchy：born-digital PDF、掃描 OCR PDF、TXT、EPUB-like text dump、LLM split plan、common parser、native outline、TOC projection 都可能失敗。 **[Maintainer-Provided] + [Inferred]**
+2. manual structure override 的目的，是在自動 parser / outline / TOC / LLM fallback 失敗後，由使用者提供顯式目錄或結構邊界，觸發一次明確 reparse。 **[Maintainer-Provided] + [Future Direction]**
+3. 這不是 OCR 專用補丁，也不是只為 `暗水幽靈` 設計；OCR 只是其中一個會暴露自動目錄失敗的來源。 **[Maintainer-Provided]**
+
+### 23.2 Authority Boundary
+
+1. 使用者提供的 manual TOC / manual structure plan 是 explicit parser input，不是第二套 persisted hierarchy。 **[Future Direction]**
+2. reparse 成功後，唯一 runtime hierarchy truth 仍必須是 `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [Future Direction]**
+3. manual plan 不得作為 task-layout read path 的 hidden mutation，也不得直接編輯 task-layout projection。 **[From HLD] + [Future Direction]**
+4. manual plan 不得重新引入 root `sections[]`、`structure_nodes[]`、或 flat `task_units` 作 primary flow。 **[From HLD] + [Future Direction]**
+5. manual plan provenance 可保存在 `parse_provenance`，但 provenance 是 observability，不是 parser authority 或 fallback hierarchy source。 **[Future Direction]**
+
+### 23.3 Input Model Direction
+
+最小 manual structure entry 應描述使用者意圖與可驗證定位：
+
+```text
+title
+level
+start anchor
+optional end anchor
+optional external/user id
+optional notes
+```
+
+anchor 可分階段支持：
+
+1. `char_start` / `char_end`：適用於任何已抽取 raw text 的文檔，最 source-agnostic。 **[Future Direction]**
+2. `page_index` / `page_range`：適用於 PDF/OCR/native page-boundary 可用的文檔。 **[Future Direction]**
+3. `printed_page_number + offset_hypothesis`：可作後續擴展，不應作 MVP 唯一定位方式。 **[Future Direction]**
+4. `title_match_hint`：只能作 validation/evidence 輔助，不得單獨授權 projection。 **[Future Direction]**
+
+### 23.4 Projection Rules
+
+1. manual structure projection 必須收斂到現有 two-layer normalized hierarchy。 **[From HLD] + [Future Direction]**
+2. `level=1` 可形成 chapter；`level=2` 可形成 section。 **[Future Direction]**
+3. 只有 chapter entries 時，每個 chapter 應生成一個同名 section，以維持 `chapters[].sections[]` contract。 **[Future Direction]**
+4. manual structure MVP 僅允許 `level=1` chapter 與 `level=2` section；`level>2` 必須 fail-fast，不得自動折疊或隱式合併。 **[Maintainer-Provided] + [Future Direction]**
+5. task-unit generation 仍是 downstream concern，不由 manual TOC 直接持久化 flat task units。 **[Future Direction]**
+
+### 23.5 Validation and Failure Semantics
+
+manual plan 必須先 validation，再 commit reparse：
+
+1. entry title 不得為空。 **[Future Direction]**
+2. anchors 必須在 raw text/page boundary 範圍內。 **[Future Direction]**
+3. ranges 必須單調、非重疊、非空。 **[Future Direction]**
+4. hierarchy levels 必須只包含 chapter/section 兩層；任何 `level>2` 或跳層結構都應 fail-fast。 **[Maintainer-Provided] + [Future Direction]**
+5. partial projection 不得落盤；validation 失敗時應保留現有 structured document。 **[Future Direction]**
+6. validation failure 不應 silent fallback 到 common parser 並宣稱 manual reparse 成功。 **[Future Direction]**
+
+### 23.6 Reparse Lifecycle Direction
+
+建議 lifecycle：
+
+```text
+manual structure request
+  -> validate / preview
+  -> explicit commit reparse
+  -> build StructuredDocument
+  -> save single active hierarchy source
+  -> downstream task-layout reads normal hierarchy
+```
+
+成功 reparse 的 `parse_provenance` 建議包含：
+
+```text
+requested_parser_mode=manual_structure
+effective_parser_mode=manual_structure_projection
+source=user_supplied_structure
+fallback_used=false
+manual_entry_count
+anchor_type
+validation_summary
+```
+
+本方向不實作 API、schema、builder、repository、或 UI；僅固定 future design boundary。 **[Doc-Confirmed]**
+
+## 24. Page-Backed Manual Structure Anchors
+
+> 本節支援 UI TOC editor 的 page-first anchor UX。Manual `page_range` draft building is implemented when preparation-provided page-boundary evidence is available; task-layout prefill projection remains a separate checkpoint. **[Maintainer-Provided] + [Code-Confirmed] + [Future Direction]**
+
+1. `document_structure/` owns deterministic validation and hierarchy projection semantics for manual structure anchors. **[Code-Confirmed] + [From HLD]**
+2. Manual projection can represent `page_range`, and manual draft building can resolve page-backed anchors into raw-text spans when validated page boundaries are supplied. **[Code-Confirmed]**
+3. Page-backed manual commit resolves validated `page_range` anchors using preparation-provided page boundaries before building a hierarchy-only `StructuredDocument`. **[Code-Confirmed]**
+4. Page-backed anchors are validated for page-boundary availability, unique page-index evidence, page existence/resolvability, sibling overlap, empty projected ranges, stale source evidence, and source hash consistency through the projection/source-evidence/draft-build gates. **[Code-Confirmed]**
+5. Accepted manual page anchors record advisory parse provenance including anchor type, source hash, validation summary, entry count, chapter count, and section count. Provenance is observability only and must not become a second hierarchy source. **[Code-Confirmed]**
+6. `project_structure_anchor_evidence(...)` can expose lightweight chapter/section anchor evidence from the existing parsed hierarchy for task-layout/UI prefill. This evidence is read-only projection metadata and does not rewrite hierarchy identity or artifacts. **[Code-Confirmed]**
+7. If page evidence is missing or ambiguous, including duplicate `page_index` boundaries, validation fails for `page_range` and leaves `char_range` as the explicit fallback. **[Maintainer-Provided] + [Code-Confirmed]**
+8. Existing-structure anchor evidence prefers `page_range` when validated page boundaries cover the current hierarchy spans, falls back to `char_range` when page evidence is absent, and marks missing/invalid spans as unavailable instead of inventing anchors from titles, OCR guesses, profile metadata, or task-layout state. **[Code-Confirmed]**
+
+## 25. TOC Shape Classification and Two-Layer Projection
+
+> 本節記錄 deterministic TOC projection 的 shape handling。 **[Code-Confirmed]**
+
+1. `TableOfContentsDetector` classifies TOC evidence into `flat_chapter`, `chapter_section`, `deep_hierarchy`, or `unknown` without using metadata or LLM output as parser authority. **[Code-Confirmed]**
+2. Validated TOC projection maps flat chapter entries to chapter-level sections; `structured_hierarchy_builder` then materializes one chapter with one same-name section for each entry. **[Code-Confirmed]**
+3. Validated chapter/section TOCs map level-1 entries to `toc_chapter` and level-2 entries to `toc_subsection`, producing `chapters[].sections[]` without root `sections[]` or `structure_nodes` as persisted truth. **[Code-Confirmed]**
+4. Deep TOC levels (`level > 2`) are collapsed into the nearest projected section content range rather than persisted as a third hierarchy level. **[Code-Confirmed]**
+5. TOC projection provenance records original level, projected level, printed page number, resolved source page index, and merge reason for collapsed entries. Provenance is observability only and does not become a second hierarchy source. **[Code-Confirmed]**
+6. Task-unit generation remains downstream of the resulting two-layer sections; TOC projection does not write flat task units or artifact targets. **[From HLD] + [Code-Confirmed]**
+
+## 26. TOC Page/Character Boundary Validation and Atomic Fallback
+
+> 本節記錄 validated TOC projection 的 page/char gate。 **[Code-Confirmed]**
+
+1. TOC projection requires body title matches after the detected TOC region; insufficient body-title recall rejects projection without partially applying TOC sections. **[Code-Confirmed]**
+2. Printed page numbers are validated against body title offsets through one explicit page-offset hypothesis. Mixed or incompatible offsets reject projection atomically. **[Code-Confirmed]**
+3. Printed page anchors must resolve to available source page boundaries after applying the offset; missing page anchors reject projection. **[Code-Confirmed]**
+4. Projected section ranges must be non-empty, monotonic, and non-overlapping before `StructuredSection` objects are materialized. **[Code-Confirmed]**
+5. When any TOC projection gate fails, `StructuredDocumentBuilder` preserves the current parser result and does not write `toc_projection` provenance or claim `validated_toc_projection` as the effective parser. **[Code-Confirmed]**
+6. This path does not introduce root `sections[]` persistence, `structure_nodes` main flow, hidden task-layout mutation, profile write-back, or LLM/parser-metadata authority. **[Code-Confirmed] + [From HLD]**
+
+## 27. Universal Page-Level TOC Candidate Scoring
+
+> 本節記錄 page-level TOC candidate scoring。Candidate detection identifies pages worth reconstructing or validating later; it does not by itself authorize structure splitting. **[Code-Confirmed]**
+
+1. `TableOfContentsDetector.detect_page_candidates(...)` assigns deterministic scores from page-local evidence and returns candidate pages once the score reaches the conservative threshold. **[Code-Confirmed]**
+2. Scoring covers document-relative early position, horizontal/vertical writing mode, left-to-right/right-to-left reading order, multiple text columns, coordinate OCR availability, short-title density, dotted leader lines, page-number evidence, separated page-number columns, circled/boxed page numbers, OCR-fragmented title density, and explicit TOC markers. **[Code-Confirmed]**
+3. Candidate scoring can detect TOC-like pages even when TOC markers are missing or page numbers are visually separated from titles. Missing or unreliable anchors still require later entry reconstruction and global validation before projection. **[Code-Confirmed]**
+4. `detected` and splitting usability remain separate decisions: page candidates may raise `detected=true`, while `validate_for_projection(...)` and `StructuredDocumentBuilder` still enforce entry count, page-number coverage, body-title matches, monotonic page mapping, and non-overlapping ranges before any hierarchy replacement. **[Code-Confirmed]**
+5. This path uses OCR/layout text evidence only; it does not use metadata, diagnostics profiles, or LLM classification as parser authority and does not persist an alternate hierarchy source. **[Code-Confirmed] + [From HLD]**
+
+## 28. Geometry-First TOC Entry Reconstruction
+
+> 本節記錄 page-level TOC entry reconstruction。Reconstruction creates auditable title/page-number pairs from OCR geometry for later validation; it does not by itself authorize hierarchy replacement. **[Code-Confirmed]**
+
+1. `PdfPageLayoutEvidence` can retain OCR word-level geometry from TSV input, including text, confidence, bounding box, and block/paragraph/line/word indices. This evidence is page-local parser evidence, not hierarchy truth. **[Code-Confirmed]**
+2. `TableOfContentsDetector.reconstruct_page_entries(...)` reconstructs TOC candidate entries from geometry when word boxes are available. The output records title, page number, source page index, title region box, page-number region box, confidence, and evidence reasons. **[Code-Confirmed]**
+3. Horizontal TOC reconstruction groups OCR words by row, orders title regions left-to-right, excludes leader tokens from titles, and pairs the title with the right-side page-number region by row alignment and leader-line endpoint evidence. **[Code-Confirmed]**
+4. Vertical TOC reconstruction clusters OCR words into columns, sorts right-to-left pages by descending x-coordinate, orders title characters top-to-bottom within each column, and pairs the title with the lower page-number region. **[Code-Confirmed]**
+5. Circled page numbers are recognized during geometry reconstruction for bounded page-number regions. The current implementation reconstructs candidate pairs only; later checkpoints still own OCR quality gates, global page-number validation, and projection authorization. **[Code-Confirmed]**
+6. Geometry reconstruction is detection-only and must not replace raw text, page-boundary evidence, `chapters[].sections[]`, or parser validation. It does not write task-layout state, profile diagnostics, artifacts, root `sections[]`, or `structure_nodes`. **[Code-Confirmed] + [From HLD]**
+
+## 29. Logical Reading-Order Normalization With Coordinate Preservation
+
+> 本節記錄 TOC OCR geometry 的 logical reading-order normalization。The normalized stream exists only for deterministic detection and audit; it does not replace raw text or become a hierarchy source. **[Code-Confirmed]**
+
+1. `TableOfContentsDetector.normalize_page_reading_order(...)` converts page OCR word boxes into `TocNormalizedToken` records in logical reading order. Each token retains page index, logical index, group index, normalized text, raw OCR text, original coordinate box, confidence, writing mode, reading order, rotation/orientation, and order hypothesis. **[Code-Confirmed]**
+2. Horizontal pages use row grouping with left-to-right or right-to-left ordering according to the page reading order. Vertical pages use column grouping with top-to-bottom ordering within each column and right-to-left column sequencing when page evidence indicates RTL. **[Code-Confirmed]**
+3. `TableOfContentsDetector.reconstruct_normalized_page_pairs(...)` exposes normalized title/page pairs with page index, title/page-number boxes, raw OCR sequence, writing mode, reading order, rotation, order hypothesis, evidence reasons, confidence, and confidence breakdown. **[Code-Confirmed]**
+4. The normalized stream preserves raw OCR and coordinates for audit while giving detection code a stable logical order. It must not overwrite `PdfPageLayoutEvidence.ocr_text`, page-boundary evidence, source hashes, or extracted raw text. **[Code-Confirmed]**
+5. Normalized pairs are detection-only and do not authorize projection. Later quality gates and global validation still decide whether entries are usable for splitting. **[Code-Confirmed] + [From HLD]**
+6. This path does not introduce root `sections[]`, `structure_nodes`, hidden task-layout mutation, diagnostics profile write-back, metadata authority, or LLM parser authority. **[Code-Confirmed] + [From HLD]**
+
+## 30. TOC-Specific OCR Quality Gates
+
+> 本節記錄 TOC OCR quality gates。A page can be detected as TOC-like while still rejected as unusable for splitting when OCR entries are incomplete or unreliable. **[Code-Confirmed]**
+
+1. `TableOfContentsDetector.evaluate_toc_ocr_quality(...)` evaluates page-local TOC OCR quality without mutating parser output or authorizing projection. It returns `detected` separately from `usable_for_splitting`. **[Code-Confirmed]**
+2. The quality gate measures reconstructed entry count, title completeness, page-number coverage, geometric title/page pairing coverage, page-number ordering consistency, body-title recall, confidence, and explicit rejection reasons. **[Code-Confirmed]**
+3. A high-scoring TOC-like page with missing or corrupt page numbers can remain `detected=true` while `usable_for_splitting=false`. The gate does not infer unreadable page numbers from sequence, row count, or title order. **[Code-Confirmed]**
+4. Split usability requires enough reconstructed entries, complete titles, sufficient page-number coverage, paired title/page-number geometry, monotonic page numbers, and body-title recall against supplied body text. Missing body text rejects usability rather than silently trusting OCR layout. **[Code-Confirmed]**
+5. Quality gate rejection preserves reasons such as missing reconstructed entries, incomplete titles, missing page numbers, missing geometric pairs, page-order failure, low body-title recall, and missing body text. **[Code-Confirmed]**
+6. This path is detection/validation evidence only. It does not persist hierarchy, replace current parser output, write task-layout/profile/artifacts, or introduce root `sections[]`, `structure_nodes`, metadata authority, or LLM parser authority. **[Code-Confirmed] + [From HLD]**
+
+## 31. Page-Number Region Recognition and Global Offset Validation
+
+> 本節記錄 TOC page-number region recognition and explicit printed-page offset validation。Region recognition normalizes bounded page-number tokens; global validation decides whether one page-number-to-source-page mapping is reliable enough for later projection. **[Code-Confirmed]**
+
+1. `TableOfContentsDetector.recognize_page_number_regions(...)` emits page-local `TocPageNumberRegion` records from reconstructed TOC title/page pairs. Each record keeps the source page index, raw page-number token, normalized text, parsed value, numeral system, region box, confidence, and evidence reasons. **[Code-Confirmed]**
+2. Page-number recognition is region-scoped: only page-number regions paired by TOC geometry are normalized as anchors. The detector does not scan arbitrary body text or profile metadata for parser authority. **[Code-Confirmed] + [From HLD]**
+3. Recognition supports Arabic numerals, multi-digit numbers, Chinese numerals, Roman numerals, circled numbers, boxed/bracketed numbers, and fragmented OCR digits such as spaced digit tokens. Raw OCR is preserved so symbols normalized into digits still retain their original evidence. **[Code-Confirmed]**
+4. `TableOfContentsDetector.validate_page_number_anchor_offsets(...)` validates explicit printed-page-to-source-page offset hypotheses against supplied page text. A valid result requires monotonic page numbers, plausible source-page anchors, and at least two body-title matches under one unambiguous offset. **[Code-Confirmed]**
+5. Ambiguous offsets are rejected atomically. If multiple offsets produce the same sufficient title-match evidence, or if matches are insufficient, page numbers are non-monotonic, page text is missing, or anchors fall out of range, validation returns rejection reasons and no selected offset. **[Code-Confirmed]**
+6. This path produces validation evidence only. It does not persist hierarchy, replace current parser output, mutate task-layout/profile/artifacts, or introduce root `sections[]`, `structure_nodes`, metadata authority, or LLM parser authority. **[Code-Confirmed] + [From HLD]**

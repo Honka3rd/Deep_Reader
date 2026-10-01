@@ -3,7 +3,16 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, replace
 
 from config.faiss_storage_config import FaissStorageConfig
-from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
+from doc_loaders.document_load_errors import (
+    RawTextOcrFailedError,
+    RawTextOcrLowQualityError,
+    RawTextRequiresOcrError,
+)
+from doc_loaders.pdf_page_evidence import PdfPageTextBoundary
+from document_preparation.document_preparation_pipeline import (
+    DocumentPreparationPipeline,
+    ManualStructureSourceEvidence,
+)
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.document_artifact_repository import DocumentArtifactRepository
 from document_structure.document_hierarchy_index import (
@@ -20,8 +29,21 @@ from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
     EnhancedParseTriggerEvaluator,
 )
+from document_structure.manual_structure_projection import (
+    ManualStructureAnchor,
+    ManualStructureEntry,
+    ManualStructureIssue,
+    project_manual_structure_plan,
+)
+from document_structure.manual_structure_document_builder import (
+    build_manual_structure_document_draft,
+)
 from document_structure.section_split_plan import SectionParserMode
 from document_structure.section_splitter_selector import SectionSplitterMode
+from document_structure.structure_anchor_evidence import (
+    StructureAnchorEvidence,
+    project_structure_anchor_evidence,
+)
 from document_structure.structured_document import (
     StructuredChapter,
     StructuredDocument,
@@ -32,6 +54,7 @@ from profile.document_profile_store import DocumentProfileStore
 from section_tasks.chapter_quiz_service import ChapterQuizService
 from section_tasks.chapter_summary_service import ChapterSummaryService
 from section_tasks.document_task_layout import (
+    AnchorEvidenceDTO,
     ArtifactAvailabilityDTO,
     DocumentTaskLayoutChapterDTO,
     DocumentTaskLayout,
@@ -70,6 +93,203 @@ class TaskUnitResolveOptions:
 
     split_mode: TaskUnitSplitMode
     semantic_top_k_candidates: int | None
+
+
+@dataclass(frozen=True)
+class ManualStructureAnchorDTO:
+    """App-layer manual structure anchor contract."""
+
+    anchor_type: str
+    char_start: int | None = None
+    char_end: int | None = None
+    page_start_index: int | None = None
+    page_end_index: int | None = None
+
+
+@dataclass(frozen=True)
+class ManualStructureEntryDTO:
+    """App-layer manual chapter/section boundary contract."""
+
+    title: str
+    level: int
+    anchor: ManualStructureAnchorDTO
+    external_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ManualStructurePlanDTO:
+    """App-layer manual structure plan contract for explicit commit orchestration."""
+
+    entries: list[ManualStructureEntryDTO]
+    source_hash: str | None = None
+
+
+@dataclass(frozen=True)
+class ManualStructureCommitResult:
+    """Coordinator result for manual structure commit orchestration."""
+
+    success: bool
+    doc_name: str
+    parser_mode: str
+    structured_document_path: str | None
+    error: str | None
+    section_count: int | None
+    status_code: int
+
+    @classmethod
+    def not_implemented(
+        cls,
+        *,
+        doc_name: str,
+    ) -> "ManualStructureCommitResult":
+        return cls(
+            success=False,
+            doc_name=doc_name,
+            parser_mode="manual_structure",
+            structured_document_path=None,
+            error=(
+                "manual_structure reparse commit is not implemented; "
+                "use /documents/manual-structure/validate for non-mutating preview"
+            ),
+            section_count=None,
+            status_code=501,
+        )
+
+    @classmethod
+    def bad_request(
+        cls,
+        *,
+        doc_name: str,
+        error: str,
+    ) -> "ManualStructureCommitResult":
+        return cls(
+            success=False,
+            doc_name=doc_name,
+            parser_mode="manual_structure",
+            structured_document_path=None,
+            error=error,
+            section_count=None,
+            status_code=400,
+        )
+
+    @classmethod
+    def invalid_plan(
+        cls,
+        *,
+        doc_name: str,
+        issues: list[ManualStructureIssue],
+    ) -> "ManualStructureCommitResult":
+        issue_summary = "; ".join(
+            (
+                f"{issue.code}"
+                + (f"[entry_index={issue.entry_index}]" if issue.entry_index is not None else "")
+                + f": {issue.message}"
+            )
+            for issue in issues
+        )
+        return cls(
+            success=False,
+            doc_name=doc_name,
+            parser_mode="manual_structure",
+            structured_document_path=None,
+            error=f"manual_structure plan is invalid: {issue_summary}",
+            section_count=None,
+            status_code=422,
+        )
+
+    @classmethod
+    def source_unavailable(
+        cls,
+        *,
+        doc_name: str,
+        error: str,
+        status_code: int = 404,
+    ) -> "ManualStructureCommitResult":
+        return cls(
+            success=False,
+            doc_name=doc_name,
+            parser_mode="manual_structure",
+            structured_document_path=None,
+            error=error,
+            section_count=None,
+            status_code=status_code,
+        )
+
+    @classmethod
+    def stale_source_evidence(
+        cls,
+        *,
+        doc_name: str,
+        expected_hash: str,
+        actual_hash: str,
+    ) -> "ManualStructureCommitResult":
+        return cls(
+            success=False,
+            doc_name=doc_name,
+            parser_mode="manual_structure",
+            structured_document_path=None,
+            error=(
+                "manual_structure source evidence is stale: "
+                f"expected source_hash={expected_hash}, actual source_hash={actual_hash}"
+            ),
+            section_count=None,
+            status_code=409,
+        )
+
+    @classmethod
+    def draft_ready_not_committed(
+        cls,
+        *,
+        doc_name: str,
+        section_count: int,
+    ) -> "ManualStructureCommitResult":
+        return cls(
+            success=False,
+            doc_name=doc_name,
+            parser_mode="manual_structure",
+            structured_document_path=None,
+            error=(
+                "manual_structure draft hierarchy was built but persistence "
+                "commit is not implemented"
+            ),
+            section_count=section_count,
+            status_code=501,
+        )
+
+    @classmethod
+    def committed(
+        cls,
+        *,
+        doc_name: str,
+        structured_document_path: str | None,
+        section_count: int,
+    ) -> "ManualStructureCommitResult":
+        return cls(
+            success=True,
+            doc_name=doc_name,
+            parser_mode="manual_structure",
+            structured_document_path=structured_document_path,
+            error=None,
+            section_count=section_count,
+            status_code=200,
+        )
+
+    @classmethod
+    def commit_failed(
+        cls,
+        *,
+        doc_name: str,
+        error: str,
+    ) -> "ManualStructureCommitResult":
+        return cls(
+            success=False,
+            doc_name=doc_name,
+            parser_mode="manual_structure",
+            structured_document_path=None,
+            error=error,
+            section_count=None,
+            status_code=500,
+        )
 
 
 class SectionTaskCoordinator:
@@ -603,6 +823,26 @@ class SectionTaskCoordinator:
             sections=effective_sections,
             context="SectionTaskCoordinator#get_document_task_layout",
         )
+        page_boundaries = self._load_task_layout_anchor_page_boundaries(
+            doc_name=doc_name,
+        )
+        anchor_evidence = project_structure_anchor_evidence(
+            cached_document,
+            page_boundaries=page_boundaries,
+        )
+        chapter_anchor_evidence_by_id = {
+            chapter_evidence.chapter.target_id: self._build_anchor_evidence_dto(
+                chapter_evidence.chapter
+            )
+            for chapter_evidence in anchor_evidence.chapters
+        }
+        section_anchor_evidence_by_id = {
+            section_evidence.target_id: self._build_anchor_evidence_dto(
+                section_evidence
+            )
+            for chapter_evidence in anchor_evidence.chapters
+            for section_evidence in chapter_evidence.sections
+        }
 
         task_unit_dtos, section_units_by_section_id = self._build_task_unit_dtos_from_document(
             document=cached_document,
@@ -639,6 +879,9 @@ class SectionTaskCoordinator:
                     document_profile=document_profile,
                     resolve_options=resolve_options,
                 ),
+                anchor_evidence=section_anchor_evidence_by_id.get(
+                    section.section_id
+                ),
             )
             section_layouts.append(section_layout)
             section_layout_by_id[section.section_id] = section_layout
@@ -659,6 +902,7 @@ class SectionTaskCoordinator:
             document_profile=document_profile,
             resolve_options=resolve_options,
             sections_are_hierarchy_source=sections_are_hierarchy_source,
+            chapter_anchor_evidence_by_id=chapter_anchor_evidence_by_id,
         )
 
         trigger_decision = self._evaluate_enhanced_parse_trigger(
@@ -1058,6 +1302,7 @@ class SectionTaskCoordinator:
         document_profile: DocumentProfile | None,
         resolve_options: TaskUnitResolveOptions,
         sections_are_hierarchy_source: bool,
+        chapter_anchor_evidence_by_id: dict[str, AnchorEvidenceDTO],
     ) -> list[DocumentTaskLayoutChapterDTO]:
         """Build hierarchy-first chapter layout tree with legacy synthetic fallback."""
         if document.chapters and sections_are_hierarchy_source:
@@ -1081,6 +1326,9 @@ class SectionTaskCoordinator:
                             document_profile=document_profile,
                             resolve_options=resolve_options,
                         ),
+                        anchor_evidence=chapter_anchor_evidence_by_id.get(
+                            chapter.chapter_id
+                        ),
                         metadata=dict(chapter.metadata),
                     )
                 )
@@ -1100,6 +1348,23 @@ class SectionTaskCoordinator:
                 },
             )
         ]
+
+    @staticmethod
+    def _build_anchor_evidence_dto(
+        evidence: StructureAnchorEvidence,
+    ) -> AnchorEvidenceDTO:
+        """Convert structure anchor evidence into task-layout DTO metadata."""
+        return AnchorEvidenceDTO(
+            anchor_type=evidence.anchor_type,
+            status=evidence.status,
+            reason=evidence.reason,
+            char_start=evidence.char_start,
+            char_end=evidence.char_end,
+            page_start_index=evidence.page_start_index,
+            page_end_index=evidence.page_end_index,
+            page_start_label=evidence.page_start_label,
+            page_end_label=evidence.page_end_label,
+        )
 
     def reparse_document_structure(
         self,
@@ -1161,6 +1426,176 @@ class SectionTaskCoordinator:
             structured_document_path=assets.structured_document_path,
             error=error_detail,
         )
+
+    def commit_manual_structure_reparse(
+        self,
+        *,
+        doc_name: str,
+        manual_structure: ManualStructurePlanDTO,
+    ) -> ManualStructureCommitResult:
+        """Commit a validated manual structure through the explicit reparse path."""
+        normalized_doc_name = doc_name.strip()
+        if not normalized_doc_name:
+            return ManualStructureCommitResult.bad_request(
+                doc_name=doc_name,
+                error="doc_name cannot be empty",
+            )
+        if not manual_structure.entries:
+            return ManualStructureCommitResult.bad_request(
+                doc_name=normalized_doc_name,
+                error="manual_structure entries cannot be empty",
+            )
+        manual_entries = [
+            ManualStructureEntry(
+                title=entry.title,
+                level=entry.level,
+                external_id=entry.external_id,
+                anchor=ManualStructureAnchor(
+                    anchor_type=entry.anchor.anchor_type,
+                    char_start=entry.anchor.char_start,
+                    char_end=entry.anchor.char_end,
+                    page_start_index=entry.anchor.page_start_index,
+                    page_end_index=entry.anchor.page_end_index,
+                ),
+            )
+            for entry in manual_structure.entries
+        ]
+        projection = project_manual_structure_plan(
+            manual_entries,
+            source_hash=manual_structure.source_hash,
+        )
+        if not projection.valid:
+            return ManualStructureCommitResult.invalid_plan(
+                doc_name=normalized_doc_name,
+                issues=projection.issues,
+            )
+        source_evidence, source_error, source_status_code = (
+            self._load_manual_structure_source_evidence(
+                doc_name=normalized_doc_name,
+            )
+        )
+        if source_evidence is None:
+            return ManualStructureCommitResult.source_unavailable(
+                doc_name=normalized_doc_name,
+                error=source_error
+                or f"manual_structure source is unavailable for doc_name='{normalized_doc_name}'",
+                status_code=source_status_code,
+            )
+        if manual_structure.source_hash and (
+            manual_structure.source_hash != source_evidence.source_hash
+        ):
+            return ManualStructureCommitResult.stale_source_evidence(
+                doc_name=normalized_doc_name,
+                expected_hash=manual_structure.source_hash,
+                actual_hash=source_evidence.source_hash,
+            )
+        draft_result = build_manual_structure_document_draft(
+            document_id=normalized_doc_name,
+            title=normalized_doc_name,
+            source_path=source_evidence.source_identity,
+            language=source_evidence.language,
+            raw_text=source_evidence.raw_text,
+            entries=manual_entries,
+            source_hash=source_evidence.source_hash,
+            page_boundaries=source_evidence.page_boundaries,
+        )
+        if not draft_result.valid:
+            return ManualStructureCommitResult.invalid_plan(
+                doc_name=normalized_doc_name,
+                issues=draft_result.issues,
+            )
+        draft_document = draft_result.document
+        if draft_document is None:
+            return ManualStructureCommitResult.invalid_plan(
+                doc_name=normalized_doc_name,
+                issues=[
+                    ManualStructureIssue(
+                        code="malformed_payload",
+                        message="manual_structure draft builder returned no document",
+                    )
+                ],
+            )
+        section_count = (
+            sum(len(chapter.sections) for chapter in draft_document.chapters)
+        )
+        try:
+            self.document_artifact_repository.save_reparsed_document(
+                draft_document,
+                doc_name=normalized_doc_name,
+            )
+        except Exception as error:
+            return ManualStructureCommitResult.commit_failed(
+                doc_name=normalized_doc_name,
+                error=f"manual_structure persistence failed: {error}",
+            )
+        return ManualStructureCommitResult.committed(
+            doc_name=normalized_doc_name,
+            structured_document_path=None,
+            section_count=section_count,
+        )
+
+    def _load_manual_structure_source_evidence(
+        self,
+        *,
+        doc_name: str,
+    ) -> tuple[ManualStructureSourceEvidence | None, str | None, int]:
+        """Load preparation-owned source evidence without persistence."""
+        try:
+            evidence = (
+                self.document_preparation_pipeline
+                .load_manual_structure_source_evidence(doc_name)
+            )
+        except FileNotFoundError as error:
+            return None, f"manual_structure source not found: {error}", 404
+        except RawTextRequiresOcrError as error:
+            return None, (
+                "manual_structure source requires OCR before commit: "
+                f"{error.detail or doc_name}"
+            ), 422
+        except RawTextOcrFailedError as error:
+            return None, (
+                "manual_structure source OCR failed before commit: "
+                f"{error.detail or doc_name}"
+            ), 422
+        except RawTextOcrLowQualityError as error:
+            return None, (
+                "manual_structure source OCR quality is too low before commit: "
+                f"{error.detail or doc_name}"
+            ), 422
+        except Exception as error:
+            return None, f"manual_structure source load failed: {error}", 422
+        return evidence, None, 200
+
+    def _load_task_layout_anchor_page_boundaries(
+        self,
+        *,
+        doc_name: str,
+    ) -> list[PdfPageTextBoundary]:
+        """Load optional page evidence for read-only task-layout anchor prefill."""
+        source_evidence, _error, _status_code = self._load_manual_structure_source_evidence(
+            doc_name=doc_name,
+        )
+        if source_evidence is None:
+            return []
+        return list(source_evidence.page_boundaries)
+
+    def _load_manual_structure_source_text(
+        self,
+        *,
+        doc_name: str,
+    ) -> tuple[str | None, str | None, int]:
+        """Load canonical raw text for manual commit evidence without persistence."""
+        source_evidence, error, status_code = self._load_manual_structure_source_evidence(
+            doc_name=doc_name,
+        )
+        if source_evidence is None:
+            return None, error, status_code
+        return source_evidence.raw_text, None, 200
+
+    @staticmethod
+    def _compute_raw_text_hash(raw_text: str) -> str:
+        """Compute source_hash for manual-structure source-evidence validation."""
+        return hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
     def _evaluate_enhanced_parse_trigger(
         self,

@@ -11,6 +11,10 @@ from pydantic import ValidationError
 import main
 from api_schemas import ArtifactTargetRefResponse, TaskUnitContentResponse
 from app.section_task_coordinator import SectionTaskCoordinator
+from doc_loaders.pdf_page_evidence import PdfPageTextBoundary
+from document_preparation.document_preparation_pipeline import (
+    ManualStructureSourceEvidence,
+)
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
 from document_preparation.prepared_document_result import PreparedDocumentResult
 from document_preparation.preparation_mode import PreparationMode
@@ -21,6 +25,7 @@ from document_structure.structured_document import (
     StructuredDocument,
     StructuredSection,
 )
+from document_structure.text_normalization import normalize_ocr_text
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from shared.task_artifacts import DocumentTaskArtifacts
 from shared.task_unit_model import (
@@ -49,8 +54,13 @@ class _FakePreparedResult:
 
 
 class _FakePipeline:
-    def __init__(self, document: StructuredDocument):
+    def __init__(
+        self,
+        document: StructuredDocument,
+        page_boundaries: list[PdfPageTextBoundary] | None = None,
+    ):
         self.document = document
+        self.page_boundaries = list(page_boundaries or [])
 
     def prepare_and_load(
         self,
@@ -76,6 +86,22 @@ class _FakePipeline:
             assets=assets,
             structured_document=self.document,
             bundle=None,
+        )
+
+    def load_manual_structure_source_evidence(
+        self,
+        doc_name: str,
+    ) -> ManualStructureSourceEvidence:
+        return ManualStructureSourceEvidence(
+            doc_name=doc_name,
+            source_identity=doc_name,
+            raw_text=self.document.raw_text,
+            source_hash=SectionTaskCoordinator._compute_raw_text_hash(
+                self.document.raw_text
+            ),
+            language=self.document.language,
+            page_boundaries=list(self.page_boundaries),
+            errors=[],
         )
 
 
@@ -237,7 +263,7 @@ def _build_cache_valid_document(*, duplicate_unit_id: bool = False) -> Structure
             "source_hash": source_hash,
             "task_unit_split_mode": TaskUnitSplitMode.SEMANTIC_SAFE.value,
             "semantic_top_k_candidates": None,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     return replace(
@@ -278,7 +304,7 @@ def _build_segmentable_document() -> StructuredDocument:
             "source_hash": source_hash,
             "task_unit_split_mode": TaskUnitSplitMode.SEMANTIC_SAFE.value,
             "semantic_top_k_candidates": None,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     return replace(
@@ -320,7 +346,7 @@ def _build_multilingual_segmentable_document() -> StructuredDocument:
             "source_hash": source_hash,
             "task_unit_split_mode": TaskUnitSplitMode.SEMANTIC_SAFE.value,
             "semantic_top_k_candidates": None,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     return replace(
@@ -349,10 +375,16 @@ def _build_legacy_sections_only_document() -> StructuredDocument:
     )
 
 
-def _build_coordinator(document: StructuredDocument) -> tuple[SectionTaskCoordinator, _SpyRepository]:
+def _build_coordinator(
+    document: StructuredDocument,
+    page_boundaries: list[PdfPageTextBoundary] | None = None,
+) -> tuple[SectionTaskCoordinator, _SpyRepository]:
     repository = _SpyRepository()
     coordinator = SectionTaskCoordinator(
-        document_preparation_pipeline=_FakePipeline(document),
+        document_preparation_pipeline=_FakePipeline(
+            document,
+            page_boundaries=page_boundaries,
+        ),
         document_artifact_repository=repository,
         document_profile_store=_MissingProfileStore(),
         chapter_summary_service=_NoopSummaryService(),
@@ -363,8 +395,103 @@ def _build_coordinator(document: StructuredDocument) -> tuple[SectionTaskCoordin
     return coordinator, repository
 
 
+def test_task_layout_anchor_evidence_prefers_page_range_when_available() -> None:
+    document = _build_segmentable_document()
+    page_boundaries = [
+        PdfPageTextBoundary(
+            page_index=4,
+            char_start=0,
+            char_end=len(document.raw_text),
+            text=document.raw_text,
+            page_label="5",
+        )
+    ]
+    coordinator, repository = _build_coordinator(
+        document,
+        page_boundaries=page_boundaries,
+    )
+
+    layout = coordinator.get_document_task_layout(
+        doc_name="Doc Seg",
+        refresh_task_units=False,
+    )
+    chapter_anchor = layout.chapters[0].anchor_evidence
+    section_anchor = layout.chapters[0].sections[0].anchor_evidence
+    _assert(chapter_anchor is not None, "chapter anchor evidence should exist")
+    _assert(section_anchor is not None, "section anchor evidence should exist")
+    _assert(
+        chapter_anchor.anchor_type == "page_range",
+        "chapter anchor evidence should prefer page_range when page boundaries exist",
+    )
+    _assert(
+        section_anchor.anchor_type == "page_range",
+        "section anchor evidence should prefer page_range when page boundaries exist",
+    )
+    _assert(
+        section_anchor.page_start_index == 4
+        and section_anchor.page_end_index == 4
+        and section_anchor.page_start_label == "5",
+        "section anchor evidence should expose lightweight page coordinates",
+    )
+
+    client = TestClient(main.app)
+    original = main.section_task_coordinator
+    main.section_task_coordinator = coordinator
+    try:
+        layout_response = client.post(
+            "/documents/task-layout",
+            json={"doc_name": "Doc Seg", "refresh_task_units": False},
+        )
+        _assert(layout_response.status_code == 200, "task-layout should succeed")
+        anchor_payload = layout_response.json()["chapters"][0]["sections"][0][
+            "anchor_evidence"
+        ]
+        _assert(
+            anchor_payload["anchor_type"] == "page_range",
+            "public task-layout response should expose page_range anchor evidence",
+        )
+        serialized_anchor = str(anchor_payload)
+        _assert(
+            "raw_text" not in serialized_anchor
+            and "ocr_text" not in serialized_anchor
+            and document.raw_text not in serialized_anchor,
+            "page-backed task-layout anchor evidence must not expose page text",
+        )
+        _assert(
+            repository.write_calls == 0,
+            "page-backed task-layout anchor projection must remain read-only",
+        )
+    finally:
+        main.section_task_coordinator = original
+
+
 def test_task_layout_id_then_content_lookup_success() -> None:
     coordinator, repository = _build_coordinator(_build_cache_valid_document())
+    layout = coordinator.get_document_task_layout(
+        doc_name="Doc Content",
+        refresh_task_units=False,
+    )
+    _assert(
+        layout.chapters[0].anchor_evidence is not None,
+        "coordinator layout should include chapter anchor evidence",
+    )
+    _assert(
+        layout.chapters[0].anchor_evidence.anchor_type == "char_range",
+        "chapter anchor evidence should fall back to char_range without page boundaries",
+    )
+    _assert(
+        layout.chapters[0].sections[0].anchor_evidence is not None,
+        "coordinator layout should include section anchor evidence",
+    )
+    _assert(
+        layout.chapters[0].sections[0].anchor_evidence.char_start == 0,
+        "section anchor evidence should preserve parsed char start",
+    )
+    _assert(
+        "raw_text" not in str(layout.chapters[0].to_dict()),
+        "task-layout anchor evidence must not expose raw text",
+    )
+
     client = TestClient(main.app)
     original = main.section_task_coordinator
     main.section_task_coordinator = coordinator
@@ -390,6 +517,25 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         _assert(
             "content_blocks" not in layout_payload["chapters"][0]["sections"][0]["task_units"][0],
             "task-layout task_unit metadata must stay lightweight without content_blocks",
+        )
+        _assert(
+            layout_payload["chapters"][0]["anchor_evidence"]["anchor_type"] == "char_range",
+            "public task-layout response should expose chapter anchor evidence",
+        )
+        _assert(
+            layout_payload["chapters"][0]["sections"][0]["anchor_evidence"]["char_start"] == 0,
+            "public task-layout response should expose section anchor evidence",
+        )
+        serialized_anchor_evidence = str(
+            layout_payload["chapters"][0]["sections"][0]["anchor_evidence"]
+        )
+        _assert(
+            (
+                "raw_text" not in serialized_anchor_evidence
+                and "ocr_text" not in serialized_anchor_evidence
+                and "bbox" not in serialized_anchor_evidence
+            ),
+            "public task-layout anchor evidence must stay lightweight",
         )
 
         content_response = client.get(
@@ -650,8 +796,8 @@ def test_task_unit_content_segmented_true_supports_multilingual_paragraph_split(
 
         _assert(payload["content"] is None, "default multilingual segmented response should not expose raw content")
         _assert(len(payload["content_blocks"]) == 2, "CJK blank-line paragraphs should split into two blocks")
-        _assert(payload["content_blocks"][0]["content"] == "第一段：中文段落。", "Chinese paragraph mismatch")
-        _assert(payload["content_blocks"][1]["content"] == "第二段：日本語の段落。", "Japanese paragraph mismatch")
+        _assert(payload["content_blocks"][0]["content"] == "第一段:中文段落。", "Chinese paragraph mismatch")
+        _assert(payload["content_blocks"][1]["content"] == "第二段:日本語の段落。", "Japanese paragraph mismatch")
         _assert(payload["content_blocks"][0]["block_id"] == "task-unit-cjk:content:0", "first CJK block id mismatch")
         _assert(payload["content_blocks"][1]["block_id"] == "task-unit-cjk:content:1", "second CJK block id mismatch")
 
@@ -661,6 +807,7 @@ def test_task_unit_content_segmented_true_supports_multilingual_paragraph_split(
             "quote_span_start",
             "quote_span_end",
             "schema_version",
+            "display_normalization",
         }
         for block in payload["content_blocks"]:
             _assert(block["metadata"] is not None, "CJK segmented block metadata must exist")
@@ -670,7 +817,14 @@ def test_task_unit_content_segmented_true_supports_multilingual_paragraph_split(
             )
             start = block["metadata"]["quote_span_start"]
             end = block["metadata"]["quote_span_end"]
-            _assert(expected_raw_content[start:end] == block["content"], "CJK quote span should map to block content")
+            _assert(
+                normalize_ocr_text(expected_raw_content[start:end]) == block["content"],
+                "CJK quote span should map to normalized block content",
+            )
+            _assert(
+                block["metadata"]["display_normalization"] == "ocr_whitespace_v1",
+                "CJK normalized blocks should declare display normalization",
+            )
 
         _assert(repository.write_calls == 0, "multilingual segmented lookup must not write persistence")
     finally:
@@ -767,6 +921,7 @@ def test_artifact_target_schema_level_constraints_fail_fast() -> None:
 
 
 if __name__ == "__main__":
+    test_task_layout_anchor_evidence_prefers_page_range_when_available()
     test_task_layout_id_then_content_lookup_success()
     test_task_unit_content_segmented_true_returns_deterministic_multi_blocks()
     test_task_unit_content_segmented_true_suppresses_leading_hierarchy_title()

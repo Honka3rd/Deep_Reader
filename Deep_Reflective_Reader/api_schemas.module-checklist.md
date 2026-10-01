@@ -75,6 +75,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; live `/api/documents/task-layout` validation
   Notes: `DocumentTaskLayoutResponse` includes optional `parse_provenance` with requested/effective parser mode and fallback metadata. The field is lightweight observability metadata and does not expose raw text or task-unit content.
 
+- [x] Define task-layout anchor evidence response schema for TOC editing
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
+  Notes: `AnchorEvidenceResponse` is exposed as optional metadata on `DocumentTaskLayoutChapterResponse` and `SectionTaskLayoutResponse`. It carries anchor type/status/reason, char offsets, and optional page indices/labels without raw text, page text, OCR boxes, task-unit content, or a second hierarchy source.
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -86,6 +90,18 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Design rich task-unit content response schema (future direction, not implemented)
 - [ ] Define content-block artifact metadata schema (future direction, not implemented)
 - [ ] Define backward-compatible content response evolution strategy (future direction, not implemented)
+- [x] Design source-agnostic manual structure override request schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_api_schemas.py`
+  Notes: Adds `ManualStructureAnchorRequest`, `ManualStructureEntryRequest`, `ManualStructurePlanRequest`, and `ManualStructureValidationRequest`. Request schema supports typed `char_range` / `page_range` anchors, trims doc/title metadata, rejects empty titles, rejects mixed anchor fields, rejects orphan sections, and enforces current `chapter -> section` maximum depth.
+- [x] Design manual structure validation/preview response schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_api_schemas.py`
+  Notes: Adds `ManualStructureValidationResponse` and nested issue/normalized-entry/preview/provenance DTOs. Response schema exposes validation status, normalized entries, warnings/errors, lightweight preview chapter/section shape, and `manual_structure` provenance preview without raw text or task content; issue code validation covers malformed payload, unsupported anchor, out-of-range anchor, overlapping range, empty projected range, invalid level sequence, unsupported depth, and stale source evidence.
+- [x] Design manual structure commit reparse schema evolution
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_api_schemas.py`
+  Notes: `ReparseDocumentStructureRequest` now accepts normalized `parser_mode=manual_structure` with a required `manual_structure` plan, preserves existing `common` / `llm_enhanced` modes, rejects manual plans for non-manual modes, and remains schema-only without task-layout payload expansion or runtime/persistence behavior.
+- [x] Define page-backed manual-structure validation/commit schema semantics
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_api_schemas.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`.
+  Notes: Schema-valid `page_range` remains explicit vocabulary while route regressions distinguish missing/unsupported page evidence (`422`), out-of-range page anchors (`422`), stale source evidence (`409`), and successful page-backed commit response mapping (`200`). `char_range` remains the universal fallback and task-layout remains lightweight/read-only.
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

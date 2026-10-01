@@ -285,3 +285,17 @@ validation boundary 要求：fail-fast + 明確錯誤分類；不得 silent fall
 3. task-layout payload 維持 lightweight metadata/projection，不承載 segmented blocks。 **[Code-Confirmed]**
 4. segmented projection 不觸發 artifact persistence、不觸發 retrieval/LLM/evaluated_answer integration。 **[Code-Confirmed]**
 5. 本輪 stabilization 僅強化 deterministic/compatibility regression 與 multilingual fixture coverage，不擴張 endpoint 功能範圍。 **[Doc-Confirmed]**
+
+## 23. Task-Layout Anchor Evidence Projection
+
+> 本節支援 UI TOC editor 的 edit-existing 預填與 page-first anchor UX。
+> 目前已落地 DTO 承載能力；coordinator/API route mapping 仍屬後續 checkpoint，不代表 public response 已開始輸出 anchor evidence。 **[Code-Confirmed] + [Future Direction]**
+
+1. `DocumentTaskLayoutChapterDTO` and `DocumentTaskLayoutSectionDTO` can carry optional `AnchorEvidenceDTO` for UI TOC edit-existing prefill. **[Code-Confirmed]**
+2. `AnchorEvidenceDTO` is lightweight runtime projection metadata. It is not hierarchy truth, not parser authority, and not a persistence schema. **[Code-Confirmed] + [From HLD]**
+3. The projection should prefer validated page evidence for pageable documents and fall back to `char_range` when page evidence is unavailable or unreliable. **[Maintainer-Provided] + [Future Direction]**
+4. Missing anchor evidence remains explicit by omission/null DTO ownership; unset evidence does not alter the current serialized payload shape before API mapping. **[Code-Confirmed]**
+5. Task-layout must not invent anchors from titles, page labels, OCR guesses, or profile metadata. **[Future Direction]**
+6. The DTO must stay lightweight: no raw text, full page text, OCR region geometry, or content blocks. Detailed evidence belongs to preparation/loader diagnostics, not task-layout. **[Code-Confirmed] + [Future Direction]**
+7. DTO fields currently support `anchor_type`, `status`, `reason`, `char_start`, `char_end`, `page_start_index`, `page_end_index`, `page_start_label`, and `page_end_label`. **[Code-Confirmed]**
+8. Public API mapping must preserve chapters-first response shape and keep anchor evidence attached to existing chapter/section nodes only. **[From HLD] + [Future Direction]**

@@ -171,3 +171,14 @@ Container/runtime implication：目前 `requirements.txt` 只包含 `pypdf`，Do
 2. 補 raw-load failure reason taxonomy（missing file / empty native text / scanned requires OCR / OCR failed / unsupported encrypted PDF）。
 3. 補 OCR dependency and deployment matrix（local dev / Docker / production）。
 4. 補 OCR quality gate taxonomy（empty OCR / low-confidence OCR / symbol-heavy OCR / implausible-language OCR / ambiguous vertical reading order）。
+
+## 15. Page Boundary Evidence For TOC Anchors
+
+> 本節支援 UI TOC editor 的 page-first anchor UX。Loader-level compact page boundary evidence is implemented; downstream `page_range` validation/commit wiring remains owned by later modules. **[Maintainer-Provided] + [Code-Confirmed] + [Future Direction]**
+
+1. `PdfDocumentLoader.load_page_boundary_evidence(doc_name)` exposes stable page-boundary evidence without changing the canonical `load(doc_name) -> str` raw-text contract. **[Code-Confirmed]**
+2. Page evidence includes document page index, optional PDF page label when available, raw-text start/end offsets for that page, and source PDF SHA-256. **[Code-Confirmed]**
+3. `load_page_text_boundaries(doc_name)` remains as the compatibility handoff for existing preparation/outline callers and now returns the same enriched boundary entries. **[Code-Confirmed]**
+4. Native text PDFs and OCR PDFs share the compact boundary contract; deeper mixed-layout and coordinate evidence remains future work. **[Code-Confirmed] + [Future Direction]**
+5. OCR/layout region details should not be pushed into task-layout; detailed geometry remains diagnostic/supporting evidence and must stay bounded. **[From HLD] + [Future Direction]**
+6. Page evidence may support manual `page_range` validation and UI prefill, but it cannot independently become parser authority or hierarchy truth. **[From HLD] + [Maintainer-Provided]**

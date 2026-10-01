@@ -149,3 +149,52 @@
 10. app layer 不應擁有 artifact persistence internals；write path 仍由 service/repository 邊界承擔。 **[Code-Confirmed] + [From HLD]**
 11. rich-content interaction request path 不得 hidden mutation，不得觸發 profile write-back；diagnostics 仍為 projection-only。 **[Code-Confirmed] + [Maintainer-Confirmed]**
 12. 上述內容均為 future-direction contract preparation；本輪不新增 runtime/API/schema 行為。 **[Doc-Confirmed]**
+
+## 17. Future Direction Note: Manual Structure Override Orchestration
+
+> 本節記錄 app-layer 對 source-agnostic manual structure override 的 orchestration 邊界；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. app layer may orchestrate manual structure validation and explicit manual reparse for any document type, not only OCR/PDF. **[Maintainer-Provided]**
+2. app layer should normalize request intent, call preparation to load required raw/page evidence, call document_structure validation/projection, and return validation/reparse results. **[Future Direction]**
+3. app layer must not define parser rules or manual projection semantics; those remain owned by `document_structure/`. **[From HLD] + [Future Direction]**
+4. manual validation/preview should be read/analysis-oriented and must not persist hierarchy, task-layout metadata, profile diagnostics, or artifacts. **[Future Direction]**
+5. manual commit reparse is an explicit mutation path and should be separate from `/documents/task-layout`; task-layout remains projection-only. **[From HLD] + [Future Direction]**
+6. successful manual commit should replace the active structured hierarchy only after validation succeeds; failure should preserve the current structured artifact. **[Future Direction]**
+7. app-layer error semantics should distinguish malformed request, unresolved anchors, invalid hierarchy shape, empty ranges, and stale source evidence. **[Future Direction]**
+8. This direction does not add runtime endpoints, schema fields, source code, or persistence behavior in this documentation pass. **[Doc-Confirmed]**
+
+## 18. Page-Backed TOC Anchor Orchestration
+
+> 本節支援 UI TOC editor 的 page-first anchor UX。
+> 目前已完成 task-layout coordinator DTO prefill orchestration、public API schema/route mapping、read-only page-boundary handoff、以及 page-backed manual validation/commit orchestration。 **[Code-Confirmed]**
+
+1. The app layer should orchestrate two related flows:
+   - read/projection flow: expose current structure anchor evidence for UI edit-existing prefill **[Code-Confirmed at coordinator DTO level]**
+   - explicit mutation flow: validate and commit manual `page_range` anchors when source page evidence is available **[Code-Confirmed]**
+2. The app layer should not compute parser semantics, page boundary mapping, or hierarchy projection itself; those remain delegated to `document_preparation/` and `document_structure/`. **[From HLD] + [Future Direction]**
+3. For task-layout, `SectionTaskCoordinator.get_document_task_layout(...)` now loads optional preparation-owned page boundary evidence, delegates existing hierarchy-span projection to `document_structure.project_structure_anchor_evidence(...)`, and passes lightweight `AnchorEvidenceDTO` into chapter/section DTOs. **[Code-Confirmed]**
+4. For manual commit, app loads canonical source evidence including source hash and page boundaries, rejects stale source evidence, then delegates page-anchor projection/draft building to `document_structure/`. **[Code-Confirmed]**
+5. Page-backed validation/commit failures preserve the current structured artifact and do not silently fallback to common parser as a successful manual reparse. **[Maintainer-Provided] + [Code-Confirmed]**
+6. `char_range` remains the source-agnostic fallback for documents with no reliable page evidence or for explicit advanced override. **[Maintainer-Provided] + [Future Direction]**
+7. Current task-layout coordinator projection may load preparation source evidence to access page boundaries, but only forwards compact page boundary metadata to `document_structure/`; it does not expose raw text, page text, OCR geometry, or content blocks. **[Code-Confirmed]**
+8. Public `/documents/task-layout` response schema exposes lightweight `anchor_evidence` for chapters/sections, including `page_range` when page boundaries are available and `char_range` fallback otherwise. **[Code-Confirmed]**
+9. The task-layout anchor evidence path remains read-only: it does not mutate hierarchy, profile diagnostics, task-layout metadata, or artifacts. **[Code-Confirmed]**
+
+## 19. PostgreSQL Manual Reparse Replacement Boundary
+
+Manual `page_range` reparse validates source evidence and builds a hierarchy-only draft before persistence. PostgreSQL-backed manual commit must then use the explicit parser-level replacement boundary rather than the artifact/task-layout save method that preserves `current_structure_version` and existing hierarchy rows. **[Code-Confirmed]**
+
+Observed failure:
+
+- API: `/documents/reparse-structure`
+- parser mode: `manual_structure`
+- affected document example: `暗水幽灵`
+- original failure: `duplicate key value violates unique constraint "uq_chapters_document_order"` for `(document_id, chapter_order)=(13, 0)`
+
+Root-cause boundary:
+
+1. Manual commit is a hard reparse mutation and should use a parser-level hierarchy replacement save. **[From HLD] + [Code-Confirmed]**
+2. PostgreSQL artifact/task-layout saves intentionally preserve the current structure version and should not clear hierarchy rows. **[Code-Confirmed]**
+3. Manual reparse calls the explicit `save_reparsed_document(...)` repository boundary, which PostgreSQL maps to `replace_existing_hierarchy=True`. **[Code-Confirmed]**
+4. Validation/source/draft failures must continue to preserve the current structured hierarchy and derived resources. **[From HLD] + [Code-Confirmed]**
+5. Successful manual reparse must remain explicit, transactional, hierarchy-first, and separate from task-layout read/projection. **[From HLD] + [Code-Confirmed]**

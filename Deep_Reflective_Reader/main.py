@@ -8,10 +8,22 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from pydantic import ValidationError
 
 from app.qa_coordinator import QACoordinator
+from app.section_task_coordinator import (
+    ManualStructureAnchorDTO,
+    ManualStructureEntryDTO,
+    ManualStructurePlanDTO,
+)
 from logging_config import configure_logging
 from document_structure.document_artifact_repository import DocumentListItem
+from document_structure.manual_structure_projection import (
+    ManualStructureAnchor,
+    ManualStructureEntry,
+    ManualStructureProjectionResult,
+    project_manual_structure_plan,
+)
 from api_schemas import (
     ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS,
+    AnchorEvidenceResponse,
     ArtifactTargetRefResponse,
     ArtifactAvailabilityResponse,
     DocumentTaskLayoutChapterResponse,
@@ -28,6 +40,13 @@ from api_schemas import (
     EnhancedParseRecommendationResponse,
     GetDocumentTaskLayoutRequest,
     GetTaskUnitContentRequest,
+    ManualStructureValidationIssueResponse,
+    ManualStructureNormalizedEntryResponse,
+    ManualStructurePreviewChapterResponse,
+    ManualStructurePreviewProvenanceResponse,
+    ManualStructurePreviewSectionResponse,
+    ManualStructureValidationRequest,
+    ManualStructureValidationResponse,
     ParseProvenanceResponse,
     ProfileStructureDiagnosticsResponse,
     QuizQuestionResponse,
@@ -199,6 +218,158 @@ def _map_artifact_target_ref_response(target_ref: object) -> ArtifactTargetRefRe
         task_unit_id=getattr(target_ref, "task_unit_id", None),
         content_block_id=getattr(target_ref, "content_block_id", None),
         metadata=_filter_artifact_target_metadata(getattr(target_ref, "metadata", None)),
+    )
+
+
+def _map_manual_structure_entry(entry) -> ManualStructureEntry:
+    """Map API manual-structure entry into document_structure projector DTO."""
+    return ManualStructureEntry(
+        title=entry.title,
+        level=entry.level,
+        external_id=entry.external_id,
+        notes=entry.notes,
+        anchor=ManualStructureAnchor(
+            anchor_type=entry.anchor.anchor_type,
+            char_start=entry.anchor.char_start,
+            char_end=entry.anchor.char_end,
+            page_start_index=entry.anchor.page_start_index,
+            page_end_index=entry.anchor.page_end_index,
+        ),
+    )
+
+
+def _map_manual_structure_anchor_response(anchor: ManualStructureAnchor):
+    """Map projector anchor into existing API anchor schema."""
+    return {
+        "anchor_type": anchor.anchor_type,
+        "char_start": anchor.char_start,
+        "char_end": anchor.char_end,
+        "page_start_index": anchor.page_start_index,
+        "page_end_index": anchor.page_end_index,
+    }
+
+
+def _manual_structure_issue_response(issue) -> ManualStructureValidationIssueResponse:
+    """Map projector issue into public validation issue response."""
+    return ManualStructureValidationIssueResponse(
+        code=issue.code,
+        severity=issue.severity,
+        message=issue.message,
+        entry_index=issue.entry_index,
+    )
+
+
+def _map_manual_structure_projection_response(
+    request: ManualStructureValidationRequest,
+    projection: ManualStructureProjectionResult,
+) -> ManualStructureValidationResponse:
+    """Map document_structure projector result into public validation response."""
+    entries_by_index = {
+        entry.entry_index: entry for entry in projection.normalized_entries
+    }
+    anchor_types: list[str] = []
+    for entry in projection.normalized_entries:
+        if entry.anchor.anchor_type not in anchor_types:
+            anchor_types.append(entry.anchor.anchor_type)
+
+    errors = [
+        _manual_structure_issue_response(issue)
+        for issue in projection.issues
+        if issue.severity == "error"
+    ]
+    warnings = [
+        _manual_structure_issue_response(issue)
+        for issue in projection.issues
+        if issue.severity != "error"
+    ]
+    return ManualStructureValidationResponse(
+        doc_name=request.doc_name,
+        valid=projection.valid,
+        normalized_entries=[
+            ManualStructureNormalizedEntryResponse(
+                title=entry.title,
+                level=entry.level,
+                anchor=_map_manual_structure_anchor_response(entry.anchor),
+                external_id=entry.external_id,
+                projected_char_start=entry.anchor.char_start,
+                projected_char_end=entry.anchor.char_end,
+                projected_page_start_index=entry.anchor.page_start_index,
+                projected_page_end_index=entry.anchor.page_end_index,
+            )
+            for entry in projection.normalized_entries
+        ],
+        errors=errors,
+        warnings=warnings,
+        preview_chapters=[
+            ManualStructurePreviewChapterResponse(
+                title=chapter.title,
+                external_id=(
+                    entries_by_index.get(chapter.source_entry_index).external_id
+                    if entries_by_index.get(chapter.source_entry_index) is not None
+                    else None
+                ),
+                entry_index=chapter.source_entry_index,
+                sections=[
+                    ManualStructurePreviewSectionResponse(
+                        title=section.title,
+                        external_id=(
+                            entries_by_index.get(section.source_entry_index).external_id
+                            if entries_by_index.get(section.source_entry_index) is not None
+                            else None
+                        ),
+                        entry_index=section.source_entry_index,
+                    )
+                    for section in chapter.sections
+                ],
+            )
+            for chapter in projection.preview_chapters
+        ],
+        parse_provenance_preview=ManualStructurePreviewProvenanceResponse(
+            parser_mode="manual_structure",
+            source_hash=projection.source_hash,
+            anchor_types=anchor_types,
+        ),
+    )
+
+
+def _build_manual_structure_validation_response(
+    request: ManualStructureValidationRequest,
+) -> ManualStructureValidationResponse:
+    """Build a non-mutating preview through the document_structure projector."""
+    projection = project_manual_structure_plan(
+        [
+            _map_manual_structure_entry(entry)
+            for entry in request.manual_structure.entries
+        ],
+        source_hash=request.manual_structure.source_hash,
+    )
+    return _map_manual_structure_projection_response(request, projection)
+
+
+def _map_manual_structure_plan_dto(
+    request: ManualStructureValidationRequest | ReparseDocumentStructureRequest,
+) -> ManualStructurePlanDTO:
+    """Map public manual structure schema into app-layer coordinator DTO."""
+    manual_structure = request.manual_structure
+    if manual_structure is None:
+        raise ValueError("manual_structure is required")
+    return ManualStructurePlanDTO(
+        source_hash=manual_structure.source_hash,
+        entries=[
+            ManualStructureEntryDTO(
+                title=entry.title,
+                level=entry.level,
+                external_id=entry.external_id,
+                anchor=ManualStructureAnchorDTO(
+                    anchor_type=entry.anchor.anchor_type,
+                    char_start=entry.anchor.char_start,
+                    char_end=entry.anchor.char_end,
+                    page_start_index=entry.anchor.page_start_index,
+                    page_end_index=entry.anchor.page_end_index,
+                ),
+            )
+            for entry in manual_structure.entries
+        ],
     )
 
 
@@ -633,6 +804,21 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                 artifacts=_artifact_response(task_unit.artifacts),
             )
 
+        def _anchor_evidence_response(anchor_evidence) -> AnchorEvidenceResponse | None:
+            if anchor_evidence is None:
+                return None
+            return AnchorEvidenceResponse(
+                anchor_type=anchor_evidence.anchor_type,
+                status=anchor_evidence.status,
+                reason=anchor_evidence.reason,
+                char_start=anchor_evidence.char_start,
+                char_end=anchor_evidence.char_end,
+                page_start_index=anchor_evidence.page_start_index,
+                page_end_index=anchor_evidence.page_end_index,
+                page_start_label=anchor_evidence.page_start_label,
+                page_end_label=anchor_evidence.page_end_label,
+            )
+
         def _section_response(section) -> SectionTaskLayoutResponse:
             return SectionTaskLayoutResponse(
                 section_id=section.section_id,
@@ -648,6 +834,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                     for task_unit in section.task_units
                 ],
                 artifacts=_artifact_response(section.artifacts),
+                anchor_evidence=_anchor_evidence_response(section.anchor_evidence),
             )
 
         chapters = [
@@ -658,6 +845,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                 chapter_role=chapter.chapter_role,
                 sections=[_section_response(section) for section in chapter.sections],
                 artifacts=_artifact_response(chapter.artifacts),
+                anchor_evidence=_anchor_evidence_response(chapter.anchor_evidence),
                 metadata=dict(chapter.metadata),
             )
             for chapter in layout.chapters
@@ -799,6 +987,20 @@ def get_task_unit_content(
         raise HTTPException(status_code=500, detail=str(error))
 
 
+@app.post(
+    "/documents/manual-structure/validate",
+    response_model=ManualStructureValidationResponse,
+)
+def validate_manual_structure(
+    request: ManualStructureValidationRequest,
+):
+    """Validate and preview a manual structure plan without mutating document state."""
+    try:
+        return _build_manual_structure_validation_response(request)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+
+
 @app.post("/documents/reparse-structure", response_model=ReparseDocumentStructureResponse)
 def reparse_document_structure(
     request: ReparseDocumentStructureRequest,
@@ -806,6 +1008,21 @@ def reparse_document_structure(
 ):
     """Run explicit structure reparse action and replace single active source on success."""
     normalized_parser_mode = request.parser_mode.strip().lower().replace("-", "_")
+    if normalized_parser_mode == "manual_structure":
+        result = section_task_coordinator.commit_manual_structure_reparse(
+            doc_name=request.doc_name,
+            manual_structure=_map_manual_structure_plan_dto(request),
+        )
+        response.status_code = result.status_code
+        return ReparseDocumentStructureResponse(
+            success=result.success,
+            doc_name=result.doc_name,
+            parser_mode=result.parser_mode,
+            structured_document_path=result.structured_document_path,
+            error=result.error,
+            section_count=result.section_count,
+        )
+
     if normalized_parser_mode not in {"common", "llm_enhanced"}:
         raise HTTPException(
             status_code=400,

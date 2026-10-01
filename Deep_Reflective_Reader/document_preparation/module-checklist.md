@@ -50,6 +50,14 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define preparation pipeline behavior for DB-backed structured persistence
 - [ ] Preserve current file-based prepare outputs during migration
 - [ ] Define future storage abstraction boundary for structured/profile/retrieval artifacts
+- [x] Define source-agnostic manual structure reparse preparation handoff
+  Evidence needed: preparation can provide raw text, language, source identity, and optional page boundaries/provenance to manual structure validation/reparse without assuming OCR/PDF-only input.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_preparation_handoff.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+  Notes: `load_manual_structure_source_evidence(...)` provides normalized source identity, raw text, source hash, best-effort language, and optional page boundaries without building profile/structured/FAISS artifacts. Character-span anchors work when page evidence is unavailable; page/OCR evidence remains supporting data, not parser authority.
+- [x] Define manual structure validation failure behavior in preparation
+  Evidence needed: failed manual validation/reparse reports explicit errors and preserves the current structured artifact.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_preparation_handoff.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`.
+  Notes: Manual source-evidence failure is reported before save, projection/draft failures return explicit errors, and preview/validation do not persist hierarchy. Failure does not silently fallback to common parser as a successful manual reparse.
 - [x] Define TOC-aware preparation orchestration and conservative fallback policy
   Evidence needed: preparation can pass page-aware source evidence to structure parsing, preserve advisory detection provenance, and use the current parser unchanged when TOC confidence is insufficient.
   Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; container verification on `暗水幽灵.pdf`.
@@ -71,25 +79,35 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence needed: page count, candidate count, OCR passes, image resolution, elapsed time, and cache hits/misses are recorded; valid page evidence is reused across repeated preparation.
   Notes: Record page/candidate/group counts, OCR passes, resolution, elapsed time, cache hit/miss, and rejection reason. Invalidate on source PDF hash, engine/version, language set, analysis stage, rotation hypotheses, or schema version. Until evidence cache and cost metrics exist, this remains planning-only.
 
-- [ ] Define layout/TOC failure and fallback matrix
+- [x] Define layout/TOC failure and fallback matrix
   Evidence needed: missing page evidence, OCR failure, ambiguous orientation, incomplete page numbers, and low global TOC confidence map to explicit diagnostics while preserving current structure parsing.
-  Notes: Every layout/TOC failure maps to an advisory diagnostic and leaves ordinary preparation available. Only raw-text unavailability may block preparation. A partial TOC plan is never persisted as a mixed hierarchy.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: Raw-text/OCR unavailability maps to explicit preparation errors; missing page anchors, missing/incomplete page numbers, ambiguous orientation, page-order failures, low body-title recall, and failed global TOC projection remain advisory detection/provenance reasons. Structure building preserves the current parser result unless a TOC projection is globally authorized, so partial TOC plans are not persisted as mixed hierarchy.
 
 - [ ] Define renderer-first and tiered OCR preparation stages
   Evidence needed: every PDF follows bounded stages: native inspection, renderer/image normalization when needed, cheap page inventory, candidate-page layout analysis, region OCR, optional page-number verification, then structure handoff.
   Notes: Native Outline remains first. OCR/layout work is only for documents without an accepted Outline. Expensive region OCR runs only on candidate pages and uses cache keys including source hash, renderer/engine versions, language, DPI, rotation hypotheses, and schema version. No stage mutates canonical raw text.
 
-- [ ] Define preparation handoff for layout hypotheses
-  Evidence needed: preparation passes page/region evidence and normalized TOC candidates to structure parsing without promoting metadata, profile output, or LLM classification to parser authority.
-  Notes: Distinguish `candidate`, `detected`, and `usable_for_splitting`. Accepted structure is all-or-nothing and requires title recall, page-number mapping, monotonicity, and span-overlap checks.
+- [x] Define preparation handoff for layout hypotheses
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`.
+  Notes: Preparation loads bounded page-layout evidence, page text boundaries, and native Outline evidence before structured build, then hands them to `StructuredDocumentBuilder` without mutating raw text or promoting profile/metadata/LLM classification to parser authority. `document_structure` owns candidate/detected/usable semantics, all-or-nothing projection, title recall, page-number mapping, monotonicity, and span-overlap checks.
+
+- [x] Extend manual-structure source evidence with validated page boundaries
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_preparation_handoff.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+  Notes: `load_manual_structure_source_evidence(...)` now loads optional page-boundary evidence from pageable loaders, validates page indices, monotonic raw-text ranges, range bounds, page text matching, and preserves optional page labels. Invalid or unavailable page evidence is reported in `errors` and dropped so `char_range` fallback remains available.
+
+- [x] Provide current-structure anchor evidence handoff for task-layout projection
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/document_structure/structure_anchor_evidence.py`; `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/scripts/test_task_layout_anchor_evidence_dto.py`.
+  Notes: Preparation-owned page-boundary evidence is retrieved by the app-layer task-layout path and handed to `document_structure` for existing hierarchy anchor projection. The public DTO carries lightweight `anchor_evidence` metadata only; it does not include raw text/page text, mutate profile/task-layout/structured hierarchy, or make page evidence parser authority.
 
 - [ ] Define OCR/layout cost and observability budget
   Evidence needed: page count, candidate pages, rendered pages, OCR passes, DPI, elapsed time, cache hit/miss, renderer warnings, and rejection reasons are recorded.
   Notes: Set deterministic limits for rendered pages, resolution, OCR attempts, and elapsed work. Budget exhaustion produces advisory diagnostics and current-parser fallback, never a partial hierarchy.
 
-- [ ] Define layout failure and user-visible fallback contract
+- [x] Define layout failure and user-visible fallback contract
   Evidence needed: renderer failure, empty OCR, ambiguous orientation, corrupted page numbers, low confidence, and incomplete multi-page grouping preserve existing structure parsing with explicit provenance.
-  Notes: UI may expose recommendation/evidence summary, but task-layout must not silently persist speculative TOC hierarchy. Manual reparse remains the explicit mutation path.
+  Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/document_structure/toc_detector.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: Renderer/OCR raw-load failures surface as explicit preparation errors; empty/artwork OCR, ambiguous orientation, missing or corrupted page numbers, low confidence/body-title recall, and incomplete multi-page grouping remain advisory rejection provenance. Rejected layout/TOC evidence preserves current parser output without `validated_toc_projection`, `toc_projection`, root `sections[]`, or `structure_nodes`. UI may expose the evidence summary, but task-layout does not silently persist speculative TOC hierarchy; manual reparse remains the explicit mutation path.
 
 - [ ] Define end-to-end layout evaluation matrix
   Evidence needed: Outline PDFs, scanned horizontal PDFs, vertical RTL PDFs, mixed-layout PDFs, artistic TOCs, and renderer-failure PDFs are evaluated through prepare, task-layout, and task-unit content APIs.

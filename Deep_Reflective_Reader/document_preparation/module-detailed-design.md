@@ -149,3 +149,31 @@ Step 6  Prepare runtime bundle
 2. The preparation pipeline should not permanently assume file-path persistence as the only possible destination. **[Maintainer-Provided] + [Future Direction]**
 3. Future storage destination should be configurable through a storage/backend policy boundary, while preparation lifecycle semantics remain owned by `document_preparation/`. **[Maintainer-Provided] + [Future Direction]**
 4. This note does not introduce storage abstractions, repositories, DB schemas, dual-write behavior, read-path switches, API changes, parser changes, or runtime behavior changes. **[Doc-Confirmed]**
+
+## 18. Future Direction Note: Manual Structure Reparse Preparation Boundary
+
+> 本節記錄 source-agnostic manual structure override 的 preparation-layer boundary；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. manual structure reparse may apply to any raw document source, not only OCR/scanned PDFs. **[Maintainer-Provided]**
+2. `document_preparation/` should own preparation-time handoff of raw text, language, source identity, page boundaries when available, and existing structured/profile artifacts needed by validation/reparse orchestration. **[Future Direction]**
+3. The preparation layer should not decide manual hierarchy semantics; projection and validation semantics belong to `document_structure/`. **[Future Direction]**
+4. For source-agnostic support, manual anchors should be able to target raw-text character spans even when page evidence is unavailable. **[Future Direction]**
+5. For PDF/OCR/native-page sources, preparation may provide page boundaries and OCR provenance as validation evidence, but page evidence remains advisory/supporting data rather than parser authority by itself. **[From HLD] + [Future Direction]**
+6. manual validation failure must be reported as structured readiness failure for that explicit reparse attempt; it must not overwrite existing structured artifacts and must not silently fallback to common parser as a successful manual reparse. **[Future Direction]**
+7. Existing `force_rebuild` semantics should remain explicit: manual structure commit is a mutation/reparse operation, while validation/preview is read/analysis-oriented and should not persist a hierarchy. **[Future Direction]**
+8. This note does not introduce new API fields, parser modes, persistence behavior, or runtime route behavior. **[Doc-Confirmed]**
+
+## 19. Page Evidence Handoff For TOC Editing
+
+> 本節支援 UI TOC editor 的 page-first anchor UX。Manual-structure source evidence can now carry validated page boundaries; downstream `page_range` hierarchy materialization and task-layout prefill projection remain separate checkpoints. **[Maintainer-Provided] + [Code-Confirmed] + [Future Direction]**
+
+1. `load_manual_structure_source_evidence(...)` provides a reusable source-evidence handoff containing canonical raw text, raw-text source hash, best-effort language, and validated page boundaries when available. **[Code-Confirmed]**
+2. For pageable sources such as PDFs, page evidence includes stable document page indices, optional display labels/page labels, and raw-text offset ranges per page. **[Code-Confirmed]**
+3. Preparation validates manual page evidence before handoff: duplicate or non-contiguous page indices, invalid ranges, out-of-bounds ranges, non-monotonic ranges, and page-text mismatches are rejected. **[Code-Confirmed]**
+4. Invalid or unavailable page evidence is reported in source-evidence `errors` and dropped while preserving canonical raw text and `char_range` fallback. **[Code-Confirmed]**
+5. This evidence is needed by:
+   - manual-structure validation/commit for `page_range` anchors
+   - task-layout anchor evidence projection for UI edit-existing prefill
+6. Preparation must not decide user-defined hierarchy semantics; it only supplies evidence. Projection and hierarchy draft building remain owned by `document_structure/`. **[From HLD] + [Code-Confirmed]**
+7. Page evidence remains supporting evidence, not parser authority by itself. Ambiguous, incomplete, or stale page evidence must be reported explicitly and must not authorize partial hierarchy persistence. **[From HLD] + [Future Direction]**
+8. `char_range` remains available when page evidence is unavailable or rejected. **[Maintainer-Provided] + [Code-Confirmed]**

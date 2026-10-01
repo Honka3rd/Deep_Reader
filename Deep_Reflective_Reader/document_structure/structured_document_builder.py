@@ -104,14 +104,16 @@ class StructuredDocumentBuilder:
                     )
             if toc_result is not None:
                 parse_provenance["toc_detection"] = self._serialize_toc_detection(toc_result)
-            projected_sections = (
+            projected_sections, toc_projection = (
                 self._project_toc_sections(raw_text, toc_result, page_boundaries)
                 if toc_result is not None and toc_result.usable
-                else []
+                else ([], None)
             )
             if projected_sections:
                 sections = projected_sections
                 parse_provenance["effective_parser"] = "validated_toc_projection"
+                if toc_projection is not None:
+                    parse_provenance["toc_projection"] = toc_projection
             if not sections:
                 return self._build_fallback_document(
                     document_id=document_id,
@@ -374,17 +376,19 @@ class StructuredDocumentBuilder:
         raw_text: str,
         toc_result: object,
         page_boundaries: list[PdfPageTextBoundary] | None,
-    ) -> list[StructuredSection]:
+    ) -> tuple[list[StructuredSection], dict[str, object] | None]:
         """Project validated TOC entries to section ranges; reject partial matches."""
         entries = list(getattr(toc_result, "entries", []) or [])
         toc_end = getattr(toc_result, "toc_char_end", None)
         if len(entries) < 3 or toc_end is None or not page_boundaries:
-            return []
+            return [], None
         canonical_text = "\n\n".join(boundary.text for boundary in page_boundaries)
         if canonical_text != raw_text:
-            return []
-        page_starts = {boundary.page_index: boundary.char_start for boundary in page_boundaries}
-        page_ends = {boundary.page_index: boundary.char_end for boundary in page_boundaries}
+            return [], None
+        boundary_by_page_index = {
+            boundary.page_index: boundary
+            for boundary in page_boundaries
+        }
         lines = [
             match
             for match in re.finditer(r"[^\n\r]+", raw_text)
@@ -404,46 +408,132 @@ class StructuredDocumentBuilder:
                 continue
             matches.append((entry, found.start(), found.end()))
         if len(matches) / max(1, len(entries)) < 0.6:
-            return []
+            return [], None
         # Require each matched title to live on the page predicted by its printed number.
         page_offsets: list[int] = []
-        for entry, start, _ in matches:
+        matched_page_indices: dict[int, int] = {}
+        for match_index, (entry, start, _) in enumerate(matches):
             page_number = getattr(entry, "page_number", None)
             if page_number is None:
                 continue
-            actual_page = next(
-                (index for index, (page_start, page_end) in enumerate(zip(page_starts.values(), page_ends.values())) if page_start <= start <= page_end),
-                None,
+            actual_boundary = StructuredDocumentBuilder._page_boundary_for_offset(
+                page_boundaries=page_boundaries,
+                offset=start,
             )
+            actual_page = None if actual_boundary is None else actual_boundary.page_index
             if actual_page is not None:
+                matched_page_indices[match_index] = actual_page
                 page_offsets.append(actual_page - int(page_number))
         if not page_offsets or len(set(page_offsets)) != 1:
-            return []
+            return [], None
         page_offset = page_offsets[0]
         if any(
-            int(getattr(entry, "page_number", 0)) + page_offset not in page_starts
+            int(getattr(entry, "page_number", 0)) + page_offset not in boundary_by_page_index
             for entry, _, _ in matches
             if getattr(entry, "page_number", None) is not None
         ):
-            return []
+            return [], None
+
+        output_match_indexes: list[int] = []
+        projection_entries: list[dict[str, object]] = []
+        for match_index, (entry, start, _) in enumerate(matches):
+            original_level = max(1, int(getattr(entry, "level", 1)))
+            if original_level <= 2 or not output_match_indexes:
+                projected_level = min(original_level, 2)
+                output_match_indexes.append(match_index)
+                merge_reason = None
+                if original_level > 2:
+                    merge_reason = "deep_level_without_parent_promoted_to_section"
+            else:
+                projected_level = 2
+                merge_reason = "deeper_than_two_collapsed_into_previous_section"
+
+            projection_entries.append(
+                {
+                    "entry_index": match_index,
+                    "title": normalize_ocr_text(str(getattr(entry, "title", ""))).strip(),
+                    "original_level": original_level,
+                    "projected_level": projected_level,
+                    "included_as_section": match_index in output_match_indexes,
+                    "merge_reason": merge_reason,
+                    "printed_page_number": getattr(entry, "page_number", None),
+                    "source_page_index": matched_page_indices.get(match_index),
+                    "char_start": start,
+                }
+            )
+        if not output_match_indexes:
+            return [], None
+
+        projected_ranges: list[tuple[int, int, object, int, int]] = []
+        for section_index, match_index in enumerate(output_match_indexes):
+            entry, start, heading_end = matches[match_index]
+            next_output_match_index = (
+                output_match_indexes[section_index + 1]
+                if section_index + 1 < len(output_match_indexes)
+                else None
+            )
+            end = (
+                matches[next_output_match_index][1]
+                if next_output_match_index is not None
+                else len(raw_text)
+            )
+            projected_level = min(max(1, int(getattr(entry, "level", 1))), 2)
+            projected_ranges.append((start, end, entry, heading_end, projected_level))
+
+        if not StructuredDocumentBuilder._toc_ranges_are_valid(projected_ranges):
+            return [], None
+
         sections: list[StructuredSection] = []
-        for index, (entry, start, heading_end) in enumerate(matches):
-            end = matches[index + 1][1] if index + 1 < len(matches) else len(raw_text)
+        for section_index, (start, end, entry, heading_end, projected_level) in enumerate(projected_ranges):
             sections.append(
                 StructuredSection(
-                    section_id=f"toc-section-{index}",
-                    section_index=index,
+                    section_id=f"toc-section-{section_index}",
+                    section_index=section_index,
                     title=normalize_ocr_text(raw_text[start:heading_end]).strip(),
-                    level=max(1, int(getattr(entry, "level", 1))),
+                    level=projected_level,
                     content=raw_text[start:end],
                     char_start=start,
                     char_end=end,
                     section_kind=(
                         "toc_chapter"
-                        if max(1, int(getattr(entry, "level", 1))) == 1
+                        if projected_level == 1
                         else "toc_subsection"
                     ),
                     section_role=SectionRole.MAIN_BODY,
                 )
             )
-        return sections
+        projection = {
+            "source": "validated_toc_projection",
+            "shape": str(getattr(getattr(toc_result, "shape", None), "value", "unknown")),
+            "entry_count": len(entries),
+            "matched_entry_count": len(matches),
+            "section_count": len(sections),
+            "page_offset": page_offset,
+            "compression": "toc_levels_gt_2_collapsed_into_nearest_section",
+            "entries": projection_entries,
+        }
+        return sections, projection
+
+    @staticmethod
+    def _page_boundary_for_offset(
+        *,
+        page_boundaries: list[PdfPageTextBoundary],
+        offset: int,
+    ) -> PdfPageTextBoundary | None:
+        for boundary in page_boundaries:
+            if boundary.char_start <= offset < boundary.char_end:
+                return boundary
+        return None
+
+    @staticmethod
+    def _toc_ranges_are_valid(
+        ranges: list[tuple[int, int, object, int, int]],
+    ) -> bool:
+        previous_end: int | None = None
+        for start, end, _entry, heading_end, _projected_level in ranges:
+            if start < 0 or end <= start or heading_end <= start or heading_end > end:
+                return False
+            if previous_end is not None and start < previous_end:
+                return False
+            previous_end = end
+        return True

@@ -35,6 +35,12 @@
 - `GetDocumentTaskLayoutRequest`
 - `DocumentTaskLayoutResponse`
 - `SummarizeChapterRequest`, `ChapterQuizRequest`
+- `ManualStructureAnchorRequest`
+- `ManualStructureEntryRequest`
+- `ManualStructurePlanRequest`
+- `ManualStructureValidationRequest`
+- `ManualStructureValidationResponse`
+- `ReparseDocumentStructureRequest`
 - `ProfileStructureDiagnosticsResponse`
 
 ## 7. Public API vs Internal DTO Boundary
@@ -142,3 +148,39 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 15. content endpoint context 下的最小 target constraints：`content_block` level 必須含 `task_unit_id + content_block_id`；`task_unit` level 必須含 `task_unit_id`。其他 level 保留 enum 表達能力，但不宣稱本 endpoint 支援 artifact write semantics。 **[Code-Confirmed] + [Maintainer-Confirmed]**
 16. `target_level` 使用 shared single-source enum（`shared.artifact_target_model.ArtifactTargetLevel`）驗證，非法值在 schema/shared boundary fail-fast；不做 silent coercion/silent fallback。 **[Code-Confirmed] + [Maintainer-Confirmed]**
 17. metadata glossary keys 由 `api_schemas.ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS` 單一常量維護，schema validation 與 endpoint mapping 共用同一來源，避免雙份定義漂移。 **[Code-Confirmed]**
+
+## 17. Future Direction Note: Manual Structure Override API Schema
+
+> 本節記錄 source-agnostic manual structure override 的 public schema direction；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. manual structure schemas should apply to any document type, not only OCR/PDF. **[Maintainer-Provided]**
+2. public request naming should avoid OCR-only terms; prefer `manual_structure`, `manual_entries`, `manual_structure_mode`, or `manual_structure_plan` over OCR-specific vocabulary. **[Future Direction]**
+3. schema should support validation/preview request and commit reparse request separately. **[Future Direction]**
+4. manual entry schema should minimally include `title`, `level`, and one supported anchor form. **[Future Direction]**
+5. anchor schema should be explicit and typed, for example `char_range`, `page_range`, or later `printed_page_number`; clients must not rely on implicit title matching as the sole locator. **[Future Direction]**
+6. response schema should expose validation result, normalized entries, warnings, errors, preview hierarchy shape, and parse provenance preview without raw text/heavy content payload. **[Future Direction]**
+7. commit reparse response may reuse/extend `ReparseDocumentStructureResponse`, but must identify `parser_mode=manual_structure` or equivalent source-agnostic mode. **[Future Direction]**
+8. task-layout response schema should not be expanded with manual structure edit payload; task-layout remains lightweight projection. **[From HLD] + [Future Direction]**
+9. user-defined manual structure is limited to two levels for now: `level=1` chapter and `level=2` section. `level>2` must be rejected by validation instead of folded. **[Maintainer-Provided] + [Future Direction]**
+10. schema validation should distinguish malformed payload, unsupported anchor type, out-of-range anchor, overlapping range, empty projected range, invalid level sequence, unsupported depth, and stale source evidence. **[Future Direction]**
+11. Implemented checkpoint: request-side manual structure schema now exists as `ManualStructureAnchorRequest`, `ManualStructureEntryRequest`, `ManualStructurePlanRequest`, and `ManualStructureValidationRequest`. It is source-agnostic, supports typed `char_range` / `page_range` anchors, enforces current two-level `chapter -> section` maximum depth, and does not add endpoint/runtime behavior. **[Code-Confirmed]**
+12. Implemented checkpoint: validation/preview response schema now exists as `ManualStructureValidationResponse` with normalized entry, issue, preview chapter/section, and provenance preview DTOs. It is source-agnostic, keeps preview payload lightweight, validates the planned issue taxonomy, and does not add endpoint/runtime behavior. **[Code-Confirmed]**
+13. Implemented checkpoint: commit reparse request schema can now represent `parser_mode=manual_structure` with a required `manual_structure` plan. Existing `common` / `llm_enhanced` modes remain accepted and reject manual plans; this checkpoint is schema-only and does not add endpoint/runtime behavior. **[Code-Confirmed]**
+14. Manual structure commit route orchestration exists for explicit manual reparse, but page-backed manual commit remains incomplete until backend page-boundary evidence can validate and materialize `page_range` into hierarchy content. **[Code-Confirmed] + [Future Direction]**
+
+## 18. Page-First Manual TOC API Support
+
+> 本節支援 UI TOC editor 的 page-first anchor UX。
+> 目前已完成 task-layout existing-structure anchor evidence response schema；page-backed manual validation/commit semantics 仍屬後續 checkpoint。 **[Code-Confirmed] + [Future Direction]**
+
+1. Public manual-structure schemas should keep `char_range` as the universal fallback anchor and treat `page_range` as available only when backend page-boundary evidence is explicit and validated. **[Future Direction]**
+2. `ManualStructureAnchorRequest` already has typed `page_range` vocabulary, but schema presence alone must not imply commit support. Validation/commit responses must distinguish "schema-valid but unsupported by available source evidence" from malformed payload. **[Code-Confirmed] + [Future Direction]**
+3. Task-layout response schema now exposes lightweight existing-structure anchor evidence for UI prefill via `AnchorEvidenceResponse` on chapter/section nodes, without raw text, full page text, OCR boxes, or heavy layout payload. **[Code-Confirmed]**
+4. Existing-structure anchor evidence should be optional per chapter/section and should support at least:
+   - anchor type (`page_range` or `char_range`)
+   - page indices or display page labels when validated
+   - character offsets when no reliable page evidence exists
+   - source/evidence availability state and warning code
+5. The schema boundary must preserve hierarchy-first response shape: anchor evidence is metadata on `chapters[]` / `chapters[].sections[]`, not a second hierarchy source. **[From HLD] + [Future Direction]**
+6. Any future `page_range` request/response schema must remain source-agnostic; PDFs are the first expected pageable source, not an OCR-only special case. **[Maintainer-Provided] + [Future Direction]**
+7. `AnchorEvidenceResponse` currently supports `anchor_type`, `status`, `reason`, char offsets, page indices, and page labels as optional lightweight metadata. **[Code-Confirmed]**

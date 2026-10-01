@@ -1,4 +1,6 @@
 from pathlib import Path
+from dataclasses import dataclass, field
+import hashlib
 
 from bundle_provider import BundleProvider
 from config.faiss_storage_config import FaissStorageConfig
@@ -9,7 +11,11 @@ from doc_loaders.document_load_errors import (
     RawTextRequiresOcrError,
 )
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
-from doc_loaders.pdf_page_evidence import PdfPageLayoutEvidence, PdfPageTextBoundary
+from doc_loaders.pdf_page_evidence import (
+    PdfPageBoundaryEvidenceResult,
+    PdfPageLayoutEvidence,
+    PdfPageTextBoundary,
+)
 from doc_loaders.pdf_outline import PdfOutlineResult
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from document_structure.structured_document_store import StructuredDocumentStore
@@ -28,6 +34,19 @@ from profile.post_structure_metadata_enricher import PostStructureMetadataEnrich
 from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
 from retrieval.node_provider import NodeProvider
+
+
+@dataclass(frozen=True)
+class ManualStructureSourceEvidence:
+    """Source evidence prepared for explicit manual-structure validation/reparse."""
+
+    doc_name: str
+    source_identity: str
+    raw_text: str
+    source_hash: str
+    language: str | None = None
+    page_boundaries: list[PdfPageTextBoundary] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 class DocumentPreparationPipeline:
@@ -236,6 +255,131 @@ class DocumentPreparationPipeline:
             structured_document=structured_document,
             bundle=bundle,
         )
+
+    def load_manual_structure_source_evidence(
+        self,
+        doc_name: str,
+    ) -> ManualStructureSourceEvidence:
+        """Load source evidence for explicit manual-structure reparse.
+
+        This is a read-only handoff for app-layer manual reparse orchestration. It
+        does not build profiles, write structured artifacts, prepare FAISS, or
+        mutate task-layout state.
+        """
+        normalized_doc_name = doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+
+        loader = self.loader_factory.get(normalized_doc_name)
+        raw_text = loader.load(normalized_doc_name)
+        if raw_text is None or not raw_text.strip():
+            raise ValueError(
+                f"manual_structure source is empty for doc_name='{normalized_doc_name}'"
+            )
+
+        errors: list[str] = []
+        language: str | None = None
+        try:
+            detected_language = self.language_detector.detect(
+                normalize_ocr_text(raw_text)
+            )
+            language = detected_language.strip().lower() if detected_language else None
+            if not language:
+                errors.append("manual_structure_detect_language_empty_result")
+        except Exception as error:
+            errors.append(f"manual_structure_detect_language_failed:{error}")
+
+        page_boundaries = self._load_manual_structure_page_boundaries(
+            loader=loader,
+            doc_name=normalized_doc_name,
+            raw_text=raw_text,
+            errors=errors,
+        )
+
+        return ManualStructureSourceEvidence(
+            doc_name=normalized_doc_name,
+            source_identity=normalized_doc_name,
+            raw_text=raw_text,
+            source_hash=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
+            language=language,
+            page_boundaries=page_boundaries,
+            errors=errors,
+        )
+
+    def _load_manual_structure_page_boundaries(
+        self,
+        *,
+        loader: object,
+        doc_name: str,
+        raw_text: str,
+        errors: list[str],
+    ) -> list[PdfPageTextBoundary]:
+        """Load and validate optional page evidence for manual anchors."""
+        try:
+            load_page_boundary_evidence = getattr(
+                loader,
+                "load_page_boundary_evidence",
+                None,
+            )
+            if callable(load_page_boundary_evidence):
+                evidence = load_page_boundary_evidence(doc_name)
+                boundaries = (
+                    list(evidence.boundaries)
+                    if isinstance(evidence, PdfPageBoundaryEvidenceResult)
+                    else list(getattr(evidence, "boundaries", []) or [])
+                )
+            else:
+                load_page_text_boundaries = getattr(
+                    loader,
+                    "load_page_text_boundaries",
+                    None,
+                )
+                if not callable(load_page_text_boundaries):
+                    return []
+                boundaries = list(load_page_text_boundaries(doc_name) or [])
+        except Exception as error:
+            errors.append(f"manual_structure_page_boundaries_unavailable:{error}")
+            return []
+
+        validation_error = self._validate_manual_structure_page_boundaries(
+            boundaries=boundaries,
+            raw_text=raw_text,
+        )
+        if validation_error is not None:
+            errors.append(f"manual_structure_page_boundaries_invalid:{validation_error}")
+            return []
+        return boundaries
+
+    def _validate_manual_structure_page_boundaries(
+        self,
+        *,
+        boundaries: list[PdfPageTextBoundary],
+        raw_text: str,
+    ) -> str | None:
+        """Validate page evidence without promoting it to hierarchy authority."""
+        if not boundaries:
+            return None
+        previous_end = 0
+        seen_page_indices: set[int] = set()
+        for expected_index, boundary in enumerate(boundaries):
+            if boundary.page_index in seen_page_indices:
+                return f"duplicate_page_index:{boundary.page_index}"
+            seen_page_indices.add(boundary.page_index)
+            if boundary.page_index != expected_index:
+                return (
+                    "non_contiguous_page_index:"
+                    f"expected={expected_index},actual={boundary.page_index}"
+                )
+            if boundary.char_start < 0 or boundary.char_end < boundary.char_start:
+                return f"invalid_range:{boundary.page_index}"
+            if boundary.char_end > len(raw_text):
+                return f"out_of_raw_text_range:{boundary.page_index}"
+            if boundary.char_start < previous_end:
+                return f"non_monotonic_range:{boundary.page_index}"
+            if boundary.text and raw_text[boundary.char_start:boundary.char_end] != boundary.text:
+                return f"text_mismatch:{boundary.page_index}"
+            previous_end = boundary.char_end
+        return None
 
     def _load_raw_text(
         self,

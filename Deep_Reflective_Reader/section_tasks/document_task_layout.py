@@ -112,6 +112,35 @@ class ArtifactAvailabilityDTO:
 
 
 @dataclass(frozen=True)
+class AnchorEvidenceDTO:
+    """Lightweight parsed anchor evidence for TOC edit prefill."""
+
+    anchor_type: str | None
+    status: str
+    reason: str | None = None
+    char_start: int | None = None
+    char_end: int | None = None
+    page_start_index: int | None = None
+    page_end_index: int | None = None
+    page_start_label: str | None = None
+    page_end_label: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize anchor evidence without raw text or diagnostic-heavy payloads."""
+        return {
+            "anchor_type": self.anchor_type,
+            "status": self.status,
+            "reason": self.reason,
+            "char_start": self.char_start,
+            "char_end": self.char_end,
+            "page_start_index": self.page_start_index,
+            "page_end_index": self.page_end_index,
+            "page_start_label": self.page_start_label,
+            "page_end_label": self.page_end_label,
+        }
+
+
+@dataclass(frozen=True)
 class DocumentTaskLayoutSectionDTO:
     """Section-first layout node with embedded task-unit metadata."""
 
@@ -125,10 +154,11 @@ class DocumentTaskLayoutSectionDTO:
     task_mode: SectionTaskMode
     task_units: list[TaskUnitDTO]
     artifacts: ArtifactAvailabilityDTO | None = None
+    anchor_evidence: AnchorEvidenceDTO | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize section layout node into JSON-friendly dictionary."""
-        return {
+        payload = {
             "section_id": self.section_id,
             "title": self.title,
             "container_title": self.container_title,
@@ -144,6 +174,9 @@ class DocumentTaskLayoutSectionDTO:
                 else self.artifacts.to_dict()
             ),
         }
+        if self.anchor_evidence is not None:
+            payload["anchor_evidence"] = self.anchor_evidence.to_dict()
+        return payload
 
 
 @dataclass(frozen=True)
@@ -156,11 +189,12 @@ class DocumentTaskLayoutChapterDTO:
     chapter_role: str | None
     sections: list[DocumentTaskLayoutSectionDTO]
     artifacts: ArtifactAvailabilityDTO | None = None
+    anchor_evidence: AnchorEvidenceDTO | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize chapter layout node into JSON-friendly dictionary."""
-        return {
+        payload = {
             "chapter_id": self.chapter_id,
             "title": self.title,
             "level": self.level,
@@ -173,6 +207,9 @@ class DocumentTaskLayoutChapterDTO:
             ),
             "metadata": dict(self.metadata),
         }
+        if self.anchor_evidence is not None:
+            payload["anchor_evidence"] = self.anchor_evidence.to_dict()
+        return payload
 
 
 @dataclass(frozen=True)

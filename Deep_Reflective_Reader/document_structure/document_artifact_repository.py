@@ -42,6 +42,14 @@ class DocumentArtifactRepository(ABC):
         """Persist one structured document payload."""
         raise NotImplementedError
 
+    def save_reparsed_document(
+        self,
+        document: StructuredDocument,
+        doc_name: str | None = None,
+    ) -> None:
+        """Persist a parser-level replacement of the current structured document."""
+        self.save_document(document, doc_name=doc_name)
+
     @abstractmethod
     def update_section_artifacts(
         self,

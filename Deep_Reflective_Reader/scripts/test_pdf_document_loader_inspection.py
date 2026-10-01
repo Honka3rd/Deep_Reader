@@ -6,15 +6,20 @@ from __future__ import annotations
 import sys
 import tempfile
 import os
+import hashlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import doc_loaders.pdf_document_loader as pdf_loader_module  # noqa: E402
 from language.language_code import LanguageCode  # noqa: E402
 from doc_loaders.pdf_document_loader import (  # noqa: E402
     PdfDocumentLoader,
     PdfInspectionMetrics,
 )
+from doc_loaders.document_loader_factory import DocumentLoaderFactory  # noqa: E402
+from doc_loaders.raw_data_paths import DEFAULT_RAW_DATA_DIR  # noqa: E402
+from doc_loaders.text_document_loader import TextDocumentLoader  # noqa: E402
 from doc_loaders.document_load_errors import RawTextRequiresOcrError  # noqa: E402
 from doc_loaders.document_load_errors import RawTextOcrLowQualityError  # noqa: E402
 from doc_loaders.pdf_ocr_language_policy import (  # noqa: E402
@@ -26,6 +31,41 @@ from doc_loaders.pdf_ocr_language_policy import (  # noqa: E402
 def _assert(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def test_default_raw_data_dir_is_independent_of_cwd() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        shadow_raw_dir = temp_path / "data" / "raw"
+        shadow_raw_dir.mkdir(parents=True)
+        (shadow_raw_dir / "cwd-shadow.pdf").write_bytes(b"not the project raw fixture")
+
+        previous_cwd = Path.cwd()
+        try:
+            os.chdir(temp_path)
+            text_loader = TextDocumentLoader()
+            pdf_loader = PdfDocumentLoader()
+            factory = DocumentLoaderFactory()
+            selected_loader = factory.get("cwd-shadow")
+        finally:
+            os.chdir(previous_cwd)
+
+    _assert(
+        text_loader.base_dir == DEFAULT_RAW_DATA_DIR,
+        f"text loader should resolve project raw dir, got {text_loader.base_dir}",
+    )
+    _assert(
+        pdf_loader.base_dir == DEFAULT_RAW_DATA_DIR,
+        f"pdf loader should resolve project raw dir, got {pdf_loader.base_dir}",
+    )
+    _assert(
+        factory.base_dir == DEFAULT_RAW_DATA_DIR,
+        f"factory should resolve project raw dir, got {factory.base_dir}",
+    )
+    _assert(
+        isinstance(selected_loader, TextDocumentLoader),
+        "factory should not select PDF from cwd-relative shadow data/raw",
+    )
 
 
 def test_scanned_pdf_classification_uses_text_image_and_font_signals() -> None:
@@ -93,6 +133,130 @@ def test_native_pdf_text_is_preserved_while_collecting_metrics() -> None:
     _assert(metrics.native_text_chars == len("First pageSecond page"), "native text chars should be counted")
     _assert(metrics.pages_with_fonts == 2, "font resources should be counted")
     _assert(not metrics.is_scanned_image_pdf, "native text PDFs should not require OCR")
+
+
+def test_pdf_page_boundary_evidence_preserves_native_load_contract() -> None:
+    class _Page:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        def extract_text(self) -> str:
+            return self._text
+
+        def get(self, key: str) -> dict[str, object]:
+            if key == "/Resources" and self._text:
+                return {"/Font": {"F1": object()}}
+            return {}
+
+    class _Reader:
+        page_labels = ["i", "1", "2"]
+
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.pages = [_Page("Alpha"), _Page("Beta"), _Page("")]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        pdf_path = temp_path / "sample.pdf"
+        pdf_bytes = b"fake native pdf bytes for boundary evidence regression"
+        pdf_path.write_bytes(pdf_bytes)
+        previous_reader = pdf_loader_module.PdfReader
+        pdf_loader_module.PdfReader = _Reader
+        try:
+            loader = PdfDocumentLoader(base_dir=str(temp_path))
+            raw_text = loader.load("sample")
+            evidence = loader.load_page_boundary_evidence("sample")
+        finally:
+            pdf_loader_module.PdfReader = previous_reader
+
+    expected_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    _assert(raw_text == "Alpha\nBeta", f"unexpected load() text: {raw_text!r}")
+    _assert(evidence.doc_name == "sample", "evidence should preserve doc_name")
+    _assert(
+        evidence.source_file_name == "sample.pdf",
+        "evidence should preserve source file name",
+    )
+    _assert(evidence.source_sha256 == expected_hash, "evidence should include source PDF hash")
+    _assert(evidence.page_count == 3, "evidence should report reader page count")
+    _assert(len(evidence.boundaries) == 3, "evidence should include one boundary per page")
+    _assert(
+        [boundary.page_label for boundary in evidence.boundaries] == ["i", "1", "2"],
+        "page labels should be copied when available",
+    )
+    _assert(
+        [(boundary.char_start, boundary.char_end) for boundary in evidence.boundaries]
+        == [(0, 5), (6, 10), (10, 10)],
+        "page boundaries should map to load() raw-text offsets",
+    )
+    _assert(
+        [boundary.source_sha256 for boundary in evidence.boundaries]
+        == [expected_hash, expected_hash, expected_hash],
+        "each page boundary should carry source identity",
+    )
+
+
+def test_pdf_page_layout_evidence_includes_source_metadata() -> None:
+    class _Page:
+        images: list[object] = []
+
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        def extract_text(self) -> str:
+            return self._text
+
+    class _Reader:
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.pages = [_Page("Alpha"), _Page("")]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        pdf_path = temp_path / "layout.pdf"
+        pdf_bytes = b"fake native pdf bytes for layout evidence metadata"
+        pdf_path.write_bytes(pdf_bytes)
+        previous_reader = pdf_loader_module.PdfReader
+        pdf_loader_module.PdfReader = _Reader
+        try:
+            loader = PdfDocumentLoader(base_dir=str(temp_path))
+            evidence = loader.load_page_layout_evidence("layout")
+        finally:
+            pdf_loader_module.PdfReader = previous_reader
+
+    expected_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    _assert(len(evidence) == 2, "layout evidence should include every page")
+    _assert(
+        [page.source_file_name for page in evidence] == ["layout.pdf", "layout.pdf"],
+        "layout evidence should carry source file name on every page",
+    )
+    _assert(
+        [page.source_sha256 for page in evidence] == [expected_hash, expected_hash],
+        "layout evidence should carry source PDF hash on every page",
+    )
+    _assert(
+        [page.evidence_schema_version for page in evidence] == [1, 1],
+        "layout evidence should carry schema version on every page",
+    )
+    _assert(
+        [page.native_text_chars for page in evidence] == [5, 0],
+        "layout evidence should preserve native text metrics",
+    )
+    _assert(
+        [page.analysis_cost_tier for page in evidence] == ["cheap_inventory", "cheap_inventory"],
+        "layout inventory should record cheap inspection cost tier when OCR is disabled",
+    )
+    _assert(
+        [page.ocr_pass_count for page in evidence] == [0, 0],
+        "layout inventory should not record OCR passes when OCR is disabled",
+    )
+    _assert(
+        all(page.cache_key and ":stage:inventory" in page.cache_key for page in evidence),
+        "layout inventory should record stable inventory cache keys",
+    )
+    _assert(
+        [page.high_cost_analysis_permitted for page in evidence] == [False, False],
+        "layout inventory should not permit high-cost analysis by default",
+    )
 
 
 def test_real_scanned_pdf_inspection_for_dark_water_fixture() -> None:
@@ -344,8 +508,11 @@ def test_pdf_loader_defaults_to_multilingual_ocr_language() -> None:
 
 
 if __name__ == "__main__":
+    test_default_raw_data_dir_is_independent_of_cwd()
     test_scanned_pdf_classification_uses_text_image_and_font_signals()
     test_native_pdf_text_is_preserved_while_collecting_metrics()
+    test_pdf_page_boundary_evidence_preserves_native_load_contract()
+    test_pdf_page_layout_evidence_includes_source_metadata()
     test_real_scanned_pdf_inspection_for_dark_water_fixture()
     test_real_scanned_pdf_load_requires_ocr()
     test_real_scanned_pdf_can_use_explicit_ocr_fallback()

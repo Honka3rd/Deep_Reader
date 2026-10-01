@@ -71,43 +71,54 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] Stabilize raw data directory resolution across API container and repo-root scripts
-  Evidence needed: `DocumentLoaderFactory` resolves `data/raw` consistently regardless of current working directory.
-  Notes: Current relative `Path("data/raw")` can choose different loader behavior when run outside `Deep_Reflective_Reader` working directory.
+- [x] Stabilize raw data directory resolution across API container and repo-root scripts
+  Evidence: `Deep_Reflective_Reader/doc_loaders/raw_data_paths.py`; `Deep_Reflective_Reader/doc_loaders/document_loader_factory.py`; `Deep_Reflective_Reader/doc_loaders/text_document_loader.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`.
+  Notes: Default raw document loading now resolves `data/raw` to the package/project raw directory independent of process cwd. Explicit absolute/custom `base_dir` injection remains supported for tests and specialized callers, while cwd-relative shadow `data/raw` directories no longer influence `DocumentLoaderFactory` selection.
 - [x] Remove OCR file-cache persistence from PDF loading
   Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `docker-compose.yml`; `.env.example`; container verification that `DEEP_READER_PDF_OCR_CACHE_ENABLED` is absent and OCR memory reuse does not create a cache directory.
   Notes: OCR cache was a temporary bootstrap mechanism. It is removed as a second persistence surface now that OCR run storage exists.
-- [ ] Preserve page-aware OCR provenance for future table-of-contents detection
-  Evidence needed: OCR output can expose stable page boundaries, page numbers, source hashes, and page-level text without changing the public raw-text loading contract.
-  Notes: Planning-only. Page boundaries are required to use TOC page numbers as anchors for noisy/scanned documents.
+- [x] Preserve page-aware OCR provenance for future table-of-contents detection
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_preparation_handoff.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
+  Notes: PDF page-boundary evidence preserves stable page indices, optional page labels/page numbers, source PDF SHA-256, raw-text offsets, and page text while keeping `load(doc_name) -> str` unchanged. This supports TOC page anchors and manual page-range validation as evidence only; full OCR geometry, competing layout hypotheses, and parser authority remain separate future work.
+
+- [x] Expose compact PDF page-boundary evidence for manual TOC anchors
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`.
+  Notes: `PdfDocumentLoader.load_page_boundary_evidence(doc_name)` exposes source SHA-256, page count, page index, optional page label, and raw-text offset range per page while preserving `load(doc_name) -> str`; existing page-boundary callers continue through `load_page_text_boundaries()`. Detailed OCR geometry remains diagnostic and must not enter task-layout payload.
 
 - [x] Detect and expose native PDF Outline/bookmark structure before OCR
   Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_outline.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_outline.py`; container verification on `Deep_Reflective_Reader/data/raw/许三观卖血记.pdf`.
   Notes: Loader inspects `/Outlines`, bookmark nesting, destination page indices, page labels, destination type, and source PDF SHA-256. Document Info metadata is not treated as hierarchy evidence. Invalid or incomplete destinations remain rejected evidence rather than silently repaired.
 
-- [ ] Define universal PDF page-layout evidence metadata
+- [x] Define universal PDF page-layout evidence metadata
   Evidence needed: every PDF page supports compact source identity, dimensions, native-text/image metrics, orientation hypotheses, writing mode, reading order, OCR confidence, and evidence schema version.
-  Notes: Applies to born-digital, scanned, mixed, horizontal, vertical, rotated, and mixed-layout PDFs. Full OCR bounding boxes and connected-component evidence are retained only for candidate pages or explicit diagnostics.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_toc_projection.py`.
+  Notes: `PdfPageLayoutEvidence` now carries compact source identity (`source_file_name`, `source_sha256`), dimensions, native text/image metrics, orientation, writing mode, reading order, OCR confidence/text, analysis stage, evidence reasons, and `evidence_schema_version`. `PdfDocumentLoader.load_page_layout_evidence(...)` populates source metadata for every page while preserving `load(doc_name) -> str`; OCR word boxes remain bounded to candidate/coordinate-OCR evidence and parser authority stays in `document_structure`.
 
-- [ ] Define deterministic orientation and reading-order evidence
+- [x] Define deterministic orientation and reading-order evidence
   Evidence needed: page-level rules distinguish horizontal/vertical text, `left_to_right`/`right_to_left` column order, rotation (`0/90/180/270`), and mixed regions; ambiguous pages retain competing hypotheses and confidence instead of silent selection.
-  Notes: Vertical Chinese columns must support right-to-left ordering. OCR/OSD is evidence only and cannot independently authorize hierarchy.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+  Notes: `PdfPageLayoutEvidence` now preserves page orientation hypotheses with rotation degrees, selected rotation when deterministic, writing-mode and reading-order confidence, and explicit `ambiguous_orientation` evidence when dimensions are too close to choose safely. Vertical Chinese columns retain `vertical` + `right_to_left` evidence; ambiguous pages keep competing portrait/landscape hypotheses instead of silently authorizing hierarchy.
 
-- [ ] Define tiered PDF inspection and OCR cost policy
+- [x] Define tiered PDF inspection and OCR cost policy
   Evidence needed: all pages receive cheap inspection; only candidate pages receive coordinate OCR; only high-scoring candidates receive high-resolution OCR or image-geometry analysis.
-  Notes: Record analysis stage, OCR engine/language/version, resolution, elapsed time, cache key, cache hit/miss, and failure reason.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`.
+  Notes: Page-layout evidence now records explicit `analysis_cost_tier`, stage, OCR engine/language, render DPI, OCR pass count, cache key, cache hit/miss, failure reason, and whether high-cost analysis is permitted. `PdfDocumentLoader.load_page_layout_evidence(...)` records every page as cheap inventory when OCR is disabled or outside the candidate limit, and only candidate pages enter coordinate OCR. High-cost analysis remains disabled by default and represented as policy metadata, not hidden work.
 
-- [ ] Define region-first OCR for mixed and vertical layouts
+- [x] Define region-first OCR for mixed and vertical layouts
   Evidence needed: vertical columns, horizontal blocks, rotated regions, headers, footers, watermarks, and artwork can be separated before OCR, with source coordinates and local reading order retained.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
   Notes: Detect connected components/line bands, cluster by x/y overlap and stroke orientation, rotate vertical regions to OCR-friendly orientation, OCR each region with bounded PSM/language candidates, then merge by deterministic geometry. Keep raw region OCR and normalized logical text separately.
+  Implemented Notes: `PdfOcrRegionEvidence` now captures page-local OCR regions with source bounding boxes, raw OCR, normalized logical text, local writing mode, local reading order, rotation metadata, confidence, token count, quality flags, and deterministic evidence reasons. OCR words are grouped into vertical/right-to-left column regions, horizontal text regions, and bounded header/footer regions before serialization. Region evidence remains provenance only and does not authorize hierarchy splitting or replace canonical raw text.
 
-- [ ] Define page-level orientation and reading-order evidence contract
+- [x] Define page-level orientation and reading-order evidence contract
   Evidence needed: each page preserves dimensions, rotation hypotheses, horizontal/vertical mode, left-to-right/right-to-left order, region count, OCR confidence, and schema version.
-  Notes: Compute hypotheses from word/line bounding boxes and regions, not OCR text alone. Preserve competing hypotheses when confidence is close. Orientation/order metadata is evidence only and cannot authorize hierarchy splitting by itself.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+  Notes: `PdfPageLayoutEvidence` now serializes dimensions, rotation degrees, competing orientation hypotheses, writing mode, reading order, writing/order confidence, `region_count`, OCR confidence, OCR word boxes, and schema version. Empty OCR pages keep `region_count=0`; OCR pages expose at least one bounded page-level region, with multi-column pages retaining a higher count. Orientation/order metadata remains evidence only and cannot authorize hierarchy splitting by itself.
 
-- [ ] Define OCR quality and character provenance contract
+- [x] Define OCR quality and character provenance contract
   Evidence needed: normalized spans trace to page index, region id, OCR output, confidence, bounding box, and normalization version.
-  Notes: Flag low-confidence, symbol-heavy, repeated-garbage, and implausible-language spans. Whitespace normalization must not erase punctuation, page identity, or source traceability. Low-quality OCR cannot become trusted structure evidence.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_page_evidence.py`; `Deep_Reflective_Reader/scripts/test_pdf_page_evidence.py`.
+  Notes: `PdfOcrWordEvidence` now carries page index, region id, raw OCR token, normalized token, normalization version, confidence, bounding box, TSV hierarchy numbers, and bounded quality flags for low-confidence, symbol-heavy, and repeated-garbage tokens. Token provenance remains OCR/layout evidence only; low-quality OCR still cannot become trusted structure evidence by itself.
 
 - [x] Define multi-PSM OCR candidate selection for scanned PDF raw loading
   Evidence needed: `_ocr_image_text()` compares bounded Tesseract candidates instead of accepting the first non-empty default output.
@@ -129,9 +140,11 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence: `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`; container prepare API verification returned `structured_document_ready=false` and `load_raw_text_ocr_low_quality` for `國富論lite` with `force_rebuild=true`.
   Notes: Regression covers candidate selection, low-quality rejection, explicit prepare error mapping, OCR memory reuse, and non-empty garbage rejection. `國富論lite` low-quality OCR is rejected before structured hierarchy persistence.
 
-- [ ] Prepare OCR layout and renderer-failure fixtures
+- [x] Prepare OCR layout and renderer-failure fixtures
   Evidence needed: fixtures cover `暗水幽靈.pdf` artistic vertical TOC, `國富論.pdf` vertical body text, horizontal scans, mixed orientation, circular page numbers, leader lines, and renderer decode failure.
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_ocr_layout_fixtures.py`; `Deep_Reflective_Reader/scripts/test_pdf_ocr_layout_fixtures.py`.
   Notes: Each fixture defines expected orientation/order, candidate regions, known limitations, and fallback behavior. Artistic scans need not achieve full-text equality; page/region evidence and conservative rejection are required.
+  Implemented Notes: The OCR layout fixture catalog now covers `暗水幽灵` artistic vertical TOC, `國富論` vertical body text, horizontal scan leader lines, mixed header/body/footer orientation regions, circular page numbers, and renderer decode failure fallback. Fixture tests validate page-local layout evidence, region typing, TOC candidate reconstruction where appropriate, conservative quality rejection for artistic/body-text cases, and renderer failure fallback expectations without making OCR evidence parser authority.
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

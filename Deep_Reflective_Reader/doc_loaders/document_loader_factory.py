@@ -2,16 +2,17 @@ from pathlib import Path
 
 from .text_document_loader import TextDocumentLoader
 from .pdf_document_loader import PdfDocumentLoader
+from .raw_data_paths import resolve_raw_data_dir
 
 
 class DocumentLoaderFactory:
     """Pick a loader implementation based on document extension."""
-    def __init__(self):
+    def __init__(self, base_dir: str | Path | None = None):
         """Initialize object state and injected dependencies.
 """
-        self.txt_loader = TextDocumentLoader()
-        self.pdf_loader = PdfDocumentLoader()
-        self.base_dir = Path("data/raw")
+        self.base_dir = resolve_raw_data_dir(base_dir)
+        self.txt_loader = TextDocumentLoader(base_dir=self.base_dir)
+        self.pdf_loader = PdfDocumentLoader(base_dir=self.base_dir)
 
     def get(self, doc_name: str):
         # 👉 最簡單判斷（可以之後優化）

@@ -1,16 +1,15 @@
-import SearchIcon from "@mui/icons-material/Search";
-import { Autocomplete, Box, Button, CircularProgress, TextField } from "@mui/material";
+import { Autocomplete, Box, CircularProgress, TextField } from "@mui/material";
 import { createFilterOptions } from "@mui/material/Autocomplete";
-import type { FormEvent } from "react";
+import { isSelectedDocumentOption } from "./model";
 
-interface DocumentSearchProps {
+interface BookSearchViewProps {
   value: string;
   options: string[];
   loading: boolean;
   searching: boolean;
   onChange: (value: string) => void;
   onOpen: () => void;
-  onLoad: () => void;
+  onSelect: (value: string) => void;
 }
 
 const filterOptions = createFilterOptions<string>({
@@ -21,31 +20,33 @@ const filterOptions = createFilterOptions<string>({
   trim: true,
 });
 
-export function DocumentSearch({
+export function BookSearchView({
   value,
   options,
   loading,
   searching,
   onChange,
   onOpen,
-  onLoad,
-}: DocumentSearchProps) {
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    onLoad();
-  }
-
+  onSelect,
+}: BookSearchViewProps) {
   return (
-    <Box component="form" className="document-search" onSubmit={handleSubmit}>
+    <Box className="document-search document-search-form">
       <Autocomplete
+        className="document-search-combobox"
         autoHighlight
         clearOnEscape
         options={options}
         filterOptions={filterOptions}
-        value={options.includes(value) ? value : null}
+        value={isSelectedDocumentOption(value, options) ? value : null}
         inputValue={value}
         onInputChange={(_, newValue) => onChange(newValue)}
-        onChange={(_, newValue) => onChange(newValue || "")}
+        onChange={(_, newValue) => {
+          const nextValue = newValue || "";
+          onChange(nextValue);
+          if (newValue) {
+            onSelect(newValue);
+          }
+        }}
         onOpen={onOpen}
         disabled={loading}
         loading={searching}
@@ -53,6 +54,7 @@ export function DocumentSearch({
         renderInput={(params) => (
           <TextField
             {...params}
+            className="document-search-input"
             label="Document"
             placeholder="Search documents"
             required
@@ -66,7 +68,13 @@ export function DocumentSearch({
               ...params.InputProps,
               endAdornment: (
                 <>
-                  {searching ? <CircularProgress color="inherit" size={18} /> : null}
+                  {searching ? (
+                    <CircularProgress
+                      className="document-search-loading-indicator"
+                      color="inherit"
+                      size={18}
+                    />
+                  ) : null}
                   {params.InputProps.endAdornment}
                 </>
               ),
@@ -74,14 +82,6 @@ export function DocumentSearch({
           />
         )}
       />
-      <Button
-        type="submit"
-        variant="contained"
-        startIcon={<SearchIcon />}
-        disabled={loading || searching || !options.includes(value)}
-      >
-        Load
-      </Button>
     </Box>
   );
 }

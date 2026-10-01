@@ -1,19 +1,20 @@
 from pathlib import Path
 
 from .abstract_document_loader import AbstractDocumentLoader
+from .raw_data_paths import resolve_raw_data_dir
 
 
 class TextDocumentLoader(AbstractDocumentLoader):
     """Load plain-text document files from raw data directory."""
     base_dir: Path
 
-    def __init__(self, base_dir: str = "data/raw"):
+    def __init__(self, base_dir: str | Path | None = None):
         """Initialize object state and injected dependencies.
 
 Args:
     base_dir: Base dir.
 """
-        self.base_dir = Path(base_dir)
+        self.base_dir = resolve_raw_data_dir(base_dir)
 
     def load(self, doc_name: str) -> str:
         """Load persisted artifact and return parsed object/data.

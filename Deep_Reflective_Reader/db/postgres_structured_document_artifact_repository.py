@@ -33,12 +33,25 @@ class PostgresStructuredDocumentArtifactRepository(StructuredDocumentArtifactRep
         document: StructuredDocument,
         doc_name: str | None = None,
     ) -> None:
-        """Persist structured document by logical doc name to PostgreSQL."""
+        """Persist structured metadata without replacing the current hierarchy."""
         resolved_doc_name = doc_name or document.document_id
         self.store.save(
             document=document,
             target=self.store.target_for_doc_name(resolved_doc_name),
             replace_existing_hierarchy=False,
+        )
+
+    def save_reparsed_document(
+        self,
+        document: StructuredDocument,
+        doc_name: str | None = None,
+    ) -> None:
+        """Persist a parser-level hierarchy replacement to PostgreSQL."""
+        resolved_doc_name = doc_name or document.document_id
+        self.store.save(
+            document=document,
+            target=self.store.target_for_doc_name(resolved_doc_name),
+            replace_existing_hierarchy=True,
         )
 
     def update_task_layout(

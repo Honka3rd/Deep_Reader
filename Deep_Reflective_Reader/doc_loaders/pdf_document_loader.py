@@ -19,7 +19,13 @@ from .document_load_errors import (
 )
 from .pdf_ocr_language_policy import normalize_tesseract_language_config
 from .pdf_outline import PdfOutlineEntry, PdfOutlineResult
-from .pdf_page_evidence import PdfPageLayoutEvidence, PdfPageTextBoundary, analyze_ocr_tsv
+from .pdf_page_evidence import (
+    PdfPageBoundaryEvidenceResult,
+    PdfPageLayoutEvidence,
+    PdfPageTextBoundary,
+    analyze_ocr_tsv,
+)
+from .raw_data_paths import resolve_raw_data_dir
 
 
 logger = logging.getLogger(__name__)
@@ -87,7 +93,7 @@ class PdfDocumentLoader(AbstractDocumentLoader):
 
     def __init__(
         self,
-        base_dir: str = "data/raw",
+        base_dir: str | Path | None = None,
         ocr_enabled: bool | None = None,
         ocr_language: str | None = None,
         tesseract_cmd: str | None = None,
@@ -101,7 +107,7 @@ class PdfDocumentLoader(AbstractDocumentLoader):
 Args:
     base_dir: Base dir.
 """
-        self.base_dir = Path(base_dir)
+        self.base_dir = resolve_raw_data_dir(base_dir)
         self.ocr_enabled = (
             self._env_flag("DEEP_READER_PDF_OCR_ENABLED")
             if ocr_enabled is None
@@ -217,6 +223,7 @@ Returns:
         if not file_path.exists():
             raise FileNotFoundError(f"{file_path} not found")
         reader = PdfReader(str(file_path))
+        source_sha256 = self._file_sha256(file_path)
         evidence: list[PdfPageLayoutEvidence] = []
         page_limit = candidate_page_limit or len(reader.pages)
         for page_index, page in enumerate(reader.pages):
@@ -234,8 +241,19 @@ Returns:
                         height=height,
                         native_text_chars=len(native_text),
                         image_count=len(images),
+                        source_file_name=file_path.name,
+                        source_sha256=source_sha256,
                         ocr_text=native_text,
                         analysis_stage="inventory",
+                        analysis_cost_tier="cheap_inventory",
+                        ocr_pass_count=0,
+                        cache_key=self._layout_cache_key(
+                            source_sha256=source_sha256,
+                            page_index=page_index,
+                            stage="inventory",
+                        ),
+                        cache_hit=False,
+                        high_cost_analysis_permitted=False,
                         evidence=["page_inventory"],
                     )
                 )
@@ -257,17 +275,30 @@ Returns:
                         native_text_chars=len(native_text),
                         images=images,
                         image_paths=image_paths,
+                        source_file_name=file_path.name,
+                        source_sha256=source_sha256,
                     )
                 )
         return evidence
 
     def load_page_text_boundaries(self, doc_name: str) -> list[PdfPageTextBoundary]:
         """Return canonical page-to-character spans using the page-aware loader."""
+        evidence = self.load_page_boundary_evidence(doc_name)
+        return list(evidence.boundaries)
+
+    def load_page_boundary_evidence(self, doc_name: str) -> PdfPageBoundaryEvidenceResult:
+        """Return compact page boundary evidence for manual TOC anchors."""
+        file_path = self._resolve_file_path(doc_name)
+        if not file_path.exists():
+            raise FileNotFoundError(f"{file_path} not found")
+
+        source_sha256 = self._file_sha256(file_path)
+        reader = PdfReader(str(file_path))
         pages = self.load_pages(doc_name)
         separator = "\n\n"
         native_pages: list[str] = []
+        page_labels = self._reader_page_labels(reader)
         try:
-            reader = PdfReader(str(self._resolve_file_path(doc_name)))
             native_pages = [page.extract_text() or "" for page in reader.pages]
             if any(native_pages):
                 separator = "\n"
@@ -285,6 +316,12 @@ Returns:
                         char_start=cursor,
                         char_end=cursor,
                         text="",
+                        page_label=(
+                            page_labels[page_index]
+                            if page_index < len(page_labels)
+                            else None
+                        ),
+                        source_sha256=source_sha256,
                     )
                 )
                 continue
@@ -300,12 +337,24 @@ Returns:
                     char_start=start,
                     char_end=cursor,
                     text=text,
+                    page_label=(
+                        page_labels[page_index]
+                        if page_index < len(page_labels)
+                        else None
+                    ),
+                    source_sha256=source_sha256,
                 )
             )
             seen_native_page = seen_native_page or has_native_text
             if not has_native_text and page_index + 1 < len(pages):
                 cursor += len(separator)
-        return boundaries
+        return PdfPageBoundaryEvidenceResult(
+            doc_name=doc_name,
+            source_file_name=file_path.name,
+            source_sha256=source_sha256,
+            page_count=len(reader.pages),
+            boundaries=boundaries,
+        )
 
     def load_outline(self, doc_name: str) -> PdfOutlineResult:
         """Read and validate native PDF bookmarks without invoking OCR."""
@@ -398,6 +447,8 @@ Returns:
         native_text_chars: int,
         images: list[object],
         image_paths: list[Path] | None = None,
+        source_file_name: str | None = None,
+        source_sha256: str | None = None,
     ) -> PdfPageLayoutEvidence:
         """Run coordinate OCR on one candidate page without changing raw text."""
         if shutil.which(self.tesseract_cmd) is None:
@@ -407,7 +458,19 @@ Returns:
                 height=height,
                 native_text_chars=native_text_chars,
                 image_count=len(images),
+                source_file_name=source_file_name,
+                source_sha256=source_sha256,
                 analysis_stage="inventory",
+                analysis_cost_tier="cheap_inventory",
+                ocr_pass_count=0,
+                cache_key=self._layout_cache_key(
+                    source_sha256=source_sha256,
+                    page_index=page_index,
+                    stage="inventory",
+                ),
+                cache_hit=False,
+                failure_reason="tesseract_unavailable",
+                high_cost_analysis_permitted=False,
                 evidence=["tesseract_unavailable"],
             )
         with tempfile.TemporaryDirectory(prefix="deep-reader-pdf-layout-") as temp_dir:
@@ -448,6 +511,19 @@ Returns:
                     native_text_chars=native_text_chars,
                     image_count=max(len(images), len(sources)),
                     tsv_text="\n".join(parts),
+                    source_file_name=source_file_name,
+                    source_sha256=source_sha256,
+                    ocr_language=self.ocr_language,
+                    render_dpi=self.pdf_render_dpi,
+                    ocr_pass_count=len(sources),
+                    cache_key=self._layout_cache_key(
+                        source_sha256=source_sha256,
+                        page_index=page_index,
+                        stage="coordinate_ocr",
+                        psm=psm,
+                    ),
+                    cache_hit=False,
+                    high_cost_analysis_permitted=False,
                 )
                 candidate = replace(candidate, evidence=[*candidate.evidence, f"tesseract_psm_{psm}"])
                 quality = (
@@ -472,7 +548,33 @@ Returns:
                 native_text_chars=native_text_chars,
                 image_count=max(len(images), len(sources)),
                 tsv_text="",
+                source_file_name=source_file_name,
+                source_sha256=source_sha256,
+                ocr_language=self.ocr_language,
+                render_dpi=self.pdf_render_dpi,
+                ocr_pass_count=0,
+                cache_key=self._layout_cache_key(
+                    source_sha256=source_sha256,
+                    page_index=page_index,
+                    stage="coordinate_ocr",
+                ),
+                cache_hit=False,
+                failure_reason="no_ocr_sources",
+                high_cost_analysis_permitted=False,
             )
+
+    @staticmethod
+    def _layout_cache_key(
+        *,
+        source_sha256: str | None,
+        page_index: int,
+        stage: str,
+        psm: str | None = None,
+    ) -> str | None:
+        if not source_sha256:
+            return None
+        psm_part = f":psm:{psm}" if psm is not None else ""
+        return f"pdf-layout:v1:{source_sha256}:page:{page_index}:stage:{stage}{psm_part}"
 
     @staticmethod
     def _page_dimensions(page: object, images: list[object]) -> tuple[int | None, int | None]:
@@ -936,6 +1038,16 @@ Returns:
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
                 digest.update(chunk)
         return digest.hexdigest()
+
+    def _reader_page_labels(self, reader: PdfReader) -> list[str | None]:
+        try:
+            labels = reader.page_labels or []
+        except Exception:
+            labels = []
+        return [
+            None if label is None else str(label)
+            for label in labels
+        ]
 
     def _tesseract_version(self, doc_name: str) -> str:
         try:
