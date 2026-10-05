@@ -184,3 +184,38 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 5. The schema boundary must preserve hierarchy-first response shape: anchor evidence is metadata on `chapters[]` / `chapters[].sections[]`, not a second hierarchy source. **[From HLD] + [Future Direction]**
 6. Any future `page_range` request/response schema must remain source-agnostic; PDFs are the first expected pageable source, not an OCR-only special case. **[Maintainer-Provided] + [Future Direction]**
 7. `AnchorEvidenceResponse` currently supports `anchor_type`, `status`, `reason`, char offsets, page indices, and page labels as optional lightweight metadata. **[Code-Confirmed]**
+
+## 19. Batched Task-Unit Content API
+
+> 本節記錄 frontend content fan-out optimization 的 schema boundary。Batch schema 已落地為 backward-compatible additive API evolution；single task-unit content schema 仍保留。 **[Code-Confirmed]**
+
+1. Batched content request allows the UI to request one selected section's ordered `task_unit_ids` through a single on-demand content API call instead of issuing one request per task unit. **[Code-Confirmed]**
+2. `BatchTaskUnitContentRequest` keeps explicit render options `segmented` and `include_raw_content`, matching the existing single task-unit content endpoint semantics. **[Code-Confirmed]**
+3. `BatchTaskUnitContentResponse.contents[]` returns ordered per-task-unit content responses that preserve the existing `TaskUnitContentResponse` shape rather than inventing a second content-block contract. **[Code-Confirmed]**
+4. Request validation rejects empty task-unit id lists and duplicate ids at schema boundary; unknown ids and hierarchy-incompatible legacy documents fail fast through the same coordinator lookup semantics as the single endpoint. **[Code-Confirmed]**
+5. Initial batch semantics are all-or-nothing; there is no partial-success item schema. **[Code-Confirmed]**
+6. The existing single task-unit content endpoint remains the compatibility and fallback path. **[Code-Confirmed] + [Future Direction]**
+7. Batch content is still on-demand rich content, not task-layout payload; `/documents/task-layout` must remain lightweight and must not return task-unit content or `content_blocks`. **[Code-Confirmed] + [From HLD]**
+8. Batch schema evolution must not introduce persistence mutation, profile diagnostics write-back, parser authority, artifact write semantics, root `sections[]` flow, or `structure_nodes` as main flow. **[From HLD]**
+
+## 20. Future Direction Note: Reading Target Interaction API Schemas
+
+> 本節記錄 reading interaction API schema planning；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. Public schemas should represent a generic reading target with `target_type=document|chapter|section|task_unit` and the required id for that level: `doc_name`, `chapter_id`, `section_id`, or `task_unit_id`. **[Maintainer-Provided] + [Future Direction]**
+2. Optional parent ids may be included only for consistency validation and must not become title-based fallback. **[Maintainer-Provided] + [Future Direction]**
+3. Read schemas and generate schemas must be separate. Read responses return persisted artifact/session state or a missing/not-generated status without implying generation. **[Maintainer-Provided] + [Future Direction]**
+4. Analysis schemas should expose validated structured fields for summary, reasoning/interpretation, parsing/explanation, status, target metadata, artifact metadata, and validation/generation failure information when applicable. **[Maintainer-Provided] + [Future Direction]**
+5. Quiz schemas should expose `short_answer`, `multiple_choice`, and `true_false` item types only, include answer payloads, enforce item count limits, and support insufficient-content status. **[Maintainer-Provided] + [Future Direction]**
+6. Critical-thinking schemas should cover session generation, answer submission, and evaluation retry with statuses `question_generated`, `insufficient_content`, `answer_submitted`, `evaluation_failed`, and `completed`. **[Maintainer-Provided] + [Future Direction]**
+7. All successful generated-artifact response schemas should carry schema version, prompt instruction version, context mode, source structure version, source hash or equivalent provenance where available, and target metadata. **[Maintainer-Provided] + [Future Direction]**
+8. Validation should reject malformed target ids, unsupported quiz types, excessive quiz count, missing critical-thinking answer where required, and invalid model-output shapes. **[Maintainer-Provided] + [Future Direction]**
+9. Interaction schemas must not expand `/documents/task-layout` with heavy artifact payloads and must not expose raw text by default. **[From HLD] + [Future Direction]**
+
+### 20.1 Artifact-Aware Interaction Metadata Schemas
+
+1. Generated artifact response schemas should optionally expose artifact-aware context metadata: `artifact_context_mode`, `referenced_artifact_ids`, referenced artifact target levels/types, coverage counts, and deduplication/abstraction hint flags. **[Maintainer-Provided] + [Future Direction]**
+2. Metadata should distinguish primary source evidence from secondary lower-level artifact references. **[Maintainer-Provided] + [Future Direction]**
+3. Missing lower-level artifacts should serialize as empty/omitted secondary context metadata, not as an error. **[Maintainer-Provided] + [Future Direction]**
+4. API schemas should not expose full lower-level artifact payloads inside higher-level artifact responses by default. **[Maintainer-Provided] + [Future Direction]**
+5. Referenced artifact ids are observability/provenance metadata and must not become client-side hierarchy authority. **[From HLD] + [Future Direction]**

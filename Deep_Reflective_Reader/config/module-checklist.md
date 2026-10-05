@@ -54,6 +54,14 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define backend rollout policy contract
 - [ ] Define file-to-db coexistence configuration model
 - [ ] Review backend-selection implications after Phase 1 evaluation
+- [ ] Define reading interaction configuration contract
+  Evidence needed: config exposes target-level quiz max counts, allowed quiz type policy, and generation/evaluation cost-gate policy hooks.
+  Notes: Defaults should be task_unit=3, section=5, chapter=10, document/book=25.
+  Timestamp: 2026-10-05
+- [ ] Keep persisted artifact reads outside cost/permission generation gates
+  Evidence needed: config/service integration distinguishes free read of existing artifacts from costly generate/refresh/evaluate/retry actions.
+  Notes: This preserves the read/generate split from the Grill-me decision.
+  Timestamp: 2026-10-05
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

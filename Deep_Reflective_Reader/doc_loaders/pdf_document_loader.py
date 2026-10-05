@@ -153,7 +153,8 @@ Returns:
             raise FileNotFoundError(f"{file_path} not found")
 
         reader = PdfReader(str(file_path))
-        text, metrics = self._extract_text_and_metrics(reader)
+        pages, metrics = self._extract_pages_and_metrics(reader)
+        text = "\n".join(page_text for page_text in pages if page_text)
         logger.info(
             "pdf_inspected doc=%s file=%s pages=%s native_text_chars=%s image_pages=%s font_pages=%s scanned=%s",
             doc_name,
@@ -195,13 +196,9 @@ Returns:
             raise FileNotFoundError(f"{file_path} not found")
 
         reader = PdfReader(str(file_path))
-        native_pages = [((page.extract_text() or "").strip()) for page in reader.pages]
-        if any(native_pages):
-            _, metrics = self._extract_text_and_metrics(reader)
-            if not metrics.is_predominantly_scanned_image_pdf:
-                return native_pages
-        else:
-            _, metrics = self._extract_text_and_metrics(reader)
+        native_pages, metrics = self._extract_pages_and_metrics(reader, strip_pages=True)
+        if any(native_pages) and not metrics.is_predominantly_scanned_image_pdf:
+            return native_pages
         if not metrics.is_predominantly_scanned_image_pdf:
             return native_pages
         if not self.ocr_enabled:
@@ -294,16 +291,20 @@ Returns:
 
         source_sha256 = self._file_sha256(file_path)
         reader = PdfReader(str(file_path))
-        pages = self.load_pages(doc_name)
+        native_pages, metrics = self._extract_pages_and_metrics(reader)
+        pages = native_pages
+        if metrics.is_predominantly_scanned_image_pdf:
+            if not self.ocr_enabled:
+                raise RawTextRequiresOcrError(doc_name=doc_name, detail="page_aware_load")
+            pages = self._load_pages_with_ocr(
+                doc_name=doc_name,
+                file_path=file_path,
+                reader=reader,
+            )
         separator = "\n\n"
-        native_pages: list[str] = []
         page_labels = self._reader_page_labels(reader)
-        try:
-            native_pages = [page.extract_text() or "" for page in reader.pages]
-            if any(native_pages):
-                separator = "\n"
-        except Exception:
-            pass
+        if any(native_pages):
+            separator = "\n"
         boundaries: list[PdfPageTextBoundary] = []
         cursor = 0
         has_native_text = bool(native_pages and any(native_pages))
@@ -956,6 +957,16 @@ Returns:
 
     def _extract_text_and_metrics(self, reader: PdfReader) -> tuple[str, PdfInspectionMetrics]:
         """Extract native text while collecting PDF resource metrics."""
+        pages, metrics = self._extract_pages_and_metrics(reader)
+        return "\n".join(page_text for page_text in pages if page_text), metrics
+
+    def _extract_pages_and_metrics(
+        self,
+        reader: PdfReader,
+        *,
+        strip_pages: bool = False,
+    ) -> tuple[list[str], PdfInspectionMetrics]:
+        """Extract native page text once while collecting PDF resource metrics."""
         texts: list[str] = []
         native_text_chars = 0
         pages_with_images = 0
@@ -963,9 +974,10 @@ Returns:
 
         for page in reader.pages:
             text = page.extract_text() or ""
+            if strip_pages:
+                text = text.strip()
             native_text_chars += len(text.strip())
-            if text:
-                texts.append(text)
+            texts.append(text)
 
             resources = page.get("/Resources") or {}
             if resources.get("/Font"):
@@ -979,7 +991,7 @@ Returns:
             pages_with_images=pages_with_images,
             pages_with_fonts=pages_with_fonts,
         )
-        return "\n".join(texts), metrics
+        return texts, metrics
 
     def _resolve_file_path(self, doc_name: str) -> Path:
         normalized_name = (

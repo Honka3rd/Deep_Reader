@@ -140,6 +140,11 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence: `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`; container prepare API verification returned `structured_document_ready=false` and `load_raw_text_ocr_low_quality` for `國富論lite` with `force_rebuild=true`.
   Notes: Regression covers candidate selection, low-quality rejection, explicit prepare error mapping, OCR memory reuse, and non-empty garbage rejection. `國富論lite` low-quality OCR is rejected before structured hierarchy persistence.
 
+- [x] Avoid repeated native-text extraction for PDF page-boundary evidence
+  Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; direct timing check for `APPLE.pdf` page-boundary evidence returned 121 boundaries in 3.338s with `ocr_started=False`.
+  Notes: Native PDF loading now extracts page text and metrics in one pass for `load()`, `load_pages()`, and `load_page_boundary_evidence(...)`. The `APPLE.pdf` regression proves a simple born-digital PDF can produce compact page-boundary evidence without invoking OCR or repeating expensive native extraction loops.
+  Timestamp: 2026-10-05
+
 - [x] Prepare OCR layout and renderer-failure fixtures
   Evidence needed: fixtures cover `暗水幽靈.pdf` artistic vertical TOC, `國富論.pdf` vertical body text, horizontal scans, mixed orientation, circular page numbers, leader lines, and renderer decode failure.
   Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_ocr_layout_fixtures.py`; `Deep_Reflective_Reader/scripts/test_pdf_ocr_layout_fixtures.py`.

@@ -30,8 +30,9 @@ body {
   top: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: minmax(300px, 680px) auto minmax(120px, 1fr);
+  grid-template-columns: minmax(300px, 680px) auto;
   align-items: center;
+  justify-content: start;
   gap: 16px;
   padding: 14px 20px;
   border-bottom: 1px solid #d9e1e6;
@@ -42,11 +43,6 @@ body {
   grid-template-columns: minmax(220px, 1fr);
   gap: 10px;
   align-items: center;
-}
-
-.status-region {
-  min-height: 20px;
-  text-align: right;
 }
 
 .repair-controls {
@@ -63,27 +59,30 @@ body {
   grid-template-columns: minmax(300px, 36%) minmax(0, 1fr);
   gap: 16px;
   padding: 16px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .navigation-pane,
 .content-pane {
   border: 1px solid #d9e1e6;
   min-width: 0;
+  min-height: 0;
 }
 
 .navigation-pane {
   max-height: none;
-  overflow: visible;
+  overflow: hidden;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .content-pane {
   padding: 28px;
   overflow-wrap: anywhere;
-  height: auto;
+  height: 100%;
   max-height: none;
-  overflow: visible;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -101,12 +100,28 @@ body {
 }
 
 .nav-title-row {
+  flex: 0 0 auto;
   margin-bottom: 14px;
+}
+
+.hierarchy-navigation {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
 }
 
 .chapter-list,
 .section-list {
   list-style: none;
+}
+
+.chapter-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
 }
 
 .chapter-item {
@@ -172,6 +187,7 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   position: relative;
 }
 
@@ -230,6 +246,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
 }
 
 .toc-editor-header,
@@ -289,16 +308,13 @@ body {
     padding: 12px;
   }
 
-  .status-region {
-    text-align: left;
-  }
-
   .toc-editor-mode-status {
     text-align: left;
   }
 
   .reader-layout {
     grid-template-columns: 1fr;
+    overflow: auto;
     padding: 12px;
   }
 

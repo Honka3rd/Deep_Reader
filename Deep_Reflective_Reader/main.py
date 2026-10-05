@@ -26,6 +26,8 @@ from api_schemas import (
     AnchorEvidenceResponse,
     ArtifactTargetRefResponse,
     ArtifactAvailabilityResponse,
+    BatchTaskUnitContentRequest,
+    BatchTaskUnitContentResponse,
     DocumentTaskLayoutChapterResponse,
     ChapterQuizRequest,
     ChapterQuizResponse,
@@ -218,6 +220,55 @@ def _map_artifact_target_ref_response(target_ref: object) -> ArtifactTargetRefRe
         task_unit_id=getattr(target_ref, "task_unit_id", None),
         content_block_id=getattr(target_ref, "content_block_id", None),
         metadata=_filter_artifact_target_metadata(getattr(target_ref, "metadata", None)),
+    )
+
+
+def _map_task_unit_content_response(
+    payload: object,
+    *,
+    include_raw_content: bool,
+) -> TaskUnitContentResponse:
+    """Map coordinator task-unit content DTO into public API response schema."""
+    return TaskUnitContentResponse(
+        document_id=payload.document_id,
+        document_title=payload.document_title,
+        task_unit_id=payload.task_unit_id,
+        title=payload.title,
+        container_title=payload.container_title,
+        content=payload.content if include_raw_content else None,
+        content_blocks=[
+            TaskUnitContentBlockResponse(
+                block_id=content_block.block_id,
+                content=content_block.content,
+                block_type=content_block.block_type,
+                artifact_ids=(
+                    None
+                    if content_block.artifact_ids is None
+                    else list(content_block.artifact_ids)
+                ),
+                artifact_target_refs=(
+                    None
+                    if content_block.artifact_target_refs is None
+                    else [
+                        _map_artifact_target_ref_response(target_ref)
+                        for target_ref in content_block.artifact_target_refs
+                    ]
+                ),
+                metadata=(
+                    None
+                    if content_block.metadata is None
+                    else dict(content_block.metadata)
+                ),
+            )
+            for content_block in payload.content_blocks
+        ],
+        source_section_ids=list(payload.source_section_ids),
+        parent_section_id=payload.parent_section_id,
+        section_id=payload.section_id,
+        section_title=payload.section_title,
+        chapter_id=payload.chapter_id,
+        chapter_title=payload.chapter_title,
+        is_fallback_generated=payload.is_fallback_generated,
     )
 
 
@@ -540,6 +591,7 @@ def prepare_task_layout(request: PrepareTaskLayoutRequest):
                 refresh_task_units=request.refresh_task_units,
                 task_unit_split_mode=request.task_unit_split_mode,
                 semantic_top_k_candidates=request.semantic_top_k_candidates,
+                include_anchor_page_evidence=request.include_anchor_page_evidence,
             )
         )
     except HTTPException:
@@ -777,6 +829,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
             refresh_task_units=request.refresh_task_units,
             task_unit_split_mode=request.task_unit_split_mode,
             semantic_top_k_candidates=request.semantic_top_k_candidates,
+            include_anchor_page_evidence=request.include_anchor_page_evidence,
         )
         def _artifact_response(
             artifact,
@@ -935,46 +988,48 @@ def get_task_unit_content(
             task_unit_id=request.task_unit_id,
             segmented=request.segmented,
         )
-        return TaskUnitContentResponse(
-            document_id=payload.document_id,
-            document_title=payload.document_title,
-            task_unit_id=payload.task_unit_id,
-            title=payload.title,
-            container_title=payload.container_title,
-            content=payload.content if request.include_raw_content else None,
-            content_blocks=[
-                TaskUnitContentBlockResponse(
-                    block_id=content_block.block_id,
-                    content=content_block.content,
-                    block_type=content_block.block_type,
-                    artifact_ids=(
-                        None
-                        if content_block.artifact_ids is None
-                        else list(content_block.artifact_ids)
-                    ),
-                    artifact_target_refs=(
-                        None
-                        if content_block.artifact_target_refs is None
-                        else [
-                            _map_artifact_target_ref_response(target_ref)
-                            for target_ref in content_block.artifact_target_refs
-                        ]
-                    ),
-                    metadata=(
-                        None
-                        if content_block.metadata is None
-                        else dict(content_block.metadata)
-                    ),
+        return _map_task_unit_content_response(
+            payload,
+            include_raw_content=request.include_raw_content,
+        )
+    except (ValueError, ValidationError) as error:
+        raise HTTPException(
+            status_code=_resolve_task_unit_content_failure_status(str(error)),
+            detail=str(error),
+        )
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post(
+    "/documents/{doc_name}/task-units/content",
+    response_model=BatchTaskUnitContentResponse,
+)
+def get_batch_task_unit_content(
+    doc_name: str,
+    request: BatchTaskUnitContentRequest,
+):
+    """Read ordered task-unit render content payloads with one request."""
+    try:
+        payloads = section_task_coordinator.get_task_unit_contents(
+            doc_name=doc_name,
+            task_unit_ids=request.task_unit_ids,
+            segmented=request.segmented,
+        )
+        document_id = payloads[0].document_id if payloads else ""
+        document_title = payloads[0].document_title if payloads else ""
+        return BatchTaskUnitContentResponse(
+            document_id=document_id,
+            document_title=document_title,
+            contents=[
+                _map_task_unit_content_response(
+                    payload,
+                    include_raw_content=request.include_raw_content,
                 )
-                for content_block in payload.content_blocks
+                for payload in payloads
             ],
-            source_section_ids=list(payload.source_section_ids),
-            parent_section_id=payload.parent_section_id,
-            section_id=payload.section_id,
-            section_title=payload.section_title,
-            chapter_id=payload.chapter_id,
-            chapter_title=payload.chapter_title,
-            is_fallback_generated=payload.is_fallback_generated,
         )
     except (ValueError, ValidationError) as error:
         raise HTTPException(

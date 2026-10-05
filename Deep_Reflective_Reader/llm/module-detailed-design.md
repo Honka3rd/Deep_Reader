@@ -73,3 +73,12 @@
 ## 13. Suggested Next Documentation Improvements
 
 1. 補 provider capability version policy。
+
+## 14. Future Direction Note: Reading Interaction Capability Boundary
+
+> 本節記錄 reading interaction 對 model capability metadata 的使用邊界；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. Reading interaction context selection should use provider capability metadata to decide whether full target context fits in one request. **[Maintainer-Provided] + [Future Direction]**
+2. If target content exceeds model capability or configured budget, orchestration should use compact semantic context rather than forcing oversized prompts. **[Maintainer-Provided] + [Future Direction]**
+3. The LLM provider should remain a completion/capability boundary. It should not own reading target resolution, prompt business wording, artifact persistence, permission policy, or quiz count defaults. **[Code-Confirmed] + [Future Direction]**
+4. Interaction artifacts should record the effective model/capability context used by upper layers where available, but provider metadata itself must not become parser or hierarchy authority. **[From HLD] + [Future Direction]**

@@ -104,6 +104,42 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Preserve fail-fast hierarchy lookup semantics for content-block interactions
 - [ ] Keep task-layout API lightweight and separate from on-demand rich-content read API
 - [ ] Route future content-block interactions through explicit id-based targeting and service boundaries
+- [ ] Define reading-target resolver orchestration for document/chapter/section/task-unit interactions
+  Evidence needed: app-layer resolver accepts `doc_name`, `chapter_id`, `section_id`, and `task_unit_id` targets with optional parent-id consistency checks, and rejects title-primary or legacy fallback targeting.
+  Notes: This is the prerequisite for target-agnostic analysis, quiz, and critical-thinking generation.
+  Timestamp: 2026-10-05
+- [ ] Add analysis artifact read/generate orchestration as the first vertical slice
+  Evidence needed: read path returns persisted analysis or missing/not-generated without LLM calls; generate path explicitly builds context, calls LLM service, validates output, and persists the artifact.
+  Notes: Must preserve explicit write-path semantics and avoid backend session cache as artifact truth.
+  Timestamp: 2026-10-05
+- [ ] Add quiz artifact read/generate orchestration through the same target abstraction
+  Evidence needed: orchestration passes configured target-level max count and valid quiz type enum to the service, then persists only validated quiz output or insufficient-content status.
+  Notes: LLM decides the type mix; backend enforces count/type validation before artifact success.
+  Timestamp: 2026-10-05
+- [ ] Add critical-thinking session orchestration
+  Evidence needed: explicit routes/services can generate a persisted question session, submit one user answer for evaluation, and retry failed evaluation without losing the answer.
+  Notes: First version is question -> answer -> evaluation only; no question pool or history browsing requirement.
+  Timestamp: 2026-10-05
+- [ ] Add future cost and permission gates around generation, refresh, evaluation, and retry write paths
+  Evidence needed: app orchestration exposes a single guard point before costly LLM actions and never gates ordinary persisted-artifact reads.
+  Notes: Permission policy can evolve later, but the route/service split must leave a clean insertion point.
+  Timestamp: 2026-10-05
+- [ ] Orchestrate artifact-aware context lookup for higher-level generation
+  Evidence needed: app layer can request lower-level artifact summaries scoped to the resolved section/chapter/document target and pass them as secondary context without auto-generating missing child artifacts.
+  Notes: Primary source context and secondary artifact context must remain separate through orchestration.
+  Timestamp: 2026-10-05
+- [ ] Expose artifact-aware generation metadata from orchestration results
+  Evidence needed: generated artifact result metadata includes whether lower-level artifacts were referenced, referenced artifact ids, and deduplication/abstraction hint flags.
+  Notes: Metadata supports UI observability and future debugging.
+  Timestamp: 2026-10-05
+- [x] Orchestrate batch task-unit content lookup through a single hierarchy load
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.
+  Notes: Coordinator batch path resolves the document/hierarchy once, validates ordered unique task-unit ids, returns per-task-unit content in request order, and preserves single endpoint segmented semantics. It replaces frontend selected-section request fan-out with one on-demand content call while remaining read-only and avoiding task-layout heavy payload, profile write-back, parser authority, and legacy fallback paths.
+  Timestamp: 2026-10-05
+- [x] Prevent ordinary task-layout cache-hit reads from loading manual source evidence
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_layout_persistence_cache.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_task_layout_persistence_cache.py`.
+  Notes: `SectionTaskCoordinator.get_document_task_layout(...)` now tracks whether task-layout reused an existing cache entry and skips preparation-owned manual source evidence/page-boundary loading on ordinary cache-hit reads unless `include_anchor_page_evidence=True` is explicitly requested for TOC edit-existing prefill. Ordinary cache-hit layout projection remains read-only, falls back to character-range anchor evidence, and avoids hidden scanned-PDF OCR/source loading on reading-page access.
+  Timestamp: 2026-10-05
 - [x] Orchestrate source-agnostic manual structure validation
   Evidence needed: coordinator-level path validates user-supplied structure for any document type without persisting hierarchy during preview.
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/document_structure/manual_structure_projection.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`.

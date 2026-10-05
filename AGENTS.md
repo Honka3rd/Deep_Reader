@@ -63,6 +63,13 @@ Every markdown edit must report:
 - evidence
 - validation result
 
+Checklist governance:
+
+- Any newly added or status-updated checklist item must include a final metadata line formatted exactly as `Timestamp: YYYY-MM-DD`.
+- The timestamp must be the date of the checklist change, not an inferred feature completion date.
+- If a checklist item is moved from unchecked to checked, update or add its final `Timestamp: YYYY-MM-DD` line during the same edit.
+- Do not add timestamps to unrelated existing checklist items unless they are being changed in the same task.
+
 ## Progress update policy
 
 `progress.md` may only be updated when:

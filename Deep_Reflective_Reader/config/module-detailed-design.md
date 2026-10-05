@@ -116,3 +116,13 @@
 - parser semantics
 
 Backend governance may select and route storage implementations, but it must not redefine the domain meaning of structured documents, profiles, retrieval artifacts, or raw document inputs. **[Maintainer-Provided] + [Future Direction]**
+
+## 15. Future Direction Note: Reading Interaction Configuration
+
+> 本節記錄 reading interaction policy configuration；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. Config should own target-level quiz default maximums: `task_unit=3`, `section=5`, `chapter=10`, `document/book=25`. **[Maintainer-Provided] + [Future Direction]**
+2. Config should expose valid quiz type vocabulary only as policy input to services/prompts; schema/service validation remains the enforcement boundary. **[Future Direction]**
+3. Config should expose interaction token/cost policy hooks for generation, refresh, critical-thinking evaluation, and retry. **[Maintainer-Provided] + [Future Direction]**
+4. Config should not define prompt wording, artifact payload schema, hierarchy semantics, or route behavior. **[From HLD] + [Future Direction]**
+5. Config should support future permission/quota integration without gating ordinary persisted artifact reads. **[Maintainer-Provided] + [Future Direction]**

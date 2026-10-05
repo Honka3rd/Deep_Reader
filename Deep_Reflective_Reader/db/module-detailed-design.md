@@ -711,3 +711,26 @@ Open questions for Phase 1 logical schema are listed in section 16.8. No additio
 1. When schema work is explicitly requested, derive an implementation checklist from this document before proposing tables.
 2. Before any DB runtime work, reconcile this document with `document_structure`, `config`, `document_preparation`, `shared`, and `section_tasks` module checklists.
 3. If a public API stability requirement appears, add a targeted public/domain identity decision record before implementation.
+
+## 20. Future Direction Note: Reading Interaction Artifact Persistence
+
+> 本節記錄 reading interaction artifacts 對現有 common artifact model 的映射；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. Reading interaction outputs should use the existing common logical `Artifact` entity rather than category-specific artifact tables in the first version. **[Maintainer-Provided] + [From HLD]**
+2. Required initial `artifact_type` values are `analysis`, `quiz`, and `critical_thinking_session`. **[Maintainer-Provided] + [Future Direction]**
+3. `analysis` and `quiz` are current artifact per validated target; normal read returns the current persisted artifact or missing/not-generated. **[Maintainer-Provided] + [Future Direction]**
+4. `critical_thinking_session` is multi-session per validated target. A generated question is persisted immediately even if the user never answers. **[Maintainer-Provided] + [Future Direction]**
+5. Critical-thinking session payload/status should support `question_generated`, `insufficient_content`, `answer_submitted`, `evaluation_failed`, and `completed`. **[Maintainer-Provided] + [Future Direction]**
+6. Artifact targets must remain hierarchy-aware: document/book maps to the document target, chapter to chapter id, section to section id, and task unit to task-unit id; optional parent ids may be used only for consistency validation. **[Maintainer-Provided] + [Future Direction]**
+7. Artifact metadata should include source structure version, source hash where available, schema version, prompt instruction version, context mode, token estimate/budget, and evidence ids. **[Maintainer-Provided] + [Future Direction]**
+8. Insufficient-content is a valid persisted artifact/session status with reason metadata, especially for OCR noise or symbol-only targets. **[Maintainer-Provided] + [Future Direction]**
+9. Hard reparse invalidates/deletes these artifacts with other derived resources; no historical artifact table or orphan-preserving history is required for the first version. **[Maintainer-Provided] + [From HLD]**
+10. The artifact model must not become hierarchy truth, parser authority, task-layout payload authority, or a backend session cache. **[From HLD] + [Future Direction]**
+
+### 20.1 Referenced Artifact Metadata
+
+1. Higher-level artifacts may reference lower-level artifacts used as secondary generation context. **[Maintainer-Provided] + [Future Direction]**
+2. Reference metadata should be stored as artifact metadata/payload fields such as `referenced_artifact_ids`, referenced artifact types, referenced target levels, artifact context mode, coverage counts, and deduplication/abstraction hint flags. **[Maintainer-Provided] + [Future Direction]**
+3. Referenced artifacts remain interaction memory only. They do not become source text, hierarchy truth, parser authority, or a replacement for hierarchy-aware target validation. **[From HLD] + [Maintainer-Provided]**
+4. Hard reparse cleanup still invalidates/deletes both generated artifacts and their reference relationships because all referenced artifacts are derived from the replaced hierarchy. **[Maintainer-Provided] + [From HLD]**
+5. Absence or pruning of lower-level artifact references must not make a higher-level artifact invalid when the primary source context is sufficient. **[Maintainer-Provided] + [Future Direction]**

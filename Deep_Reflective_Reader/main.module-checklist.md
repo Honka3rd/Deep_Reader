@@ -110,6 +110,36 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence needed: route behavior or client-facing contract makes it clear that `/documents/task-layout` is the preferred existing-layout read path, while `/documents/prepare-task-layout` is reserved for first-time prepare, explicit repair, or fallback.
   Notes: Repeated UI selection of an already prepared document should not implicitly enter OCR/language/profile or LLM-backed work merely to display the current layout. Route observability should report whether prepare-then-read reused existing structured artifacts or performed expensive preparation.
 
+- [ ] Add read-only reading interaction artifact routes
+  Evidence needed: routes return persisted analysis/quiz/session state or missing/not-generated without invoking LLM or mutating persistence.
+  Notes: Read routes must not trigger generation, prepare, reparse, task-layout mutation, or profile diagnostics write-back.
+  Timestamp: 2026-10-05
+
+- [ ] Add explicit analysis generate/refresh route
+  Evidence needed: route validates target request, dispatches to app orchestration, maps strict success/insufficient-content/generation-failure responses, and keeps cost gating insertable.
+  Notes: First implementation vertical slice should use this route family.
+  Timestamp: 2026-10-05
+
+- [ ] Add explicit quiz generate/refresh route
+  Evidence needed: route passes valid quiz type enum and target-level max count policy through request/config boundaries and maps strict validation failures.
+  Notes: The route should not decide quiz type mix itself.
+  Timestamp: 2026-10-05
+
+- [ ] Add critical-thinking session routes
+  Evidence needed: routes support question generation, answer submission with evaluation, and evaluation retry while preserving generated-but-unanswered sessions.
+  Notes: First version remains one question, one user answer, one evaluation.
+  Timestamp: 2026-10-05
+
+- [ ] Add no-auto-generation route regressions for interaction reads
+  Evidence needed: tests prove read routes do not call LLM or write artifacts when persisted artifacts are absent.
+  Notes: This protects cost and permission boundaries.
+  Timestamp: 2026-10-05
+
+- [x] Add batch task-unit content read route
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.
+  Notes: `POST /documents/{doc_name}/task-units/content` maps an ordered batch request to coordinator content lookup once, returns ordered per-task-unit content responses, preserves the single task-unit content endpoint as fallback, and covers segmented/raw-content options. It remains read-only and does not expand task-layout payloads, trigger prepare/reparse, mutate profile diagnostics, or write artifacts.
+  Timestamp: 2026-10-05
+
 After implementation, the task owner must update this checklist and mark the task as completed:
 
 No coding task should be considered complete unless the corresponding module checklist is updated.

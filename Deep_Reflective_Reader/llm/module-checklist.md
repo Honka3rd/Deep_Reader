@@ -47,7 +47,14 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Expose model capability metadata for reading interaction context gating
+  Evidence needed: interaction orchestration can determine full-target versus compact-context mode using provider capability metadata.
+  Notes: Provider remains a capability/completion boundary, not a target resolver or artifact owner.
+  Timestamp: 2026-10-05
+- [ ] Preserve provider boundary during structured interaction generation
+  Evidence needed: provider returns completion output while strict JSON validation, artifact persistence, and permission/cost gating stay outside `llm/`.
+  Notes: This keeps LLM integration reusable across analysis, quiz, and critical-thinking flows.
+  Timestamp: 2026-10-05
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

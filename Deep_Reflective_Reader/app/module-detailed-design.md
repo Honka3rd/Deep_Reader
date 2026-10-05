@@ -198,3 +198,39 @@ Root-cause boundary:
 3. Manual reparse calls the explicit `save_reparsed_document(...)` repository boundary, which PostgreSQL maps to `replace_existing_hierarchy=True`. **[Code-Confirmed]**
 4. Validation/source/draft failures must continue to preserve the current structured hierarchy and derived resources. **[From HLD] + [Code-Confirmed]**
 5. Successful manual reparse must remain explicit, transactional, hierarchy-first, and separate from task-layout read/projection. **[From HLD] + [Code-Confirmed]**
+
+## 20. Batch Task-Unit Content Orchestration
+
+> 本節記錄 selected-section content fan-out optimization 的 app-layer boundary。Coordinator batch read 已落地，single task-unit content lookup 仍保留。 **[Code-Confirmed]**
+
+1. `SectionTaskCoordinator.get_task_unit_contents(...)` resolves one document and one hierarchy snapshot once, then assembles content for an ordered batch of selected-section task-unit ids. **[Code-Confirmed]**
+2. Batch lookup must preserve the existing hierarchy-only, id-based task-unit resolution semantics used by the single task-unit content path. **[Code-Confirmed] + [Future Direction]**
+3. The app layer returns per-task-unit content DTOs in request order so the UI can render section content without issuing many concurrent browser requests. **[Code-Confirmed]**
+4. Missing, duplicate, or hierarchy-incompatible task-unit ids fail fast; the batch path does not fall back to title lookup, root `sections[]`, synthetic legacy hierarchy, or `structure_nodes`. **[Code-Confirmed] + [From HLD]**
+5. The batch path shares the same `segmented` semantics as the single task-unit content path; route/schema mapping controls raw-content inclusion. **[Code-Confirmed]**
+6. Batch content orchestration remains read-only: no task-layout mutation, no structured hierarchy mutation, no profile diagnostics write-back, no artifact writes, and no parser strategy decisions. **[Code-Confirmed] + [From HLD]**
+
+## 21. Future Direction Note: Reading Target LLM Interaction Orchestration
+
+> 本節記錄 book/chapter/section/task-unit LLM interaction 的 app-layer governance，來自 Grill-me requirements 收斂；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. app layer should expose a target-agnostic orchestration boundary for reading interactions over `document`, `chapter`, `section`, and `task_unit` targets. **[Maintainer-Provided] + [Future Direction]**
+2. Target identity must be deterministic: document/book uses `doc_name`, chapter uses `chapter_id`, section uses `section_id`, and task unit uses `task_unit_id`; optional parent ids may be accepted only for consistency validation. **[Maintainer-Provided] + [Future Direction]**
+3. Target resolution must stay hierarchy-aware and fail-fast; no title-primary targeting, root `sections[]`, `structure_nodes`, synthetic legacy hierarchy, or metadata/LLM classification fallback may become authority. **[From HLD] + [Maintainer-Provided]**
+4. Artifact read and generation must be split. Read endpoints load persisted artifacts only and return missing/not-generated when absent; they must not call LLM or create backend session cache as truth. **[Maintainer-Provided] + [Future Direction]**
+5. Generate, refresh, critical-thinking answer evaluation, and evaluation retry are explicit write paths and should be the future hooks for cost and permission gating. **[Maintainer-Provided] + [Future Direction]**
+6. Initial interaction types are `analysis`, `quiz`, and `critical_thinking_session`. `analysis` and `quiz` are current artifact per target; critical thinking is multi-session per target. **[Maintainer-Provided] + [Future Direction]**
+7. Critical-thinking orchestration is intentionally simple for the first version: generate one question, accept one user answer, and evaluate that answer. A generated-but-unanswered session is persisted with non-completed status instead of being discarded. **[Maintainer-Provided] + [Future Direction]**
+8. Critical-thinking statuses should include at least `question_generated`, `insufficient_content`, `answer_submitted`, `evaluation_failed`, and `completed`. Failed evaluation must preserve the submitted user answer and allow explicit retry. **[Maintainer-Provided] + [Future Direction]**
+9. app orchestration should delegate target context construction to `context/`, prompt construction to `prompts/`, strict output validation to service/schema boundaries, LLM calls to provider-backed services, and artifact persistence to repository/storage boundaries. **[From HLD] + [Future Direction]**
+10. Insufficient target content is a valid persisted outcome for all interaction types, with reason metadata, so OCR noise or symbol-only task units can terminate quickly and avoid repeated LLM cost. **[Maintainer-Provided] + [Future Direction]**
+11. Hard reparse invalidates/deletes derived interaction artifacts through the existing document-scoped derived-resource lifecycle; no historical artifact layer is required for the first version. **[Maintainer-Provided] + [From HLD]**
+12. First implementation vertical slice should be target resolver plus `analysis`, then extend the same abstraction to `quiz` and critical-thinking sessions. **[Maintainer-Provided] + [Future Direction]**
+
+### 21.1 Artifact-Aware Generation Orchestration
+
+1. When generating section/chapter/document artifacts, app orchestration should request lower-level artifact summaries as optional secondary context after the target itself is resolved. **[Maintainer-Provided] + [Future Direction]**
+2. The orchestration boundary should keep primary source context and secondary artifact context separate when delegating to context and prompt services. **[Maintainer-Provided] + [Future Direction]**
+3. Lower-level artifact lookup should be scoped by the resolved hierarchy target and should never scan unrelated documents or use title matching as target resolution. **[From HLD] + [Maintainer-Provided]**
+4. Missing lower-level artifacts should be treated as an empty secondary context, not as an error and not as a reason to auto-generate child artifacts. **[Maintainer-Provided] + [Future Direction]**
+5. Generated artifact metadata should expose whether artifact-aware context was used, which lower-level artifact ids were referenced, and whether deduplication/abstraction hints were applied. **[Maintainer-Provided] + [Future Direction]**

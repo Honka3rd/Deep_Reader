@@ -55,11 +55,10 @@ export function BookSearchView({
           <TextField
             {...params}
             className="document-search-input"
-            label="Document"
+            label="Select one Document"
             placeholder="Search documents"
             required
             size="small"
-            helperText="Select one document returned by the API."
             inputProps={{
               ...params.inputProps,
               "aria-label": "Document name",

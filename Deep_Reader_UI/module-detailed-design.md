@@ -119,7 +119,7 @@ The expected evolution is:
 
 The Reader UI should keep document-level scrolling disabled during normal app use. The
 browser `html` / `body` surface is the viewport shell, while `.reader-layout` is the
-main scroll container for reader workspace overflow.
+bounded reader workspace.
 
 This matters because the top app shell combines a fixed-height viewport, a sticky
 topbar, grid padding, and independently constrained navigation/content panes. If
@@ -133,14 +133,38 @@ Expected layout behavior:
 - `html`, `body`, and `#root` occupy the viewport and do not become the primary scroll
   surface.
 - `.app-shell` is a viewport-height flex container with `min-height: 0`.
-- `.reader-layout` owns workspace overflow and may scroll when the combined navigation,
-  reader content, or TOC editor workspace exceeds the available viewport.
+- `.reader-layout` is the non-scrolling desktop workspace container for the hierarchy
+  and content panes. It should be height-bounded by `.app-shell`, use `min-height: 0`,
+  and avoid becoming the primary scroll surface during normal desktop reading.
+- The hierarchy pane should constrain its own height and let `.chapter-list` own
+  hierarchy overflow. The hierarchy header remains visible while the chapter/section
+  list scrolls inside its parent.
+- The content pane should constrain its own height and let the reader-content internal
+  surface own content overflow. The right pane should not push `.reader-layout` taller
+  than the viewport.
 - child panes such as `.navigation-pane` and `.content-pane` should size from the
   available `.reader-layout` space rather than independently adding another
   `calc(100vh - ...)` height on top of grid padding.
 - oversized single reader pages may still scroll locally inside
   `.reader-content-block-list-oversized`, but ordinary page overflow should remain
-  contained by `.reader-layout`.
+  contained by reader-content pagination/inner content surfaces rather than by
+  `.reader-layout`.
+
+Desktop target behavior:
+
+- `.reader-layout` does not scroll.
+- `.chapter-list` is the primary scroll surface for long chapter/section navigation.
+- `.reader-content` or its inner content list is the primary scroll surface for
+  oversized reader content, with ordinary paginated content still avoiding scroll when
+  it fits the visible reader page.
+- If no suitable parent element currently exists for either scroll surface, the UI may
+  introduce a thin structural wrapper whose only role is layout containment. That
+  wrapper must not add hierarchy semantics, backend state, task-layout mutation, or a
+  second source of truth.
+
+Responsive/mobile behavior may remain more flexible: single-column layouts may still
+use local pane scrolling where needed, but should preserve the same principle that
+document-level scrolling is not the normal reading surface.
 
 This is a frontend-only viewport contract. It must not change backend hierarchy,
 task-layout payloads, task-unit content APIs, profile diagnostics, parser artifacts, or
@@ -266,13 +290,53 @@ Document-open policy:
 - This policy avoids surprising OCR/LLM-backed backend work during normal document
   selection while preserving backend hierarchy as the source of truth.
 
-Task-unit content, issued once per selected section task unit:
+TOC edit page-default handshake:
+
+- Ordinary reader entry must request task layout without page-evidence opt-in so normal
+  document opening does not trigger backend source-evidence/OCR work.
+- Entering TOC edit mode is the explicit UI intent that may request page-backed anchor
+  defaults. Before rendering edit-existing page defaults, the UI should refresh the
+  current layout through `POST /documents/task-layout` with
+  `include_anchor_page_evidence: true`.
+- The refreshed layout remains a lightweight task-layout projection. The UI consumes
+  only `anchor_evidence` metadata on chapter/section nodes and must not request or store
+  raw text, page text, OCR geometry, or content blocks through task-layout.
+- `edit existing` mode may prefill page inputs only when backend `anchor_evidence`
+  reports available `page_range` evidence. Displayed page defaults are 1-based UI page
+  numbers derived from zero-based backend page indices; manual-structure submissions
+  must convert them back to zero-based `page_range` indices.
+- If the opt-in layout refresh fails or returns unavailable page evidence, the TOC
+  editor should keep page defaults empty and fall back to `char_range` guidance rather
+  than inventing page positions.
+- This handshake is read-only until the user explicitly validates and commits a
+  manual-structure hard reparse.
+
+Task-unit content, issued once per selected section:
+
+```http
+POST /documents/{doc_name}/task-units/content
+```
+
+```json
+{
+  "task_unit_ids": ["<task_unit_id>"],
+  "segmented": true,
+  "include_raw_content": false
+}
+```
+
+The frontend requests the selected section's task units in backend layout order with one batch content request and renders the flattened `content_blocks` in that same order. It does not request duplicated raw content by default.
+
+Single task-unit content remains the compatibility/fallback endpoint:
 
 ```http
 GET /documents/{doc_name}/task-units/{task_unit_id}/content?segmented=true
 ```
 
-The frontend does not request duplicated raw content. It requests selected section task units in backend layout order and renders the flattened `content_blocks` in that same order.
+- The batch request preserves current render options, especially `segmented=true` and default raw-content suppression.
+- The batch response preserves per-task-unit content ordering and reuses the backend `TaskUnitContentResponse` shape so reader aggregation logic remains content-block-first.
+- Batch content must remain an on-demand content API path. It must not add task-unit content or `content_blocks` to `/documents/task-layout`.
+- The frontend must not reinterpret batch response order as hierarchy truth, persist content as backend state, or trigger hidden prepare/reparse/profile mutation from section selection.
 
 ### Loading / Error / Empty Behavior
 
@@ -324,7 +388,7 @@ Backend REST usage is centralized behind service classes:
 
 - `DocumentCatalogService`: `GET /documents`
 - `TaskLayoutService`: `POST /documents/task-layout`; `POST /documents/prepare-task-layout`
-- `TaskUnitContentService`: `GET /documents/{doc_name}/task-units/{task_unit_id}/content?segmented=true`
+- `TaskUnitContentService`: `POST /documents/{doc_name}/task-units/content` for selected-section batch read; `GET /documents/{doc_name}/task-units/{task_unit_id}/content?segmented=true` as single-task compatibility/fallback
 - `StructureRepairService`: `POST /documents/reparse-structure` for common / LLM structure repair
 - `ManualStructureService`: `POST /documents/manual-structure/validate`; `POST /documents/reparse-structure` with `parser_mode=manual_structure`
 - `DocumentPreparationService`: `POST /documents/prepare`

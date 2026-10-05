@@ -9,12 +9,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
+from doc_loaders.pdf_page_evidence import PdfPageTextBoundary
+from document_preparation.document_preparation_pipeline import (
+    ManualStructureSourceEvidence,
+)
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.document_hierarchy_index import get_effective_sections
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
 )
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import (
+    StructuredChapter,
+    StructuredDocument,
+    StructuredSection,
+)
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
@@ -43,8 +51,14 @@ class _FakePreparationResult:
 
 
 class _FakePreparationPipeline:
-    def __init__(self, repository: StructuredDocumentArtifactRepository):
+    def __init__(
+        self,
+        repository: StructuredDocumentArtifactRepository,
+        page_boundaries: list[PdfPageTextBoundary] | None = None,
+    ):
         self.repository = repository
+        self.page_boundaries = list(page_boundaries or [])
+        self.source_evidence_calls = 0
 
     def prepare_and_load(
         self,
@@ -67,6 +81,24 @@ class _FakePreparationPipeline:
                 structured_document=None,
                 bundle=None,
             )
+
+    def load_manual_structure_source_evidence(
+        self,
+        doc_name: str,
+    ) -> ManualStructureSourceEvidence:
+        self.source_evidence_calls += 1
+        document = self.repository.load_document(doc_name)
+        return ManualStructureSourceEvidence(
+            doc_name=doc_name,
+            source_identity=doc_name,
+            raw_text=document.raw_text,
+            source_hash=SectionTaskCoordinator._compute_raw_text_hash(
+                document.raw_text
+            ),
+            language=document.language,
+            page_boundaries=list(self.page_boundaries),
+            errors=[],
+        )
 
 
 class _FakeTaskUnitResolver:
@@ -149,32 +181,51 @@ class _FakeEnhancedParseEvaluator:
 
 
 def _build_base_document() -> StructuredDocument:
+    sections = [
+        StructuredSection(
+            section_id="section-0",
+            section_index=0,
+            title="第一章",
+            level=1,
+            content="第一章\n內容 A",
+            char_start=0,
+            char_end=8,
+            section_role=SectionRole.MAIN_BODY,
+            parent_chapter_id="chapter-0",
+        ),
+        StructuredSection(
+            section_id="section-1",
+            section_index=1,
+            title="第二章",
+            level=1,
+            content="第二章\n內容 B",
+            char_start=9,
+            char_end=17,
+            section_role=SectionRole.MAIN_BODY,
+            parent_chapter_id="chapter-1",
+        ),
+    ]
     return StructuredDocument(
         document_id="cache-doc",
         title="Cache Doc",
         source_path=None,
         language="zh",
         raw_text="第一章\n內容 A\n\n第二章\n內容 B",
-        sections=[
-            StructuredSection(
-                section_id="section-0",
-                section_index=0,
+        sections=sections,
+        chapters=[
+            StructuredChapter(
+                chapter_id="chapter-0",
                 title="第一章",
                 level=1,
-                content="第一章\n內容 A",
-                char_start=0,
-                char_end=8,
-                section_role=SectionRole.MAIN_BODY,
+                chapter_role=None,
+                sections=[sections[0]],
             ),
-            StructuredSection(
-                section_id="section-1",
-                section_index=1,
+            StructuredChapter(
+                chapter_id="chapter-1",
                 title="第二章",
                 level=1,
-                content="第二章\n內容 B",
-                char_start=9,
-                char_end=17,
-                section_role=SectionRole.MAIN_BODY,
+                chapter_role=None,
+                sections=[sections[1]],
             ),
         ],
     )
@@ -185,6 +236,19 @@ def _find_section(document: StructuredDocument, section_id: str) -> StructuredSe
         if section.section_id == section_id:
             return section
     raise ValueError(f"unknown section_id: {section_id}")
+
+
+def _build_page_boundaries(document: StructuredDocument) -> list[PdfPageTextBoundary]:
+    return [
+        PdfPageTextBoundary(
+            page_index=index,
+            char_start=section.char_start,
+            char_end=section.char_end,
+            text=document.raw_text[section.char_start : section.char_end],
+            page_label=str(index + 1),
+        )
+        for index, section in enumerate(get_effective_sections(document))
+    ]
 
 
 def test_task_layout_cache_flow() -> None:
@@ -316,6 +380,126 @@ def test_task_layout_cache_flow() -> None:
         )
 
 
+def test_task_layout_cache_hit_does_not_load_manual_source_evidence() -> None:
+    """Cache-hit task-layout reads must not trigger manual TOC source loading."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        store = StructuredDocumentStore()
+        repository = StructuredDocumentArtifactRepository(
+            store=store,
+            base_dir=temp_dir,
+        )
+        base_document = _build_base_document()
+        (temp_path / "cache-doc.structured.json").write_text(
+            base_document.to_json(),
+            encoding="utf-8",
+        )
+
+        fake_resolver = _FakeTaskUnitResolver()
+        fake_pipeline = _FakePreparationPipeline(repository)
+        coordinator = SectionTaskCoordinator(
+            document_preparation_pipeline=fake_pipeline,
+            document_artifact_repository=repository,
+            document_profile_store=_FakeProfileStore(),
+            chapter_summary_service=_FakeSectionTaskService(),
+            chapter_quiz_service=_FakeSectionTaskService(),
+            task_unit_resolver=fake_resolver,
+            enhanced_parse_trigger_evaluator=_FakeEnhancedParseEvaluator(),
+            semantic_top_k_candidates_max=20,
+        )
+
+        coordinator.get_document_task_layout(
+            doc_name="cache-doc",
+            refresh_task_units=False,
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=3,
+        )
+        _assert(fake_resolver.calls == 1, "first call should populate task-unit cache")
+
+        fake_pipeline.source_evidence_calls = 0
+        coordinator.get_document_task_layout(
+            doc_name="cache-doc",
+            refresh_task_units=False,
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=3,
+        )
+
+        _assert(
+            fake_resolver.calls == 1,
+            "second same-options call should be a task-layout cache hit",
+        )
+        _assert(
+            fake_pipeline.source_evidence_calls == 0,
+            (
+                "task-layout cache hit should not load manual source evidence; "
+                "doing so can trigger scanned-PDF OCR on ordinary read"
+            ),
+        )
+
+
+def test_task_layout_cache_hit_can_explicitly_load_anchor_page_evidence() -> None:
+    """TOC edit-existing can opt into page evidence even when task-layout cache hits."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        store = StructuredDocumentStore()
+        repository = StructuredDocumentArtifactRepository(
+            store=store,
+            base_dir=temp_dir,
+        )
+        base_document = _build_base_document()
+        (temp_path / "cache-doc.structured.json").write_text(
+            base_document.to_json(),
+            encoding="utf-8",
+        )
+
+        fake_resolver = _FakeTaskUnitResolver()
+        fake_pipeline = _FakePreparationPipeline(
+            repository,
+            page_boundaries=_build_page_boundaries(base_document),
+        )
+        coordinator = SectionTaskCoordinator(
+            document_preparation_pipeline=fake_pipeline,
+            document_artifact_repository=repository,
+            document_profile_store=_FakeProfileStore(),
+            chapter_summary_service=_FakeSectionTaskService(),
+            chapter_quiz_service=_FakeSectionTaskService(),
+            task_unit_resolver=fake_resolver,
+            enhanced_parse_trigger_evaluator=_FakeEnhancedParseEvaluator(),
+            semantic_top_k_candidates_max=20,
+        )
+
+        coordinator.get_document_task_layout(
+            doc_name="cache-doc",
+            refresh_task_units=False,
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=3,
+        )
+        _assert(fake_resolver.calls == 1, "first call should populate task-unit cache")
+
+        fake_pipeline.source_evidence_calls = 0
+        layout = coordinator.get_document_task_layout(
+            doc_name="cache-doc",
+            refresh_task_units=False,
+            task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=3,
+            include_anchor_page_evidence=True,
+        )
+
+        _assert(
+            fake_resolver.calls == 1,
+            "explicit page-evidence read should still reuse valid task-unit cache",
+        )
+        _assert(
+            fake_pipeline.source_evidence_calls == 1,
+            "explicit page-evidence read should load manual source evidence once",
+        )
+        _assert(
+            layout.chapters[0].anchor_evidence is not None
+            and layout.chapters[0].anchor_evidence.anchor_type == "page_range",
+            "explicit page evidence should project page_range anchor metadata",
+        )
+
+
 def test_task_layout_cache_duplicate_id_repair() -> None:
     """Cache-hit path should repair duplicated persisted task-unit ids without resolver recompute."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -325,60 +509,79 @@ def test_task_layout_cache_duplicate_id_repair() -> None:
             "source_hash": SectionTaskCoordinator._compute_source_hash(base_document),
             "task_unit_split_mode": "semantic_safe",
             "semantic_top_k_candidates": 3,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
+        duplicate_sections = [
+            StructuredSection(
+                section_id=base_document.sections[0].section_id,
+                section_index=base_document.sections[0].section_index,
+                title=base_document.sections[0].title,
+                level=base_document.sections[0].level,
+                content=base_document.sections[0].content,
+                char_start=base_document.sections[0].char_start,
+                char_end=base_document.sections[0].char_end,
+                section_role=base_document.sections[0].section_role,
+                parent_chapter_id="chapter-0",
+                task_units=[
+                    TaskUnit(
+                        unit_id="task-unit-0",
+                        title="u0",
+                        container_title=None,
+                        content="chunk-a",
+                        source_section_ids=[base_document.sections[0].section_id],
+                        is_fallback_generated=False,
+                        task_artifacts=TaskArtifacts(
+                            summary=SummaryArtifact(content="artifact-a")
+                        ),
+                    )
+                ],
+            ),
+            StructuredSection(
+                section_id=base_document.sections[1].section_id,
+                section_index=base_document.sections[1].section_index,
+                title=base_document.sections[1].title,
+                level=base_document.sections[1].level,
+                content=base_document.sections[1].content,
+                char_start=base_document.sections[1].char_start,
+                char_end=base_document.sections[1].char_end,
+                section_role=base_document.sections[1].section_role,
+                parent_chapter_id="chapter-1",
+                task_units=[
+                    TaskUnit(
+                        unit_id="task-unit-0",
+                        title="u1",
+                        container_title=None,
+                        content="chunk-b",
+                        source_section_ids=[base_document.sections[1].section_id],
+                        is_fallback_generated=False,
+                        task_artifacts=TaskArtifacts(
+                            summary=SummaryArtifact(content="artifact-b")
+                        ),
+                    )
+                ],
+            ),
+        ]
         duplicate_document = StructuredDocument(
             document_id=base_document.document_id,
             title=base_document.title,
             source_path=base_document.source_path,
             language=base_document.language,
             raw_text=base_document.raw_text,
-            sections=[
-                StructuredSection(
-                    section_id=base_document.sections[0].section_id,
-                    section_index=base_document.sections[0].section_index,
-                    title=base_document.sections[0].title,
-                    level=base_document.sections[0].level,
-                    content=base_document.sections[0].content,
-                    char_start=base_document.sections[0].char_start,
-                    char_end=base_document.sections[0].char_end,
-                    section_role=base_document.sections[0].section_role,
-                    task_units=[
-                        TaskUnit(
-                            unit_id="task-unit-0",
-                            title="u0",
-                            container_title=None,
-                            content="chunk-a",
-                            source_section_ids=[base_document.sections[0].section_id],
-                            is_fallback_generated=False,
-                            task_artifacts=TaskArtifacts(
-                                summary=SummaryArtifact(content="artifact-a")
-                            ),
-                        )
-                    ],
+            sections=duplicate_sections,
+            chapters=[
+                StructuredChapter(
+                    chapter_id="chapter-0",
+                    title="第一章",
+                    level=1,
+                    chapter_role=None,
+                    sections=[duplicate_sections[0]],
                 ),
-                StructuredSection(
-                    section_id=base_document.sections[1].section_id,
-                    section_index=base_document.sections[1].section_index,
-                    title=base_document.sections[1].title,
-                    level=base_document.sections[1].level,
-                    content=base_document.sections[1].content,
-                    char_start=base_document.sections[1].char_start,
-                    char_end=base_document.sections[1].char_end,
-                    section_role=base_document.sections[1].section_role,
-                    task_units=[
-                        TaskUnit(
-                            unit_id="task-unit-0",
-                            title="u1",
-                            container_title=None,
-                            content="chunk-b",
-                            source_section_ids=[base_document.sections[1].section_id],
-                            is_fallback_generated=False,
-                            task_artifacts=TaskArtifacts(
-                                summary=SummaryArtifact(content="artifact-b")
-                            ),
-                        )
-                    ],
+                StructuredChapter(
+                    chapter_id="chapter-1",
+                    title="第二章",
+                    level=1,
+                    chapter_role=None,
+                    sections=[duplicate_sections[1]],
                 ),
             ],
             document_task_artifacts=DocumentTaskArtifacts(
@@ -447,6 +650,8 @@ def test_task_layout_cache_duplicate_id_repair() -> None:
 
 def main() -> None:
     test_task_layout_cache_flow()
+    test_task_layout_cache_hit_does_not_load_manual_source_evidence()
+    test_task_layout_cache_hit_can_explicitly_load_anchor_page_evidence()
     test_task_layout_cache_duplicate_id_repair()
     print(
         json.dumps(
@@ -458,6 +663,8 @@ def main() -> None:
                     "refresh_forces_recompute",
                     "mode_topk_mismatch_invalidates_cache",
                     "task_unit_artifacts_preserved_on_cache_hit",
+                    "cache_hit_skips_manual_source_evidence",
+                    "cache_hit_explicit_anchor_page_evidence",
                     "cache_hit_duplicate_id_repair_without_recompute",
                 ],
             },

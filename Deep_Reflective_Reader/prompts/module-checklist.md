@@ -47,7 +47,38 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] <future task>
+- [ ] Define fixed analysis prompt instruction
+  Evidence needed: versioned prompt template requests summary, reasoning/interpretation, parsing/explanation, strict JSON, and insufficient-content handling.
+  Notes: Only context/target/options should be dynamic.
+  Timestamp: 2026-10-05
+- [ ] Define fixed quiz prompt instruction with valid type and max-count constraints
+  Evidence needed: prompt template lists `short_answer`, `multiple_choice`, and `true_false`, passes target-level max count, and allows fewer-than-max generation.
+  Notes: LLM chooses the type mix; backend validation remains authoritative.
+  Timestamp: 2026-10-05
+- [ ] Define fixed critical-thinking question prompt instruction
+  Evidence needed: prompt template explicitly frames the task as critical-thinking training and asks for one focused question tied to the target context.
+  Notes: This prompt generates a persistable session even before the user answers.
+  Timestamp: 2026-10-05
+- [ ] Define fixed critical-thinking evaluation prompt instruction
+  Evidence needed: prompt template evaluates one submitted answer against the generated question and context with strict JSON output.
+  Notes: It must preserve the session model and not generate a replacement question.
+  Timestamp: 2026-10-05
+- [ ] Define JSON validation and retry prompt policy for reading interactions
+  Evidence needed: prompt/service contract identifies invalid JSON as generation failure and supports explicit retry policy without persisting invalid successful artifacts.
+  Notes: Prompt compliance is advisory; server validation is the hard boundary.
+  Timestamp: 2026-10-05
+- [ ] Define artifact-aware prompt input sections
+  Evidence needed: prompt templates clearly separate primary source context from secondary lower-level artifact context.
+  Notes: Lower-level artifacts support deduplication and abstraction, not source replacement.
+  Timestamp: 2026-10-05
+- [ ] Add fixed quiz deduplication instruction
+  Evidence needed: quiz prompt tells the model to avoid repeating lower-level quiz questions and to favor higher-level synthesis when child artifacts exist.
+  Notes: Backend validation still controls valid type/count/answer shape.
+  Timestamp: 2026-10-05
+- [ ] Add fixed critical-thinking abstraction instruction
+  Evidence needed: critical-thinking prompt tells the model to build on lower-level focus areas and move toward synthesis, transfer, and critique.
+  Notes: The instruction must still produce only one question in the first version.
+  Timestamp: 2026-10-05
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

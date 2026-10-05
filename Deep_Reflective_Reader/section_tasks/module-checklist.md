@@ -105,6 +105,42 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define segmented content-block endpoint projection semantics
 - [ ] Define duplicate/missing content-block validation behavior
 - [ ] Define segmented block artifact-target alignment behavior
+- [ ] Define target-agnostic reading interaction service contracts
+  Evidence needed: service contracts accept a resolved document/chapter/section/task-unit target and return validated interaction DTOs without owning route mapping or persistence internals.
+  Notes: This should become the shared foundation for analysis, quiz, and critical-thinking services.
+  Timestamp: 2026-10-05
+- [ ] Implement analysis interaction service with strict JSON validation
+  Evidence needed: service produces validated analysis payload containing summary, reasoning/interpretation, and parsing/explanation fields, or an insufficient-content result.
+  Notes: Invalid model output must fail generation rather than becoming a successful artifact.
+  Timestamp: 2026-10-05
+- [ ] Implement quiz interaction service with configured target-level limits
+  Evidence needed: service enforces valid quiz types and configured max counts for task-unit, section, chapter, and document targets.
+  Notes: The LLM may choose the quiz type mix and may generate fewer than max.
+  Timestamp: 2026-10-05
+- [ ] Implement critical-thinking session service
+  Evidence needed: service supports persisted question generation, answer submission, answer evaluation, and evaluation retry with recoverable failure status.
+  Notes: First version remains question -> answer -> evaluation and does not introduce question pools.
+  Timestamp: 2026-10-05
+- [ ] Add interaction artifact validity and insufficient-content semantics
+  Evidence needed: all interaction services can return or persist insufficient-content status with reason metadata and can report stale/invalid target context.
+  Notes: This guards noisy OCR-derived units and avoids repeated LLM spending.
+  Timestamp: 2026-10-05
+- [ ] Add lower-level artifact reference policy for higher-level generation
+  Evidence needed: section/chapter/document generation services can consume compact child artifact summaries as secondary context while preserving source text as primary context.
+  Notes: Applies recursively from unit -> section -> chapter -> document/book.
+  Timestamp: 2026-10-05
+- [ ] Add quiz deduplication behavior from lower-level artifacts
+  Evidence needed: quiz service can use child quiz artifacts to avoid repeated concepts/questions without concatenating lower-level quiz items into the higher-level quiz.
+  Notes: Higher-level quiz should favor synthesis, transfer, comparison, and cross-unit understanding.
+  Timestamp: 2026-10-05
+- [ ] Add critical-thinking learning-continuity behavior from lower-level sessions
+  Evidence needed: critical-thinking service can use child session summaries to generate broader questions that build on prior local training.
+  Notes: Child sessions remain secondary learning memory, not source truth.
+  Timestamp: 2026-10-05
+- [ ] Persist artifact reference metadata for generated interaction artifacts
+  Evidence needed: generated artifacts record referenced artifact ids/types/target levels and whether deduplication or abstraction-escalation hints were used.
+  Notes: Metadata supports later observability and cost/debug analysis.
+  Timestamp: 2026-10-05
 - [x] Preserve section-scoped task-layout ownership for TOC-derived hierarchy
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `PYTHONPATH=. .venv/bin/python scripts/test_task_unit_content_endpoint.py`.
   Notes: Task-layout projection consumes effective `chapters[].sections[].task_units[]` ownership and exposes section-scoped task-unit metadata only. TOC-aware parsing may change section boundaries upstream, but task-layout does not merge content across sections or create a second ownership model.

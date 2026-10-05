@@ -78,6 +78,11 @@ No coding task should be considered complete unless the corresponding checklist 
 
 ## Future Checklist
 
+- [x] Consume selected-section task-unit content through a batch API
+  Evidence: `Deep_Reader_UI/src/services/TaskUnitContentService.ts`; `Deep_Reader_UI/src/features/reader-content/controller.ts`; `Deep_Reader_UI/src/types/api.ts`; validation with `npm run check`.
+  Notes: `TaskUnitContentService` exposes a batch read method, reader-content selection calls it once per section selection with ordered `task_unit_ids`, aggregation preserves backend order, and the single-task endpoint remains fallback behavior. This avoids many concurrent `GET /task-units/{id}/content?segmented=true` requests while keeping `/documents/task-layout` lightweight and preserving content-block-first rendering.
+  Timestamp: 2026-10-05
+
 - [x] Introduce React Router with document-scoped reader and TOC editor routes
   Evidence: `Deep_Reader_UI/package.json`; `Deep_Reader_UI/src/main.tsx`; `Deep_Reader_UI/src/App.tsx`; validation: `npm run check`.
   Notes: Direct cold-start entry into `toc-edit` must be guarded and must not auto-load layout.
@@ -126,6 +131,11 @@ No coding task should be considered complete unless the corresponding checklist 
   Evidence: `Deep_Reader_UI/src/features/toc-editor/model.ts`; validation: `npm run check`.
   Notes: In `edit existing` mode, chapters and sections now seed source anchors from task-layout `anchor_evidence` when backend evidence is `available`. Page-backed evidence is displayed as 1-based page numbers and submitted as zero-based `page_range`; character-backed evidence is displayed as `char_start` / `char_end`. Missing or unavailable evidence remains empty and must be supplied by the user rather than invented.
 
+- [x] Wire TOC edit page-default refresh to explicit backend page-evidence opt-in
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/services/TaskLayoutService.ts`; `Deep_Reader_UI/src/features/toc-editor/model.ts`; validation with `npm run check`.
+  Notes: This frontend integration must keep task-layout lightweight and read-only, avoid hidden prepare/OCR work during ordinary document open, avoid inventing page defaults when backend evidence is unavailable, and preserve zero-based backend `page_range` submission semantics.
+  Timestamp: 2026-10-05
+
 - [x] Move detailed UI error and validation messages into dismissible popup notifications
   Evidence: `Deep_Reader_UI/src/services/RestClient.ts`; `Deep_Reader_UI/src/shared/components/AppNotification.tsx`; `Deep_Reader_UI/src/features/toc-editor/controller.ts`; `Deep_Reader_UI/src/features/toc-editor/view.tsx`; `Deep_Reader_UI/src/App.tsx`; validation: `npm run check`.
   Notes: UI normalizes backend `detail` / `error` / `reason` / `errors[]` payloads for display, then shows detailed runtime failures and validation summaries through dismissible MUI Snackbar/Alert or Dialog interactions instead of occupying permanent TOC editor or main reader workspace. Backend API contracts remain unchanged.
@@ -138,10 +148,26 @@ No coding task should be considered complete unless the corresponding checklist 
   Evidence: `Deep_Reader_UI/src/features/reader-content/model.ts`; `Deep_Reader_UI/src/features/reader-content/controller.ts`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
   Notes: Reader content now preserves fetched task-unit groups, measures rendered group heights in the frontend, packs the largest ordered group that fits the visible `.reader-content-block-list`, exposes Previous/Next controls, resets to page one on section/content changes, repaginates on resize, and permits local scrolling only for a single oversized task unit/block page. Backend APIs and hierarchy/task-unit contracts remain unchanged.
 
-- [ ] Prefer read-only task-layout when opening existing documents
-  Evidence needed: selecting an API-returned document first requests the existing layout through `POST /documents/task-layout`; `POST /documents/prepare-task-layout` is used only for first-time prepare, explicit retry/repair, or fallback when the read-centric route reports unavailable layout.
+- [x] Prefer read-only task-layout when opening existing documents
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/services/TaskLayoutService.ts`; validation with `npm run check`.
   Notes: This prevents ordinary combo-box selection from hiding expensive backend OCR/language/profile/LLM work behind a cache hit. The UI must keep backend hierarchy as source of truth and must not mutate task-layout, profile diagnostics, or parser artifacts.
+  Timestamp: 2026-10-05
 
 - [x] Contain normal app scrolling inside `.reader-layout`
   Evidence: `Deep_Reader_UI/src/styles.css`; validation: `npm run check`; `git diff --check -- Deep_Reader_UI/module-detailed-design.md Deep_Reader_UI/module-checklist.md Deep_Reader_UI/src/styles.css`; Vite dev server HTTP smoke.
   Notes: `html`, `body`, `#root`, and `.app-shell` are bounded to the viewport without document-level scrolling; `.reader-layout` owns workspace overflow; content/navigation panes size from available layout space instead of adding viewport-height children on top of reader-layout padding. This is frontend-only CSS/layout work and does not alter backend APIs, task-layout payloads, hierarchy truth, task-unit content semantics, profile diagnostics, parser artifacts, or manual TOC commit behavior.
+
+- [x] Keep desktop `.reader-layout` fixed while `.chapter-list` and reader content scroll internally
+  Evidence: `Deep_Reader_UI/src/styles.css`; validation with `npm run check`; `git diff --check -- Deep_Reader_UI/src/styles.css Deep_Reader_UI/module-checklist.md Deep_Reader_UI/module-detailed-design.md`.
+  Notes: Desktop `.reader-layout` now remains a bounded non-scrolling workspace. The hierarchy pane and `.hierarchy-navigation` form a flex height chain so `.chapter-list` owns long-navigation scrolling. The content pane is height-bound with hidden overflow, while reader-content pagination and oversized block-list scrolling remain internal to the reader surface. Mobile single-column layout keeps `.reader-layout` scrollable to avoid viewport clipping. This is frontend-only CSS/layout work and does not alter backend APIs, task-layout payloads, hierarchy truth, task-unit content semantics, profile diagnostics, parser artifacts, or manual TOC commit behavior.
+  Timestamp: 2026-10-04
+
+- [x] Remove unused reader status region from the topbar
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation with `npm run check`.
+  Notes: Removed the low-value `.reader-status-region` display and its derived section/unit-count wiring, then collapsed the topbar from three columns to the active document-search and repair-control columns. Detailed runtime feedback remains available through existing loading controls and popup notifications.
+  Timestamp: 2026-10-04
+
+- [x] Simplify document search input helper copy
+  Evidence: `Deep_Reader_UI/src/features/book-search/view.tsx`; validation with `npm run check`.
+  Notes: Removed the `.document-search-input` helper text to save topbar space and changed the input label from `Document` to `Select one Document`.
+  Timestamp: 2026-10-04

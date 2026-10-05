@@ -171,6 +171,12 @@ export interface TaskUnitContent {
   section_title?: string | null;
 }
 
+export interface BatchTaskUnitContentResponse {
+  document_id?: string;
+  document_title?: string | null;
+  contents: TaskUnitContent[];
+}
+
 export interface SectionSelection {
   chapter: ChapterLayout;
   section: SectionLayout;

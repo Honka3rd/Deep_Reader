@@ -299,3 +299,28 @@ validation boundary 要求：fail-fast + 明確錯誤分類；不得 silent fall
 6. The DTO must stay lightweight: no raw text, full page text, OCR region geometry, or content blocks. Detailed evidence belongs to preparation/loader diagnostics, not task-layout. **[Code-Confirmed] + [Future Direction]**
 7. DTO fields currently support `anchor_type`, `status`, `reason`, `char_start`, `char_end`, `page_start_index`, `page_end_index`, `page_start_label`, and `page_end_label`. **[Code-Confirmed]**
 8. Public API mapping must preserve chapters-first response shape and keep anchor evidence attached to existing chapter/section nodes only. **[From HLD] + [Future Direction]**
+
+## 24. Future Direction Note: Reading Interaction Services
+
+> 本節記錄 target-agnostic interaction service planning；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. `section_tasks/` may own service-level interaction contracts for reading target analysis, quiz generation, and critical-thinking sessions, while app/main own orchestration and route mapping. **[Future Direction]**
+2. Services should consume a resolved reading target object, not raw title strings or unresolved ids. The resolved target must carry `target_type`, canonical target id, hierarchy path evidence, source structure version, source hash when available, and text/context input metadata. **[Maintainer-Provided] + [Future Direction]**
+3. `analysis` output should support summary, reasoning/interpretation, and parsing/explanation sections as structured validated JSON, not free-form opaque text. **[Maintainer-Provided] + [Future Direction]**
+4. `quiz` output should accept only `short_answer`, `multiple_choice`, and `true_false` item types. The backend provides valid types plus max count; the model may return fewer than max but never more. **[Maintainer-Provided] + [Future Direction]**
+5. Default quiz maximums should come from config: `task_unit=3`, `section=5`, `chapter=10`, `document/book=25`. **[Maintainer-Provided] + [Future Direction]**
+6. Critical-thinking service state should be session-shaped: generated question persists immediately, answer submission updates the session, evaluation success marks it completed, and evaluation failure preserves the answer for retry. **[Maintainer-Provided] + [Future Direction]**
+7. All interaction services should allow `insufficient_content` as a valid persisted result/session status with reason metadata. This is the correct fast path for OCR noise or symbol-only units. **[Maintainer-Provided] + [Future Direction]**
+8. Strict JSON validation is mandatory before marking an interaction artifact/session successful. Invalid model output is a generation failure and must not be persisted as a successful artifact. **[Maintainer-Provided] + [Future Direction]**
+9. Services should record context metadata such as `context_mode`, token estimate/budget, evidence ids, prompt instruction version, and output schema version in artifact metadata. **[Maintainer-Provided] + [Future Direction]**
+10. Services must not mutate task-layout, profile diagnostics, parser metadata, or hierarchy truth. Artifact persistence remains interaction output only. **[From HLD] + [Future Direction]**
+
+### 24.1 Lower-Level Artifact Reference Policy
+
+1. When generating a higher-level artifact, services should request lower-level artifact summaries from the context/repository boundary as secondary input. **[Maintainer-Provided] + [Future Direction]**
+2. Lower-level artifacts should help the LLM avoid repeated questions, identify already-covered concepts, and raise abstraction from unit-level recall to section/chapter/book-level synthesis, transfer, and critique. **[Maintainer-Provided] + [Future Direction]**
+3. Quiz generation should use lower-level quiz artifacts as deduplication and coverage signals, not as items to concatenate into the higher-level quiz. **[Maintainer-Provided] + [Future Direction]**
+4. Critical-thinking generation should use lower-level critical-thinking sessions as learning-continuity signals, for example to ask broader synthesis questions after local argument questions have already been used. **[Maintainer-Provided] + [Future Direction]**
+5. Analysis generation may use lower-level analysis artifacts as abstraction hints, but the higher-level analysis must still be grounded in the current target source context. **[Maintainer-Provided] + [Future Direction]**
+6. Services must preserve a hard distinction between source context and artifact context in prompt inputs, validation metadata, and persisted artifact metadata. **[Maintainer-Provided] + [Future Direction]**
+7. Artifact reference metadata should include referenced artifact ids, artifact types, target levels, coverage count, and whether deduplication or abstraction-escalation hints were applied. **[Maintainer-Provided] + [Future Direction]**

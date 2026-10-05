@@ -47,10 +47,9 @@ export function useReaderContentController({
 
     try {
       setContentStatus("loading");
-      const taskUnitContents = await Promise.all(
-        selection.taskUnits.map((taskUnit) =>
-          service.fetchTaskUnitContent(docName.trim(), taskUnit.unit_id),
-        ),
+      const taskUnitContents = await service.fetchTaskUnitContents(
+        docName.trim(),
+        selection.taskUnits.map((taskUnit) => taskUnit.unit_id),
       );
       const nextBlocks = aggregateContentBlocks(taskUnitContents);
       if (contentRequestIdRef.current !== requestId) {

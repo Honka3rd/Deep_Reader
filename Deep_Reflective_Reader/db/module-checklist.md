@@ -240,6 +240,30 @@ No unresolved confirmation items identified in this pass.
 New future tasks for this module must be added here first as unchecked items:
 
 - [ ] Production DB rollout still needs broader hard-reparse transaction implementation, relational artifact/content-block persistence beyond structured-document payload metadata, profile persistence wiring, existing JSON migration tooling if required, and broader API/path regression coverage.
+- [ ] Map reading interaction artifacts onto the common artifact entity
+  Evidence needed: persistence design or implementation supports `analysis`, `quiz`, and `critical_thinking_session` artifact types without creating category-specific artifact tables.
+  Notes: Artifact writes must use hierarchy-aware validated targets and remain derived interaction output.
+  Timestamp: 2026-10-05
+- [ ] Validate current-artifact semantics for analysis and quiz
+  Evidence needed: read path can return only the current persisted artifact per target, while generate/refresh is an explicit write path.
+  Notes: No historical artifact layer is required for the first version.
+  Timestamp: 2026-10-05
+- [ ] Validate critical-thinking session lifecycle against the common artifact model
+  Evidence needed: generated question sessions persist before answers, answer/evaluation updates preserve recoverable states, and multiple sessions can attach to the same target.
+  Notes: Statuses include question_generated, insufficient_content, answer_submitted, evaluation_failed, and completed.
+  Timestamp: 2026-10-05
+- [ ] Preserve hard-reparse derived-resource cleanup for reading interaction artifacts
+  Evidence needed: hard reparse deletes or invalidates analysis, quiz, and critical-thinking session artifacts with other derived resources.
+  Notes: This avoids orphaned artifacts when hierarchy structure changes.
+  Timestamp: 2026-10-05
+- [ ] Add referenced-artifact metadata for higher-level interaction artifacts
+  Evidence needed: artifact persistence can record referenced lower-level artifact ids, artifact types, target levels, artifact context mode, coverage counts, and deduplication/abstraction hint flags.
+  Notes: References are derived interaction memory, not hierarchy/source truth.
+  Timestamp: 2026-10-05
+- [ ] Validate hard-reparse cleanup for artifact reference relationships
+  Evidence needed: generated artifacts and any referenced-artifact relationships are deleted or invalidated when the source hierarchy is replaced.
+  Notes: No orphan-preserving history layer is required for the first version.
+  Timestamp: 2026-10-05
 - [x] Fix PostgreSQL manual_structure hard-reparse replacement path for existing documents
   Evidence: `Deep_Reflective_Reader/document_structure/document_artifact_repository.py`; `Deep_Reflective_Reader/db/postgres_structured_document_artifact_repository.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `.venv` validation of manual structure commit source evidence tests; `.venv` validation of manual structure route tests; `.venv` `py_compile` for changed Python files.
   Notes: The fix adds an explicit parser-level `save_reparsed_document(...)` boundary. PostgreSQL manual reparse now routes to `replace_existing_hierarchy=True`, which uses the existing transactional hierarchy/derived-row replacement behavior in `PostgresStructuredDocumentStore.save(...)`. This preserves current-state-only hierarchy storage and does not introduce row-level structure versions, staging hierarchy tables, root `sections[]`, `structure_nodes`, or JSONB snapshot fallback. Full duplicate `chapter_order` regression coverage remains tracked separately below.

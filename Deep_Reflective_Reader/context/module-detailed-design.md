@@ -81,3 +81,26 @@ No known legacy compatibility responsibility.
 ## 13. Suggested Next Documentation Improvements
 
 1. 補 context mode state diagram。
+
+## 14. Future Direction Note: Reading Target Interaction Context
+
+> 本節記錄 book/chapter/section/task-unit interaction 的 context strategy；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. Context selection for reading interactions should operate on a resolved target, not on free-form titles or unresolved ids. **[Maintainer-Provided] + [Future Direction]**
+2. If the resolved target content fits the active model capability and configured budget, the context layer should provide full target context. **[Maintainer-Provided] + [Future Direction]**
+3. If the target is too large, the context layer should produce a semantic/coverage compact context for the fixed prompt instruction. **[Maintainer-Provided] + [Future Direction]**
+4. First version should avoid multi-call map-reduce; it should select between full target context and compacted single-call context. **[Maintainer-Provided] + [Future Direction]**
+5. Context build metadata should expose `context_mode`, token estimate, effective budget, selected evidence/chunk ids, truncation/compaction reason, and model capability source. **[Maintainer-Provided] + [Future Direction]**
+6. The context layer should not call LLM, persist artifacts, mutate sessions, or decide generation status. **[Code-Confirmed] + [Future Direction]**
+7. Interaction context should remain compatible with existing QA capability-aware budget logic while keeping interaction prompt instructions fixed and versioned. **[Code-Confirmed] + [Maintainer-Provided]**
+
+### 14.1 Artifact-Aware Context Policy
+
+1. Higher-level interaction generation should optionally include lower-level artifacts as secondary context when generating section, chapter, or document/book artifacts. **[Maintainer-Provided] + [Future Direction]**
+2. The current target source text remains primary context. Lower-level artifacts are learning-memory signals for deduplication, coverage awareness, abstraction hints, and difficulty escalation. **[Maintainer-Provided] + [Future Direction]**
+3. Lower-level artifacts must not replace target source text, become hierarchy truth, become parser authority, or become the only evidence for factual claims. **[From HLD] + [Maintainer-Provided]**
+4. Artifact context should be summarized/projection-based, not raw payload dumping. It should prefer compact fields such as artifact type, target id, prompt/topic summary, quiz concepts, critical-thinking question focus, answer/evaluation outcome, status, and generation metadata. **[Maintainer-Provided] + [Future Direction]**
+5. Budget priority should be: fixed prompt instruction, current target source context, then lower-level artifact summaries. If over budget, artifact context is pruned or compacted before dropping source context. **[Maintainer-Provided] + [Future Direction]**
+6. For section generation, candidate lower-level artifacts come from task units in that section; for chapter generation, from sections/task units in that chapter; for document/book generation, from chapter/section/task-unit artifacts under the document. **[Maintainer-Provided] + [Future Direction]**
+7. Context metadata should record `artifact_context_mode`, `referenced_artifact_ids`, artifact target levels, coverage counts, deduplication hints, and pruning/compaction reasons. **[Maintainer-Provided] + [Future Direction]**
+8. Absence of lower-level artifacts must not block generation; it only means the secondary artifact context is empty. **[Maintainer-Provided] + [Future Direction]**

@@ -10,7 +10,6 @@ import {
   Menu,
   MenuItem,
   Paper,
-  Typography,
 } from "@mui/material";
 import type { MouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -28,7 +27,6 @@ import {
 import {
   HierarchyNavigationView,
   resolveLayoutParserMode,
-  useHierarchyNavigationController,
 } from "./features/hierarchy-navigation";
 import {
   ReaderContentView,
@@ -80,7 +78,6 @@ export default function App() {
     selectSection,
     resetContent,
   } = useReaderContentController({ docName });
-  const { sectionCount, unitCount } = useHierarchyNavigationController(layout);
 
   function showNotification(
     message: string,
@@ -110,6 +107,16 @@ export default function App() {
     setLayoutStatus("success");
   }
 
+  async function loadExistingOrPrepareTaskLayout(
+    trimmedDocName: string,
+  ): Promise<DocumentTaskLayout> {
+    try {
+      return await taskLayoutService.fetchTaskLayout(trimmedDocName);
+    } catch {
+      return taskLayoutService.prepareTaskLayout(trimmedDocName);
+    }
+  }
+
   async function loadLayoutForDocument(nextDocName: string) {
     const trimmedDocName = nextDocName.trim();
     const requestId = layoutRequestIdRef.current + 1;
@@ -129,7 +136,7 @@ export default function App() {
     setLayoutStatus("loading");
 
     try {
-      const nextLayout = await taskLayoutService.prepareTaskLayout(trimmedDocName);
+      const nextLayout = await loadExistingOrPrepareTaskLayout(trimmedDocName);
       if (layoutRequestIdRef.current !== requestId) {
         return;
       }
@@ -202,12 +209,25 @@ export default function App() {
     void repairStructure(parserMode);
   }
 
-  function editToc() {
+  async function editToc() {
     const trimmedDocName = docName.trim();
     if (!trimmedDocName || layoutStatus !== "success" || !layout) {
       return;
     }
-    navigate(`/documents/${encodeURIComponent(trimmedDocName)}/toc-edit`);
+    setLayoutStatus("loading");
+    try {
+      const nextLayout = await taskLayoutService.fetchTaskLayout(trimmedDocName, {
+        includeAnchorPageEvidence: true,
+      });
+      setLayout(nextLayout);
+      setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
+      setLayoutStatus("success");
+      navigate(`/documents/${encodeURIComponent(trimmedDocName)}/toc-edit`);
+    } catch (error) {
+      setLayoutStatus("success");
+      const message = error instanceof Error ? error.message : String(error);
+      showNotification(message, "error");
+    }
   }
 
   function backToReader(routeDocName: string) {
@@ -283,19 +303,6 @@ export default function App() {
             </MenuItem>
           </Menu>
         </Box>
-        <Typography
-          aria-live="polite"
-          className="status-region reader-status-region"
-          color="text.secondary"
-        >
-          {repairStatus === "loading" ? "Repairing structure" : ""}
-          {repairStatus === "error" ? "Repair failed" : ""}
-          {repairStatus !== "loading" && repairStatus !== "error" && layoutStatus === "success"
-            ? `${sectionCount} sections / ${unitCount} internal units`
-            : ""}
-          {layoutStatus === "loading" ? "Loading document" : ""}
-          {layoutStatus === "error" ? "Document load failed" : ""}
-        </Typography>
       </Paper>
 
       <Box component="main" className="reader-layout reader-workspace">

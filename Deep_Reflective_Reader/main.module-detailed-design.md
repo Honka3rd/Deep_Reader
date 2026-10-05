@@ -181,3 +181,25 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
 3. UI document selection for an already known backend document should prefer the pure task-layout route and only use prepare-then-read when the read path reports missing/unavailable layout or when the user explicitly starts a prepare/repair flow. **[Future Direction]**
 4. Route-level observability should expose whether a prepare-then-read request actually reused existing structured artifacts or entered raw/OCR/language/profile work. **[Future Direction]**
 5. This boundary preserves the existing architecture rule that API routes dispatch to coordinator/service behavior and do not implement parser/cache authority directly. **[From HLD]**
+
+## 19. Batch Task-Unit Content Route Boundary
+
+> 本節記錄 route-layer batch content boundary。Batch route 已落地，single content route 仍保留。 **[Code-Confirmed]**
+
+1. `POST /documents/{doc_name}/task-units/content` loads all requested task units for one selected section with one HTTP request. **[Code-Confirmed]**
+2. The route maps public request schema fields `task_unit_ids`, `segmented`, and `include_raw_content` to coordinator batch read plus response serialization. **[Code-Confirmed]**
+3. The response mapping preserves the existing per-task-unit content response shape and returns items in request order. **[Code-Confirmed]**
+4. The existing `GET /documents/{doc_name}/task-units/{task_unit_id}/content` endpoint remains compatibility/fallback behavior. **[Code-Confirmed] + [Future Direction]**
+5. The route remains a read-only on-demand content path and does not expand `/documents/task-layout`, trigger prepare/reparse, mutate profile diagnostics, write artifacts, or compute parser semantics in route code. **[Code-Confirmed] + [From HLD]**
+
+## 20. Future Direction Note: Reading Interaction Route Boundary
+
+> 本節記錄 analysis / quiz / critical-thinking route planning；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. Route families should be organized around explicit read versus write semantics: read persisted artifact/session state, generate or refresh artifact, generate critical-thinking session/question, submit answer, and retry evaluation. **[Maintainer-Provided] + [Future Direction]**
+2. Read routes must never call LLM, generate artifacts, refresh artifacts, mutate task-layout, or prepare/reparse documents. Missing artifacts should return a stable missing/not-generated response. **[Maintainer-Provided] + [From HLD]**
+3. Generate/refresh routes are explicit mutation paths and should be the insertion point for future cost, quota, and permission checks. **[Maintainer-Provided] + [Future Direction]**
+4. Route mapping should pass a validated reading target to app orchestration and avoid route-level hierarchy search, prompt assembly, context selection, or parser decisions. **[From HLD] + [Future Direction]**
+5. Critical-thinking route mapping should keep three first-version operations clear: generate question session, submit answer for evaluation, and retry failed evaluation. **[Maintainer-Provided] + [Future Direction]**
+6. Route responses should expose structured statuses including missing/not-generated, insufficient-content, generation failed, validation failed, evaluation failed, and completed where appropriate. **[Maintainer-Provided] + [Future Direction]**
+7. No interaction route should expand `/documents/task-layout` or use task-layout as artifact truth; task-layout remains a lightweight hierarchy projection. **[From HLD] + [Future Direction]**

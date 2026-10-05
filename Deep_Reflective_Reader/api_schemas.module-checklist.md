@@ -90,6 +90,34 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Design rich task-unit content response schema (future direction, not implemented)
 - [ ] Define content-block artifact metadata schema (future direction, not implemented)
 - [ ] Define backward-compatible content response evolution strategy (future direction, not implemented)
+- [ ] Define generic reading target request schema
+  Evidence needed: schema validates document, chapter, section, and task-unit targets using ids as primary identity, with optional parent ids only for consistency checks.
+  Notes: No title-primary or legacy fallback semantics should be expressed in public schema.
+  Timestamp: 2026-10-05
+- [ ] Define analysis artifact read/generate schemas
+  Evidence needed: schemas distinguish persisted read response, generate request, successful artifact payload, missing/not-generated status, insufficient-content status, and validation/generation failure.
+  Notes: Analysis payload should be structured, versioned, and target-aware.
+  Timestamp: 2026-10-05
+- [ ] Define quiz artifact schemas with strict validation envelope
+  Evidence needed: schemas support `short_answer`, `multiple_choice`, and `true_false` only, enforce max item count, include answers, and support insufficient-content status.
+  Notes: The model chooses type mix; backend schema validation enforces the allowed surface.
+  Timestamp: 2026-10-05
+- [ ] Define critical-thinking session schemas
+  Evidence needed: schemas cover question generation, answer submission, evaluation retry, and statuses `question_generated`, `insufficient_content`, `answer_submitted`, `evaluation_failed`, and `completed`.
+  Notes: Generated question must be serializable before the user answers.
+  Timestamp: 2026-10-05
+- [ ] Define artifact-aware interaction metadata schema
+  Evidence needed: schemas can represent artifact context mode, referenced artifact ids, referenced types/target levels, coverage counts, and deduplication/abstraction hint flags.
+  Notes: Metadata must distinguish primary source evidence from secondary artifact references.
+  Timestamp: 2026-10-05
+- [ ] Prevent nested child artifact payload expansion in higher-level responses
+  Evidence needed: response schemas expose referenced artifact metadata without embedding full lower-level artifact payloads by default.
+  Notes: This keeps higher-level artifact responses bounded and avoids turning artifacts into source truth.
+  Timestamp: 2026-10-05
+- [x] Design batch task-unit content request/response schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.
+  Notes: `BatchTaskUnitContentRequest` accepts ordered non-empty unique `task_unit_ids` plus `segmented` / `include_raw_content`; `BatchTaskUnitContentResponse` returns ordered per-task-unit `TaskUnitContentResponse` items while preserving the single endpoint schema contract. Batch content remains an on-demand content API path, not a task-layout payload expansion.
+  Timestamp: 2026-10-05
 - [x] Design source-agnostic manual structure override request schema
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_api_schemas.py`
   Notes: Adds `ManualStructureAnchorRequest`, `ManualStructureEntryRequest`, `ManualStructurePlanRequest`, and `ManualStructureValidationRequest`. Request schema supports typed `char_range` / `page_range` anchors, trims doc/title metadata, rejects empty titles, rejects mixed anchor fields, rejects orphan sections, and enforces current `chapter -> section` maximum depth.

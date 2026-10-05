@@ -71,6 +71,14 @@ class PrepareTaskLayoutRequest(BaseModel):
         None,
         description="Optional semantic rerank top-k for semantic_safe task splitting.",
     )
+    include_anchor_page_evidence: bool = Field(
+        False,
+        description=(
+            "When true, explicitly load lightweight page-boundary evidence for "
+            "TOC edit-existing anchor prefill. Ordinary reader calls should keep "
+            "the default false value to avoid preparation/OCR source-evidence work."
+        ),
+    )
 
 
 class AskDocumentRequest(BaseModel):
@@ -350,6 +358,14 @@ class GetDocumentTaskLayoutRequest(BaseModel):
             "Larger values may improve semantic cut precision but can be slower."
         ),
     )
+    include_anchor_page_evidence: bool = Field(
+        False,
+        description=(
+            "When true, explicitly load lightweight page-boundary evidence for "
+            "TOC edit-existing anchor prefill. Ordinary reader calls should keep "
+            "the default false value to avoid preparation/OCR source-evidence work."
+        ),
+    )
 
 
 class GetTaskUnitContentRequest(BaseModel):
@@ -374,6 +390,54 @@ class GetTaskUnitContentRequest(BaseModel):
             "When false, prefer content-block-first payload without raw content duplication."
         ),
     )
+
+
+class BatchTaskUnitContentRequest(BaseModel):
+    """Request payload for batched on-demand task-unit content lookup."""
+
+    task_unit_ids: list[str] = Field(
+        ...,
+        description="Ordered stable task-unit ids from task-layout response.",
+    )
+    segmented: bool = Field(
+        False,
+        description=(
+            "When true, return explicit opt-in deterministic segmented content blocks "
+            "for every requested task unit."
+        ),
+    )
+    include_raw_content: bool = Field(
+        False,
+        description=(
+            "When true, include legacy raw task-unit `content` strings for compatibility/debug. "
+            "When false, prefer content-block-first payload without raw content duplication."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_task_unit_ids(self) -> "BatchTaskUnitContentRequest":
+        normalized_ids: list[str] = []
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for task_unit_id in self.task_unit_ids:
+            normalized_task_unit_id = task_unit_id.strip()
+            if not normalized_task_unit_id:
+                raise ValueError("task_unit_ids cannot contain empty values")
+            if normalized_task_unit_id in seen:
+                duplicates.append(normalized_task_unit_id)
+            seen.add(normalized_task_unit_id)
+            normalized_ids.append(normalized_task_unit_id)
+
+        if not normalized_ids:
+            raise ValueError("task_unit_ids cannot be empty")
+        if duplicates:
+            raise ValueError(
+                "duplicate task_unit_ids in request: "
+                + ", ".join(sorted(set(duplicates)))
+            )
+
+        self.task_unit_ids = normalized_ids
+        return self
 
 
 class TaskUnitMetadataResponse(BaseModel):
@@ -461,6 +525,14 @@ class TaskUnitContentResponse(BaseModel):
     chapter_id: str | None
     chapter_title: str | None
     is_fallback_generated: bool
+
+
+class BatchTaskUnitContentResponse(BaseModel):
+    """Batched on-demand task-unit content response preserving request order."""
+
+    document_id: str
+    document_title: str
+    contents: list[TaskUnitContentResponse]
 
 
 class AnchorEvidenceResponse(BaseModel):

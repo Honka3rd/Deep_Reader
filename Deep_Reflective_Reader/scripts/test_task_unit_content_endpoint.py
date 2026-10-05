@@ -9,7 +9,11 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 import main
-from api_schemas import ArtifactTargetRefResponse, TaskUnitContentResponse
+from api_schemas import (
+    ArtifactTargetRefResponse,
+    BatchTaskUnitContentResponse,
+    TaskUnitContentResponse,
+)
 from app.section_task_coordinator import SectionTaskCoordinator
 from doc_loaders.pdf_page_evidence import PdfPageTextBoundary
 from document_preparation.document_preparation_pipeline import (
@@ -61,6 +65,7 @@ class _FakePipeline:
     ):
         self.document = document
         self.page_boundaries = list(page_boundaries or [])
+        self.prepare_calls = 0
 
     def prepare_and_load(
         self,
@@ -69,6 +74,7 @@ class _FakePipeline:
         mode: PreparationMode | str = PreparationMode.BASE,
         structured_parser_mode: str = "common",
     ) -> PreparedDocumentResult:
+        self.prepare_calls += 1
         _ = (force_rebuild, mode, structured_parser_mode)
         assets = PreparedDocumentAssets(
             doc_name=doc_name,
@@ -414,6 +420,7 @@ def test_task_layout_anchor_evidence_prefers_page_range_when_available() -> None
     layout = coordinator.get_document_task_layout(
         doc_name="Doc Seg",
         refresh_task_units=False,
+        include_anchor_page_evidence=True,
     )
     chapter_anchor = layout.chapters[0].anchor_evidence
     section_anchor = layout.chapters[0].sections[0].anchor_evidence
@@ -440,7 +447,11 @@ def test_task_layout_anchor_evidence_prefers_page_range_when_available() -> None
     try:
         layout_response = client.post(
             "/documents/task-layout",
-            json={"doc_name": "Doc Seg", "refresh_task_units": False},
+            json={
+                "doc_name": "Doc Seg",
+                "refresh_task_units": False,
+                "include_anchor_page_evidence": True,
+            },
         )
         _assert(layout_response.status_code == 200, "task-layout should succeed")
         anchor_payload = layout_response.json()["chapters"][0]["sections"][0][
@@ -637,6 +648,71 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         _assert(payload["section_id"] == "section-a", "section_id mismatch")
         _assert(payload["chapter_id"] == "chapter-a", "chapter_id mismatch")
         _assert(repository.write_calls == 0, "content lookup path must not write persistence")
+    finally:
+        main.section_task_coordinator = original
+
+
+def test_batch_task_unit_content_lookup_preserves_order_and_read_only() -> None:
+    coordinator, repository = _build_coordinator(_build_cache_valid_document())
+    pipeline = coordinator.document_preparation_pipeline
+    client = TestClient(main.app)
+    original = main.section_task_coordinator
+    main.section_task_coordinator = coordinator
+    try:
+        response = client.post(
+            "/documents/Doc Content/task-units/content",
+            json={
+                "task_unit_ids": ["task-unit-2", "task-unit-1"],
+                "segmented": True,
+            },
+        )
+        _assert(response.status_code == 200, "batch content lookup should succeed")
+        payload = response.json()
+
+        _assert(payload["document_id"] == "doc-content", "batch document_id mismatch")
+        _assert(
+            [item["task_unit_id"] for item in payload["contents"]]
+            == ["task-unit-2", "task-unit-1"],
+            "batch response should preserve requested task-unit order",
+        )
+        _assert(
+            [item["content_blocks"][0]["content"] for item in payload["contents"]]
+            == ["Content B", "Content A"],
+            "batch response should include requested task-unit content in order",
+        )
+        _assert(
+            all(item["content"] is None for item in payload["contents"]),
+            "batch response should suppress raw content by default",
+        )
+        _assert(
+            BatchTaskUnitContentResponse.model_validate(payload).contents[0].task_unit_id
+            == "task-unit-2",
+            "batch payload should validate against official schema",
+        )
+        _assert(
+            getattr(pipeline, "prepare_calls") == 1,
+            "batch content lookup should prepare/load the document once",
+        )
+        _assert(repository.write_calls == 0, "batch content lookup must not write persistence")
+    finally:
+        main.section_task_coordinator = original
+
+
+def test_batch_task_unit_content_duplicate_request_id_fails_fast() -> None:
+    coordinator, repository = _build_coordinator(_build_cache_valid_document())
+    client = TestClient(main.app)
+    original = main.section_task_coordinator
+    main.section_task_coordinator = coordinator
+    try:
+        response = client.post(
+            "/documents/Doc Content/task-units/content",
+            json={
+                "task_unit_ids": ["task-unit-1", "task-unit-1"],
+                "segmented": True,
+            },
+        )
+        _assert(response.status_code == 422, "duplicate request ids should fail schema validation")
+        _assert(repository.write_calls == 0, "invalid batch request must not write persistence")
     finally:
         main.section_task_coordinator = original
 
@@ -923,6 +999,8 @@ def test_artifact_target_schema_level_constraints_fail_fast() -> None:
 if __name__ == "__main__":
     test_task_layout_anchor_evidence_prefers_page_range_when_available()
     test_task_layout_id_then_content_lookup_success()
+    test_batch_task_unit_content_lookup_preserves_order_and_read_only()
+    test_batch_task_unit_content_duplicate_request_id_fails_fast()
     test_task_unit_content_segmented_true_returns_deterministic_multi_blocks()
     test_task_unit_content_segmented_true_suppresses_leading_hierarchy_title()
     test_task_unit_content_segmented_true_supports_multilingual_paragraph_split()

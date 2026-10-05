@@ -96,6 +96,14 @@ class TaskUnitResolveOptions:
 
 
 @dataclass(frozen=True)
+class _TaskLayoutDocumentResult:
+    """Internal task-layout document plus cache reuse metadata."""
+
+    document: StructuredDocument
+    cache_hit: bool
+
+
+@dataclass(frozen=True)
 class ManualStructureAnchorDTO:
     """App-layer manual structure anchor contract."""
 
@@ -792,6 +800,7 @@ class SectionTaskCoordinator:
         refresh_task_units: bool = False,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
+        include_anchor_page_evidence: bool = False,
     ) -> DocumentTaskLayout:
         """Return hierarchy-first document layout with embedded task-unit metadata."""
         resolve_options = self._resolve_task_unit_request_options(
@@ -808,12 +817,13 @@ class SectionTaskCoordinator:
             raise ValueError(
                 f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
             )
-        cached_document = self._get_or_refresh_task_layout_document(
+        task_layout_document_result = self._get_or_refresh_task_layout_document(
             doc_name=doc_name,
             structured_document=structured_document,
             resolve_options=resolve_options,
             refresh_task_units=refresh_task_units,
         )
+        cached_document = task_layout_document_result.document
         document_profile = self._load_existing_document_profile(doc_name)
         effective_sections = self._resolve_task_layout_sections(
             document=cached_document,
@@ -823,8 +833,10 @@ class SectionTaskCoordinator:
             sections=effective_sections,
             context="SectionTaskCoordinator#get_document_task_layout",
         )
-        page_boundaries = self._load_task_layout_anchor_page_boundaries(
-            doc_name=doc_name,
+        page_boundaries = (
+            []
+            if task_layout_document_result.cache_hit and not include_anchor_page_evidence
+            else self._load_task_layout_anchor_page_boundaries(doc_name=doc_name)
         )
         anchor_evidence = project_structure_anchor_evidence(
             cached_document,
@@ -954,6 +966,40 @@ class SectionTaskCoordinator:
         if not normalized_task_unit_id:
             raise ValueError("task_unit_id cannot be empty")
 
+        return self.get_task_unit_contents(
+            doc_name=doc_name,
+            task_unit_ids=[normalized_task_unit_id],
+            segmented=segmented,
+        )[0]
+
+    def get_task_unit_contents(
+        self,
+        *,
+        doc_name: str,
+        task_unit_ids: list[str],
+        segmented: bool = False,
+    ) -> list[TaskUnitContentDTO]:
+        """Read ordered task-unit content payloads with a single hierarchy load."""
+        normalized_task_unit_ids: list[str] = []
+        seen_requested_ids: set[str] = set()
+        duplicate_requested_ids: list[str] = []
+        for task_unit_id in task_unit_ids:
+            normalized_task_unit_id = task_unit_id.strip()
+            if not normalized_task_unit_id:
+                raise ValueError("task_unit_ids cannot contain empty values")
+            if normalized_task_unit_id in seen_requested_ids:
+                duplicate_requested_ids.append(normalized_task_unit_id)
+            seen_requested_ids.add(normalized_task_unit_id)
+            normalized_task_unit_ids.append(normalized_task_unit_id)
+
+        if not normalized_task_unit_ids:
+            raise ValueError("task_unit_ids cannot be empty")
+        if duplicate_requested_ids:
+            raise ValueError(
+                "duplicate task_unit_ids in request: "
+                + ", ".join(sorted(set(duplicate_requested_ids)))
+            )
+
         preparation_result = self.document_preparation_pipeline.prepare_and_load(
             doc_name=doc_name,
             mode=PreparationMode.BASE,
@@ -967,61 +1013,103 @@ class SectionTaskCoordinator:
 
         sections = self._resolve_task_layout_sections(
             document=structured_document,
-            context="SectionTaskCoordinator#get_task_unit_content",
+            context="SectionTaskCoordinator#get_task_unit_contents",
         )
 
         chapter_by_id = {
             chapter.chapter_id: chapter
             for chapter in structured_document.chapters
         }
-        matches: list[tuple[TaskUnit, StructuredSection, StructuredChapter | None]] = []
+        matches_by_task_unit_id: dict[
+            str,
+            tuple[TaskUnit, StructuredSection, StructuredChapter | None],
+        ] = {}
+        duplicate_persisted_ids: dict[str, int] = {}
         for section in sections:
             parent_chapter = chapter_by_id.get((section.parent_chapter_id or "").strip())
             for task_unit in section.task_units:
-                if task_unit.unit_id == normalized_task_unit_id:
-                    matches.append((task_unit, section, parent_chapter))
+                if task_unit.unit_id not in seen_requested_ids:
+                    continue
+                if task_unit.unit_id in matches_by_task_unit_id:
+                    duplicate_persisted_ids[task_unit.unit_id] = (
+                        duplicate_persisted_ids.get(task_unit.unit_id, 1) + 1
+                    )
+                    continue
+                matches_by_task_unit_id[task_unit.unit_id] = (
+                    task_unit,
+                    section,
+                    parent_chapter,
+                )
 
-        if not matches:
+        if duplicate_persisted_ids:
             raise ValueError(
-                f"task_unit_id '{normalized_task_unit_id}' not found in document '{structured_document.document_id}'"
-            )
-        if len(matches) > 1:
-            raise ValueError(
-                f"duplicate task_unit_id detected: '{normalized_task_unit_id}' matched {len(matches)} task units"
+                "duplicate task_unit_id detected: "
+                + ", ".join(
+                    f"'{task_unit_id}' matched {count} task units"
+                    for task_unit_id, count in sorted(duplicate_persisted_ids.items())
+                )
             )
 
-        selected_task_unit, selected_section, selected_chapter = matches[0]
-        if not selected_task_unit.content.strip():
+        contents: list[TaskUnitContentDTO] = []
+        for normalized_task_unit_id in normalized_task_unit_ids:
+            match = matches_by_task_unit_id.get(normalized_task_unit_id)
+            if match is None:
+                raise ValueError(
+                    f"task_unit_id '{normalized_task_unit_id}' not found in document '{structured_document.document_id}'"
+                )
+            contents.append(
+                self._build_task_unit_content_dto(
+                    document=structured_document,
+                    task_unit=match[0],
+                    section=match[1],
+                    chapter=match[2],
+                    segmented=segmented,
+                )
+            )
+
+        return contents
+
+    def _build_task_unit_content_dto(
+        self,
+        *,
+        document: StructuredDocument,
+        task_unit: TaskUnit,
+        section: StructuredSection,
+        chapter: StructuredChapter | None,
+        segmented: bool,
+    ) -> TaskUnitContentDTO:
+        """Build one task-unit content DTO from an already resolved hierarchy match."""
+        if not task_unit.content.strip():
             raise ValueError(
-                f"task_unit_id '{normalized_task_unit_id}' has empty content and cannot be rendered"
+                f"task_unit_id '{task_unit.unit_id}' has empty content and cannot be rendered"
             )
 
         content_blocks = (
             self._build_segmented_content_blocks_for_rendering(
-                task_unit=selected_task_unit,
-                section=selected_section,
-                chapter=selected_chapter,
+                task_unit=task_unit,
+                section=section,
+                chapter=chapter,
             )
             if segmented
-            else selected_task_unit.to_content_blocks()
+            else task_unit.to_content_blocks()
         )
         content_blocks = self._normalize_content_blocks_for_rendering(content_blocks)
 
         return TaskUnitContentDTO(
-            document_id=structured_document.document_id,
-            document_title=structured_document.title,
-            task_unit_id=selected_task_unit.unit_id,
-            title=selected_task_unit.title,
-            container_title=selected_task_unit.container_title,
-            content=selected_task_unit.content,
+            document_id=document.document_id,
+            document_title=document.title,
+            task_unit_id=task_unit.unit_id,
+            title=task_unit.title,
+            container_title=task_unit.container_title,
+            content=task_unit.content,
             content_blocks=content_blocks,
-            source_section_ids=list(selected_task_unit.source_section_ids),
-            parent_section_id=selected_task_unit.parent_section_id,
-            section_id=selected_section.section_id,
-            section_title=selected_section.title,
-            chapter_id=(None if selected_chapter is None else selected_chapter.chapter_id),
-            chapter_title=(None if selected_chapter is None else selected_chapter.title),
-            is_fallback_generated=selected_task_unit.is_fallback_generated,
+            source_section_ids=list(task_unit.source_section_ids),
+            parent_section_id=task_unit.parent_section_id,
+            section_id=section.section_id,
+            section_title=section.title,
+            chapter_id=(None if chapter is None else chapter.chapter_id),
+            chapter_title=(None if chapter is None else chapter.title),
+            is_fallback_generated=task_unit.is_fallback_generated,
         )
 
     @staticmethod
@@ -1943,7 +2031,7 @@ class SectionTaskCoordinator:
         structured_document: StructuredDocument,
         resolve_options: TaskUnitResolveOptions,
         refresh_task_units: bool,
-    ) -> StructuredDocument:
+    ) -> _TaskLayoutDocumentResult:
         """Return document with valid persisted section.task_units, recomputing when needed."""
         if (
             not refresh_task_units
@@ -1968,14 +2056,20 @@ class SectionTaskCoordinator:
                     f"doc_name={doc_name}",
                     f"duplicates={duplicate_ids}",
                 )
-                return repaired_document
+                return _TaskLayoutDocumentResult(
+                    document=repaired_document,
+                    cache_hit=True,
+                )
             print(
                 "SectionTaskCoordinator#task_layout_cache_hit:",
                 f"doc_name={doc_name}",
                 f"split_mode={resolve_options.split_mode.value}",
                 f"semantic_top_k={resolve_options.semantic_top_k_candidates}",
             )
-            return structured_document
+            return _TaskLayoutDocumentResult(
+                document=structured_document,
+                cache_hit=True,
+            )
 
         task_layout_document = replace(
             structured_document,
@@ -2037,7 +2131,10 @@ class SectionTaskCoordinator:
             f"semantic_top_k={resolve_options.semantic_top_k_candidates}",
             f"refresh={refresh_task_units}",
         )
-        return updated_document
+        return _TaskLayoutDocumentResult(
+            document=updated_document,
+            cache_hit=False,
+        )
 
     def _resolve_task_layout_sections(
         self,

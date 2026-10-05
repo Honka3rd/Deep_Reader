@@ -112,11 +112,15 @@ def test_scanned_pdf_classification_uses_text_image_and_font_signals() -> None:
 
 
 def test_native_pdf_text_is_preserved_while_collecting_metrics() -> None:
+    extract_calls = 0
+
     class _Page:
         def __init__(self, text: str) -> None:
             self._text = text
 
         def extract_text(self) -> str:
+            nonlocal extract_calls
+            extract_calls += 1
             return self._text
 
         def get(self, key: str) -> dict[str, object]:
@@ -130,17 +134,22 @@ def test_native_pdf_text_is_preserved_while_collecting_metrics() -> None:
     text, metrics = PdfDocumentLoader()._extract_text_and_metrics(_Reader())
 
     _assert(text == "First page\nSecond page", f"unexpected native text: {text!r}")
+    _assert(extract_calls == 2, "native text extraction should happen once per page")
     _assert(metrics.native_text_chars == len("First pageSecond page"), "native text chars should be counted")
     _assert(metrics.pages_with_fonts == 2, "font resources should be counted")
     _assert(not metrics.is_scanned_image_pdf, "native text PDFs should not require OCR")
 
 
 def test_pdf_page_boundary_evidence_preserves_native_load_contract() -> None:
+    extract_calls = 0
+
     class _Page:
         def __init__(self, text: str) -> None:
             self._text = text
 
         def extract_text(self) -> str:
+            nonlocal extract_calls
+            extract_calls += 1
             return self._text
 
         def get(self, key: str) -> dict[str, object]:
@@ -171,6 +180,10 @@ def test_pdf_page_boundary_evidence_preserves_native_load_contract() -> None:
 
     expected_hash = hashlib.sha256(pdf_bytes).hexdigest()
     _assert(raw_text == "Alpha\nBeta", f"unexpected load() text: {raw_text!r}")
+    _assert(
+        extract_calls == 6,
+        "load() and page boundary evidence should each extract native text once per page",
+    )
     _assert(evidence.doc_name == "sample", "evidence should preserve doc_name")
     _assert(
         evidence.source_file_name == "sample.pdf",
@@ -192,6 +205,27 @@ def test_pdf_page_boundary_evidence_preserves_native_load_contract() -> None:
         [boundary.source_sha256 for boundary in evidence.boundaries]
         == [expected_hash, expected_hash, expected_hash],
         "each page boundary should carry source identity",
+    )
+
+
+def test_apple_pdf_page_boundaries_use_native_text_without_ocr() -> None:
+    """APPLE.pdf is a native-text PDF; page-boundary evidence must not require OCR."""
+    loader = PdfDocumentLoader(ocr_enabled=False)
+    evidence = loader.load_page_boundary_evidence("APPLE.pdf")
+
+    _assert(evidence.source_file_name == "APPLE.pdf", "fixture should resolve APPLE.pdf")
+    _assert(evidence.page_count > 1, "APPLE.pdf should have multiple native pages")
+    _assert(
+        len(evidence.boundaries) == evidence.page_count,
+        "page-boundary evidence should include one boundary per PDF page",
+    )
+    _assert(
+        any(boundary.text.strip() for boundary in evidence.boundaries),
+        "native page-boundary evidence should include extracted text",
+    )
+    _assert(
+        loader.last_ocr_provenance is None,
+        "native APPLE.pdf boundary loading should not start OCR",
     )
 
 

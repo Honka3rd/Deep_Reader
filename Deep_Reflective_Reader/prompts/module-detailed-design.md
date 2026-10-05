@@ -65,3 +65,25 @@ No known legacy compatibility responsibility.
 ## 13. Suggested Next Documentation Improvements
 
 1. 補 prompt mode matrix（local/retrieval/fulltext）。
+
+## 14. Future Direction Note: Reading Interaction Prompt Contracts
+
+> 本節記錄 analysis / quiz / critical-thinking prompt governance；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+
+1. Reading interaction prompts should use fixed, versioned instruction templates per interaction type. Dynamic input should be limited to target metadata, selected context, session state, and allowed generation options. **[Maintainer-Provided] + [Future Direction]**
+2. `analysis` prompt instruction should clearly ask for summary, reasoning/interpretation, and parsing/explanation over the resolved reading target, then require strict JSON output. **[Maintainer-Provided] + [Future Direction]**
+3. `quiz` prompt instruction should provide only the valid quiz type enum, target-level max count, and context; the model may decide the type mix and generate fewer than max. **[Maintainer-Provided] + [Future Direction]**
+4. Critical-thinking question prompt instruction must explicitly tell the model this is critical-thinking training and request one focused question for the resolved target. **[Maintainer-Provided] + [Future Direction]**
+5. Critical-thinking evaluation prompt instruction should evaluate the user's answer against the original question and context, returning structured feedback and status without starting a new question. **[Maintainer-Provided] + [Future Direction]**
+6. All interaction prompts must request strict structured JSON and must be paired with server-side schema validation. Prompt wording alone is not a correctness boundary. **[Maintainer-Provided] + [Future Direction]**
+7. Prompt instructions should include an insufficient-content escape hatch so noisy OCR fragments or symbol-only units can produce a valid empty/insufficient result instead of hallucinated content. **[Maintainer-Provided] + [Future Direction]**
+8. Prompt templates should record instruction version in artifact metadata to support future regeneration and validation policy changes. **[Future Direction]**
+
+### 14.1 Artifact-Aware Prompt Inputs
+
+1. Prompt templates for higher-level targets should clearly separate `Primary source context` from `Secondary lower-level artifact context`. **[Maintainer-Provided] + [Future Direction]**
+2. Fixed instructions should tell the model to use lower-level artifacts for avoiding repetition, identifying coverage, and raising abstraction, while grounding final output in the primary source context. **[Maintainer-Provided] + [Future Direction]**
+3. Quiz prompts should explicitly avoid repeating lower-level quiz questions unless repetition is pedagogically necessary and justified by the output schema. **[Maintainer-Provided] + [Future Direction]**
+4. Critical-thinking prompts should ask the model to build on lower-level critical-thinking focus areas when available, moving from local comprehension toward synthesis, transfer, and critique. **[Maintainer-Provided] + [Future Direction]**
+5. Prompt instructions must forbid treating lower-level artifacts as source truth or parser authority. **[From HLD] + [Maintainer-Provided]**
+6. Structured output should include enough fields for the server to validate referenced-artifact metadata and deduplication/abstraction hints when those fields are part of the schema. **[Future Direction]**
