@@ -104,10 +104,10 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Preserve fail-fast hierarchy lookup semantics for content-block interactions
 - [ ] Keep task-layout API lightweight and separate from on-demand rich-content read API
 - [ ] Route future content-block interactions through explicit id-based targeting and service boundaries
-- [ ] Define reading-target resolver orchestration for document/chapter/section/task-unit interactions
-  Evidence needed: app-layer resolver accepts `doc_name`, `chapter_id`, `section_id`, and `task_unit_id` targets with optional parent-id consistency checks, and rejects title-primary or legacy fallback targeting.
-  Notes: This is the prerequisite for target-agnostic analysis, quiz, and critical-thinking generation.
-  Timestamp: 2026-10-05
+- [x] Define reading-target resolver orchestration for document/chapter/section/task-unit interactions
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/reading_target_resolver.py`; `Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`.
+  Notes: `SectionTaskCoordinator.resolve_reading_target(...)` loads one base hierarchy snapshot and delegates to `ReadingTargetResolver` for document/book, chapter, section, and task-unit targets. The resolver validates optional parent ids and rejects title-primary lookup, root `sections[]`, `structure_nodes`, and duplicate hierarchy matches.
+  Timestamp: 2026-10-08
 - [ ] Add analysis artifact read/generate orchestration as the first vertical slice
   Evidence needed: read path returns persisted analysis or missing/not-generated without LLM calls; generate path explicitly builds context, calls LLM service, validates output, and persists the artifact.
   Notes: Must preserve explicit write-path semantics and avoid backend session cache as artifact truth.

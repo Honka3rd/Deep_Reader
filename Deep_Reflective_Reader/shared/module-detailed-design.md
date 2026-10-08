@@ -14,6 +14,7 @@
 |---|---|---|
 | `shared/abstract_result.py` | Generic result 抽象基類 | success/payload/reason/cache_hit **[Code-Confirmed]** |
 | `shared/artifact_target_model.py` | artifact target level/ref shared contract | single source of truth for target-level enum **[Code-Confirmed]** |
+| `shared/common_artifact_model.py` | common artifact entity DTO for typed interaction outputs | one entity shape using `artifact_type` rather than category-specific artifact tables **[Code-Confirmed]** |
 | `shared/task_artifacts.py` | summary/quiz/task artifacts schema | section/task-unit/document-level contracts **[Code-Confirmed]** |
 | `shared/task_unit_model.py` | `TaskUnit` 與 `TaskUnitContentBlock` schema | parent_section_id、artifact nested fields、string->block adapter foundation **[Code-Confirmed]** |
 
@@ -37,6 +38,8 @@
 - `DocumentTaskArtifacts`
 - `ArtifactTargetLevel`
 - `ArtifactTargetRef`
+- `CommonArtifact`
+- `CommonArtifactTarget`
 - `TaskUnit`
 - `TaskUnitContentBlock`
 
@@ -186,3 +189,10 @@
 8. empty content 行為維持：`content == ""` 時 segmentation 回傳空 block list（不生成 synthetic empty semantic block）。 **[Code-Confirmed]**
 9. repeated segmentation 呼叫具 idempotent 結果；在同一內容輸入下輸出 block id、span、hash 穩定。 **[Code-Confirmed] + [Test-Confirmed]**
 10. 本實作不變更 hierarchy truth、parser authority、artifact persistence、task-layout/API/persistence schema，也不接入 retrieval/LLM/question/evaluated_answer。 **[Code-Confirmed] + [Doc-Confirmed]**
+
+## 17. Common Artifact Entity Contract
+
+1. `CommonArtifact` provides one shared DTO shape for reading interaction artifacts, using `artifact_type` to distinguish `analysis`, `quiz`, and `critical_thinking_session`. **[Code-Confirmed]**
+2. `CommonArtifactTarget` preserves hierarchy-aware target metadata (`document_id`, optional chapter/section/task-unit/content-block ids) and normalizes `book` to the shared `document` target level. **[Code-Confirmed]**
+3. The common entity contract keeps type-specific content inside `payload` and bounded provenance inside `metadata`; it does not create category-specific artifact tables or category-specific top-level serialization roots. **[Code-Confirmed]**
+4. The DTO is side-effect-free and does not own persistence, route mapping, parser authority, hierarchy truth, or runtime backend selection. **[Code-Confirmed] + [From HLD]**

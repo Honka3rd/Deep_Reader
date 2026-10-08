@@ -47,34 +47,34 @@ No unresolved confirmation items identified in this pass.
 
 New future tasks for this module must be added here first as unchecked items:
 
-- [ ] Define reading target context adapter
-  Evidence needed: context module accepts resolved document/chapter/section/task-unit targets and builds target-scoped text/evidence without title fallback.
-  Notes: Adapter should return metadata needed for artifact provenance.
-  Timestamp: 2026-10-05
-- [ ] Support full-target context gate for reading interactions
-  Evidence needed: context selection uses model capability and configured budget to decide when the whole target can fit.
-  Notes: This should reuse or align with existing token budget resolver behavior.
-  Timestamp: 2026-10-05
-- [ ] Support semantic compact fallback for large reading targets
-  Evidence needed: context selection produces a compacted single-call context with evidence ids when target content exceeds budget.
-  Notes: First version should not require multi-call map-reduce.
-  Timestamp: 2026-10-05
-- [ ] Expose interaction context provenance metadata
-  Evidence needed: context result carries context mode, token estimate, effective budget, evidence ids, and truncation/compaction reason for artifact metadata.
-  Notes: Provenance supports cost visibility and regeneration decisions.
-  Timestamp: 2026-10-05
-- [ ] Add artifact-aware secondary context assembly
-  Evidence needed: context builder can include compact lower-level artifact summaries for section/chapter/document generation without replacing current target source text.
-  Notes: Use lower-level artifacts for deduplication, coverage awareness, abstraction hints, and difficulty escalation only.
-  Timestamp: 2026-10-05
-- [ ] Add artifact context budget and pruning policy
-  Evidence needed: context selection prioritizes fixed instruction and current target source context before lower-level artifact summaries, and records pruning/compaction reasons.
-  Notes: Artifact context should be summarized/projection-based, not raw artifact payload dumping.
-  Timestamp: 2026-10-05
-- [ ] Record artifact context provenance metadata
-  Evidence needed: context result includes `artifact_context_mode`, `referenced_artifact_ids`, target-level coverage counts, deduplication hints, and artifact pruning reasons.
-  Notes: Absence of lower-level artifacts should not block generation.
-  Timestamp: 2026-10-05
+- [x] Define reading target context adapter
+  Evidence: `Deep_Reflective_Reader/context/reading_interaction_context.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_context_selection.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_context_selection.py`.
+  Notes: `ReadingInteractionContextBuilder` accepts a resolved document/chapter/section/task-unit target shape, builds target-scoped source context and evidence ids, and rejects empty content instead of falling back to document/title text.
+  Timestamp: 2026-10-08
+- [x] Support full-target context gate for reading interactions
+  Evidence: `Deep_Reflective_Reader/context/reading_interaction_context.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_context_selection.py`; `python3 -m py_compile Deep_Reflective_Reader/context/reading_interaction_context.py Deep_Reflective_Reader/scripts/test_reading_interaction_context_selection.py`.
+  Notes: Context selection uses configured context budget, fixed prompt instruction token estimate, reserved output tokens, and `LLMModelCapabilities.max_input_tokens` to decide when full target context fits.
+  Timestamp: 2026-10-08
+- [x] Support semantic compact fallback for large reading targets
+  Evidence: `Deep_Reflective_Reader/context/reading_interaction_context.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_context_selection.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_context_selection.py`.
+  Notes: Oversized targets use deterministic paragraph/sentence chunking with coverage ordering and bounded single-call compact context; no multi-call map-reduce or LLM call occurs in the context layer.
+  Timestamp: 2026-10-08
+- [x] Expose interaction context provenance metadata
+  Evidence: `Deep_Reflective_Reader/context/reading_interaction_context.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_context_selection.py`; `python3 -m py_compile Deep_Reflective_Reader/context/reading_interaction_context.py Deep_Reflective_Reader/scripts/test_reading_interaction_context_selection.py`.
+  Notes: `ReadingInteractionContextResult.to_metadata()` records context mode, token estimate, used context tokens, effective context budget, evidence ids, target identity, model capability source, truncation flag, and compaction reason without serializing source text.
+  Timestamp: 2026-10-08
+- [x] Add artifact-aware secondary context assembly
+  Evidence: `Deep_Reflective_Reader/context/artifact_aware_context.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`.
+  Notes: Adds `ArtifactAwareContextBuilder` and compact `ArtifactContextSummary` / `ArtifactAwareContextResult` DTOs. The builder assembles lower-level artifact summaries as secondary context, skips empty or insufficient-content artifacts, deduplicates ids, bounds selected artifacts, records coverage counts and deduplication/abstraction hints, and never embeds raw child artifact payloads.
+  Timestamp: 2026-10-08
+- [x] Add artifact context budget and pruning policy
+  Evidence: `Deep_Reflective_Reader/context/artifact_aware_context.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`.
+  Notes: `ArtifactAwareContextBuilder.build_secondary_context(...)` accepts a bounded `max_context_chars` artifact-context budget that represents space left after fixed instruction and primary source context are prioritized by the caller. It prunes lower-level artifact summaries that do not fit, updates referenced artifact ids and coverage counts to match kept artifacts, and records `budget_pruned=<n>` in the pruning reason.
+  Timestamp: 2026-10-08
+- [x] Record artifact context provenance metadata
+  Evidence: `Deep_Reflective_Reader/context/artifact_aware_context.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`.
+  Notes: `ArtifactAwareContextResult.to_metadata()` exports artifact context mode, referenced artifact ids/types/target levels, coverage counts, deduplication and abstraction hints, and pruning reason when present. It omits secondary `context_text` and raw child artifact payloads, and empty lower-level artifact context still returns non-blocking `artifact_context_mode=none`.
+  Timestamp: 2026-10-08
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

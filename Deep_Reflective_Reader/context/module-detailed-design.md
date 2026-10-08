@@ -15,6 +15,8 @@
 | `context/context_orchestrator.py` | mode 決策與 context 組裝協調 | 產出 `ContextBuildResult` **[Code-Confirmed]** |
 | `context/document_context_builder.py` | local/retrieval/full-text context build | 核心拼裝邏輯 **[Code-Confirmed]** |
 | `context/coverage_oriented_context_builder.py` | global retrieval coverage 去密集化 | 提升跨段覆蓋 **[Code-Confirmed]** |
+| `context/artifact_aware_context.py` | lower-level artifact secondary context projection | metadata-only, no payload expansion **[Code-Confirmed]** |
+| `context/reading_interaction_context.py` | reading interaction primary source context selection | resolved target only; full target vs semantic compact **[Code-Confirmed]** |
 | `context/token_budget_manager.py` | token 估算、截斷、budget 計算 | prompt-aware context budget **[Code-Confirmed]** |
 
 ## 4. Main Responsibilities
@@ -34,6 +36,7 @@
 - `ContextBuildResult`
 - `CoverageSelection`
 - `PromptMode` / `ContextMode`
+- `ReadingInteractionContextResult`
 
 ## 7. Module Relationships
 
@@ -82,17 +85,17 @@ No known legacy compatibility responsibility.
 
 1. 補 context mode state diagram。
 
-## 14. Future Direction Note: Reading Target Interaction Context
+## 14. Reading Target Interaction Context
 
-> 本節記錄 book/chapter/section/task-unit interaction 的 context strategy；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+> 本節記錄 book/chapter/section/task-unit interaction 的 context strategy。第一版 implementation 已落地在 `context/reading_interaction_context.py`。 **[Maintainer-Provided] + [Code-Confirmed]**
 
-1. Context selection for reading interactions should operate on a resolved target, not on free-form titles or unresolved ids. **[Maintainer-Provided] + [Future Direction]**
-2. If the resolved target content fits the active model capability and configured budget, the context layer should provide full target context. **[Maintainer-Provided] + [Future Direction]**
-3. If the target is too large, the context layer should produce a semantic/coverage compact context for the fixed prompt instruction. **[Maintainer-Provided] + [Future Direction]**
-4. First version should avoid multi-call map-reduce; it should select between full target context and compacted single-call context. **[Maintainer-Provided] + [Future Direction]**
-5. Context build metadata should expose `context_mode`, token estimate, effective budget, selected evidence/chunk ids, truncation/compaction reason, and model capability source. **[Maintainer-Provided] + [Future Direction]**
-6. The context layer should not call LLM, persist artifacts, mutate sessions, or decide generation status. **[Code-Confirmed] + [Future Direction]**
-7. Interaction context should remain compatible with existing QA capability-aware budget logic while keeping interaction prompt instructions fixed and versioned. **[Code-Confirmed] + [Maintainer-Provided]**
+1. Context selection for reading interactions operates on a resolved target shape, not on free-form titles or unresolved ids. Empty content fails fast instead of falling back to target title. **[Code-Confirmed]**
+2. If the resolved target content fits the active model capability and configured budget, the context layer provides full target context with a target-level evidence id. **[Code-Confirmed]**
+3. If the target is too large, the context layer produces a deterministic semantic/coverage compact context for the fixed prompt instruction. **[Code-Confirmed]**
+4. First version avoids multi-call map-reduce; it selects between full target context and compacted single-call context only. **[Code-Confirmed]**
+5. Context build metadata exposes `context_mode`, token estimate, used context tokens, effective budget, selected evidence/chunk ids, truncation/compaction reason, target identity, and model capability source without serializing source text. **[Code-Confirmed]**
+6. The context layer does not call LLM, persist artifacts, mutate sessions, or decide generation status. **[Code-Confirmed]**
+7. Interaction context remains compatible with existing token-budget utilities while keeping interaction prompt instructions caller-provided and predictable. **[Code-Confirmed]**
 
 ### 14.1 Artifact-Aware Context Policy
 

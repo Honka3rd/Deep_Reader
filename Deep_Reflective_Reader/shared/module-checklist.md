@@ -63,6 +63,11 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/shared/task_unit_model.py`; `Deep_Reflective_Reader/scripts/test_shared_task_unit_content_blocks.py`; `Deep_Reflective_Reader/shared/module-detailed-design.md`; `Deep_Reflective_Reader/progress.md`
   Notes: Added explicit opt-in shared segmentation (`TaskUnit.segment_content_blocks()` / `segment_task_unit_content`) with deterministic paragraph-first + list-item-safe split rules, deterministic block ids (`<task_unit_id>:content:<index>`), advisory metadata (`source_hash`, `content_block_id`, `quote_span_start`, `quote_span_end`, `schema_version`), and idempotent behavior; preserved default `to_content_blocks()` compatibility, old payload support, and no endpoint/API/task-layout/persistence/retrieval/LLM changes.
 
+- [x] Define common artifact entity DTO for reading interaction artifacts
+  Evidence: `Deep_Reflective_Reader/shared/common_artifact_model.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_common_artifact.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_common_artifact_model.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_common_artifact_model.py`; `python3 -m py_compile Deep_Reflective_Reader/shared/common_artifact_model.py Deep_Reflective_Reader/section_tasks/reading_interaction_common_artifact.py Deep_Reflective_Reader/scripts/test_reading_interaction_common_artifact_model.py`.
+  Notes: Adds `CommonArtifact` and `CommonArtifactTarget` as one shared DTO shape for `analysis`, `quiz`, and `critical_thinking_session` artifacts. The artifact category is stored in `artifact_type`; type-specific content stays in `payload`, provenance stays in `metadata`, hierarchy-aware target ids are preserved, and no category-specific artifact tables or category-specific top-level roots are introduced.
+  Timestamp: 2026-10-08
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

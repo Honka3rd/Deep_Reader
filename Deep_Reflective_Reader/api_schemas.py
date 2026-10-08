@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from shared.artifact_target_model import ArtifactTargetLevel
 
 ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS: frozenset[str] = frozenset(
@@ -10,6 +10,15 @@ ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS: frozenset[str] = frozenset(
         "quote_span_start",
         "quote_span_end",
         "schema_version",
+    }
+)
+
+ARTIFACT_CONTEXT_MODES: frozenset[str] = frozenset(
+    {
+        "none",
+        "referenced",
+        "compacted",
+        "pruned",
     }
 )
 
@@ -489,6 +498,86 @@ class ArtifactTargetRefResponse(BaseModel):
                     "artifact target metadata contains unsupported keys: "
                     + ", ".join(sorted(unknown_keys))
                 )
+        return self
+
+
+class ArtifactAwareInteractionMetadataResponse(BaseModel):
+    """Metadata-only context provenance for artifact-aware interaction responses.
+
+    This schema distinguishes primary source evidence from secondary lower-level
+    artifact references. It intentionally does not embed child artifact payloads.
+    """
+
+    _ALLOWED_CONTEXT_MODES: ClassVar[frozenset[str]] = ARTIFACT_CONTEXT_MODES
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_context_mode: str = Field(
+        "none",
+        description=(
+            "Secondary artifact context mode: none | referenced | compacted | pruned."
+        ),
+    )
+    primary_source_evidence_ids: list[str] = Field(default_factory=list)
+    referenced_artifact_ids: list[str] = Field(default_factory=list)
+    referenced_artifact_types: list[str] = Field(default_factory=list)
+    referenced_artifact_target_levels: list[ArtifactTargetLevel] = Field(default_factory=list)
+    coverage_counts: dict[str, int] = Field(default_factory=dict)
+    deduplication_hint_applied: bool = False
+    abstraction_hint_applied: bool = False
+    artifact_context_pruned_reason: str | None = None
+
+    @staticmethod
+    def _normalize_string_list(values: list[str], *, field_name: str) -> list[str]:
+        normalized: list[str] = []
+        for value in values:
+            normalized_value = value.strip()
+            if not normalized_value:
+                raise ValueError(f"{field_name} cannot contain empty values")
+            normalized.append(normalized_value)
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_artifact_context_metadata(self) -> "ArtifactAwareInteractionMetadataResponse":
+        normalized_mode = self.artifact_context_mode.strip().lower().replace("-", "_")
+        if normalized_mode not in self._ALLOWED_CONTEXT_MODES:
+            raise ValueError(
+                "artifact_context_mode must be one of: "
+                + ", ".join(sorted(self._ALLOWED_CONTEXT_MODES))
+            )
+        self.artifact_context_mode = normalized_mode
+
+        self.primary_source_evidence_ids = self._normalize_string_list(
+            self.primary_source_evidence_ids,
+            field_name="primary_source_evidence_ids",
+        )
+        self.referenced_artifact_ids = self._normalize_string_list(
+            self.referenced_artifact_ids,
+            field_name="referenced_artifact_ids",
+        )
+        self.referenced_artifact_types = self._normalize_string_list(
+            self.referenced_artifact_types,
+            field_name="referenced_artifact_types",
+        )
+
+        normalized_counts: dict[str, int] = {}
+        for raw_key, count in self.coverage_counts.items():
+            key = raw_key.strip()
+            if not key:
+                raise ValueError("coverage_counts cannot contain empty keys")
+            if count < 0:
+                raise ValueError("coverage_counts cannot contain negative values")
+            normalized_counts[key] = count
+        self.coverage_counts = normalized_counts
+
+        if self.artifact_context_pruned_reason is not None:
+            pruned_reason = self.artifact_context_pruned_reason.strip()
+            self.artifact_context_pruned_reason = pruned_reason or None
+
+        if self.artifact_context_mode == "none" and self.referenced_artifact_ids:
+            raise ValueError(
+                "artifact_context_mode=none cannot include referenced_artifact_ids"
+            )
+
         return self
 
 

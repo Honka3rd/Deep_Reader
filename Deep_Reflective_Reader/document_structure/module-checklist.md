@@ -83,6 +83,11 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/document_structure/structured_document.py`; `Deep_Reflective_Reader/document_structure/structured_document_builder.py`; `Deep_Reflective_Reader/document_structure/section_splitter_selector.py`; `Deep_Reflective_Reader/document_structure/llm_section_splitter.py`; `Deep_Reflective_Reader/scripts/test_llm_section_splitter_region_plan.py`
   Notes: Structured build records requested/effective parser mode and LLM fallback reason as advisory provenance; fallback validation remains deterministic and metadata does not become parser authority.
 
+- [x] Clear derived interaction artifacts on parser-level hard reparse replacement
+  Evidence: `Deep_Reflective_Reader/document_structure/structured_document_artifact_repository.py`; `Deep_Reflective_Reader/db/postgres_structured_document_artifact_repository.py`; `Deep_Reflective_Reader/scripts/test_hard_reparse_reading_interaction_cleanup.py`; `Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_hard_reparse_reading_interaction_cleanup.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`.
+  Notes: `save_reparsed_document(...)` now sanitizes accepted replacement documents by clearing document-level, chapter-level, section-level, and task-unit-level task artifacts before persistence. This removes stale analysis/quiz/critical-thinking session payloads and referenced-artifact metadata from replacement structured payloads while leaving ordinary artifact/task-layout saves on their non-reparse paths.
+  Timestamp: 2026-10-08
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

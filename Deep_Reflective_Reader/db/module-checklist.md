@@ -240,22 +240,22 @@ No unresolved confirmation items identified in this pass.
 New future tasks for this module must be added here first as unchecked items:
 
 - [ ] Production DB rollout still needs broader hard-reparse transaction implementation, relational artifact/content-block persistence beyond structured-document payload metadata, profile persistence wiring, existing JSON migration tooling if required, and broader API/path regression coverage.
-- [ ] Map reading interaction artifacts onto the common artifact entity
-  Evidence needed: persistence design or implementation supports `analysis`, `quiz`, and `critical_thinking_session` artifact types without creating category-specific artifact tables.
-  Notes: Artifact writes must use hierarchy-aware validated targets and remain derived interaction output.
-  Timestamp: 2026-10-05
-- [ ] Validate current-artifact semantics for analysis and quiz
-  Evidence needed: read path can return only the current persisted artifact per target, while generate/refresh is an explicit write path.
-  Notes: No historical artifact layer is required for the first version.
-  Timestamp: 2026-10-05
+- [x] Map reading interaction artifacts onto the common artifact entity
+  Evidence: `Deep_Reflective_Reader/shared/common_artifact_model.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_common_artifact.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_common_artifact_model.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_common_artifact_model.py`; `python3 -m py_compile Deep_Reflective_Reader/shared/common_artifact_model.py Deep_Reflective_Reader/section_tasks/reading_interaction_common_artifact.py Deep_Reflective_Reader/scripts/test_reading_interaction_common_artifact_model.py`.
+  Notes: `CommonArtifact` and `CommonArtifactTarget` provide one DTO shape for `analysis`, `quiz`, and `critical_thinking_session`, using `artifact_type` rather than category-specific tables or top-level serialization roots. The section_tasks adapter preserves hierarchy-aware target ids and keeps artifacts as derived interaction output; durable repository read/write wiring remains a later DB rollout task.
+  Timestamp: 2026-10-08
+- [x] Validate current-artifact semantics for analysis and quiz
+  Evidence: `Deep_Reflective_Reader/section_tasks/analysis_interaction_orchestrator.py`; `Deep_Reflective_Reader/section_tasks/quiz_interaction_orchestrator.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_read_generate_split.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_read_generate_split.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_read_generate_split.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_quiz_interaction_read_generate_split.py`; `python3 -m py_compile Deep_Reflective_Reader/section_tasks/analysis_interaction_orchestrator.py Deep_Reflective_Reader/section_tasks/quiz_interaction_orchestrator.py Deep_Reflective_Reader/scripts/test_analysis_interaction_read_generate_split.py Deep_Reflective_Reader/scripts/test_quiz_interaction_read_generate_split.py`.
+  Notes: Analysis and quiz read paths return only the current persisted artifact for the target or a non-persisted `not_generated` artifact. Explicit generate reuses current artifacts unless `refresh=True`, persists only `completed` and `insufficient_content` artifacts, and leaves generation failures unpersisted. No historical artifact layer is introduced for the first version.
+  Timestamp: 2026-10-08
 - [ ] Validate critical-thinking session lifecycle against the common artifact model
   Evidence needed: generated question sessions persist before answers, answer/evaluation updates preserve recoverable states, and multiple sessions can attach to the same target.
   Notes: Statuses include question_generated, insufficient_content, answer_submitted, evaluation_failed, and completed.
   Timestamp: 2026-10-05
-- [ ] Preserve hard-reparse derived-resource cleanup for reading interaction artifacts
-  Evidence needed: hard reparse deletes or invalidates analysis, quiz, and critical-thinking session artifacts with other derived resources.
-  Notes: This avoids orphaned artifacts when hierarchy structure changes.
-  Timestamp: 2026-10-05
+- [x] Preserve hard-reparse derived-resource cleanup for reading interaction artifacts
+  Evidence: `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/db/postgres_structured_document_artifact_repository.py`; `Deep_Reflective_Reader/document_structure/structured_document_artifact_repository.py`; `Deep_Reflective_Reader/scripts/test_hard_reparse_reading_interaction_cleanup.py`; `Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_hard_reparse_reading_interaction_cleanup.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`.
+  Notes: PostgreSQL hard reparse already deletes current `artifacts` and `content_blocks` with hierarchy rows inside the replacement transaction. The repository wrapper now also sanitizes accepted replacement structured payloads so stale analysis/quiz/critical-thinking artifacts and referenced-artifact metadata are not reinserted from copied document/chapter/section/task-unit task artifacts.
+  Timestamp: 2026-10-08
 - [ ] Add referenced-artifact metadata for higher-level interaction artifacts
   Evidence needed: artifact persistence can record referenced lower-level artifact ids, artifact types, target levels, artifact context mode, coverage counts, and deduplication/abstraction hint flags.
   Notes: References are derived interaction memory, not hierarchy/source truth.

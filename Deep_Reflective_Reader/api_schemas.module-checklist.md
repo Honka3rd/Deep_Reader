@@ -106,14 +106,14 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence needed: schemas cover question generation, answer submission, evaluation retry, and statuses `question_generated`, `insufficient_content`, `answer_submitted`, `evaluation_failed`, and `completed`.
   Notes: Generated question must be serializable before the user answers.
   Timestamp: 2026-10-05
-- [ ] Define artifact-aware interaction metadata schema
-  Evidence needed: schemas can represent artifact context mode, referenced artifact ids, referenced types/target levels, coverage counts, and deduplication/abstraction hint flags.
-  Notes: Metadata must distinguish primary source evidence from secondary artifact references.
-  Timestamp: 2026-10-05
-- [ ] Prevent nested child artifact payload expansion in higher-level responses
-  Evidence needed: response schemas expose referenced artifact metadata without embedding full lower-level artifact payloads by default.
-  Notes: This keeps higher-level artifact responses bounded and avoids turning artifacts into source truth.
-  Timestamp: 2026-10-05
+- [x] Define artifact-aware interaction metadata schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`.
+  Notes: Adds `ArtifactAwareInteractionMetadataResponse` for metadata-only artifact-aware context provenance. It represents artifact context mode, primary source evidence ids, referenced artifact ids, artifact types, target levels, coverage counts, deduplication/abstraction flags, and pruning reason without embedding lower-level artifact payloads or making artifacts hierarchy/source authority.
+  Timestamp: 2026-10-08
+- [x] Prevent nested child artifact payload expansion in higher-level responses
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`.
+  Notes: `ArtifactAwareInteractionMetadataResponse` now forbids extra fields so nested lower-level artifact payloads such as `child_artifacts` or `referenced_artifact_payloads` fail validation. Higher-level interaction metadata exposes only referenced artifact ids/types/target levels and bounded provenance fields.
+  Timestamp: 2026-10-08
 - [x] Design batch task-unit content request/response schema
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.
   Notes: `BatchTaskUnitContentRequest` accepts ordered non-empty unique `task_unit_ids` plus `segmented` / `include_raw_content`; `BatchTaskUnitContentResponse` returns ordered per-task-unit `TaskUnitContentResponse` items while preserving the single endpoint schema contract. Batch content remains an on-demand content API path, not a task-layout payload expansion.

@@ -20,8 +20,8 @@
 | `document_structure/llm_section_splitter.py` | llm enhanced parser split 實作 | 作為 selector 另一條路徑 **[Code-Confirmed]** |
 | `document_structure/section_splitter_selector.py` | common/llm split mode 選擇 | parser mode contract 中樞 **[Code-Confirmed]** |
 | `document_structure/structured_document_store.py` | structured JSON load/save | normal load 經 strict hierarchy contract 校驗 **[Code-Confirmed]** |
-| `document_structure/document_artifact_repository.py` | artifact repository 抽象介面 | lightweight document discovery plus section/chapter/task-unit/document-level methods **[Code-Confirmed]** |
-| `document_structure/structured_document_artifact_repository.py` | 具體 artifact repository（hierarchy-aware） | normal read/write 路徑要求 chapters；legacy 讀取僅 explicit migration helper；可列出 structured file candidates **[Code-Confirmed]** |
+| `document_structure/document_artifact_repository.py` | artifact repository 抽象介面 | lightweight document discovery plus section/chapter/task-unit/document-level/parser-replacement methods **[Code-Confirmed]** |
+| `document_structure/structured_document_artifact_repository.py` | 具體 artifact repository（hierarchy-aware） | normal read/write 路徑要求 chapters；legacy 讀取僅 explicit migration helper；parser-level replacement clears derived artifacts **[Code-Confirmed]** |
 | `document_structure/enhanced_parse_trigger_evaluator.py` | enhanced parse recommendation 評估器 | recommendation only，非 auto-switch **[Code-Confirmed] + [From HLD]** |
 | `document_structure/document_structure_language_registry.py` | parser/regional/profile-evidence 用語言標記 registry | multi-consumer registry **[Code-Confirmed]** |
 
@@ -88,6 +88,7 @@
 3. artifact write flow：repository 更新 section/chapter/task-unit artifacts。 **[Code-Confirmed]**
 4. hierarchy helper flow（被 task-layout/runtime 使用）：提供 `get_effective_sections` 與 find helpers；不等同於擁有 task-layout projection contract。 **[Code-Confirmed] + [From HLD]**
 5. enhanced recommendation flow：evaluator 輸出 should_recommend/score/reasons。 **[Code-Confirmed]**
+6. hard reparse replacement flow：`save_reparsed_document(...)` sanitizes the accepted replacement document by clearing document/chapter/section/task-unit derived task artifacts before persistence. **[Code-Confirmed]**
 
 ## 10. Failure Semantics Matrix
 
@@ -152,6 +153,7 @@
 1. `document_structure` 擁有 artifact persistence primitives（repository contract + atomic save + hierarchy consistency guard）。 **[Code-Confirmed]**  
 2. `document_structure` 不擁有 artifact availability projection contract；availability/validity 展示屬 coordinator + task-layout DTO。 **[Code-Confirmed] + [From HLD]**  
 3. `document_structure` 不擁有 profile diagnostics projection contract。 **[Code-Confirmed] + [From HLD]**
+4. Parser-level hard reparse replacement clears derived artifact payloads and referenced-artifact metadata from the replacement structured document before save; ordinary artifact/task-layout updates do not use this cleanup path. **[Code-Confirmed]**
 
 ### 14.3 Runtime Projection Boundary
 

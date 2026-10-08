@@ -91,6 +91,11 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/scripts/test_task_layout_anchor_evidence_dto.py`
   Notes: `DocumentTaskLayoutChapterDTO` and `DocumentTaskLayoutSectionDTO` can carry optional `AnchorEvidenceDTO` for UI edit-existing prefill. The DTO supports page-range and char-range metadata, omits unset evidence to preserve current payload shape before API mapping, and excludes raw text, OCR text, geometry, and content blocks.
 
+- [x] Define hierarchy-only reading interaction target resolver
+  Evidence: `Deep_Reflective_Reader/section_tasks/reading_target_resolver.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`.
+  Notes: `ReadingTargetResolver` resolves document/book, chapter, section, and task-unit targets from `chapters[].sections[].task_units[]` only. It requires id-based targets, validates optional parent ids, rejects duplicate hierarchy matches, rejects title-primary lookup, and does not fall back to root `sections[]` or `structure_nodes`.
+  Timestamp: 2026-10-08
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -105,42 +110,54 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define segmented content-block endpoint projection semantics
 - [ ] Define duplicate/missing content-block validation behavior
 - [ ] Define segmented block artifact-target alignment behavior
-- [ ] Define target-agnostic reading interaction service contracts
-  Evidence needed: service contracts accept a resolved document/chapter/section/task-unit target and return validated interaction DTOs without owning route mapping or persistence internals.
-  Notes: This should become the shared foundation for analysis, quiz, and critical-thinking services.
-  Timestamp: 2026-10-05
-- [ ] Implement analysis interaction service with strict JSON validation
-  Evidence needed: service produces validated analysis payload containing summary, reasoning/interpretation, and parsing/explanation fields, or an insufficient-content result.
-  Notes: Invalid model output must fail generation rather than becoming a successful artifact.
-  Timestamp: 2026-10-05
-- [ ] Implement quiz interaction service with configured target-level limits
-  Evidence needed: service enforces valid quiz types and configured max counts for task-unit, section, chapter, and document targets.
-  Notes: The LLM may choose the quiz type mix and may generate fewer than max.
-  Timestamp: 2026-10-05
-- [ ] Implement critical-thinking session service
-  Evidence needed: service supports persisted question generation, answer submission, answer evaluation, and evaluation retry with recoverable failure status.
-  Notes: First version remains question -> answer -> evaluation and does not introduce question pools.
-  Timestamp: 2026-10-05
-- [ ] Add interaction artifact validity and insufficient-content semantics
-  Evidence needed: all interaction services can return or persist insufficient-content status with reason metadata and can report stale/invalid target context.
-  Notes: This guards noisy OCR-derived units and avoids repeated LLM spending.
-  Timestamp: 2026-10-05
-- [ ] Add lower-level artifact reference policy for higher-level generation
-  Evidence needed: section/chapter/document generation services can consume compact child artifact summaries as secondary context while preserving source text as primary context.
-  Notes: Applies recursively from unit -> section -> chapter -> document/book.
-  Timestamp: 2026-10-05
-- [ ] Add quiz deduplication behavior from lower-level artifacts
-  Evidence needed: quiz service can use child quiz artifacts to avoid repeated concepts/questions without concatenating lower-level quiz items into the higher-level quiz.
-  Notes: Higher-level quiz should favor synthesis, transfer, comparison, and cross-unit understanding.
-  Timestamp: 2026-10-05
-- [ ] Add critical-thinking learning-continuity behavior from lower-level sessions
-  Evidence needed: critical-thinking service can use child session summaries to generate broader questions that build on prior local training.
-  Notes: Child sessions remain secondary learning memory, not source truth.
-  Timestamp: 2026-10-05
-- [ ] Persist artifact reference metadata for generated interaction artifacts
-  Evidence needed: generated artifacts record referenced artifact ids/types/target levels and whether deduplication or abstraction-escalation hints were used.
-  Notes: Metadata supports later observability and cost/debug analysis.
-  Timestamp: 2026-10-05
+- [x] Define target-agnostic reading interaction service contracts
+  Evidence: `Deep_Reflective_Reader/section_tasks/reading_interaction_service_contracts.py`; `Deep_Reflective_Reader/section_tasks/reading_target_resolver.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_service_contracts.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_service_contracts.py`.
+  Notes: Adds `ReadingInteractionRequest`, `ReadingInteractionArtifact`, and `ReadingInteractionService` Protocol. Contracts accept resolved reading targets, validate interaction types/statuses, preserve hierarchy target metadata, allow reasoned `insufficient_content`, scope critical-thinking-only statuses, reject empty successful artifacts, and do not own route mapping or persistence internals.
+  Timestamp: 2026-10-08
+- [x] Implement analysis interaction service with strict JSON validation
+  Evidence: `Deep_Reflective_Reader/section_tasks/analysis_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_service_contracts.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_service.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_service.py`.
+  Notes: `AnalysisInteractionService` accepts a resolved reading interaction request, fast-paths insufficient readable content before calling the generator, validates JSON/dict output for non-empty `summary`, `reasoning`, and `explanation`, records schema/prompt/context metadata, returns completed artifacts only for valid payloads, and maps invalid JSON or missing fields to `generation_failed` rather than successful artifacts.
+  Timestamp: 2026-10-08
+- [x] Add analysis read/generate split orchestration
+  Evidence: `Deep_Reflective_Reader/section_tasks/analysis_interaction_orchestrator.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_read_generate_split.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_read_generate_split.py`; `python3 -m py_compile Deep_Reflective_Reader/section_tasks/analysis_interaction_orchestrator.py Deep_Reflective_Reader/scripts/test_analysis_interaction_read_generate_split.py`.
+  Notes: `AnalysisInteractionOrchestrator` separates persisted read from explicit generation. `read(...)` returns the current artifact or `not_generated` without generator calls or placeholder persistence; `generate(...)` reuses existing artifacts unless `refresh=True`, persists only `completed` and `insufficient_content` analysis artifacts, and leaves `generation_failed` results unpersisted.
+  Timestamp: 2026-10-08
+- [x] Add quiz read/generate split orchestration
+  Evidence: `Deep_Reflective_Reader/section_tasks/quiz_interaction_orchestrator.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_read_generate_split.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_quiz_interaction_read_generate_split.py`; `python3 -m py_compile Deep_Reflective_Reader/section_tasks/quiz_interaction_orchestrator.py Deep_Reflective_Reader/scripts/test_quiz_interaction_read_generate_split.py`.
+  Notes: `QuizInteractionOrchestrator` separates persisted read from explicit generation. `read(...)` returns the current artifact or `not_generated` without generator calls or placeholder persistence; `generate(...)` reuses existing artifacts unless `refresh=True`, persists only `completed` and `insufficient_content` quiz artifacts, and leaves `generation_failed` results unpersisted.
+  Timestamp: 2026-10-08
+- [x] Implement quiz interaction service with configured target-level limits
+  Evidence: `Deep_Reflective_Reader/section_tasks/quiz_interaction_service.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_service.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_quiz_interaction_service.py`.
+  Notes: `QuizInteractionService` passes valid quiz types plus target-level max items to the generator, accepts fewer-than-max outputs, enforces default/configured limits for task-unit/section/chapter/document targets, validates short-answer/multiple-choice/true-false answer payloads, fast-paths insufficient readable content without generator calls, and does not own route mapping or persistence internals.
+  Timestamp: 2026-10-08
+- [x] Implement critical-thinking session service
+  Evidence: `Deep_Reflective_Reader/section_tasks/critical_thinking_session_service.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_session_service.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_critical_thinking_session_service.py`.
+  Notes: `CriticalThinkingSessionService` implements the first-version question -> answer -> evaluation lifecycle without question pools. It generates one persisted-session-shaped question artifact, accepts optional delayed user answer submission, validates strict evaluation output, marks success as `completed`, preserves question/answer on `evaluation_failed` for retry, uses fixed service-level instructions for stable prompt behavior, fast-paths insufficient readable content, and does not own route mapping or persistence internals.
+  Timestamp: 2026-10-08
+- [x] Add interaction artifact validity and insufficient-content semantics
+  Evidence: `Deep_Reflective_Reader/section_tasks/artifact_validity.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_service_contracts.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/quiz_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/critical_thinking_session_service.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_validity.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_validity.py`.
+  Notes: Adds shared `ReadingInteractionValidityPolicy` and `ReadingInteractionTargetValidity` preflight semantics. Analysis, quiz, and critical-thinking generation now report stale target context as `stale_target` with a required reason before generator calls, keep insufficient readable content as `insufficient_content` with required reason, and preserve service-level route/persistence separation.
+  Timestamp: 2026-10-08
+- [x] Add lower-level artifact reference policy for higher-level generation
+  Evidence: `Deep_Reflective_Reader/section_tasks/reading_interaction_service_contracts.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/quiz_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/critical_thinking_session_service.py`; `Deep_Reflective_Reader/context/artifact_aware_context.py`; `Deep_Reflective_Reader/scripts/test_lower_level_artifact_reference_policy.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_lower_level_artifact_reference_policy.py`.
+  Notes: Analysis, quiz, and critical-thinking generation can consume compact lower-level artifact summaries through an `artifact_context_provider`. The generated request exposes this as `secondary_context` while preserving `target.content` as the primary source text; artifact metadata records provenance only (`referenced_artifact_ids/types/target_levels`, coverage, deduplication/abstraction hints) and does not persist child context text or raw child payloads. Empty child artifacts do not block generation.
+  Timestamp: 2026-10-08
+- [x] Add quiz deduplication behavior from lower-level artifacts
+  Evidence: `Deep_Reflective_Reader/section_tasks/quiz_interaction_service.py`; `Deep_Reflective_Reader/scripts/test_quiz_deduplication_from_lower_artifacts.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_quiz_deduplication_from_lower_artifacts.py`.
+  Notes: Quiz generation appends fixed deduplication guidance when lower-level quiz/concept coverage signals exist, records guidance metadata without storing secondary context text or child payloads, preserves primary target content, does not concatenate child quiz items into higher-level payloads, and rejects exact repeats of lower-level focus phrases when validation can determine the duplicate.
+  Timestamp: 2026-10-08
+- [x] Add critical-thinking learning-continuity behavior from lower-level sessions
+  Evidence: `Deep_Reflective_Reader/section_tasks/critical_thinking_session_service.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_abstraction_from_lower_sessions.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_critical_thinking_abstraction_from_lower_sessions.py`.
+  Notes: Critical-thinking question generation appends fixed learning-continuity guidance when lower-level session/focus/outcome abstraction signals exist, preserves the base question instruction, preserves primary target content, records guidance metadata without storing secondary context text or child payloads, and still produces one generated question for the current target.
+  Timestamp: 2026-10-08
+- [x] Persist artifact reference metadata for generated interaction artifacts
+  Evidence: `Deep_Reflective_Reader/section_tasks/reading_interaction_service_contracts.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/quiz_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/critical_thinking_session_service.py`; `Deep_Reflective_Reader/scripts/test_referenced_artifact_metadata_persistence.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_referenced_artifact_metadata_persistence.py`.
+  Notes: Analysis, quiz, and critical-thinking generated artifacts now persist top-level `metadata.artifact_reference` with referenced artifact ids, types, target levels, coverage counts, and deduplication/abstraction flags. The metadata mirrors bounded provenance from `context.artifact_context` without storing secondary context text or child payloads; critical-thinking answer/evaluation lifecycle preserves the same reference metadata.
+  Timestamp: 2026-10-08
+- [x] Map reading interaction artifacts to the common artifact entity
+  Evidence: `Deep_Reflective_Reader/section_tasks/reading_interaction_common_artifact.py`; `Deep_Reflective_Reader/shared/common_artifact_model.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_common_artifact_model.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_common_artifact_model.py`.
+  Notes: Adds adapter functions for `ReadingInteractionArtifact <-> CommonArtifact` so `analysis`, `quiz`, and `critical_thinking_session` outputs share one artifact entity shape while preserving document/chapter/section/task-unit target metadata. The adapter does not own route mapping or persistence internals.
+  Timestamp: 2026-10-08
 - [x] Preserve section-scoped task-layout ownership for TOC-derived hierarchy
   Evidence: `Deep_Reflective_Reader/section_tasks/document_task_layout.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `PYTHONPATH=. .venv/bin/python scripts/test_task_unit_content_endpoint.py`.
   Notes: Task-layout projection consumes effective `chapters[].sections[].task_units[]` ownership and exposes section-scoped task-unit metadata only. TOC-aware parsing may change section boundaries upstream, but task-layout does not merge content across sections or create a second ownership model.

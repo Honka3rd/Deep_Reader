@@ -48,8 +48,9 @@ class PostgresStructuredDocumentArtifactRepository(StructuredDocumentArtifactRep
     ) -> None:
         """Persist a parser-level hierarchy replacement to PostgreSQL."""
         resolved_doc_name = doc_name or document.document_id
+        cleaned_document = self.cleanup_reparsed_document_derived_artifacts(document)
         self.store.save(
-            document=document,
+            document=cleaned_document,
             target=self.store.target_for_doc_name(resolved_doc_name),
             replace_existing_hierarchy=True,
         )

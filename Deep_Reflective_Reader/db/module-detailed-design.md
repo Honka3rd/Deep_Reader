@@ -31,6 +31,7 @@ The existing file-backed runtime remains valid until DB readiness, rollout, and 
 | `db/sqlite_core_document_store.py` | Minimal SQLite-backed accepted hierarchy write/read adapter | Uses DB-generated IDs on readback; not a production repository abstraction or backend selection mechanism |
 | `db/postgres_structured_document_store.py` | PostgreSQL-backed current StructuredDocument persistence bridge | Supports runtime structured save/load/exists/location and lightweight document list/search for the selected PostgreSQL backend |
 | `db/postgres_structured_document_artifact_repository.py` | PostgreSQL-backed artifact repository adapter | Delegates structured document load/save, task-layout cache updates, and lightweight document list/search to PostgreSQL store |
+| `shared/common_artifact_model.py` + `section_tasks/reading_interaction_common_artifact.py` | Common DTO and adapter for reading interaction artifacts | Implementation support for mapping `analysis`, `quiz`, and `critical_thinking_session` to one artifact entity shape before broader durable artifact repository rollout |
 
 ## 4. Main Responsibilities
 
@@ -75,6 +76,9 @@ Implemented scope:
 - defines application-managed `updated_at` ownership for PostgreSQL rows without timestamp triggers or hidden lifecycle mutation
 - supports parser-level PostgreSQL hard reparse replacement by clearing current hierarchy/derived rows inside the save transaction before inserting the accepted candidate hierarchy
 - keeps PostgreSQL repository task-layout/artifact updates separate from hard reparse by preserving `current_structure_version` on non-parser repository saves and reloading DB-generated task-unit ids after task-layout cache writes
+- sanitizes parser-level replacement payloads through the repository boundary so stale structured-document task artifacts and referenced-artifact metadata are not reinserted during PostgreSQL hard reparse saves
+- maps reading interaction artifacts (`analysis`, `quiz`, `critical_thinking_session`) onto a shared `CommonArtifact` DTO shape with `artifact_type`, hierarchy-aware target metadata, payload, metadata, and provenance fields
+- validates current-artifact semantics for analysis and quiz at the service orchestration boundary: read returns only current persisted artifacts or `not_generated`, while generate/refresh is the explicit write path for completed or insufficient-content artifacts
 
 Out of scope:
 
@@ -82,6 +86,7 @@ Out of scope:
 - profile persistence
 - content-block persistence
 - artifact persistence
+- durable reading-interaction artifact repository read/write wiring beyond the common entity mapping contract
 - JSONB parity snapshot implementation
 - migration of existing JSON outputs
 - public/domain identity introduction
@@ -724,7 +729,7 @@ Open questions for Phase 1 logical schema are listed in section 16.8. No additio
 6. Artifact targets must remain hierarchy-aware: document/book maps to the document target, chapter to chapter id, section to section id, and task unit to task-unit id; optional parent ids may be used only for consistency validation. **[Maintainer-Provided] + [Future Direction]**
 7. Artifact metadata should include source structure version, source hash where available, schema version, prompt instruction version, context mode, token estimate/budget, and evidence ids. **[Maintainer-Provided] + [Future Direction]**
 8. Insufficient-content is a valid persisted artifact/session status with reason metadata, especially for OCR noise or symbol-only targets. **[Maintainer-Provided] + [Future Direction]**
-9. Hard reparse invalidates/deletes these artifacts with other derived resources; no historical artifact table or orphan-preserving history is required for the first version. **[Maintainer-Provided] + [From HLD]**
+9. Hard reparse invalidates/deletes these artifacts with other derived resources; PostgreSQL replacement deletes current artifact rows in the hard-reparse transaction, and repository replacement saves sanitize replacement structured-document payloads before persistence. No historical artifact table or orphan-preserving history is required for the first version. **[Maintainer-Provided] + [From HLD] + [Code-Confirmed]**
 10. The artifact model must not become hierarchy truth, parser authority, task-layout payload authority, or a backend session cache. **[From HLD] + [Future Direction]**
 
 ### 20.1 Referenced Artifact Metadata

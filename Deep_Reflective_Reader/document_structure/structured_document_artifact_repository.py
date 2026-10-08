@@ -18,7 +18,11 @@ from document_structure.document_hierarchy_index import (
     validate_chapter_hierarchy_consistency,
     with_sections_replaced_in_hierarchy,
 )
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import (
+    StructuredChapter,
+    StructuredDocument,
+    StructuredSection,
+)
 from document_structure.structured_document_store import StructuredDocumentStore
 from shared.task_artifacts import (
     DocumentTaskArtifacts,
@@ -101,6 +105,15 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         resolved_doc_name = doc_name or document.document_id
         path = self._resolve_document_path(resolved_doc_name)
         self._atomic_save(document=document, path=path)
+
+    def save_reparsed_document(
+        self,
+        document: StructuredDocument,
+        doc_name: str | None = None,
+    ) -> None:
+        """Persist a parser-level replacement after clearing derived artifacts."""
+        cleaned_document = self.cleanup_reparsed_document_derived_artifacts(document)
+        self.save_document(cleaned_document, doc_name=doc_name)
 
     def update_section_artifacts(
         self,
@@ -469,6 +482,50 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             raise ValueError(
                 f"{context}: duplicate task_unit_id detected -> {duplicate_repr}"
             )
+
+    @classmethod
+    def cleanup_reparsed_document_derived_artifacts(
+        cls,
+        document: StructuredDocument,
+    ) -> StructuredDocument:
+        """Remove hierarchy-derived artifacts before hard-reparse replacement saves."""
+        cleaned_chapters = [
+            cls._cleanup_reparsed_chapter_derived_artifacts(chapter)
+            for chapter in document.chapters
+        ]
+        return replace(
+            document,
+            sections=[],
+            chapters=cleaned_chapters,
+            document_task_artifacts=None,
+        )
+
+    @classmethod
+    def _cleanup_reparsed_chapter_derived_artifacts(
+        cls,
+        chapter: StructuredChapter,
+    ) -> StructuredChapter:
+        return replace(
+            chapter,
+            task_artifacts=None,
+            sections=[
+                cls._cleanup_reparsed_section_derived_artifacts(section)
+                for section in chapter.sections
+            ],
+        )
+
+    @staticmethod
+    def _cleanup_reparsed_section_derived_artifacts(
+        section: StructuredSection,
+    ) -> StructuredSection:
+        return replace(
+            section,
+            task_artifacts=None,
+            task_units=[
+                replace(task_unit, task_artifacts=None)
+                for task_unit in section.task_units
+            ],
+        )
 
     @staticmethod
     def _with_task_units_parent_section(

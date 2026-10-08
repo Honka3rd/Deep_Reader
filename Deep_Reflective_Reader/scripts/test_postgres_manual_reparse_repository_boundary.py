@@ -18,6 +18,7 @@ from document_structure.structured_document import (
     StructuredDocument,
     StructuredSection,
 )
+from shared.task_artifacts import DocumentTaskArtifacts, SummaryArtifact, TaskArtifacts
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,12 @@ def _document(doc_name: str, chapter_id: str) -> StructuredDocument:
         char_start=0,
         char_end=11,
         parent_chapter_id=chapter_id,
+        task_artifacts=TaskArtifacts(
+            summary=SummaryArtifact(
+                content="stale-section-analysis",
+                metadata={"interaction_type": "analysis"},
+            ),
+        ),
     )
     chapter = StructuredChapter(
         chapter_id=chapter_id,
@@ -71,6 +78,12 @@ def _document(doc_name: str, chapter_id: str) -> StructuredDocument:
         level=1,
         chapter_role=None,
         sections=[section],
+        task_artifacts=TaskArtifacts(
+            summary=SummaryArtifact(
+                content="stale-chapter-analysis",
+                metadata={"interaction_type": "analysis"},
+            ),
+        ),
     )
     return StructuredDocument(
         document_id=doc_name,
@@ -83,6 +96,14 @@ def _document(doc_name: str, chapter_id: str) -> StructuredDocument:
             "requested_parser_mode": "manual_structure",
             "effective_parser_mode": "manual_structure_projection",
         },
+        document_task_artifacts=DocumentTaskArtifacts(
+            metadata={
+                "critical_thinking_sessions": [
+                    {"status": "question_generated", "target_id": chapter_id}
+                ],
+                "artifact_reference": {"referenced_artifact_ids": ["stale-child"]},
+            }
+        ),
     )
 
 
@@ -107,6 +128,19 @@ def test_postgres_repository_keeps_save_boundaries_distinct() -> None:
         [call[1].document_name for call in store.save_calls]
         == ["Book.pdf", "Book.pdf"],
         "repository should resolve both saves through doc_name target",
+    )
+    reparsed_document = store.save_calls[1][0]
+    _assert(
+        reparsed_document.document_task_artifacts is None,
+        "manual reparse replacement should clear document-level interaction artifacts",
+    )
+    _assert(
+        reparsed_document.chapters[0].task_artifacts is None,
+        "manual reparse replacement should clear chapter-level interaction artifacts",
+    )
+    _assert(
+        reparsed_document.chapters[0].sections[0].task_artifacts is None,
+        "manual reparse replacement should clear section-level interaction artifacts",
     )
 
 

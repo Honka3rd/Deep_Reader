@@ -79,12 +79,13 @@
 
 1. Regression coverage should prove read routes for persisted interaction artifacts do not auto-generate or call LLM when artifacts are absent. **[Maintainer-Provided] + [Future Direction]**
 2. Target resolver coverage should verify document/chapter/section/task-unit ids, optional parent consistency checks, and fail-fast rejection of title-primary or legacy fallback targeting. **[Maintainer-Provided] + [Future Direction]**
-3. Analysis coverage should validate strict JSON success, insufficient-content success, invalid-output failure, and current-artifact read behavior. **[Future Direction]**
-4. Quiz coverage should validate configured max counts, allowed type enum, fewer-than-max generation, answer payload validation, and insufficient-content behavior. **[Maintainer-Provided] + [Future Direction]**
+3. Analysis coverage validates strict JSON success, insufficient-content success, invalid-output failure, current-artifact read behavior, and explicit read/generate split semantics. **[Code-Confirmed]**
+4. Quiz coverage validates configured max counts, allowed type enum, fewer-than-max generation, answer payload validation, insufficient-content behavior, current-artifact read behavior, and explicit read/generate split semantics. **[Code-Confirmed]**
 5. Critical-thinking coverage should validate question generation persistence, generated-but-unanswered status, answer submission, evaluation failure recovery, retry behavior, and completed status. **[Maintainer-Provided] + [Future Direction]**
-6. Context strategy coverage should verify full-target mode within model budget and semantic compact fallback when the target exceeds capability. **[Maintainer-Provided] + [Future Direction]**
-7. Artifact persistence coverage should verify hierarchy-aware target validation and hard-reparse cleanup for interaction artifacts. **[From HLD] + [Future Direction]**
+6. Context strategy coverage verifies full-target mode within model budget, semantic compact fallback when the target exceeds capability, provenance metadata, and no title fallback for empty resolved content. **[Code-Confirmed]**
+7. Artifact persistence coverage verifies hierarchy-aware replacement cleanup for interaction artifacts, including file-backed structured payload cleanup and PostgreSQL parser-level replacement payload sanitization. **[Code-Confirmed]**
 8. Artifact-aware context coverage should verify higher-level generation can include compact lower-level artifact summaries as secondary context without replacing primary source context. **[Maintainer-Provided] + [Future Direction]**
 9. Deduplication coverage should verify higher-level quiz generation receives lower-level quiz coverage signals and avoids repeating equivalent questions when possible. **[Maintainer-Provided] + [Future Direction]**
 10. Critical-thinking abstraction coverage should verify higher-level critical-thinking prompts can build on lower-level session focus areas while still producing one first-version question. **[Maintainer-Provided] + [Future Direction]**
-11. Persistence coverage should verify generated higher-level artifacts record referenced artifact ids/metadata and that hard reparse cleans up those references. **[Maintainer-Provided] + [Future Direction]**
+11. Persistence coverage verifies generated higher-level artifacts record referenced artifact ids/metadata, and hard reparse cleanup removes referenced-artifact metadata from replacement structured payloads. **[Code-Confirmed]**
+12. Common artifact mapping coverage verifies `analysis`, `quiz`, and `critical_thinking_session` reading interaction artifacts map to one shared `CommonArtifact` entity shape with hierarchy-aware targets and no category-specific serialization roots. **[Code-Confirmed]**

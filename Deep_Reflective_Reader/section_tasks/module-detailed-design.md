@@ -21,6 +21,14 @@
 |---|---|---|
 | `section_tasks/document_task_layout.py` | task-layout DTO contract（chapters-first + diagnostics DTO） | public response 映射來源之一 **[Code-Confirmed]** |
 | `section_tasks/task_unit_resolver.py` | task unit resolution 主入口 | 使用 `get_effective_sections`（hierarchy-first） **[Code-Confirmed]** |
+| `section_tasks/reading_target_resolver.py` | document/chapter/section/task-unit reading interaction target resolution | hierarchy-only, id-based, parent consistency checks **[Code-Confirmed]** |
+| `section_tasks/reading_interaction_service_contracts.py` | target-agnostic reading interaction request/result/service contracts | validated DTOs, no route or persistence ownership **[Code-Confirmed]** |
+| `section_tasks/analysis_interaction_service.py` | target-agnostic analysis interaction service | strict JSON validation, insufficient-content fast path **[Code-Confirmed]** |
+| `section_tasks/analysis_interaction_orchestrator.py` | analysis read/generate split orchestration | read does not generate; explicit generate persists only completed/insufficient-content artifacts **[Code-Confirmed]** |
+| `section_tasks/quiz_interaction_service.py` | target-agnostic quiz interaction service | valid quiz types, configured target-level limits, answer payload validation, insufficient-content fast path **[Code-Confirmed]** |
+| `section_tasks/quiz_interaction_orchestrator.py` | quiz read/generate split orchestration | read does not generate; explicit generate persists only completed/insufficient-content artifacts **[Code-Confirmed]** |
+| `section_tasks/critical_thinking_session_service.py` | target-agnostic critical-thinking session service | fixed instructions, question -> answer -> evaluation lifecycle, retryable evaluation failure **[Code-Confirmed]** |
+| `section_tasks/reading_interaction_common_artifact.py` | maps reading interaction service artifacts to/from the shared common artifact entity | preserves hierarchy-aware target metadata without owning persistence **[Code-Confirmed]** |
 | `section_tasks/task_unit_split_resolver_selector.py` | split mode resolver selector | semantic/progressive/llm resolvers **[Code-Confirmed]** |
 | `section_tasks/heuristic_task_unit_split_resolver.py` | deterministic split path | semantic boundary scoring integration **[Code-Confirmed]** |
 | `section_tasks/llm_task_unit_split_resolver.py` | llm split path | fallback to heuristic path **[Code-Confirmed]** |
@@ -28,7 +36,7 @@
 | `section_tasks/chapter_summary_service.py` | summary generation service | consume context/prompt factory + LLM **[Code-Confirmed]** |
 | `section_tasks/chapter_quiz_service.py` | quiz generation service | consume context/prompt factory + LLM **[Code-Confirmed]** |
 | `section_tasks/section_task_context_builder.py` | section/task unit context build | hierarchy-only lookup path **[Code-Confirmed]** |
-| `section_tasks/artifact_validity.py` | artifact validity result contract | cache validity reason surface **[Code-Confirmed]** |
+| `section_tasks/artifact_validity.py` | artifact validity and interaction preflight contract | cache validity, stale target context, and insufficient-content reason surface **[Code-Confirmed]** |
 
 ## 4. Main Responsibilities
 
@@ -55,6 +63,20 @@
 - `ProfileStructureDiagnosticsDTO`
 - `TaskUnit`
 - `ArtifactValidityResult`
+- `ResolvedReadingTarget`
+- `ReadingInteractionRequest`
+- `ReadingInteractionArtifact`
+- `ReadingInteractionService`
+- `CommonArtifact`
+- `CommonArtifactTarget`
+- `ReadingInteractionTargetValidity`
+- `ReadingInteractionValidityPolicy`
+- `ReadingInteractionPreflightResult`
+- `AnalysisInteractionArtifactStore`
+- `AnalysisInteractionOrchestrator`
+- `QuizInteractionArtifactStore`
+- `QuizInteractionOrchestrator`
+- `ArtifactAwareContextResult`（secondary artifact context metadata）
 
 ## 7. Read/Write Boundary Matrix
 
@@ -110,6 +132,8 @@
 3. section/chapter quiz flow。 **[Code-Confirmed]**
 4. task-layout projection data contract flow（供 coordinator/API mapping）。 **[Code-Confirmed]**
 5. artifact validity flow（cache_valid + invalid_reason）。 **[Code-Confirmed]**
+6. analysis interaction read/generate split flow: read returns current persisted artifact or `not_generated` without generator calls; explicit generate reuses existing artifacts unless refresh is requested, and persists only completed or insufficient-content results. **[Code-Confirmed]**
+7. quiz interaction read/generate split flow: read returns current persisted artifact or `not_generated` without generator calls; explicit generate reuses existing artifacts unless refresh is requested, and persists only completed or insufficient-content results. **[Code-Confirmed]**
 
 ## 13. Persistence / Side Effects
 
@@ -302,25 +326,30 @@ validation boundary 要求：fail-fast + 明確錯誤分類；不得 silent fall
 
 ## 24. Future Direction Note: Reading Interaction Services
 
-> 本節記錄 target-agnostic interaction service planning；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+> 本節記錄 target-agnostic interaction service planning and implementation status；未標示 **[Code-Confirmed]** 的項目仍屬 future direction。 **[Maintainer-Provided] + [Future Direction]**
 
-1. `section_tasks/` may own service-level interaction contracts for reading target analysis, quiz generation, and critical-thinking sessions, while app/main own orchestration and route mapping. **[Future Direction]**
-2. Services should consume a resolved reading target object, not raw title strings or unresolved ids. The resolved target must carry `target_type`, canonical target id, hierarchy path evidence, source structure version, source hash when available, and text/context input metadata. **[Maintainer-Provided] + [Future Direction]**
-3. `analysis` output should support summary, reasoning/interpretation, and parsing/explanation sections as structured validated JSON, not free-form opaque text. **[Maintainer-Provided] + [Future Direction]**
-4. `quiz` output should accept only `short_answer`, `multiple_choice`, and `true_false` item types. The backend provides valid types plus max count; the model may return fewer than max but never more. **[Maintainer-Provided] + [Future Direction]**
-5. Default quiz maximums should come from config: `task_unit=3`, `section=5`, `chapter=10`, `document/book=25`. **[Maintainer-Provided] + [Future Direction]**
-6. Critical-thinking service state should be session-shaped: generated question persists immediately, answer submission updates the session, evaluation success marks it completed, and evaluation failure preserves the answer for retry. **[Maintainer-Provided] + [Future Direction]**
-7. All interaction services should allow `insufficient_content` as a valid persisted result/session status with reason metadata. This is the correct fast path for OCR noise or symbol-only units. **[Maintainer-Provided] + [Future Direction]**
-8. Strict JSON validation is mandatory before marking an interaction artifact/session successful. Invalid model output is a generation failure and must not be persisted as a successful artifact. **[Maintainer-Provided] + [Future Direction]**
+1. `section_tasks/` owns service-level interaction contracts for reading target analysis, quiz generation, and critical-thinking sessions, while app/main own orchestration and route mapping. **[Code-Confirmed]**
+2. Services consume a resolved reading target object, not raw title strings or unresolved ids. The resolved target carries canonical target id, hierarchy path evidence, and source text input. **[Code-Confirmed]**
+3. `analysis` output supports summary, reasoning, and explanation sections as structured validated JSON, not free-form opaque text. Invalid JSON or missing required fields return `generation_failed` rather than a successful artifact. **[Code-Confirmed]**
+4. `quiz` output accepts only `short_answer`, `multiple_choice`, and `true_false` item types. The backend provides valid types plus max count; the model may return fewer than max but never more. **[Code-Confirmed]**
+5. Default quiz maximums are configurable at service construction with defaults: `task_unit=3`, `section=5`, `chapter=10`, `document/book=25`. **[Code-Confirmed]**
+6. Critical-thinking service state is session-shaped: generated question returns `question_generated`, answer submission returns `answer_submitted`, evaluation success returns `completed`, and evaluation failure returns `evaluation_failed` while preserving the answer for retry. **[Code-Confirmed]**
+7. All interaction service contracts allow `insufficient_content` as a valid result/session status with required reason metadata. This is the correct fast path for OCR noise or symbol-only units. **[Code-Confirmed]**
+8. Strict DTO validation is mandatory before marking an interaction artifact/session successful. Invalid or empty completed output is rejected at the contract boundary. **[Code-Confirmed]**
 9. Services should record context metadata such as `context_mode`, token estimate/budget, evidence ids, prompt instruction version, and output schema version in artifact metadata. **[Maintainer-Provided] + [Future Direction]**
 10. Services must not mutate task-layout, profile diagnostics, parser metadata, or hierarchy truth. Artifact persistence remains interaction output only. **[From HLD] + [Future Direction]**
+11. Critical-thinking prompt behavior keeps fixed service-level question/evaluation instructions and leaves target context plus user answer as the dynamic parts. **[Code-Confirmed]**
+12. Interaction services share `ReadingInteractionValidityPolicy` preflight checks so stale target context returns `stale_target` with a required reason before any generator call, and insufficient readable content returns `insufficient_content` with a required reason. **[Code-Confirmed]**
+13. Interaction services may consume lower-level artifact summaries through an `artifact_context_provider`; this injects compact secondary context into `ReadingInteractionRequest.secondary_context` while preserving `target.content` as the primary source context. Artifact metadata records provenance only, not secondary context text or child payloads. **[Code-Confirmed]**
+14. Reading interaction service artifacts can be mapped onto the shared `CommonArtifact` entity through `reading_interaction_common_artifact.py`; `analysis`, `quiz`, and `critical_thinking_session` remain artifact types on one entity shape rather than separate persistence categories. **[Code-Confirmed]**
+15. Analysis and quiz current-artifact semantics are explicit: read paths return only current persisted artifacts or `not_generated`, while generation/refresh is the only path that invokes generators and writes completed or insufficient-content artifacts. **[Code-Confirmed]**
 
 ### 24.1 Lower-Level Artifact Reference Policy
 
-1. When generating a higher-level artifact, services should request lower-level artifact summaries from the context/repository boundary as secondary input. **[Maintainer-Provided] + [Future Direction]**
-2. Lower-level artifacts should help the LLM avoid repeated questions, identify already-covered concepts, and raise abstraction from unit-level recall to section/chapter/book-level synthesis, transfer, and critique. **[Maintainer-Provided] + [Future Direction]**
-3. Quiz generation should use lower-level quiz artifacts as deduplication and coverage signals, not as items to concatenate into the higher-level quiz. **[Maintainer-Provided] + [Future Direction]**
-4. Critical-thinking generation should use lower-level critical-thinking sessions as learning-continuity signals, for example to ask broader synthesis questions after local argument questions have already been used. **[Maintainer-Provided] + [Future Direction]**
+1. When generating a higher-level artifact, services can receive lower-level artifact summaries from the context/repository boundary as secondary input. **[Code-Confirmed]**
+2. Lower-level artifacts help the LLM avoid repeated questions, identify already-covered concepts, and raise abstraction from unit-level recall to section/chapter/book-level synthesis, transfer, and critique. **[Code-Confirmed]**
+3. Quiz generation uses lower-level quiz artifacts as deduplication and coverage signals, not as items to concatenate into the higher-level quiz; the quiz service appends fixed deduplication guidance when signals exist and rejects exact repeats of lower-level focus phrases where validation can determine the duplicate. **[Code-Confirmed]**
+4. Critical-thinking generation uses lower-level critical-thinking sessions as learning-continuity signals; the service appends fixed continuity guidance when abstraction signals exist so the model can ask one broader current-target question that builds on prior local training without repeating child session questions. **[Code-Confirmed]**
 5. Analysis generation may use lower-level analysis artifacts as abstraction hints, but the higher-level analysis must still be grounded in the current target source context. **[Maintainer-Provided] + [Future Direction]**
-6. Services must preserve a hard distinction between source context and artifact context in prompt inputs, validation metadata, and persisted artifact metadata. **[Maintainer-Provided] + [Future Direction]**
-7. Artifact reference metadata should include referenced artifact ids, artifact types, target levels, coverage count, and whether deduplication or abstraction-escalation hints were applied. **[Maintainer-Provided] + [Future Direction]**
+6. Services preserve a hard distinction between source context and artifact context in prompt inputs, validation metadata, and artifact metadata. **[Code-Confirmed]**
+7. Artifact reference metadata is persisted on generated interaction artifacts as top-level `metadata.artifact_reference`, mirroring bounded provenance fields from `context.artifact_context`: referenced artifact ids, artifact types, target levels, coverage count, and whether deduplication or abstraction-escalation hints were applied. It does not include secondary context text or child payloads. **[Code-Confirmed]**

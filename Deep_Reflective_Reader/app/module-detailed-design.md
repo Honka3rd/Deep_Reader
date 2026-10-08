@@ -76,6 +76,7 @@
 3. section summary/quiz flow（cache check -> resolve -> generate -> persist）。 **[Code-Confirmed]**
 4. chapter summary/quiz flow（chapter_id-first target resolution）。 **[Code-Confirmed]**
 5. reparse flow（explicit parser mode re-run）。 **[Code-Confirmed]**
+6. reading interaction target resolution flow（document/chapter/section/task-unit, id-based hierarchy path）。 **[Code-Confirmed]**
 
 ## 10. Error Semantics (High-Level)
 
@@ -214,9 +215,9 @@ Root-cause boundary:
 
 > 本節記錄 book/chapter/section/task-unit LLM interaction 的 app-layer governance，來自 Grill-me requirements 收斂；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
 
-1. app layer should expose a target-agnostic orchestration boundary for reading interactions over `document`, `chapter`, `section`, and `task_unit` targets. **[Maintainer-Provided] + [Future Direction]**
-2. Target identity must be deterministic: document/book uses `doc_name`, chapter uses `chapter_id`, section uses `section_id`, and task unit uses `task_unit_id`; optional parent ids may be accepted only for consistency validation. **[Maintainer-Provided] + [Future Direction]**
-3. Target resolution must stay hierarchy-aware and fail-fast; no title-primary targeting, root `sections[]`, `structure_nodes`, synthetic legacy hierarchy, or metadata/LLM classification fallback may become authority. **[From HLD] + [Maintainer-Provided]**
+1. app layer exposes a target-agnostic resolver boundary for reading interactions over `document`, `chapter`, `section`, and `task_unit` targets through `SectionTaskCoordinator.resolve_reading_target(...)`. **[Code-Confirmed]**
+2. Target identity is deterministic: document/book uses `doc_name`, chapter uses `chapter_id`, section uses `section_id`, and task unit uses `task_unit_id`; optional parent ids are accepted only for consistency validation. **[Code-Confirmed]**
+3. Target resolution stays hierarchy-aware and fail-fast; no title-primary targeting, root `sections[]`, `structure_nodes`, synthetic legacy hierarchy, or metadata/LLM classification fallback may become authority. **[Code-Confirmed] + [From HLD]**
 4. Artifact read and generation must be split. Read endpoints load persisted artifacts only and return missing/not-generated when absent; they must not call LLM or create backend session cache as truth. **[Maintainer-Provided] + [Future Direction]**
 5. Generate, refresh, critical-thinking answer evaluation, and evaluation retry are explicit write paths and should be the future hooks for cost and permission gating. **[Maintainer-Provided] + [Future Direction]**
 6. Initial interaction types are `analysis`, `quiz`, and `critical_thinking_session`. `analysis` and `quiz` are current artifact per target; critical thinking is multi-session per target. **[Maintainer-Provided] + [Future Direction]**

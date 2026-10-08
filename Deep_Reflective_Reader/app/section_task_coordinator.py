@@ -68,6 +68,10 @@ from section_tasks.document_task_layout import (
 )
 from section_tasks.artifact_validity import ArtifactValidityResult
 from section_tasks.quiz_question import QuizQuestion
+from section_tasks.reading_target_resolver import (
+    ReadingTargetResolver,
+    ResolvedReadingTarget,
+)
 from section_tasks.reparse_document_structure_result import ReparseDocumentStructureResult
 from section_tasks.section_task_result import SectionTaskResult
 from section_tasks.task_unit import TaskUnit
@@ -335,6 +339,40 @@ class SectionTaskCoordinator:
         self.enhanced_parse_trigger_evaluator = enhanced_parse_trigger_evaluator
         self.semantic_top_k_candidates_max = max(1, int(semantic_top_k_candidates_max))
         self.task_unit_id_normalizer = task_unit_id_normalizer or TaskUnitIdNormalizer()
+        self.reading_target_resolver = ReadingTargetResolver()
+
+    def resolve_reading_target(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+    ) -> ResolvedReadingTarget:
+        """Resolve a reading interaction target through the hierarchy-only path."""
+        normalized_doc_name = doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+
+        preparation_result = self.document_preparation_pipeline.prepare_and_load(
+            doc_name=normalized_doc_name,
+            mode=PreparationMode.BASE,
+        )
+        structured_document = preparation_result.structured_document
+        if structured_document is None:
+            detail = " | ".join(preparation_result.assets.errors)
+            raise ValueError(
+                f"structured document unavailable for doc_name='{normalized_doc_name}'. errors={detail}"
+            )
+
+        return self.reading_target_resolver.resolve(
+            document=structured_document,
+            target_level=target_level,
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+        )
 
     def summarize_section(
         self,
