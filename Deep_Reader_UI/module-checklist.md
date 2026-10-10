@@ -171,3 +171,140 @@ No coding task should be considered complete unless the corresponding checklist 
   Evidence: `Deep_Reader_UI/src/features/book-search/view.tsx`; validation with `npm run check`.
   Notes: Removed the `.document-search-input` helper text to save topbar space and changed the input label from `Document` to `Select one Document`.
   Timestamp: 2026-10-04
+
+- [x] Document reading interaction UI behavior design
+  Evidence: `Deep_Reader_UI/module-detailed-design.md`; backend exposure audit in `Deep_Reflective_Reader/main.module-detailed-design.md`, `Deep_Reflective_Reader/api_schemas.module-detailed-design.md`, and `Deep_Reflective_Reader/app/module-detailed-design.md`.
+  Notes: Defines the next UI behavior for insight, quiz, and critical-thinking features. Target rows use a vertical three-dot MUI menu with Insights, Quiz, and Critical thinking actions. Insight renders inline beneath book/chapter/section/unit targets and indents one visual level; quiz and critical-thinking use right-side drawers for complex interaction. Backend generic routes are now implemented; current UI service wiring starts with insight and still must not mutate task-layout, make UI state backend truth, or expand `/documents/task-layout`.
+  Timestamp: 2026-10-09
+
+### Reading Interaction UI Implementation Task Split
+
+- [x] Define `ReadingInteractionTarget` frontend model.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/index.ts`; validation: `npm run check`.
+  Notes: Adds a frontend-only target model for document, chapter, section, and task-unit interaction targets, plus required identity validation for target levels. It uses backend-provided ids for chapter, section, and task-unit targeting and does not introduce target-key helpers, API calls, backend schema claims, or UI mutation behavior.
+  Timestamp: 2026-10-09
+
+- [x] Define reading-interaction target key and breadcrumb helpers.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/index.ts`; validation: `npm run check`.
+  Notes: Adds deterministic frontend cache keys and breadcrumb formatting helpers for reading-interaction targets. Keys are local render/cache identifiers derived from target level, document scope, and backend ids; they are not backend identifiers and do not introduce API calls or persistence behavior.
+  Timestamp: 2026-10-09
+
+- [x] Add document-level three-dot interaction menu entry.
+  Evidence: `Deep_Reader_UI/src/features/hierarchy-navigation/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds a document-level `MoreVert` icon button near the loaded document title with Insights, Quiz, and Critical thinking menu actions. Opening the menu and selecting options do not trigger generation, refresh, prepare, task-layout mutation, or interaction API calls; selected actions currently surface a local notification until generic backend interaction routes exist.
+  Timestamp: 2026-10-09
+
+- [x] Add chapter-level three-dot interaction menu entry.
+  Evidence: `Deep_Reader_UI/src/features/hierarchy-navigation/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds a chapter-level `MoreVert` icon button at the right edge of chapter rows, including merged single-section chapter rows. The menu exposes Insights, Quiz, and Critical thinking actions and passes the backend chapter object, including `chapter_id`, to the App-level placeholder handler. Selecting options does not trigger generation, refresh, prepare, task-layout mutation, or interaction API calls.
+  Timestamp: 2026-10-09
+
+- [x] Add section-level three-dot interaction menu entry.
+  Evidence: `Deep_Reader_UI/src/features/hierarchy-navigation/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds a section-level `MoreVert` icon button at the right edge of section rows. The menu exposes Insights, Quiz, and Critical thinking actions and passes the backend chapter and section objects, including `chapter_id` and `section_id`, to the App-level placeholder handler. Selecting options does not trigger generation, refresh, prepare, task-layout mutation, or interaction API calls.
+  Timestamp: 2026-10-09
+
+- [x] Add task-unit-level three-dot interaction menu entry inside reader content.
+  Evidence: `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/features/reader-content/index.ts`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Renders task-unit-level `MoreVert` icon buttons only inside existing reader content task-unit groups. The menu exposes Insights, Quiz, and Critical thinking actions and passes the selected section plus task-unit group, including `taskUnitId`, to the App-level placeholder handler. The hierarchy navigation remains chapter/section-only, and selecting options does not trigger generation, refresh, prepare, task-layout mutation, or interaction API calls.
+  Timestamp: 2026-10-09
+
+- [x] Create `src/features/reading-interactions/` feature folder.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/features/reading-interactions/index.ts`; validation: `npm run check`.
+  Notes: Establishes the standard feature folder with `model.ts`, `controller.ts`, `view.tsx`, and `index.ts`. The new controller/view files are inert scaffolding only; they do not implement menu state, inline insight state, drawer state, API calls, task-layout mutation, or backend schema assumptions.
+  Timestamp: 2026-10-09
+
+- [x] Implement reading-interaction menu controller.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/features/reading-interactions/index.ts`; `Deep_Reader_UI/src/App.tsx`; validation: `npm run check`.
+  Notes: Adds `useReadingInteractionMenuController` to own `interactionMenuTarget`, selected interaction action, deterministic `targetKey`, breadcrumb projection, request id advancement, latest-request guard, and surface derivation (`insight` to inline insight, quiz/critical-thinking to drawer). App-level document/chapter/section/task-unit handlers now build frontend targets and route selection through the controller. This remains placeholder orchestration only and does not implement inline insight state, drawer state, API calls, generation, refresh, prepare, or task-layout mutation.
+  Timestamp: 2026-10-09
+
+- [x] Implement inline insight state model.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/index.ts`; validation: `npm run check`.
+  Notes: Adds frontend-only `InteractionStatus`, `InteractionMetadataView`, `InsightViewState`, `InlineInsightStateByTarget`, and `createInitialInsightViewState` for inline insight projection state. The model tracks target key, target identity, status, content, metadata, expanded/collapsed state, and error message without rendering inline placement, calling APIs, generating content, mutating task-layout, or treating UI state as backend truth.
+  Timestamp: 2026-10-09
+
+- [x] Implement inline insight placement for document, chapter, section, and task-unit targets.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/hierarchy-navigation/view.tsx`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Selecting Insights now creates frontend-local inline insight state and renders a placeholder inline region directly below document, chapter, section, or task-unit targets with one-level visual indentation. Placement uses existing hierarchy rows and reader content task-unit groups only; it does not expand `/documents/task-layout`, persist collapse state, call APIs, generate insight content, or treat UI state as backend truth.
+  Timestamp: 2026-10-09
+
+- [x] Implement inline insight status UI.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/hierarchy-navigation/view.tsx`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Inline insight regions now render status labels, status-specific messages, content/error display, and explicit Generate/Refresh controls for supported states. The UI covers loading, not-generated, generating, refreshing, completed, insufficient-content, stale-target, generation-failed, validation-failed, and related interaction statuses. Generate/Refresh actions remain local placeholders that notify backend route readiness requirements and do not call APIs, trigger LLM work, mutate task-layout, or persist UI state.
+  Timestamp: 2026-10-09
+
+- [x] Build shared right-side reading-interaction drawer shell.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds a shared right-side MUI drawer shell for quiz and critical-thinking interactions. The shell shows the target breadcrumb, close behavior, command slot, loading/error/body empty states, and explicitly states that opening the drawer does not call generation or refresh APIs. Insight continues to use inline placement, and the drawer shell does not implement quiz item layout, critical-thinking form flow, API calls, generation, refresh, or task-layout mutation.
+  Timestamp: 2026-10-09
+
+- [x] Implement quiz drawer layout.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds frontend-local quiz drawer display state and renders a read-first quiz drawer layout with status summary, explicit Generate quiz and Refresh quiz controls, error/metadata slots, and completed-state item summary placeholder. Opening the drawer initializes missing local state only; it does not call quiz read/generate/refresh APIs, use legacy section/chapter quiz routes, implement type-specific quiz item rendering, persist local state, or mutate task-layout.
+  Timestamp: 2026-10-09
+
+- [x] Implement quiz item rendering model.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/features/reading-interactions/index.ts`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds frontend-only quiz item view types for `short_answer`, `multiple_choice`, and `true_false`, plus drawer rendering for prompt text, multiple-choice/true-false options, answer display, and explanation display when an item payload provides them. This does not add local answer inputs, local reveal-state tracking, backend quiz API calls, legacy quiz route usage, persisted quiz results, or task-layout mutation.
+  Timestamp: 2026-10-09
+
+- [x] Implement local quiz answer practice UI.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/features/reading-interactions/index.ts`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds drawer-local quiz practice state for typed short answers, selected multiple-choice/true-false answers, and per-item answer reveal toggles. Practice answers and reveal state reset when the quiz target or item payload changes, remain frontend-only while the drawer is mounted, and are not persisted, evaluated, submitted, sent to backend routes, described as saved quiz results, or written into task-layout.
+  Timestamp: 2026-10-09
+
+- [x] Implement critical-thinking drawer question, answer, and evaluation layout.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/features/reading-interactions/index.ts`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds frontend-local critical-thinking session view state and drawer layout for not-generated, question-generated, answer-submitted, completed, insufficient-content, stale-target, generation-failed, validation-failed, and evaluation-failed states. The drawer can render a generated question, answer input layout, submitted answer, evaluation feedback, score, suggested refinement, metadata, and explicit Generate question / Submit answer placeholder controls. It does not persist draft answers, implement retry state, submit answers, call backend routes, create sessions, or mutate task-layout.
+  Timestamp: 2026-10-09
+
+- [x] Implement critical-thinking draft answer and retry UI state.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Adds drawer-local critical-thinking draft answer state that is preserved while the drawer remains open, resets when the active target/question/submitted answer changes, and reports dirty state to the App shell so closing the drawer warns when unsent draft text is discarded. The command area now exposes `Retry evaluation` only for `evaluation_failed` state. Draft text and retry remain frontend-only placeholders and are not persisted, submitted, evaluated, sent to backend routes, or written into task-layout.
+  Timestamp: 2026-10-09
+
+- [x] Add `ReadingInteractionService` after generic backend routes exist.
+  Evidence: `Deep_Reader_UI/src/services/ReadingInteractionService.ts`; `Deep_Reader_UI/src/services/index.ts`; `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/App.tsx`; validation: `npm run check`.
+  Notes: Adds the first service-backed reading-interaction vertical slice for insight read/generate/refresh using the backend generic `/documents/reading-interactions/insight/*` routes. Selecting Insights performs a read-first call; Generate and Refresh are explicit write actions. The service/controller mapping uses the shared backend target/envelope/payload contract, does not call legacy quiz routes, does not mutate task-layout, and keeps inline expansion state frontend-local. Quiz and critical-thinking drawer API wiring remain follow-up tasks.
+  Timestamp: 2026-10-10
+
+- [ ] Add quiz API types and service methods.
+  Evidence needed: `Deep_Reader_UI/src/types/api.ts` defines quiz target/envelope/payload types matching backend public schemas; `Deep_Reader_UI/src/services/ReadingInteractionService.ts` exposes `readQuiz`, `generateQuiz`, and `refreshQuiz` using `/documents/reading-interactions/quiz/*`.
+  Notes: Do not call legacy `/documents/section-quiz` or `/documents/chapter-quiz`; do not place REST calls in drawer views.
+  Timestamp: 2026-10-10
+
+- [ ] Map quiz backend responses into drawer view state.
+  Evidence needed: `Deep_Reader_UI/src/features/reading-interactions/model.ts` maps `QuizInteractionResponse` into `QuizViewState` with normalized status, item ids/types/options/answers/explanations, metadata, and error/reason fields.
+  Notes: Mapping must preserve local practice answers and answer reveal state as frontend-only state and must not treat quiz practice answers as persisted backend results.
+  Timestamp: 2026-10-10
+
+- [ ] Wire quiz drawer read-first lifecycle.
+  Evidence needed: selecting `Quiz` opens the drawer and calls the generic quiz read route only; missing artifacts display `not_generated` without generation, refresh, task-layout mutation, prepare, or reparse.
+  Notes: Stale read responses must be ignored through the reading-interaction controller request guard.
+  Timestamp: 2026-10-10
+
+- [ ] Wire quiz explicit generate and refresh actions.
+  Evidence needed: `Generate quiz` calls `/documents/reading-interactions/quiz/generate`; `Refresh quiz` calls `/documents/reading-interactions/quiz/refresh`; both update drawer state through the shared model mapper and keep legacy quiz routes out of this flow.
+  Notes: Generation and refresh are explicit write actions only; drawer open and read must never generate.
+  Timestamp: 2026-10-10
+
+- [ ] Add critical-thinking API types and service methods.
+  Evidence needed: `Deep_Reader_UI/src/types/api.ts` defines critical-thinking request/response/session/evaluation types matching backend public schemas; `Deep_Reader_UI/src/services/ReadingInteractionService.ts` exposes read, generate-question, submit-answer, and retry-evaluation methods using `/documents/reading-interactions/critical-thinking/*`.
+  Notes: Submit/retry request types must carry the shared target object plus backend `session_id`.
+  Timestamp: 2026-10-10
+
+- [ ] Map critical-thinking backend responses into drawer view state.
+  Evidence needed: `Deep_Reader_UI/src/features/reading-interactions/model.ts` maps `CriticalThinkingSessionResponse` into `CriticalThinkingViewState` with session id, question, submitted answer, evaluation feedback, score, suggested refinement, status, metadata, and retryable error state.
+  Notes: Mapping must keep unsent draft text out of backend-derived state and preserve backend submitted answer separately from local draft answer.
+  Timestamp: 2026-10-10
+
+- [ ] Wire critical-thinking drawer read-first lifecycle.
+  Evidence needed: selecting `Critical thinking` opens the drawer and calls the generic critical-thinking read route only; missing sessions display `not_generated` without generating a question, submitting an answer, retrying evaluation, mutating task-layout, prepare, or reparse.
+  Notes: Read state must remain separate from question generation and must ignore stale responses.
+  Timestamp: 2026-10-10
+
+- [ ] Wire critical-thinking explicit generate, submit, and retry actions.
+  Evidence needed: `Generate question`, `Submit answer`, and `Retry evaluation` call their corresponding critical-thinking routes, update drawer state through the shared mapper, preserve failed evaluation context, and do not regenerate the question during retry.
+  Notes: Draft answers remain frontend-local until submit; submit/retry must include the shared target object plus backend `session_id`.
+  Timestamp: 2026-10-10

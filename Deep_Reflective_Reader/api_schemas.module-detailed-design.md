@@ -42,6 +42,40 @@
 - `ManualStructureValidationResponse`
 - `ReparseDocumentStructureRequest`
 - `ProfileStructureDiagnosticsResponse`
+- `ReadingInteractionTargetRequest`
+- `ReadingInteractionTargetResponse`
+- `ReadingInteractionResponseEnvelope`
+- `AnalysisInteractionReadRequest`
+- `AnalysisInteractionGenerateRequest`
+- `AnalysisInteractionRefreshRequest`
+- `AnalysisArtifactPayloadResponse`
+- `AnalysisInteractionResponse`
+- `QuizInteractionReadRequest`
+- `QuizInteractionGenerateRequest`
+- `QuizInteractionRefreshRequest`
+- `QuizArtifactItemResponse`
+- `QuizArtifactPayloadResponse`
+- `QuizInteractionResponse`
+- `CriticalThinkingSessionReadRequest`
+- `CriticalThinkingQuestionGenerateRequest`
+- `CriticalThinkingAnswerSubmitRequest`
+- `CriticalThinkingEvaluationRetryRequest`
+- `CriticalThinkingEvaluationResponse`
+- `CriticalThinkingSessionPayloadResponse`
+- `CriticalThinkingSessionResponse`
+- `ArtifactAwareInteractionMetadataResponse`
+
+Critical-thinking submit and retry requests carry the shared `ReadingInteractionTargetRequest` plus `session_id` so route mapping can preserve hierarchy-aware session-store lookup through app orchestration. They do not define a route-local global session lookup contract. **[Code-Confirmed]**
+
+### 6.1 Reading Interaction Route Integration Contract
+
+The shared reading interaction schema family is now verified against the public REST route set for insight, quiz, and critical-thinking sessions. **[Code-Confirmed]**
+
+1. Insight routes use `AnalysisInteractionReadRequest`, `AnalysisInteractionGenerateRequest`, `AnalysisInteractionRefreshRequest`, `AnalysisArtifactPayloadResponse`, and `AnalysisInteractionResponse`. **[Code-Confirmed]**
+2. Quiz routes use `QuizInteractionReadRequest`, `QuizInteractionGenerateRequest`, `QuizInteractionRefreshRequest`, `QuizArtifactItemResponse`, `QuizArtifactPayloadResponse`, and `QuizInteractionResponse`. **[Code-Confirmed]**
+3. Critical-thinking routes use `CriticalThinkingSessionReadRequest`, `CriticalThinkingQuestionGenerateRequest`, `CriticalThinkingAnswerSubmitRequest`, `CriticalThinkingEvaluationRetryRequest`, `CriticalThinkingEvaluationResponse`, `CriticalThinkingSessionPayloadResponse`, and `CriticalThinkingSessionResponse`. **[Code-Confirmed]**
+4. All route families share `ReadingInteractionTargetRequest`, `ReadingInteractionTargetResponse`, `ReadingInteractionResponseEnvelope`, and `ArtifactAwareInteractionMetadataResponse` instead of defining route-local target, status, provenance, or UI-state variants. **[Code-Confirmed]**
+5. Schema validation remains a boundary check only. It does not perform hierarchy lookup, prompt construction, persistence mutation, LLM calls, or frontend drawer/inline state management. **[Code-Confirmed] + [From HLD]**
 
 ## 7. Public API vs Internal DTO Boundary
 
@@ -198,9 +232,19 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 7. Batch content is still on-demand rich content, not task-layout payload; `/documents/task-layout` must remain lightweight and must not return task-unit content or `content_blocks`. **[Code-Confirmed] + [From HLD]**
 8. Batch schema evolution must not introduce persistence mutation, profile diagnostics write-back, parser authority, artifact write semantics, root `sections[]` flow, or `structure_nodes` as main flow. **[From HLD]**
 
-## 20. Future Direction Note: Reading Target Interaction API Schemas
+## 20. Reading Target Interaction API Schema Exposure Audit
 
-> 本節記錄 reading interaction API schema planning；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+> 本節記錄 reading interaction API schema planning 與目前 schema exposure audit。Shared target/envelope schemas and artifact-aware metadata exist, while payload-specific schema families for generic reading-interaction endpoints are not yet complete. **[Code-Confirmed] + [Future Direction]**
+
+### 20.1 Current Schema Exposure
+
+1. `api_schemas.py` currently exposes `ArtifactAwareInteractionMetadataResponse` as metadata-only provenance for future artifact-aware interaction responses. It intentionally does not embed lower-level artifact payloads. **[Code-Confirmed]**
+2. `api_schemas.py` now defines `ReadingInteractionTargetRequest` for generic `document|chapter|section|task_unit` target identity. It trims ids, normalizes `book` to `document`, rejects title-primary locator fields via `extra="forbid"`, and validates required/forbidden id combinations per target level. **[Code-Confirmed]**
+3. `api_schemas.py` now defines `ReadingInteractionTargetResponse` and `ReadingInteractionResponseEnvelope` as shared response metadata for future reading-interaction route payloads. The envelope validates interaction type, status, artifact/session ids, provenance fields, reason-required failure statuses, critical-thinking-only statuses, and artifact-aware metadata without embedding UI behavior state. **[Code-Confirmed]**
+4. `api_schemas.py` now defines public payload-specific request/response schemas for `analysis` artifacts, target-agnostic `quiz` artifacts, and `critical_thinking_session` lifecycle states, including read/generate/submit/retry requests, completed payloads, missing state, insufficient-content, and failure-state response validation. **[Code-Confirmed]**
+5. Existing `SectionQuizResponse` and `ChapterQuizResponse` belong to the legacy section/chapter quiz endpoints and should not be treated as the full schema surface for the new target-agnostic quiz interaction API. **[Code-Confirmed]**
+
+### 20.2 Future Schema Boundary
 
 1. Public schemas should represent a generic reading target with `target_type=document|chapter|section|task_unit` and the required id for that level: `doc_name`, `chapter_id`, `section_id`, or `task_unit_id`. **[Maintainer-Provided] + [Future Direction]**
 2. Optional parent ids may be included only for consistency validation and must not become title-based fallback. **[Maintainer-Provided] + [Future Direction]**
@@ -212,10 +256,36 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 8. Validation should reject malformed target ids, unsupported quiz types, excessive quiz count, missing critical-thinking answer where required, and invalid model-output shapes. **[Maintainer-Provided] + [Future Direction]**
 9. Interaction schemas must not expand `/documents/task-layout` with heavy artifact payloads and must not expose raw text by default. **[From HLD] + [Future Direction]**
 
-### 20.1 Artifact-Aware Interaction Metadata Schemas
+### 20.3 Frontend-Required Reading Interaction Data Shape
+
+> 本節是 frontend UI 對接所需的 public DTO planning。Shared target/envelope schemas are implemented; payload-specific insight/quiz/critical-thinking schemas remain future work. **[Code-Confirmed] + [Future Direction]**
+
+1. `ReadingInteractionTargetRequest` carries a hierarchy identity object rather than loose route/body fields. Minimal fields are `doc_name`, `target_type`, and the one required id for the selected level (`chapter_id`, `section_id`, or `task_unit_id` where applicable). **[Code-Confirmed]**
+2. Target titles are not accepted in request schema as locators. Response-side display title metadata is allowed through `ReadingInteractionTargetResponse`, but it is not target authority. **[Code-Confirmed] + [From HLD]**
+3. `ReadingInteractionResponseEnvelope` includes `target`, `interaction_type`, `status`, optional `artifact_id` or `session_id`, `generated_at`, `updated_at`, optional `schema_version`, optional `prompt_instruction_version`, optional `source_structure_version`, optional `source_hash`, `reason`, and optional `artifact_context_metadata`. **[Code-Confirmed]**
+4. Common read statuses include `not_generated`, `completed`, `insufficient_content`, `stale_target`, `generation_failed`, and `validation_failed`. Critical-thinking session responses additionally support `question_generated`, `answer_submitted`, and `evaluation_failed`. **[Code-Confirmed]**
+5. Insight/analysis response is represented by `AnalysisInteractionResponse`, which composes `ReadingInteractionResponseEnvelope` with compact `AnalysisArtifactPayloadResponse` fields: `summary`, `reasoning`, `interpretation`, optional `explanation`, and optional `key_points`. Completed analysis responses require payload; missing, insufficient-content, stale-target, generation-failed, and validation-failed responses must not carry payload. **[Code-Confirmed]**
+6. Quiz response is represented by `QuizInteractionResponse`, which composes `ReadingInteractionResponseEnvelope` with bounded drawer-oriented `QuizArtifactPayloadResponse.items[]`. Each `QuizArtifactItemResponse` carries `item_id`, `item_type`, `prompt`, optional `options[]`, `answer`, and optional `explanation`; allowed item types are `short_answer`, `multiple_choice`, and `true_false`. Completed quiz responses require payload; missing, insufficient-content, stale-target, generation-failed, and validation-failed responses must not carry payload. **[Code-Confirmed]**
+7. Critical-thinking response is represented by `CriticalThinkingSessionResponse`, which composes `ReadingInteractionResponseEnvelope` with `CriticalThinkingSessionPayloadResponse`. It validates `question_generated`, `answer_submitted`, `evaluation_failed`, and `completed` lifecycle shapes; failed evaluation preserves `question` and `submitted_answer` and marks retry eligibility; completed sessions require evaluation feedback and may carry numeric score, suggested refinement, strengths, and improvements. **[Code-Confirmed]**
+8. Frontend-local UI state such as drawer open state, selected menu item, pending textarea text, optimistic answer draft, or inline expanded/collapsed state must not be represented as backend truth schemas. **[From HLD] + [Maintainer-Provided]**
+
+### 20.4 Artifact-Aware Interaction Metadata Schemas
 
 1. Generated artifact response schemas should optionally expose artifact-aware context metadata: `artifact_context_mode`, `referenced_artifact_ids`, referenced artifact target levels/types, coverage counts, and deduplication/abstraction hint flags. **[Maintainer-Provided] + [Future Direction]**
 2. Metadata should distinguish primary source evidence from secondary lower-level artifact references. **[Maintainer-Provided] + [Future Direction]**
 3. Missing lower-level artifacts should serialize as empty/omitted secondary context metadata, not as an error. **[Maintainer-Provided] + [Future Direction]**
 4. API schemas should not expose full lower-level artifact payloads inside higher-level artifact responses by default. **[Maintainer-Provided] + [Future Direction]**
 5. Referenced artifact ids are observability/provenance metadata and must not become client-side hierarchy authority. **[From HLD] + [Future Direction]**
+
+### 20.5 Frontend Exposure Completion Plan: Schema-Owned Tasks
+
+> 本節把 frontend exposure 12-task plan 中由 `api_schemas.py` 擁有的任務固定為 implementation backlog。Shared target/envelope schema has an initial implementation, but the task remains open until it is verified against the first public REST route integration and payload-specific schemas. **[Code-Confirmed] + [Future Direction]**
+
+| Task ID | Task | Scope | Completion Evidence |
+|---|---|---|---|
+| FE-INT-01 | Freeze shared reading interaction contract for route integration | Confirm `ReadingInteractionTargetRequest`, `ReadingInteractionTargetResponse`, `ReadingInteractionResponseEnvelope`, status vocabulary, and artifact metadata work as the single public schema foundation for all three route families. | Route-level request/response tests for insight, quiz, and critical-thinking all use the shared schemas without adding route-local target/status variants. |
+| FE-INT-02 | Define insight/analysis payload schema | Add payload-specific request/response schemas for compact inline insight/analysis rendering. | Implemented by `AnalysisInteractionReadRequest`, `AnalysisInteractionGenerateRequest`, `AnalysisInteractionRefreshRequest`, `AnalysisArtifactPayloadResponse`, and `AnalysisInteractionResponse`; schema tests cover `summary`, `reasoning`, `interpretation`, optional `key_points`, shared envelope composition, missing state, insufficient content, and generation/validation failure. |
+| FE-INT-03 | Define quiz artifact payload schema | Add drawer-oriented quiz request/response schemas with strict item type/count validation. | Implemented by `QuizInteractionReadRequest`, `QuizInteractionGenerateRequest`, `QuizInteractionRefreshRequest`, `QuizArtifactItemResponse`, `QuizArtifactPayloadResponse`, and `QuizInteractionResponse`; schema tests cover `short_answer`, `multiple_choice`, `true_false`, answers/explanations, max count, insufficient content, and invalid item shapes. |
+| FE-INT-04 | Define critical-thinking session payload schema | Add session-oriented request/response schemas for read, question generation, answer submission, failed evaluation, completed evaluation, and retry eligibility. | Implemented by `CriticalThinkingSessionReadRequest`, `CriticalThinkingQuestionGenerateRequest`, `CriticalThinkingAnswerSubmitRequest`, `CriticalThinkingEvaluationRetryRequest`, `CriticalThinkingEvaluationResponse`, `CriticalThinkingSessionPayloadResponse`, and `CriticalThinkingSessionResponse`; schema tests cover `session_id`, question, submitted answer, evaluation feedback/score/refinement, status transitions, answer preservation on evaluation failure, and invalid missing-answer payloads. |
+
+Schema-owned tasks must not expand `/documents/task-layout`, expose raw target content by default, accept frontend UI state as backend truth, or use title fields as target locators. **[From HLD] + [Maintainer-Provided]**

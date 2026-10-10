@@ -24,11 +24,13 @@
 | `section_tasks/reading_target_resolver.py` | document/chapter/section/task-unit reading interaction target resolution | hierarchy-only, id-based, parent consistency checks **[Code-Confirmed]** |
 | `section_tasks/reading_interaction_service_contracts.py` | target-agnostic reading interaction request/result/service contracts | validated DTOs, no route or persistence ownership **[Code-Confirmed]** |
 | `section_tasks/analysis_interaction_service.py` | target-agnostic analysis interaction service | strict JSON validation, insufficient-content fast path **[Code-Confirmed]** |
+| `section_tasks/analysis_interaction_llm_generator.py` | LLM-backed analysis generator adapter | compact strict-JSON insight prompt over one resolved target **[Code-Confirmed]** |
 | `section_tasks/analysis_interaction_orchestrator.py` | analysis read/generate split orchestration | read does not generate; explicit generate persists only completed/insufficient-content artifacts **[Code-Confirmed]** |
 | `section_tasks/quiz_interaction_service.py` | target-agnostic quiz interaction service | valid quiz types, configured target-level limits, answer payload validation, insufficient-content fast path **[Code-Confirmed]** |
 | `section_tasks/quiz_interaction_orchestrator.py` | quiz read/generate split orchestration | read does not generate; explicit generate persists only completed/insufficient-content artifacts **[Code-Confirmed]** |
 | `section_tasks/critical_thinking_session_service.py` | target-agnostic critical-thinking session service | fixed instructions, question -> answer -> evaluation lifecycle, retryable evaluation failure **[Code-Confirmed]** |
 | `section_tasks/reading_interaction_common_artifact.py` | maps reading interaction service artifacts to/from the shared common artifact entity | preserves hierarchy-aware target metadata without owning persistence **[Code-Confirmed]** |
+| `section_tasks/reading_interaction_artifact_store.py` | document-backed current analysis artifact store | persists `CommonArtifact` payloads under document task artifact metadata **[Code-Confirmed]** |
 | `section_tasks/task_unit_split_resolver_selector.py` | split mode resolver selector | semantic/progressive/llm resolvers **[Code-Confirmed]** |
 | `section_tasks/heuristic_task_unit_split_resolver.py` | deterministic split path | semantic boundary scoring integration **[Code-Confirmed]** |
 | `section_tasks/llm_task_unit_split_resolver.py` | llm split path | fallback to heuristic path **[Code-Confirmed]** |
@@ -138,7 +140,7 @@
 ## 13. Persistence / Side Effects
 
 - read persistence：間接（由 coordinator/repository 提供 document/artifacts）
-- write persistence：否（本 package service 層本身通常不直接落盤）
+- write persistence：部分（service 層通常不直接落盤；document-backed interaction store adapter delegates explicit artifact updates to repository）
 - mutate structured document：否（主要由 repository/coordinator）
 - generate runtime projection：是（DTO contract）
 - call LLM：是（summary/quiz/some split resolvers）
@@ -343,6 +345,8 @@ validation boundary 要求：fail-fast + 明確錯誤分類；不得 silent fall
 13. Interaction services may consume lower-level artifact summaries through an `artifact_context_provider`; this injects compact secondary context into `ReadingInteractionRequest.secondary_context` while preserving `target.content` as the primary source context. Artifact metadata records provenance only, not secondary context text or child payloads. **[Code-Confirmed]**
 14. Reading interaction service artifacts can be mapped onto the shared `CommonArtifact` entity through `reading_interaction_common_artifact.py`; `analysis`, `quiz`, and `critical_thinking_session` remain artifact types on one entity shape rather than separate persistence categories. **[Code-Confirmed]**
 15. Analysis and quiz current-artifact semantics are explicit: read paths return only current persisted artifacts or `not_generated`, while generation/refresh is the only path that invokes generators and writes completed or insufficient-content artifacts. **[Code-Confirmed]**
+16. `AnalysisInteractionLLMGenerator` is the first concrete LLM-backed generator adapter for analysis/insight; it receives an already-resolved `ReadingInteractionRequest`, keeps target content as the primary source context, optionally includes secondary artifact context, and returns strict JSON text for downstream validation. **[Code-Confirmed]**
+17. `DocumentReadingInteractionArtifactStore` is the first document-backed current-artifact adapter for reading interactions. It persists analysis artifacts as `CommonArtifact` dictionaries under `DocumentTaskArtifacts.metadata["reading_interaction_artifacts"]`, keyed by `analysis::<document_id>::<target_level>::<target_id>`, and delegates actual document artifact updates to the structured document repository boundary. **[Code-Confirmed]**
 
 ### 24.1 Lower-Level Artifact Reference Policy
 

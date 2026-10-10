@@ -22,6 +22,48 @@ ARTIFACT_CONTEXT_MODES: frozenset[str] = frozenset(
     }
 )
 
+READING_INTERACTION_TARGET_TYPES: frozenset[str] = frozenset(
+    {"document", "book", "chapter", "section", "task_unit"}
+)
+
+READING_INTERACTION_TYPES: frozenset[str] = frozenset(
+    {"analysis", "quiz", "critical_thinking_session"}
+)
+
+READING_INTERACTION_STATUSES: frozenset[str] = frozenset(
+    {
+        "not_generated",
+        "completed",
+        "insufficient_content",
+        "stale_target",
+        "generation_failed",
+        "validation_failed",
+        "question_generated",
+        "answer_submitted",
+        "evaluation_failed",
+    }
+)
+
+CRITICAL_THINKING_ONLY_STATUSES: frozenset[str] = frozenset(
+    {"question_generated", "answer_submitted", "evaluation_failed"}
+)
+
+READING_INTERACTION_REASON_REQUIRED_STATUSES: frozenset[str] = frozenset(
+    {
+        "insufficient_content",
+        "stale_target",
+        "generation_failed",
+        "validation_failed",
+        "evaluation_failed",
+    }
+)
+
+QUIZ_INTERACTION_ITEM_TYPES: frozenset[str] = frozenset(
+    {"short_answer", "multiple_choice", "true_false"}
+)
+
+QUIZ_INTERACTION_MAX_ITEMS = 25
+
 
 class PrepareDocumentRequest(BaseModel):
     """Request payload for document preparation operations."""
@@ -579,6 +621,755 @@ class ArtifactAwareInteractionMetadataResponse(BaseModel):
             )
 
         return self
+
+
+class ReadingInteractionTargetRequest(BaseModel):
+    """Public id-based target contract for reading interaction routes."""
+
+    _ALLOWED_TARGET_TYPES: ClassVar[frozenset[str]] = READING_INTERACTION_TARGET_TYPES
+    model_config = ConfigDict(extra="forbid")
+
+    doc_name: str = Field(..., description="Document name.")
+    target_type: str = Field(
+        ...,
+        description="Reading target type: document | book | chapter | section | task_unit.",
+    )
+    chapter_id: str | None = Field(
+        None,
+        description="Required for chapter targets; optional parent check for descendants.",
+    )
+    section_id: str | None = Field(
+        None,
+        description="Required for section targets; optional parent check for task units.",
+    )
+    task_unit_id: str | None = Field(
+        None,
+        description="Required for task_unit targets.",
+    )
+    source_structure_version: int | None = Field(
+        None,
+        ge=0,
+        description="Optional client-observed structure version for stale-target checks.",
+    )
+    source_hash: str | None = Field(
+        None,
+        description="Optional client-observed source hash for stale-target checks.",
+    )
+
+    @staticmethod
+    def _normalize_optional_id(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_target_shape(self) -> "ReadingInteractionTargetRequest":
+        normalized_doc_name = self.doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+        self.doc_name = normalized_doc_name
+
+        normalized_target_type = self.target_type.strip().lower().replace("-", "_")
+        if normalized_target_type == "book":
+            normalized_target_type = "document"
+        if normalized_target_type not in self._ALLOWED_TARGET_TYPES:
+            raise ValueError(
+                "target_type must be one of: "
+                + ", ".join(sorted(self._ALLOWED_TARGET_TYPES - {"book"}))
+            )
+        self.target_type = normalized_target_type
+
+        self.chapter_id = self._normalize_optional_id(self.chapter_id)
+        self.section_id = self._normalize_optional_id(self.section_id)
+        self.task_unit_id = self._normalize_optional_id(self.task_unit_id)
+        self.source_hash = self._normalize_optional_id(self.source_hash)
+
+        if normalized_target_type == "document":
+            if self.chapter_id or self.section_id or self.task_unit_id:
+                raise ValueError("document target must not include child target ids")
+            return self
+
+        if normalized_target_type == "chapter":
+            if self.chapter_id is None:
+                raise ValueError("chapter target requires chapter_id")
+            if self.section_id or self.task_unit_id:
+                raise ValueError("chapter target must not include section_id or task_unit_id")
+            return self
+
+        if normalized_target_type == "section":
+            if self.section_id is None:
+                raise ValueError("section target requires section_id")
+            if self.task_unit_id:
+                raise ValueError("section target must not include task_unit_id")
+            return self
+
+        if self.task_unit_id is None:
+            raise ValueError("task_unit target requires task_unit_id")
+        return self
+
+
+class ReadingInteractionTargetResponse(BaseModel):
+    """Resolved target metadata echoed by reading interaction responses."""
+
+    _ALLOWED_TARGET_TYPES: ClassVar[frozenset[str]] = READING_INTERACTION_TARGET_TYPES
+    model_config = ConfigDict(extra="forbid")
+
+    doc_name: str
+    target_type: str
+    target_id: str
+    document_id: str | None = None
+    document_title: str | None = None
+    chapter_id: str | None = None
+    section_id: str | None = None
+    task_unit_id: str | None = None
+    title: str | None = None
+
+    @staticmethod
+    def _normalize_optional_string(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _normalize_target_metadata(self) -> "ReadingInteractionTargetResponse":
+        doc_name = self.doc_name.strip()
+        target_id = self.target_id.strip()
+        if not doc_name:
+            raise ValueError("doc_name cannot be empty")
+        if not target_id:
+            raise ValueError("target_id cannot be empty")
+        self.doc_name = doc_name
+        self.target_id = target_id
+
+        normalized_target_type = self.target_type.strip().lower().replace("-", "_")
+        if normalized_target_type == "book":
+            normalized_target_type = "document"
+        if normalized_target_type not in self._ALLOWED_TARGET_TYPES:
+            raise ValueError(
+                "target_type must be one of: "
+                + ", ".join(sorted(self._ALLOWED_TARGET_TYPES - {"book"}))
+            )
+        self.target_type = normalized_target_type
+
+        self.document_id = self._normalize_optional_string(self.document_id)
+        self.document_title = self._normalize_optional_string(self.document_title)
+        self.chapter_id = self._normalize_optional_string(self.chapter_id)
+        self.section_id = self._normalize_optional_string(self.section_id)
+        self.task_unit_id = self._normalize_optional_string(self.task_unit_id)
+        self.title = self._normalize_optional_string(self.title)
+        return self
+
+
+class ReadingInteractionResponseEnvelope(BaseModel):
+    """Shared metadata envelope for future reading interaction responses."""
+
+    _ALLOWED_INTERACTION_TYPES: ClassVar[frozenset[str]] = READING_INTERACTION_TYPES
+    _ALLOWED_STATUSES: ClassVar[frozenset[str]] = READING_INTERACTION_STATUSES
+    _CRITICAL_THINKING_ONLY_STATUSES: ClassVar[frozenset[str]] = (
+        CRITICAL_THINKING_ONLY_STATUSES
+    )
+    _REASON_REQUIRED_STATUSES: ClassVar[frozenset[str]] = (
+        READING_INTERACTION_REASON_REQUIRED_STATUSES
+    )
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetResponse
+    interaction_type: str
+    status: str
+    artifact_id: str | None = None
+    session_id: str | None = None
+    generated_at: str | None = None
+    updated_at: str | None = None
+    schema_version: str | None = None
+    prompt_instruction_version: str | None = None
+    source_structure_version: int | None = Field(None, ge=0)
+    source_hash: str | None = None
+    reason: str | None = None
+    artifact_context_metadata: ArtifactAwareInteractionMetadataResponse | None = None
+
+    @staticmethod
+    def _normalize_optional_string(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_envelope(self) -> "ReadingInteractionResponseEnvelope":
+        interaction_type = self.interaction_type.strip().lower().replace("-", "_")
+        if interaction_type not in self._ALLOWED_INTERACTION_TYPES:
+            raise ValueError(
+                "interaction_type must be one of: "
+                + ", ".join(sorted(self._ALLOWED_INTERACTION_TYPES))
+            )
+        self.interaction_type = interaction_type
+
+        status = self.status.strip().lower().replace("-", "_")
+        if status not in self._ALLOWED_STATUSES:
+            raise ValueError(
+                "status must be one of: "
+                + ", ".join(sorted(self._ALLOWED_STATUSES))
+            )
+        self.status = status
+
+        if (
+            status in self._CRITICAL_THINKING_ONLY_STATUSES
+            and interaction_type != "critical_thinking_session"
+        ):
+            raise ValueError(
+                f"status '{status}' is only valid for critical_thinking_session"
+            )
+
+        self.artifact_id = self._normalize_optional_string(self.artifact_id)
+        self.session_id = self._normalize_optional_string(self.session_id)
+        self.generated_at = self._normalize_optional_string(self.generated_at)
+        self.updated_at = self._normalize_optional_string(self.updated_at)
+        self.schema_version = self._normalize_optional_string(self.schema_version)
+        self.prompt_instruction_version = self._normalize_optional_string(
+            self.prompt_instruction_version
+        )
+        self.source_hash = self._normalize_optional_string(self.source_hash)
+        self.reason = self._normalize_optional_string(self.reason)
+
+        if status in self._REASON_REQUIRED_STATUSES and self.reason is None:
+            raise ValueError(f"status '{status}' requires reason")
+
+        if status == "not_generated" and (self.artifact_id or self.session_id):
+            raise ValueError("not_generated response must not include artifact_id or session_id")
+
+        return self
+
+
+class AnalysisArtifactPayloadResponse(BaseModel):
+    """Compact analysis artifact payload for inline reading interaction UI."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str
+    reasoning: str
+    interpretation: str
+    explanation: str | None = None
+    key_points: list[str] = Field(default_factory=list)
+
+    @staticmethod
+    def _normalize_required_text(value: str, *, field_name: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"{field_name} cannot be empty")
+        return normalized
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_payload(self) -> "AnalysisArtifactPayloadResponse":
+        self.summary = self._normalize_required_text(
+            self.summary,
+            field_name="summary",
+        )
+        self.reasoning = self._normalize_required_text(
+            self.reasoning,
+            field_name="reasoning",
+        )
+        self.interpretation = self._normalize_required_text(
+            self.interpretation,
+            field_name="interpretation",
+        )
+        self.explanation = self._normalize_optional_text(self.explanation)
+
+        normalized_key_points: list[str] = []
+        for key_point in self.key_points:
+            normalized = key_point.strip()
+            if not normalized:
+                raise ValueError("key_points cannot contain empty values")
+            normalized_key_points.append(normalized)
+        self.key_points = normalized_key_points
+        return self
+
+
+class AnalysisInteractionReadRequest(BaseModel):
+    """Request payload for reading an existing analysis artifact state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetRequest
+
+
+class AnalysisInteractionGenerateRequest(BaseModel):
+    """Request payload for generating an analysis artifact for a reading target."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetRequest
+    prompt_instruction_version: str | None = None
+
+    @staticmethod
+    def _normalize_optional_string(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _normalize_generation_options(self) -> "AnalysisInteractionGenerateRequest":
+        self.prompt_instruction_version = self._normalize_optional_string(
+            self.prompt_instruction_version
+        )
+        return self
+
+
+class AnalysisInteractionRefreshRequest(AnalysisInteractionGenerateRequest):
+    """Request payload for explicitly regenerating an analysis artifact."""
+
+
+class AnalysisInteractionResponse(BaseModel):
+    """Read/generate response for analysis artifacts using the shared envelope."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    envelope: ReadingInteractionResponseEnvelope
+    payload: AnalysisArtifactPayloadResponse | None = None
+
+    @model_validator(mode="after")
+    def _validate_analysis_response(self) -> "AnalysisInteractionResponse":
+        if self.envelope.interaction_type != "analysis":
+            raise ValueError("analysis response envelope requires interaction_type='analysis'")
+
+        if self.envelope.status == "completed":
+            if self.payload is None:
+                raise ValueError("completed analysis response requires payload")
+            return self
+
+        if self.payload is not None:
+            raise ValueError(
+                "analysis payload is only valid when envelope status is completed"
+            )
+        return self
+
+
+class QuizArtifactItemResponse(BaseModel):
+    """Drawer-oriented quiz item payload for target-agnostic quiz artifacts."""
+
+    _ALLOWED_ITEM_TYPES: ClassVar[frozenset[str]] = QUIZ_INTERACTION_ITEM_TYPES
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str
+    item_type: str
+    prompt: str
+    options: list[str] | None = None
+    answer: str | bool
+    explanation: str | None = None
+
+    @staticmethod
+    def _normalize_required_text(value: str, *, field_name: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"{field_name} cannot be empty")
+        return normalized
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_quiz_item(self) -> "QuizArtifactItemResponse":
+        self.item_id = self._normalize_required_text(
+            self.item_id,
+            field_name="item_id",
+        )
+        item_type = self.item_type.strip().lower().replace("-", "_")
+        if item_type not in self._ALLOWED_ITEM_TYPES:
+            raise ValueError(
+                "item_type must be one of: "
+                + ", ".join(sorted(self._ALLOWED_ITEM_TYPES))
+            )
+        self.item_type = item_type
+        self.prompt = self._normalize_required_text(
+            self.prompt,
+            field_name="prompt",
+        )
+        self.explanation = self._normalize_optional_text(self.explanation)
+
+        if item_type == "multiple_choice":
+            if self.options is None or len(self.options) < 2:
+                raise ValueError("multiple_choice quiz item requires at least two options")
+            normalized_options: list[str] = []
+            seen_options: set[str] = set()
+            for option in self.options:
+                normalized_option = self._normalize_required_text(
+                    option,
+                    field_name="options",
+                )
+                if normalized_option in seen_options:
+                    raise ValueError("multiple_choice quiz item options must be unique")
+                seen_options.add(normalized_option)
+                normalized_options.append(normalized_option)
+            self.options = normalized_options
+
+            if not isinstance(self.answer, str) or isinstance(self.answer, bool):
+                raise ValueError("multiple_choice quiz item answer must be a string")
+            normalized_answer = self._normalize_required_text(
+                self.answer,
+                field_name="answer",
+            )
+            if normalized_answer not in self.options:
+                raise ValueError("multiple_choice quiz item answer must match one option")
+            self.answer = normalized_answer
+            return self
+
+        if self.options is not None:
+            raise ValueError(f"{item_type} quiz item must not include options")
+
+        if item_type == "true_false":
+            if not isinstance(self.answer, bool):
+                raise ValueError("true_false quiz item answer must be boolean")
+            return self
+
+        if not isinstance(self.answer, str) or isinstance(self.answer, bool):
+            raise ValueError("short_answer quiz item answer must be a string")
+        self.answer = self._normalize_required_text(
+            self.answer,
+            field_name="answer",
+        )
+        return self
+
+
+class QuizArtifactPayloadResponse(BaseModel):
+    """Bounded target-agnostic quiz artifact payload for drawer rendering."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[QuizArtifactItemResponse] = Field(
+        ...,
+        min_length=1,
+        max_length=QUIZ_INTERACTION_MAX_ITEMS,
+    )
+    max_items: int | None = Field(None, ge=1, le=QUIZ_INTERACTION_MAX_ITEMS)
+
+    @model_validator(mode="after")
+    def _validate_quiz_payload(self) -> "QuizArtifactPayloadResponse":
+        if self.max_items is not None and len(self.items) > self.max_items:
+            raise ValueError(
+                f"quiz payload contains {len(self.items)} items; max_items is {self.max_items}"
+            )
+        return self
+
+
+class QuizInteractionReadRequest(BaseModel):
+    """Request payload for reading an existing quiz artifact state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetRequest
+
+
+class QuizInteractionGenerateRequest(BaseModel):
+    """Request payload for generating a target-agnostic quiz artifact."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetRequest
+    max_items: int | None = Field(None, ge=1, le=QUIZ_INTERACTION_MAX_ITEMS)
+    prompt_instruction_version: str | None = None
+
+    @staticmethod
+    def _normalize_optional_string(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _normalize_generation_options(self) -> "QuizInteractionGenerateRequest":
+        self.prompt_instruction_version = self._normalize_optional_string(
+            self.prompt_instruction_version
+        )
+        return self
+
+
+class QuizInteractionRefreshRequest(QuizInteractionGenerateRequest):
+    """Request payload for explicitly regenerating a quiz artifact."""
+
+
+class QuizInteractionResponse(BaseModel):
+    """Read/generate response for quiz artifacts using the shared envelope."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    envelope: ReadingInteractionResponseEnvelope
+    payload: QuizArtifactPayloadResponse | None = None
+
+    @model_validator(mode="after")
+    def _validate_quiz_response(self) -> "QuizInteractionResponse":
+        if self.envelope.interaction_type != "quiz":
+            raise ValueError("quiz response envelope requires interaction_type='quiz'")
+
+        if self.envelope.status == "completed":
+            if self.payload is None:
+                raise ValueError("completed quiz response requires payload")
+            return self
+
+        if self.payload is not None:
+            raise ValueError("quiz payload is only valid when envelope status is completed")
+        return self
+
+
+class CriticalThinkingEvaluationResponse(BaseModel):
+    """Evaluation payload for a completed critical-thinking session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    feedback: str
+    score: float | None = Field(None, ge=0, le=5)
+    suggested_refinement: str | None = None
+    strengths: str | None = None
+    improvements: str | None = None
+
+    @staticmethod
+    def _normalize_required_text(value: str, *, field_name: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"{field_name} cannot be empty")
+        return normalized
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_evaluation(self) -> "CriticalThinkingEvaluationResponse":
+        self.feedback = self._normalize_required_text(
+            self.feedback,
+            field_name="feedback",
+        )
+        self.suggested_refinement = self._normalize_optional_text(
+            self.suggested_refinement
+        )
+        self.strengths = self._normalize_optional_text(self.strengths)
+        self.improvements = self._normalize_optional_text(self.improvements)
+        return self
+
+
+class CriticalThinkingSessionPayloadResponse(BaseModel):
+    """Question/answer/evaluation payload for a critical-thinking session state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str | None = None
+    submitted_answer: str | None = None
+    evaluation: CriticalThinkingEvaluationResponse | None = None
+    retry_eligible: bool = False
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _normalize_payload(self) -> "CriticalThinkingSessionPayloadResponse":
+        self.question = self._normalize_optional_text(self.question)
+        self.submitted_answer = self._normalize_optional_text(self.submitted_answer)
+        return self
+
+
+class CriticalThinkingSessionReadRequest(BaseModel):
+    """Request payload for reading critical-thinking session state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetRequest
+    session_id: str | None = None
+
+    @staticmethod
+    def _normalize_optional_string(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _normalize_session_id(self) -> "CriticalThinkingSessionReadRequest":
+        self.session_id = self._normalize_optional_string(self.session_id)
+        return self
+
+
+class CriticalThinkingQuestionGenerateRequest(BaseModel):
+    """Request payload for generating one critical-thinking question."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetRequest
+    prompt_instruction_version: str | None = None
+
+    @staticmethod
+    def _normalize_optional_string(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _normalize_generation_options(
+        self,
+    ) -> "CriticalThinkingQuestionGenerateRequest":
+        self.prompt_instruction_version = self._normalize_optional_string(
+            self.prompt_instruction_version
+        )
+        return self
+
+
+class CriticalThinkingAnswerSubmitRequest(BaseModel):
+    """Request payload for submitting an answer to a generated question."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetRequest
+    session_id: str
+    answer: str
+
+    @staticmethod
+    def _normalize_required_text(value: str, *, field_name: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"{field_name} cannot be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_answer_submission(self) -> "CriticalThinkingAnswerSubmitRequest":
+        self.session_id = self._normalize_required_text(
+            self.session_id,
+            field_name="session_id",
+        )
+        self.answer = self._normalize_required_text(
+            self.answer,
+            field_name="answer",
+        )
+        return self
+
+
+class CriticalThinkingEvaluationRetryRequest(BaseModel):
+    """Request payload for retrying evaluation of a submitted answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ReadingInteractionTargetRequest
+    session_id: str
+
+    @model_validator(mode="after")
+    def _validate_session_id(self) -> "CriticalThinkingEvaluationRetryRequest":
+        normalized = self.session_id.strip()
+        if not normalized:
+            raise ValueError("session_id cannot be empty")
+        self.session_id = normalized
+        return self
+
+
+class CriticalThinkingSessionResponse(BaseModel):
+    """Read/generate/submit/retry response for critical-thinking sessions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    envelope: ReadingInteractionResponseEnvelope
+    payload: CriticalThinkingSessionPayloadResponse | None = None
+
+    @staticmethod
+    def _has_question(payload: CriticalThinkingSessionPayloadResponse | None) -> bool:
+        return payload is not None and payload.question is not None
+
+    @staticmethod
+    def _has_answer(payload: CriticalThinkingSessionPayloadResponse | None) -> bool:
+        return payload is not None and payload.submitted_answer is not None
+
+    @model_validator(mode="after")
+    def _validate_critical_thinking_response(
+        self,
+    ) -> "CriticalThinkingSessionResponse":
+        if self.envelope.interaction_type != "critical_thinking_session":
+            raise ValueError(
+                "critical-thinking response envelope requires "
+                "interaction_type='critical_thinking_session'"
+            )
+
+        status = self.envelope.status
+        payload = self.payload
+
+        if status == "not_generated":
+            if self.envelope.session_id is not None or payload is not None:
+                raise ValueError(
+                    "not_generated critical-thinking response must not include "
+                    "session_id or payload"
+                )
+            return self
+
+        if status in {
+            "insufficient_content",
+            "stale_target",
+            "generation_failed",
+            "validation_failed",
+        }:
+            if payload is not None:
+                raise ValueError(
+                    f"{status} critical-thinking response must not include payload"
+                )
+            return self
+
+        if self.envelope.session_id is None:
+            raise ValueError(f"{status} critical-thinking response requires session_id")
+
+        if status == "question_generated":
+            if not self._has_question(payload):
+                raise ValueError("question_generated response requires question")
+            if payload.submitted_answer is not None or payload.evaluation is not None:
+                raise ValueError(
+                    "question_generated response must not include answer or evaluation"
+                )
+            return self
+
+        if status == "answer_submitted":
+            if not self._has_question(payload) or not self._has_answer(payload):
+                raise ValueError(
+                    "answer_submitted response requires question and submitted_answer"
+                )
+            if payload.evaluation is not None:
+                raise ValueError("answer_submitted response must not include evaluation")
+            return self
+
+        if status == "evaluation_failed":
+            if not self._has_question(payload) or not self._has_answer(payload):
+                raise ValueError(
+                    "evaluation_failed response requires preserved question and "
+                    "submitted_answer"
+                )
+            if payload.evaluation is not None:
+                raise ValueError("evaluation_failed response must not include evaluation")
+            payload.retry_eligible = True
+            return self
+
+        if status == "completed":
+            if not self._has_question(payload) or not self._has_answer(payload):
+                raise ValueError(
+                    "completed response requires question and submitted_answer"
+                )
+            if payload.evaluation is None:
+                raise ValueError("completed response requires evaluation")
+            payload.retry_eligible = False
+            return self
+
+        raise ValueError(f"unsupported critical-thinking status: {status}")
 
 
 class TaskUnitContentBlockResponse(BaseModel):

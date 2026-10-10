@@ -79,6 +79,46 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: `AnchorEvidenceResponse` is exposed as optional metadata on `DocumentTaskLayoutChapterResponse` and `SectionTaskLayoutResponse`. It carries anchor type/status/reason, char offsets, and optional page indices/labels without raw text, page text, OCR boxes, task-unit content, or a second hierarchy source.
 
+- [x] Audit reading interaction public schema exposure
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/api_schemas.module-detailed-design.md`; `Deep_Reflective_Reader/main.py`.
+  Notes: Confirmed that `ArtifactAwareInteractionMetadataResponse` exists as metadata-only provenance, but generic reading target schemas and public read/generate/submit/retry schemas for `analysis`, target-agnostic `quiz`, and `critical_thinking_session` are not yet implemented. Existing section/chapter quiz schemas remain legacy task endpoints, not the new interaction API schema family.
+  Timestamp: 2026-10-08
+
+- [x] Define generic reading target request schema
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`.
+  Notes: Adds `ReadingInteractionTargetRequest` for document/book, chapter, section, and task-unit target identity. The schema trims ids, normalizes `book` to `document`, rejects title-primary locator fields, validates required/forbidden child ids per target level, and preserves optional source provenance fields for stale-target checks.
+  Timestamp: 2026-10-09
+
+- [x] Define shared reading interaction response envelope for frontend UI
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`.
+  Notes: Adds `ReadingInteractionTargetResponse` and `ReadingInteractionResponseEnvelope` for shared response metadata. The envelope validates interaction type/status, reason-required failure states, critical-thinking-only statuses, `not_generated` id rules, source/schema/prompt provenance, and artifact-aware context metadata while forbidding frontend-only UI state fields.
+  Timestamp: 2026-10-09
+
+- [x] FE-INT-02 Define analysis artifact read/generate schemas
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`.
+  Notes: Adds `AnalysisInteractionReadRequest`, `AnalysisInteractionGenerateRequest`, `AnalysisInteractionRefreshRequest`, `AnalysisArtifactPayloadResponse`, and `AnalysisInteractionResponse`. The schemas reuse the shared target/envelope, validate compact inline fields `summary`, `reasoning`, `interpretation`, optional `explanation`, optional `key_points`, accept missing/insufficient/failure states without payload, and require payload for completed analysis responses.
+  Timestamp: 2026-10-09
+
+- [x] FE-INT-03 Define quiz artifact schemas with strict validation envelope
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`.
+  Notes: Adds `QuizInteractionReadRequest`, `QuizInteractionGenerateRequest`, `QuizInteractionRefreshRequest`, `QuizArtifactItemResponse`, `QuizArtifactPayloadResponse`, and `QuizInteractionResponse`. The schemas reuse the shared target/envelope, enforce allowed item types `short_answer`, `multiple_choice`, and `true_false`, validate max item count, answers, explanations, multiple-choice options, missing/insufficient/failure states without payload, and completed quiz payload requirements.
+  Timestamp: 2026-10-09
+
+- [x] FE-INT-04 Define critical-thinking session schemas
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`.
+  Notes: Adds `CriticalThinkingSessionReadRequest`, `CriticalThinkingQuestionGenerateRequest`, `CriticalThinkingAnswerSubmitRequest`, `CriticalThinkingEvaluationRetryRequest`, `CriticalThinkingEvaluationResponse`, `CriticalThinkingSessionPayloadResponse`, and `CriticalThinkingSessionResponse`. The schemas reuse the shared target/envelope, validate generated-question, submitted-answer, evaluation-failed retry, completed-evaluation, missing, insufficient-content, and invalid lifecycle payload shapes while preserving submitted answers on evaluation failure.
+  Timestamp: 2026-10-09
+
+- [x] Align critical-thinking submit/retry requests with shared target contract
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`.
+  Notes: `CriticalThinkingAnswerSubmitRequest` and `CriticalThinkingEvaluationRetryRequest` now require the shared reading target request object alongside `session_id`, keeping submit/retry route mapping hierarchy-aware and avoiding route-local global session lookup.
+  Timestamp: 2026-10-10
+
+- [x] FE-INT-01 Freeze shared reading interaction contract for route integration
+  Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `Deep_Reflective_Reader/api_schemas.module-detailed-design.md`.
+  Notes: Insight, quiz, and critical-thinking route-level tests now verify the shared reading interaction contract uses `ReadingInteractionTargetRequest`, `ReadingInteractionTargetResponse`, `ReadingInteractionResponseEnvelope`, shared status vocabulary, and artifact-aware metadata without introducing route-local target/status variants or frontend-only UI state fields.
+  Timestamp: 2026-10-10
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -90,22 +130,6 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Design rich task-unit content response schema (future direction, not implemented)
 - [ ] Define content-block artifact metadata schema (future direction, not implemented)
 - [ ] Define backward-compatible content response evolution strategy (future direction, not implemented)
-- [ ] Define generic reading target request schema
-  Evidence needed: schema validates document, chapter, section, and task-unit targets using ids as primary identity, with optional parent ids only for consistency checks.
-  Notes: No title-primary or legacy fallback semantics should be expressed in public schema.
-  Timestamp: 2026-10-05
-- [ ] Define analysis artifact read/generate schemas
-  Evidence needed: schemas distinguish persisted read response, generate request, successful artifact payload, missing/not-generated status, insufficient-content status, and validation/generation failure.
-  Notes: Analysis payload should be structured, versioned, and target-aware.
-  Timestamp: 2026-10-05
-- [ ] Define quiz artifact schemas with strict validation envelope
-  Evidence needed: schemas support `short_answer`, `multiple_choice`, and `true_false` only, enforce max item count, include answers, and support insufficient-content status.
-  Notes: The model chooses type mix; backend schema validation enforces the allowed surface.
-  Timestamp: 2026-10-05
-- [ ] Define critical-thinking session schemas
-  Evidence needed: schemas cover question generation, answer submission, evaluation retry, and statuses `question_generated`, `insufficient_content`, `answer_submitted`, `evaluation_failed`, and `completed`.
-  Notes: Generated question must be serializable before the user answers.
-  Timestamp: 2026-10-05
 - [x] Define artifact-aware interaction metadata schema
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`.
   Notes: Adds `ArtifactAwareInteractionMetadataResponse` for metadata-only artifact-aware context provenance. It represents artifact context mode, primary source evidence ids, referenced artifact ids, artifact types, target levels, coverage counts, deduplication/abstraction flags, and pruning reason without embedding lower-level artifact payloads or making artifacts hierarchy/source authority.

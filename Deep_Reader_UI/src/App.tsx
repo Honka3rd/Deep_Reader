@@ -30,6 +30,7 @@ import {
 } from "./features/hierarchy-navigation";
 import {
   ReaderContentView,
+  type ReaderContentGroup,
   useReaderContentController,
 } from "./features/reader-content";
 import { TocEditorView } from "./features/toc-editor";
@@ -38,14 +39,32 @@ import {
   type AppNotificationState,
 } from "./shared/components/AppNotification";
 import {
+  readingInteractionService,
   structureRepairService,
   taskLayoutService,
 } from "./services";
 import type {
+  ChapterLayout,
   DocumentTaskLayout,
   RequestStatus,
+  SectionLayout,
+  SectionSelection,
   StructureParserMode,
 } from "./types/api";
+import {
+  buildReadingInteractionTargetKey,
+  CriticalThinkingDrawerCommands,
+  CriticalThinkingDrawerContent,
+  mapAnalysisInteractionResponseToInsightViewState,
+  QuizDrawerCommands,
+  QuizDrawerContent,
+  ReadingInteractionsView,
+  toReadingInteractionTargetRequest,
+  type ReadingInteractionKind,
+  type ReadingInteractionMenuSelection,
+  type ReadingInteractionTarget,
+  useReadingInteractionMenuController,
+} from "./features/reading-interactions";
 
 export default function App() {
   const navigate = useNavigate();
@@ -61,6 +80,7 @@ export default function App() {
   const [currentRepairMode, setCurrentRepairMode] = useState<StructureParserMode | null>(null);
   const [activeRepairMode, setActiveRepairMode] = useState<StructureParserMode | null>(null);
   const [repairMenuAnchor, setRepairMenuAnchor] = useState<HTMLElement | null>(null);
+  const [criticalThinkingDraftDirty, setCriticalThinkingDraftDirty] = useState(false);
   const layoutRequestIdRef = useRef(0);
   const {
     docName,
@@ -78,6 +98,18 @@ export default function App() {
     selectSection,
     resetContent,
   } = useReaderContentController({ docName });
+  const {
+    openInlineInsightsByTarget,
+    quizStateByTarget,
+    criticalThinkingStateByTarget,
+    selectedInteraction,
+    selectInteractionAction,
+    beginInlineInsightRequest,
+    applyInlineInsightState,
+    failInlineInsightRequest,
+    clearSelectedInteraction,
+    closeInlineInsight,
+  } = useReadingInteractionMenuController();
 
   function showNotification(
     message: string,
@@ -209,6 +241,322 @@ export default function App() {
     void repairStructure(parserMode);
   }
 
+  function interactionLabel(kind: ReadingInteractionKind) {
+    return kind === "critical_thinking"
+      ? "Critical thinking"
+      : kind === "quiz"
+      ? "Quiz"
+      : "Insights";
+  }
+
+  function interactionTargetLevelLabel(target: ReadingInteractionTarget) {
+    switch (target.targetLevel) {
+      case "document":
+        return "document";
+      case "chapter":
+        return "chapter";
+      case "section":
+        return "section";
+      case "task_unit":
+        return "task unit";
+      default:
+        return "target";
+    }
+  }
+
+  function notifyReadingInteractionSelection(selection: ReadingInteractionMenuSelection) {
+    const label = interactionLabel(selection.kind);
+    const targetLabel = interactionTargetLevelLabel(selection.target);
+    const targetTitle = selection.target.displayTitle || selection.targetKey;
+    const surface =
+      selection.surface === "inline_insight" ? "inline insight" : "drawer";
+    showNotification(
+      `${label} for ${targetLabel} "${targetTitle}" is ready for ${surface} wiring. Backend routes exist; frontend service wiring is still pending for this interaction type.`,
+      "info",
+    );
+  }
+
+  async function readInlineInsight(selection: ReadingInteractionMenuSelection) {
+    const requestId = beginInlineInsightRequest(selection.targetKey, "loading");
+    try {
+      const response = await readingInteractionService.readInsight(
+        toReadingInteractionTargetRequest(selection.target),
+      );
+      applyInlineInsightState(
+        selection.targetKey,
+        mapAnalysisInteractionResponseToInsightViewState(selection.target, response),
+        requestId,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failInlineInsightRequest(selection.targetKey, requestId, message);
+      showNotification(message, "error");
+    }
+  }
+
+  function selectReadingInteraction(
+    target: ReadingInteractionTarget | null,
+    kind: ReadingInteractionKind,
+  ) {
+    if (!target) {
+      return;
+    }
+
+    try {
+      const selection = selectInteractionAction(kind, target);
+      if (selection) {
+        if (selection.kind === "insight") {
+          void readInlineInsight(selection);
+        } else {
+          notifyReadingInteractionSelection(selection);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showNotification(message, "error");
+    }
+  }
+
+  function documentInteractionTarget(): ReadingInteractionTarget | null {
+    const trimmedDocName = docName.trim();
+    if (!trimmedDocName) {
+      return null;
+    }
+
+    const displayTitle = layout?.title?.trim() || trimmedDocName;
+    return {
+      targetLevel: "document",
+      docName: trimmedDocName,
+      documentId: layout?.document_id,
+      displayTitle,
+      breadcrumb: [displayTitle],
+    };
+  }
+
+  function chapterInteractionTarget(chapter: ChapterLayout): ReadingInteractionTarget | null {
+    const trimmedDocName = docName.trim();
+    if (!trimmedDocName) {
+      return null;
+    }
+
+    const documentTitle = layout?.title?.trim() || trimmedDocName;
+    const chapterTitle = chapter.title?.trim() || chapter.chapter_id;
+    return {
+      targetLevel: "chapter",
+      docName: trimmedDocName,
+      documentId: layout?.document_id,
+      chapterId: chapter.chapter_id,
+      displayTitle: chapterTitle,
+      breadcrumb: [documentTitle, chapterTitle],
+    };
+  }
+
+  function sectionInteractionTarget(
+    chapter: ChapterLayout,
+    section: SectionLayout,
+  ): ReadingInteractionTarget | null {
+    const trimmedDocName = docName.trim();
+    if (!trimmedDocName) {
+      return null;
+    }
+
+    const documentTitle = layout?.title?.trim() || trimmedDocName;
+    const chapterTitle = chapter.title?.trim() || chapter.chapter_id;
+    const sectionTitle = section.title?.trim() || section.section_id;
+    return {
+      targetLevel: "section",
+      docName: trimmedDocName,
+      documentId: layout?.document_id,
+      chapterId: chapter.chapter_id,
+      parentChapterId: chapter.chapter_id,
+      sectionId: section.section_id,
+      displayTitle: sectionTitle,
+      breadcrumb: [documentTitle, chapterTitle, sectionTitle],
+    };
+  }
+
+  function taskUnitInteractionTarget(
+    selection: SectionSelection,
+    group: ReaderContentGroup,
+  ): ReadingInteractionTarget | null {
+    const trimmedDocName = docName.trim();
+    if (!trimmedDocName) {
+      return null;
+    }
+
+    const documentTitle = layout?.title?.trim() || trimmedDocName;
+    const chapterTitle = selection.chapter.title?.trim() || selection.chapter.chapter_id;
+    const sectionTitle = selection.section.title?.trim() || selection.section.section_id;
+    const taskUnitTitle = group.title?.trim() || group.taskUnitId;
+    return {
+      targetLevel: "task_unit",
+      docName: trimmedDocName,
+      documentId: layout?.document_id,
+      chapterId: selection.chapter.chapter_id,
+      sectionId: selection.section.section_id,
+      parentChapterId: selection.chapter.chapter_id,
+      parentSectionId: selection.section.section_id,
+      taskUnitId: group.taskUnitId,
+      displayTitle: taskUnitTitle,
+      breadcrumb: [documentTitle, chapterTitle, sectionTitle, taskUnitTitle],
+    };
+  }
+
+  function selectDocumentInteraction(kind: ReadingInteractionKind) {
+    selectReadingInteraction(documentInteractionTarget(), kind);
+  }
+
+  function selectChapterInteraction(chapter: ChapterLayout, kind: ReadingInteractionKind) {
+    selectReadingInteraction(chapterInteractionTarget(chapter), kind);
+  }
+
+  function selectSectionInteraction(
+    chapter: ChapterLayout,
+    section: SectionLayout,
+    kind: ReadingInteractionKind,
+  ) {
+    selectReadingInteraction(sectionInteractionTarget(chapter, section), kind);
+  }
+
+  function selectTaskUnitInteraction(
+    selection: SectionSelection,
+    group: ReaderContentGroup,
+    kind: ReadingInteractionKind,
+  ) {
+    selectReadingInteraction(taskUnitInteractionTarget(selection, group), kind);
+  }
+
+  function inlineInsightForTarget(target: ReadingInteractionTarget | null) {
+    if (!target) {
+      return null;
+    }
+
+    try {
+      return openInlineInsightsByTarget[buildReadingInteractionTargetKey(target)] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function getChapterInlineInsight(chapter: ChapterLayout) {
+    return inlineInsightForTarget(chapterInteractionTarget(chapter));
+  }
+
+  function getSectionInlineInsight(chapter: ChapterLayout, section: SectionLayout) {
+    return inlineInsightForTarget(sectionInteractionTarget(chapter, section));
+  }
+
+  function getTaskUnitInlineInsight(
+    selection: SectionSelection,
+    group: ReaderContentGroup,
+  ) {
+    return inlineInsightForTarget(taskUnitInteractionTarget(selection, group));
+  }
+
+  async function generateInlineInsight(targetKey: string) {
+    const insight = openInlineInsightsByTarget[targetKey];
+    if (!insight) {
+      return;
+    }
+
+    const requestId = beginInlineInsightRequest(targetKey, "generating");
+    try {
+      const response = await readingInteractionService.generateInsight(
+        toReadingInteractionTargetRequest(insight.target),
+      );
+      applyInlineInsightState(
+        targetKey,
+        mapAnalysisInteractionResponseToInsightViewState(insight.target, response),
+        requestId,
+      );
+      showNotification("Insight generated.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failInlineInsightRequest(targetKey, requestId, message);
+      showNotification(message, "error");
+    }
+  }
+
+  async function refreshInlineInsight(targetKey: string) {
+    const insight = openInlineInsightsByTarget[targetKey];
+    if (!insight) {
+      return;
+    }
+
+    const requestId = beginInlineInsightRequest(targetKey, "refreshing");
+    try {
+      const response = await readingInteractionService.refreshInsight(
+        toReadingInteractionTargetRequest(insight.target),
+      );
+      applyInlineInsightState(
+        targetKey,
+        mapAnalysisInteractionResponseToInsightViewState(insight.target, response),
+        requestId,
+      );
+      showNotification("Insight refreshed.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failInlineInsightRequest(targetKey, requestId, message);
+      showNotification(message, "error");
+    }
+  }
+
+  const selectedQuiz =
+    selectedInteraction?.kind === "quiz"
+      ? quizStateByTarget[selectedInteraction.targetKey] || null
+      : null;
+  const selectedCriticalThinking =
+    selectedInteraction?.kind === "critical_thinking"
+      ? criticalThinkingStateByTarget[selectedInteraction.targetKey] || null
+      : null;
+
+  useEffect(() => {
+    setCriticalThinkingDraftDirty(false);
+  }, [selectedCriticalThinking?.targetKey]);
+
+  function generateQuiz(targetKey: string) {
+    showNotification(
+      `Generate quiz for ${targetKey} requires quiz service wiring in the frontend.`,
+      "info",
+    );
+  }
+
+  function refreshQuiz(targetKey: string) {
+    showNotification(
+      `Refresh quiz for ${targetKey} requires quiz service wiring in the frontend.`,
+      "info",
+    );
+  }
+
+  function generateCriticalThinkingQuestion(targetKey: string) {
+    showNotification(
+      `Generate critical-thinking question for ${targetKey} requires critical-thinking service wiring in the frontend.`,
+      "info",
+    );
+  }
+
+  function submitCriticalThinkingAnswer(targetKey: string) {
+    showNotification(
+      `Submit critical-thinking answer for ${targetKey} requires critical-thinking service wiring in the frontend.`,
+      "info",
+    );
+  }
+
+  function retryCriticalThinkingEvaluation(targetKey: string) {
+    showNotification(
+      `Retry critical-thinking evaluation for ${targetKey} requires critical-thinking service wiring in the frontend.`,
+      "info",
+    );
+  }
+
+  function closeReadingInteractionDrawer() {
+    if (selectedCriticalThinking && criticalThinkingDraftDirty) {
+      showNotification("Unsent critical-thinking draft was discarded.", "warning");
+    }
+    setCriticalThinkingDraftDirty(false);
+    clearSelectedInteraction();
+  }
+
   async function editToc() {
     const trimmedDocName = docName.trim();
     if (!trimmedDocName || layoutStatus !== "success" || !layout) {
@@ -321,6 +669,15 @@ export default function App() {
             canEditToc={layoutStatus === "success" && Boolean(layout)}
             onSelectSection={selectSection}
             onEditToc={editToc}
+            onSelectDocumentInteraction={selectDocumentInteraction}
+            onSelectChapterInteraction={selectChapterInteraction}
+            onSelectSectionInteraction={selectSectionInteraction}
+            documentInlineInsight={inlineInsightForTarget(documentInteractionTarget())}
+            getChapterInlineInsight={getChapterInlineInsight}
+            getSectionInlineInsight={getSectionInlineInsight}
+            onDismissInlineInsight={closeInlineInsight}
+            onGenerateInlineInsight={generateInlineInsight}
+            onRefreshInlineInsight={refreshInlineInsight}
           />
         </Paper>
         <Paper
@@ -341,6 +698,11 @@ export default function App() {
                   contentBlocks={contentBlocks}
                   contentGroups={contentGroups}
                   error={contentError}
+                  getTaskUnitInlineInsight={getTaskUnitInlineInsight}
+                  onDismissInlineInsight={closeInlineInsight}
+                  onGenerateInlineInsight={generateInlineInsight}
+                  onRefreshInlineInsight={refreshInlineInsight}
+                  onSelectTaskUnitInteraction={selectTaskUnitInteraction}
                 />
               }
             />
@@ -354,6 +716,11 @@ export default function App() {
                   contentBlocks={contentBlocks}
                   contentGroups={contentGroups}
                   error={contentError}
+                  getTaskUnitInlineInsight={getTaskUnitInlineInsight}
+                  onDismissInlineInsight={closeInlineInsight}
+                  onGenerateInlineInsight={generateInlineInsight}
+                  onRefreshInlineInsight={refreshInlineInsight}
+                  onSelectTaskUnitInteraction={selectTaskUnitInteraction}
                 />
               }
             />
@@ -371,6 +738,36 @@ export default function App() {
           </Routes>
         </Paper>
       </Box>
+      <ReadingInteractionsView
+        drawerSelection={selectedInteraction?.surface === "drawer" ? selectedInteraction : null}
+        commandSlot={
+          selectedQuiz ? (
+            <QuizDrawerCommands
+              quiz={selectedQuiz}
+              onGenerate={generateQuiz}
+              onRefresh={refreshQuiz}
+            />
+          ) : selectedCriticalThinking ? (
+            <CriticalThinkingDrawerCommands
+              session={selectedCriticalThinking}
+              onGenerateQuestion={generateCriticalThinkingQuestion}
+              onRetryEvaluation={retryCriticalThinkingEvaluation}
+              onSubmitAnswer={submitCriticalThinkingAnswer}
+            />
+          ) : undefined
+        }
+        contentSlot={
+          selectedQuiz ? (
+            <QuizDrawerContent quiz={selectedQuiz} />
+          ) : selectedCriticalThinking ? (
+            <CriticalThinkingDrawerContent
+              session={selectedCriticalThinking}
+              onDraftDirtyChange={setCriticalThinkingDraftDirty}
+            />
+          ) : undefined
+        }
+        onCloseDrawer={closeReadingInteractionDrawer}
+      />
       <AppNotification notification={notification} onClose={closeNotification} />
     </Box>
   );

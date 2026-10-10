@@ -104,6 +104,111 @@ body {
   margin-bottom: 14px;
 }
 
+.hierarchy-navigation-header {
+  flex-wrap: wrap;
+}
+
+.hierarchy-document-title {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.hierarchy-document-interaction-trigger {
+  flex: 0 0 auto;
+}
+
+.hierarchy-chapter-header-row,
+.hierarchy-chapter-merged-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.hierarchy-chapter-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hierarchy-chapter-merged-row .hierarchy-section-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hierarchy-chapter-interaction-trigger {
+  flex: 0 0 auto;
+}
+
+.hierarchy-section-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.hierarchy-section-row .hierarchy-section-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hierarchy-section-interaction-trigger {
+  flex: 0 0 auto;
+}
+
+.inline-insight-region {
+  border-left: 3px solid #7ba8b8;
+  background: #f4f9fb;
+  padding: 10px 12px;
+  color: #172026;
+}
+
+.inline-insight-header {
+  min-width: 0;
+}
+
+.inline-insight-title {
+  font-weight: 700;
+}
+
+.inline-insight-status-label {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.inline-insight-status-generation_failed,
+.inline-insight-status-validation_failed,
+.inline-insight-status-evaluation_failed {
+  border-left-color: #b3261e;
+  background: #fff7f6;
+}
+
+.inline-insight-status-insufficient_content,
+.inline-insight-status-stale_target {
+  border-left-color: #946200;
+  background: #fff9ec;
+}
+
+.inline-insight-status-completed {
+  border-left-color: #2f6f4e;
+  background: #f3fbf6;
+}
+
+.inline-insight-actions {
+  padding-top: 4px;
+}
+
+.hierarchy-document-inline-insight {
+  margin: 0 0 14px 16px;
+}
+
+.hierarchy-chapter-inline-insight {
+  margin: 10px 0 12px 18px;
+}
+
+.hierarchy-section-inline-insight {
+  margin: 8px 0 0 24px;
+}
+
 .hierarchy-navigation {
   display: flex;
   flex: 1 1 auto;
@@ -222,6 +327,228 @@ body {
 
 .reader-content-measure-group {
   width: 100%;
+}
+
+.reader-content-task-unit-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reader-content-task-unit-header {
+  border-bottom: 1px solid #d9e1e6;
+  padding-bottom: 8px;
+}
+
+.reader-content-task-unit-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.reader-content-task-unit-title {
+  margin: 0;
+}
+
+.reader-task-unit-interaction-trigger {
+  flex: 0 0 auto;
+}
+
+.reader-task-unit-inline-insight {
+  margin-left: 18px;
+}
+
+.reading-interaction-drawer-paper {
+  width: min(440px, 100vw);
+}
+
+.reading-interaction-drawer-shell {
+  padding: 24px;
+}
+
+.reading-interaction-drawer-title-group {
+  min-width: 0;
+}
+
+.reading-interaction-drawer-breadcrumb {
+  overflow-wrap: anywhere;
+}
+
+.reading-interaction-drawer-command-slot,
+.reading-interaction-drawer-body {
+  border-top: 1px solid #d9e1e6;
+  padding-top: 14px;
+}
+
+.quiz-drawer-command-panel,
+.quiz-drawer-content {
+  min-width: 0;
+}
+
+.quiz-drawer-command-title,
+.quiz-drawer-status-label {
+  font-weight: 700;
+}
+
+.quiz-drawer-actions {
+  flex-wrap: wrap;
+}
+
+.quiz-drawer-status-panel {
+  border-left: 3px solid #7ba8b8;
+  background: #f4f9fb;
+  padding: 12px;
+}
+
+.quiz-drawer-status-generation_failed .quiz-drawer-status-panel,
+.quiz-drawer-status-validation_failed .quiz-drawer-status-panel,
+.quiz-drawer-status-evaluation_failed .quiz-drawer-status-panel {
+  border-left-color: #b3261e;
+  background: #fff7f6;
+}
+
+.quiz-drawer-status-insufficient_content .quiz-drawer-status-panel,
+.quiz-drawer-status-stale_target .quiz-drawer-status-panel {
+  border-left-color: #946200;
+  background: #fff9ec;
+}
+
+.quiz-drawer-status-completed .quiz-drawer-status-panel {
+  border-left-color: #2f6f4e;
+  background: #f3fbf6;
+}
+
+.quiz-drawer-item-summary {
+  border: 1px solid #d9e1e6;
+  padding: 12px;
+}
+
+.quiz-item-list {
+  padding-top: 8px;
+}
+
+.quiz-item-card {
+  border: 1px solid #d9e1e6;
+  padding: 12px;
+}
+
+.quiz-item-header {
+  gap: 8px;
+}
+
+.quiz-item-number,
+.quiz-item-type,
+.quiz-item-answer-title {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.quiz-item-type {
+  color: #52616b;
+}
+
+.quiz-item-prompt {
+  overflow-wrap: anywhere;
+}
+
+.quiz-item-options {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.quiz-item-practice-answer {
+  width: 100%;
+}
+
+.quiz-item-practice-answer-choice {
+  border: 1px solid #d9e1e6;
+  padding: 6px 10px;
+}
+
+.quiz-item-practice-option .MuiFormControlLabel-label {
+  font-size: 0.875rem;
+}
+
+.quiz-item-practice-actions {
+  flex-wrap: wrap;
+}
+
+.quiz-item-option + .quiz-item-option {
+  margin-top: 6px;
+}
+
+.quiz-item-option-label {
+  font-weight: 700;
+}
+
+.quiz-item-answer-reveal {
+  background: #f7faf8;
+  border-left: 3px solid #2f6f4e;
+  padding: 10px 12px;
+}
+
+.critical-thinking-command-panel,
+.critical-thinking-content {
+  min-width: 0;
+}
+
+.critical-thinking-command-title,
+.critical-thinking-status-label,
+.critical-thinking-section-title {
+  font-weight: 700;
+}
+
+.critical-thinking-actions {
+  flex-wrap: wrap;
+}
+
+.critical-thinking-retry {
+  flex: 0 0 auto;
+}
+
+.critical-thinking-status-panel {
+  border-left: 3px solid #7ba8b8;
+  background: #f4f9fb;
+  padding: 12px;
+}
+
+.critical-thinking-status-generation_failed .critical-thinking-status-panel,
+.critical-thinking-status-validation_failed .critical-thinking-status-panel,
+.critical-thinking-status-evaluation_failed .critical-thinking-status-panel {
+  border-left-color: #b3261e;
+  background: #fff7f6;
+}
+
+.critical-thinking-status-insufficient_content .critical-thinking-status-panel,
+.critical-thinking-status-stale_target .critical-thinking-status-panel {
+  border-left-color: #946200;
+  background: #fff9ec;
+}
+
+.critical-thinking-status-completed .critical-thinking-status-panel {
+  border-left-color: #2f6f4e;
+  background: #f3fbf6;
+}
+
+.critical-thinking-question-panel,
+.critical-thinking-answer-panel,
+.critical-thinking-evaluation-panel {
+  border: 1px solid #d9e1e6;
+  padding: 12px;
+}
+
+.critical-thinking-question,
+.critical-thinking-submitted-answer,
+.critical-thinking-feedback,
+.critical-thinking-suggested-refinement {
+  overflow-wrap: anywhere;
+}
+
+.critical-thinking-answer-input {
+  width: 100%;
+}
+
+.critical-thinking-score {
+  font-weight: 700;
 }
 
 .eyebrow {

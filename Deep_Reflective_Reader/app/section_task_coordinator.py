@@ -1,6 +1,7 @@
 import hashlib
 from datetime import datetime, timezone
 from dataclasses import dataclass, replace
+from typing import Any, Protocol
 
 from config.faiss_storage_config import FaissStorageConfig
 from doc_loaders.document_load_errors import (
@@ -71,6 +72,10 @@ from section_tasks.quiz_question import QuizQuestion
 from section_tasks.reading_target_resolver import (
     ReadingTargetResolver,
     ResolvedReadingTarget,
+)
+from section_tasks.reading_interaction_service_contracts import (
+    ReadingInteractionArtifact,
+    ReadingInteractionRequest,
 )
 from section_tasks.reparse_document_structure_result import ReparseDocumentStructureResult
 from section_tasks.section_task_result import SectionTaskResult
@@ -304,6 +309,93 @@ class ManualStructureCommitResult:
         )
 
 
+@dataclass(frozen=True)
+class ReadingInteractionTargetDTO:
+    """Response-safe reading interaction target metadata without raw content."""
+
+    doc_name: str
+    document_id: str
+    document_title: str
+    target_level: str
+    target_id: str
+    chapter_id: str | None = None
+    section_id: str | None = None
+    task_unit_id: str | None = None
+    title: str | None = None
+
+
+@dataclass(frozen=True)
+class ReadingInteractionResponseDTO:
+    """App-layer reading interaction response contract for route mapping."""
+
+    target: ReadingInteractionTargetDTO
+    interaction_type: str
+    status: str
+    payload: dict[str, Any]
+    metadata: dict[str, Any]
+    reason: str | None = None
+    artifact_id: str | None = None
+    session_id: str | None = None
+
+
+@dataclass(frozen=True)
+class CriticalThinkingSessionStoreResult:
+    """Saved critical-thinking session result with its public session id."""
+
+    session_id: str
+    artifact: ReadingInteractionArtifact
+
+
+class _ReadingInteractionOrchestrator(Protocol):
+    def read(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact:
+        ...
+
+    def generate(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact:
+        ...
+
+
+class _CriticalThinkingSessionService(Protocol):
+    def generate_question(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact:
+        ...
+
+    def submit_answer(
+        self,
+        session: ReadingInteractionArtifact,
+        answer: str,
+    ) -> ReadingInteractionArtifact:
+        ...
+
+    def evaluate_answer(
+        self,
+        session: ReadingInteractionArtifact,
+    ) -> ReadingInteractionArtifact:
+        ...
+
+
+class _CriticalThinkingSessionStore(Protocol):
+    def get_critical_thinking_session(
+        self,
+        request: ReadingInteractionRequest,
+        session_id: str,
+    ) -> ReadingInteractionArtifact | None:
+        ...
+
+    def save_critical_thinking_session(
+        self,
+        artifact: ReadingInteractionArtifact,
+    ) -> CriticalThinkingSessionStoreResult:
+        ...
+
+
 class SectionTaskCoordinator:
     """Coordinator for section/chapter task orchestration and layout projection."""
     _TASK_LAYOUT_METADATA_KEY = "task_layout"
@@ -329,6 +421,10 @@ class SectionTaskCoordinator:
         enhanced_parse_trigger_evaluator: EnhancedParseTriggerEvaluator,
         semantic_top_k_candidates_max: int = 20,
         task_unit_id_normalizer: TaskUnitIdNormalizer | None = None,
+        analysis_interaction_orchestrator: _ReadingInteractionOrchestrator | None = None,
+        quiz_interaction_orchestrator: _ReadingInteractionOrchestrator | None = None,
+        critical_thinking_session_service: _CriticalThinkingSessionService | None = None,
+        critical_thinking_session_store: _CriticalThinkingSessionStore | None = None,
     ):
         self.document_preparation_pipeline = document_preparation_pipeline
         self.document_artifact_repository = document_artifact_repository
@@ -340,6 +436,10 @@ class SectionTaskCoordinator:
         self.semantic_top_k_candidates_max = max(1, int(semantic_top_k_candidates_max))
         self.task_unit_id_normalizer = task_unit_id_normalizer or TaskUnitIdNormalizer()
         self.reading_target_resolver = ReadingTargetResolver()
+        self.analysis_interaction_orchestrator = analysis_interaction_orchestrator
+        self.quiz_interaction_orchestrator = quiz_interaction_orchestrator
+        self.critical_thinking_session_service = critical_thinking_session_service
+        self.critical_thinking_session_store = critical_thinking_session_store
 
     def resolve_reading_target(
         self,
@@ -373,6 +473,459 @@ class SectionTaskCoordinator:
             section_id=section_id,
             task_unit_id=task_unit_id,
         )
+
+    def read_analysis_artifact(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Read current analysis artifact state without generation."""
+        request = self._build_reading_interaction_request(
+            doc_name=doc_name,
+            target_level=target_level,
+            interaction_type="analysis",
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+        )
+        artifact = self._require_analysis_interaction_orchestrator().read(request)
+        return self._build_reading_interaction_response(
+            request=request,
+            artifact=artifact,
+        )
+
+    def generate_analysis_artifact(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+        refresh: bool = False,
+        prompt_instruction_version: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Generate or reuse an analysis artifact through the app boundary."""
+        request = self._build_reading_interaction_request(
+            doc_name=doc_name,
+            target_level=target_level,
+            interaction_type="analysis",
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+            refresh=refresh,
+            prompt_instruction_version=prompt_instruction_version,
+        )
+        artifact = self._require_analysis_interaction_orchestrator().generate(request)
+        return self._build_reading_interaction_response(
+            request=request,
+            artifact=artifact,
+        )
+
+    def refresh_analysis_artifact(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+        prompt_instruction_version: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Explicitly regenerate an analysis artifact."""
+        return self.generate_analysis_artifact(
+            doc_name=doc_name,
+            target_level=target_level,
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+            refresh=True,
+            prompt_instruction_version=prompt_instruction_version,
+        )
+
+    def read_quiz_artifact(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Read current quiz artifact state without generation."""
+        request = self._build_reading_interaction_request(
+            doc_name=doc_name,
+            target_level=target_level,
+            interaction_type="quiz",
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+        )
+        artifact = self._require_quiz_interaction_orchestrator().read(request)
+        return self._build_reading_interaction_response(
+            request=request,
+            artifact=artifact,
+        )
+
+    def generate_quiz_artifact(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+        refresh: bool = False,
+        prompt_instruction_version: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Generate or reuse a target-agnostic quiz artifact."""
+        request = self._build_reading_interaction_request(
+            doc_name=doc_name,
+            target_level=target_level,
+            interaction_type="quiz",
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+            refresh=refresh,
+            prompt_instruction_version=prompt_instruction_version,
+        )
+        artifact = self._require_quiz_interaction_orchestrator().generate(request)
+        return self._build_reading_interaction_response(
+            request=request,
+            artifact=artifact,
+        )
+
+    def refresh_quiz_artifact(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+        prompt_instruction_version: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Explicitly regenerate a target-agnostic quiz artifact."""
+        return self.generate_quiz_artifact(
+            doc_name=doc_name,
+            target_level=target_level,
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+            refresh=True,
+            prompt_instruction_version=prompt_instruction_version,
+        )
+
+    def read_critical_thinking_session(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        session_id: str | None = None,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Read one critical-thinking session without generating a question."""
+        request = self._build_reading_interaction_request(
+            doc_name=doc_name,
+            target_level=target_level,
+            interaction_type="critical_thinking_session",
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+        )
+        normalized_session_id = self._normalize_optional_text(session_id)
+        if normalized_session_id is None:
+            artifact = ReadingInteractionArtifact.from_target(
+                target=request.target,
+                interaction_type="critical_thinking_session",
+                status="not_generated",
+            )
+            return self._build_reading_interaction_response(
+                request=request,
+                artifact=artifact,
+            )
+
+        artifact = self._require_critical_thinking_session_store().get_critical_thinking_session(
+            request,
+            normalized_session_id,
+        )
+        if artifact is None:
+            artifact = ReadingInteractionArtifact.from_target(
+                target=request.target,
+                interaction_type="critical_thinking_session",
+                status="not_generated",
+            )
+            return self._build_reading_interaction_response(
+                request=request,
+                artifact=artifact,
+            )
+        return self._build_reading_interaction_response(
+            request=request,
+            artifact=artifact,
+            session_id=normalized_session_id,
+        )
+
+    def generate_critical_thinking_question(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+        prompt_instruction_version: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Generate and save one critical-thinking question session."""
+        request = self._build_reading_interaction_request(
+            doc_name=doc_name,
+            target_level=target_level,
+            interaction_type="critical_thinking_session",
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+            prompt_instruction_version=prompt_instruction_version,
+        )
+        artifact = self._require_critical_thinking_session_service().generate_question(
+            request
+        )
+        saved = self._require_critical_thinking_session_store().save_critical_thinking_session(
+            artifact
+        )
+        return self._build_reading_interaction_response(
+            request=request,
+            artifact=saved.artifact,
+            session_id=saved.session_id,
+        )
+
+    def submit_critical_thinking_answer(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        session_id: str,
+        answer: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Submit an answer and evaluate it through an explicit write path."""
+        request = self._build_reading_interaction_request(
+            doc_name=doc_name,
+            target_level=target_level,
+            interaction_type="critical_thinking_session",
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+        )
+        normalized_session_id = self._normalize_required_text(
+            session_id,
+            field_name="session_id",
+        )
+        session = self._load_critical_thinking_session_or_raise(
+            request=request,
+            session_id=normalized_session_id,
+        )
+        service = self._require_critical_thinking_session_service()
+        submitted = service.submit_answer(session, answer)
+        evaluated = service.evaluate_answer(submitted)
+        saved = self._require_critical_thinking_session_store().save_critical_thinking_session(
+            evaluated
+        )
+        return self._build_reading_interaction_response(
+            request=request,
+            artifact=saved.artifact,
+            session_id=saved.session_id,
+        )
+
+    def retry_critical_thinking_evaluation(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        session_id: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        """Retry evaluation for a submitted or evaluation-failed session."""
+        request = self._build_reading_interaction_request(
+            doc_name=doc_name,
+            target_level=target_level,
+            interaction_type="critical_thinking_session",
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+        )
+        normalized_session_id = self._normalize_required_text(
+            session_id,
+            field_name="session_id",
+        )
+        session = self._load_critical_thinking_session_or_raise(
+            request=request,
+            session_id=normalized_session_id,
+        )
+        artifact = self._require_critical_thinking_session_service().evaluate_answer(
+            session
+        )
+        saved = self._require_critical_thinking_session_store().save_critical_thinking_session(
+            artifact
+        )
+        return self._build_reading_interaction_response(
+            request=request,
+            artifact=saved.artifact,
+            session_id=saved.session_id,
+        )
+
+    def _build_reading_interaction_request(
+        self,
+        *,
+        doc_name: str,
+        target_level: str,
+        interaction_type: str,
+        chapter_id: str | None = None,
+        section_id: str | None = None,
+        task_unit_id: str | None = None,
+        refresh: bool = False,
+        prompt_instruction_version: str | None = None,
+    ) -> ReadingInteractionRequest:
+        target = self.resolve_reading_target(
+            doc_name=doc_name,
+            target_level=target_level,
+            chapter_id=chapter_id,
+            section_id=section_id,
+            task_unit_id=task_unit_id,
+        )
+        return ReadingInteractionRequest(
+            target=target,
+            interaction_type=interaction_type,
+            refresh=refresh,
+            context_metadata={"context_mode": "full_target", "doc_name": doc_name.strip()},
+            prompt_instruction_version=prompt_instruction_version,
+        )
+
+    def _build_reading_interaction_response(
+        self,
+        *,
+        request: ReadingInteractionRequest,
+        artifact: ReadingInteractionArtifact,
+        artifact_id: str | None = None,
+        session_id: str | None = None,
+    ) -> ReadingInteractionResponseDTO:
+        if artifact.interaction_type != request.interaction_type:
+            raise ValueError(
+                "interaction response artifact type mismatch: "
+                f"request={request.interaction_type}, artifact={artifact.interaction_type}"
+            )
+        doc_name = request.context_metadata.get("doc_name", request.target.document_id)
+        target = self._build_reading_interaction_target_dto(
+            doc_name=str(doc_name),
+            target=request.target,
+        )
+        resolved_artifact_id = artifact_id
+        if resolved_artifact_id is None:
+            raw_artifact_id = artifact.metadata.get("artifact_id")
+            if isinstance(raw_artifact_id, str) and raw_artifact_id.strip():
+                resolved_artifact_id = raw_artifact_id.strip()
+        return ReadingInteractionResponseDTO(
+            target=target,
+            interaction_type=artifact.interaction_type,
+            status=artifact.status,
+            payload=dict(artifact.payload),
+            metadata=dict(artifact.metadata),
+            reason=artifact.reason,
+            artifact_id=resolved_artifact_id,
+            session_id=self._normalize_optional_text(session_id),
+        )
+
+    @staticmethod
+    def _build_reading_interaction_target_dto(
+        *,
+        doc_name: str,
+        target: ResolvedReadingTarget,
+    ) -> ReadingInteractionTargetDTO:
+        title: str | None = None
+        if target.target_level == "document":
+            title = target.document_title
+        elif target.target_level == "chapter" and target.chapter is not None:
+            title = target.chapter.title
+        elif target.target_level == "section" and target.section is not None:
+            title = target.section.title
+        elif target.target_level == "task_unit" and target.task_unit is not None:
+            title = target.task_unit.title
+
+        return ReadingInteractionTargetDTO(
+            doc_name=doc_name,
+            document_id=target.document_id,
+            document_title=target.document_title,
+            target_level=target.target_level,
+            target_id=target.target_id,
+            chapter_id=target.chapter_id,
+            section_id=target.section_id,
+            task_unit_id=target.task_unit_id,
+            title=title,
+        )
+
+    def _require_analysis_interaction_orchestrator(
+        self,
+    ) -> _ReadingInteractionOrchestrator:
+        if self.analysis_interaction_orchestrator is None:
+            raise ValueError("analysis interaction orchestrator is not configured")
+        return self.analysis_interaction_orchestrator
+
+    def _require_quiz_interaction_orchestrator(
+        self,
+    ) -> _ReadingInteractionOrchestrator:
+        if self.quiz_interaction_orchestrator is None:
+            raise ValueError("quiz interaction orchestrator is not configured")
+        return self.quiz_interaction_orchestrator
+
+    def _require_critical_thinking_session_service(
+        self,
+    ) -> _CriticalThinkingSessionService:
+        if self.critical_thinking_session_service is None:
+            raise ValueError("critical-thinking session service is not configured")
+        return self.critical_thinking_session_service
+
+    def _require_critical_thinking_session_store(
+        self,
+    ) -> _CriticalThinkingSessionStore:
+        if self.critical_thinking_session_store is None:
+            raise ValueError("critical-thinking session store is not configured")
+        return self.critical_thinking_session_store
+
+    def _load_critical_thinking_session_or_raise(
+        self,
+        *,
+        request: ReadingInteractionRequest,
+        session_id: str,
+    ) -> ReadingInteractionArtifact:
+        session = self._require_critical_thinking_session_store().get_critical_thinking_session(
+            request,
+            session_id,
+        )
+        if session is None:
+            raise ValueError(f"critical-thinking session not found: '{session_id}'")
+        return session
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @staticmethod
+    def _normalize_required_text(value: str, *, field_name: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"{field_name} cannot be empty")
+        return normalized
 
     def summarize_section(
         self,

@@ -1,14 +1,24 @@
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import PsychologyAltOutlinedIcon from "@mui/icons-material/PsychologyAltOutlined";
+import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
+import TipsAndUpdatesOutlinedIcon from "@mui/icons-material/TipsAndUpdatesOutlined";
 import {
   Box,
   Button,
   ButtonBase,
   Chip,
   Divider,
+  IconButton,
   List,
+  ListItemIcon,
+  ListItemText,
   ListItem,
+  Menu,
+  MenuItem,
   Stack,
   Typography,
 } from "@mui/material";
+import { useState, type MouseEvent } from "react";
 import type {
   ChapterLayout,
   DocumentTaskLayout,
@@ -17,6 +27,11 @@ import type {
   SectionSelection,
 } from "../../types/api";
 import { StateView } from "../../shared/components/StateView";
+import {
+  InlineInsightRegion,
+  type InsightViewState,
+  type ReadingInteractionKind,
+} from "../reading-interactions";
 import {
   buildSectionDisplay,
   countTaskUnits,
@@ -31,6 +46,46 @@ interface HierarchyNavigationViewProps {
   canEditToc?: boolean;
   onSelectSection: (selection: SectionSelection) => void;
   onEditToc?: () => void;
+  onSelectDocumentInteraction?: (kind: ReadingInteractionKind) => void;
+  onSelectChapterInteraction?: (
+    chapter: ChapterLayout,
+    kind: ReadingInteractionKind,
+  ) => void;
+  onSelectSectionInteraction?: (
+    chapter: ChapterLayout,
+    section: SectionLayout,
+    kind: ReadingInteractionKind,
+  ) => void;
+  documentInlineInsight?: InsightViewState | null;
+  getChapterInlineInsight?: (chapter: ChapterLayout) => InsightViewState | null;
+  getSectionInlineInsight?: (
+    chapter: ChapterLayout,
+    section: SectionLayout,
+  ) => InsightViewState | null;
+  onDismissInlineInsight?: (targetKey: string) => void;
+  onGenerateInlineInsight?: (targetKey: string) => void;
+  onRefreshInlineInsight?: (targetKey: string) => void;
+}
+
+function ChapterInteractionButton({
+  chapter,
+  chapterTitle,
+  onOpen,
+}: {
+  chapter: ChapterLayout;
+  chapterTitle: string;
+  onOpen: (event: MouseEvent<HTMLButtonElement>, chapter: ChapterLayout) => void;
+}) {
+  return (
+    <IconButton
+      className="hierarchy-chapter-interaction-trigger"
+      aria-label={`Chapter reading interactions for ${chapterTitle}`}
+      size="small"
+      onClick={(event) => onOpen(event, chapter)}
+    >
+      <MoreVertIcon fontSize="small" />
+    </IconButton>
+  );
 }
 
 function SectionButton({
@@ -90,6 +145,33 @@ function SectionButton({
   );
 }
 
+function SectionInteractionButton({
+  chapter,
+  section,
+  sectionTitle,
+  onOpen,
+}: {
+  chapter: ChapterLayout;
+  section: SectionLayout;
+  sectionTitle: string;
+  onOpen: (
+    event: MouseEvent<HTMLButtonElement>,
+    chapter: ChapterLayout,
+    section: SectionLayout,
+  ) => void;
+}) {
+  return (
+    <IconButton
+      className="hierarchy-section-interaction-trigger"
+      aria-label={`Section reading interactions for ${sectionTitle}`}
+      size="small"
+      onClick={(event) => onOpen(event, chapter, section)}
+    >
+      <MoreVertIcon fontSize="small" />
+    </IconButton>
+  );
+}
+
 export function HierarchyNavigationView({
   layout,
   selectedSectionId,
@@ -98,7 +180,85 @@ export function HierarchyNavigationView({
   canEditToc = false,
   onSelectSection,
   onEditToc,
+  onSelectDocumentInteraction,
+  onSelectChapterInteraction,
+  onSelectSectionInteraction,
+  documentInlineInsight,
+  getChapterInlineInsight,
+  getSectionInlineInsight,
+  onDismissInlineInsight,
+  onGenerateInlineInsight,
+  onRefreshInlineInsight,
 }: HierarchyNavigationViewProps) {
+  const [documentInteractionMenuAnchor, setDocumentInteractionMenuAnchor] =
+    useState<HTMLElement | null>(null);
+  const [chapterInteractionMenu, setChapterInteractionMenu] = useState<{
+    anchorEl: HTMLElement;
+    chapter: ChapterLayout;
+  } | null>(null);
+  const [sectionInteractionMenu, setSectionInteractionMenu] = useState<{
+    anchorEl: HTMLElement;
+    chapter: ChapterLayout;
+    section: SectionLayout;
+  } | null>(null);
+  const documentInteractionMenuOpen = Boolean(documentInteractionMenuAnchor);
+  const chapterInteractionMenuOpen = Boolean(chapterInteractionMenu);
+  const sectionInteractionMenuOpen = Boolean(sectionInteractionMenu);
+
+  function openDocumentInteractionMenu(event: MouseEvent<HTMLButtonElement>) {
+    setDocumentInteractionMenuAnchor(event.currentTarget);
+  }
+
+  function closeDocumentInteractionMenu() {
+    setDocumentInteractionMenuAnchor(null);
+  }
+
+  function selectDocumentInteraction(kind: ReadingInteractionKind) {
+    closeDocumentInteractionMenu();
+    onSelectDocumentInteraction?.(kind);
+  }
+
+  function openChapterInteractionMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    chapter: ChapterLayout,
+  ) {
+    event.stopPropagation();
+    setChapterInteractionMenu({ anchorEl: event.currentTarget, chapter });
+  }
+
+  function closeChapterInteractionMenu() {
+    setChapterInteractionMenu(null);
+  }
+
+  function selectChapterInteraction(kind: ReadingInteractionKind) {
+    const chapter = chapterInteractionMenu?.chapter;
+    closeChapterInteractionMenu();
+    if (chapter) {
+      onSelectChapterInteraction?.(chapter, kind);
+    }
+  }
+
+  function openSectionInteractionMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    chapter: ChapterLayout,
+    section: SectionLayout,
+  ) {
+    event.stopPropagation();
+    setSectionInteractionMenu({ anchorEl: event.currentTarget, chapter, section });
+  }
+
+  function closeSectionInteractionMenu() {
+    setSectionInteractionMenu(null);
+  }
+
+  function selectSectionInteraction(kind: ReadingInteractionKind) {
+    const target = sectionInteractionMenu;
+    closeSectionInteractionMenu();
+    if (target) {
+      onSelectSectionInteraction?.(target.chapter, target.section, kind);
+    }
+  }
+
   if (status === "initial") {
     return <StateView className="hierarchy-empty-state" title="No document loaded" />;
   }
@@ -153,7 +313,70 @@ export function HierarchyNavigationView({
         >
           Edit TOC
         </Button>
+        <IconButton
+          className="hierarchy-document-interaction-trigger"
+          id="document-interaction-menu-button"
+          aria-label="Document reading interactions"
+          aria-controls={documentInteractionMenuOpen ? "document-interaction-menu" : undefined}
+          aria-haspopup="menu"
+          aria-expanded={documentInteractionMenuOpen ? "true" : undefined}
+          size="small"
+          onClick={openDocumentInteractionMenu}
+        >
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+        <Menu
+          className="hierarchy-document-interaction-menu"
+          id="document-interaction-menu"
+          anchorEl={documentInteractionMenuAnchor}
+          open={documentInteractionMenuOpen}
+          onClose={closeDocumentInteractionMenu}
+          MenuListProps={{ "aria-labelledby": "document-interaction-menu-button" }}
+        >
+          <MenuItem
+            className="hierarchy-document-interaction-option hierarchy-document-interaction-option-insight"
+            onClick={() => selectDocumentInteraction("insight")}
+          >
+            <ListItemIcon className="hierarchy-document-interaction-option-icon">
+              <TipsAndUpdatesOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText className="hierarchy-document-interaction-option-label">
+              Insights
+            </ListItemText>
+          </MenuItem>
+          <MenuItem
+            className="hierarchy-document-interaction-option hierarchy-document-interaction-option-quiz"
+            onClick={() => selectDocumentInteraction("quiz")}
+          >
+            <ListItemIcon className="hierarchy-document-interaction-option-icon">
+              <QuizOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText className="hierarchy-document-interaction-option-label">
+              Quiz
+            </ListItemText>
+          </MenuItem>
+          <MenuItem
+            className="hierarchy-document-interaction-option hierarchy-document-interaction-option-critical-thinking"
+            onClick={() => selectDocumentInteraction("critical_thinking")}
+          >
+            <ListItemIcon className="hierarchy-document-interaction-option-icon">
+              <PsychologyAltOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText className="hierarchy-document-interaction-option-label">
+              Critical thinking
+            </ListItemText>
+          </MenuItem>
+        </Menu>
       </Stack>
+      {documentInlineInsight ? (
+        <InlineInsightRegion
+          className="hierarchy-document-inline-insight"
+          insight={documentInlineInsight}
+          onDismiss={onDismissInlineInsight}
+          onGenerate={onGenerateInlineInsight}
+          onRefresh={onRefreshInlineInsight}
+        />
+      ) : null}
       <List component="ol" className="chapter-list hierarchy-chapter-list" disablePadding>
         {layout.chapters.map((chapter) => {
           const sections = chapter.sections || [];
@@ -162,6 +385,7 @@ export function HierarchyNavigationView({
           const mergedSectionDisplay = singleSection
             ? buildSectionDisplay(chapter, singleSection)
             : null;
+          const chapterInlineInsight = getChapterInlineInsight?.(chapter) || null;
 
           return (
             <ListItem
@@ -174,46 +398,183 @@ export function HierarchyNavigationView({
               key={chapter.chapter_id}
             >
               {singleSection ? (
-                <SectionButton
-                  chapter={chapter}
-                  section={singleSection}
-                  selected={selectedSectionId === singleSection.section_id}
-                  displayTitle={mergedSectionDisplay?.title}
-                  displaySubtitle={mergedSectionDisplay?.subtitle}
-                  onSelectSection={onSelectSection}
-                />
+                <Box className="hierarchy-chapter-merged-row">
+                  <SectionButton
+                    chapter={chapter}
+                    section={singleSection}
+                    selected={selectedSectionId === singleSection.section_id}
+                    displayTitle={mergedSectionDisplay?.title}
+                    displaySubtitle={mergedSectionDisplay?.subtitle}
+                    onSelectSection={onSelectSection}
+                  />
+                  <ChapterInteractionButton
+                    chapter={chapter}
+                    chapterTitle={chapterTitle}
+                    onOpen={openChapterInteractionMenu}
+                  />
+                </Box>
               ) : (
                 <>
-                  <Typography className="hierarchy-chapter-title" component="h2" variant="h2">
-                    {chapterTitle}
-                  </Typography>
+                  <Box className="hierarchy-chapter-header-row">
+                    <Typography className="hierarchy-chapter-title" component="h2" variant="h2">
+                      {chapterTitle}
+                    </Typography>
+                    <ChapterInteractionButton
+                      chapter={chapter}
+                      chapterTitle={chapterTitle}
+                      onOpen={openChapterInteractionMenu}
+                    />
+                  </Box>
+                  {chapterInlineInsight ? (
+                    <InlineInsightRegion
+                      className="hierarchy-chapter-inline-insight"
+                      insight={chapterInlineInsight}
+                      onDismiss={onDismissInlineInsight}
+                      onGenerate={onGenerateInlineInsight}
+                      onRefresh={onRefreshInlineInsight}
+                    />
+                  ) : null}
                   <List
                     component="ol"
                     className="section-list hierarchy-section-list"
                     disablePadding
                   >
-                    {sections.map((section) => (
-                      <ListItem
-                        component="li"
-                        className="section-item hierarchy-section-item"
-                        key={section.section_id}
-                      >
-                        <SectionButton
-                          chapter={chapter}
-                          section={section}
-                          selected={selectedSectionId === section.section_id}
-                          onSelectSection={onSelectSection}
-                        />
-                      </ListItem>
-                    ))}
+                    {sections.map((section) => {
+                      const sectionTitle = labelOrId(section.title, section.section_id);
+                      const sectionInlineInsight =
+                        getSectionInlineInsight?.(chapter, section) || null;
+
+                      return (
+                        <ListItem
+                          component="li"
+                          className="section-item hierarchy-section-item"
+                          key={section.section_id}
+                        >
+                          <Box className="hierarchy-section-row">
+                            <SectionButton
+                              chapter={chapter}
+                              section={section}
+                              selected={selectedSectionId === section.section_id}
+                              onSelectSection={onSelectSection}
+                            />
+                            <SectionInteractionButton
+                              chapter={chapter}
+                              section={section}
+                              sectionTitle={sectionTitle}
+                              onOpen={openSectionInteractionMenu}
+                            />
+                          </Box>
+                          {sectionInlineInsight ? (
+                            <InlineInsightRegion
+                              className="hierarchy-section-inline-insight"
+                              insight={sectionInlineInsight}
+                              onDismiss={onDismissInlineInsight}
+                              onGenerate={onGenerateInlineInsight}
+                              onRefresh={onRefreshInlineInsight}
+                            />
+                          ) : null}
+                        </ListItem>
+                      );
+                    })}
                   </List>
                 </>
               )}
+              {singleSection && chapterInlineInsight ? (
+                <InlineInsightRegion
+                  className="hierarchy-chapter-inline-insight"
+                  insight={chapterInlineInsight}
+                  onDismiss={onDismissInlineInsight}
+                  onGenerate={onGenerateInlineInsight}
+                  onRefresh={onRefreshInlineInsight}
+                />
+              ) : null}
               <Divider />
             </ListItem>
           );
         })}
       </List>
+      <Menu
+        className="hierarchy-chapter-interaction-menu"
+        id="chapter-interaction-menu"
+        anchorEl={chapterInteractionMenu?.anchorEl || null}
+        open={chapterInteractionMenuOpen}
+        onClose={closeChapterInteractionMenu}
+      >
+        <MenuItem
+          className="hierarchy-chapter-interaction-option hierarchy-chapter-interaction-option-insight"
+          onClick={() => selectChapterInteraction("insight")}
+        >
+          <ListItemIcon className="hierarchy-chapter-interaction-option-icon">
+            <TipsAndUpdatesOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText className="hierarchy-chapter-interaction-option-label">
+            Insights
+          </ListItemText>
+        </MenuItem>
+        <MenuItem
+          className="hierarchy-chapter-interaction-option hierarchy-chapter-interaction-option-quiz"
+          onClick={() => selectChapterInteraction("quiz")}
+        >
+          <ListItemIcon className="hierarchy-chapter-interaction-option-icon">
+            <QuizOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText className="hierarchy-chapter-interaction-option-label">
+            Quiz
+          </ListItemText>
+        </MenuItem>
+        <MenuItem
+          className="hierarchy-chapter-interaction-option hierarchy-chapter-interaction-option-critical-thinking"
+          onClick={() => selectChapterInteraction("critical_thinking")}
+        >
+          <ListItemIcon className="hierarchy-chapter-interaction-option-icon">
+            <PsychologyAltOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText className="hierarchy-chapter-interaction-option-label">
+            Critical thinking
+          </ListItemText>
+        </MenuItem>
+      </Menu>
+      <Menu
+        className="hierarchy-section-interaction-menu"
+        id="section-interaction-menu"
+        anchorEl={sectionInteractionMenu?.anchorEl || null}
+        open={sectionInteractionMenuOpen}
+        onClose={closeSectionInteractionMenu}
+      >
+        <MenuItem
+          className="hierarchy-section-interaction-option hierarchy-section-interaction-option-insight"
+          onClick={() => selectSectionInteraction("insight")}
+        >
+          <ListItemIcon className="hierarchy-section-interaction-option-icon">
+            <TipsAndUpdatesOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText className="hierarchy-section-interaction-option-label">
+            Insights
+          </ListItemText>
+        </MenuItem>
+        <MenuItem
+          className="hierarchy-section-interaction-option hierarchy-section-interaction-option-quiz"
+          onClick={() => selectSectionInteraction("quiz")}
+        >
+          <ListItemIcon className="hierarchy-section-interaction-option-icon">
+            <QuizOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText className="hierarchy-section-interaction-option-label">
+            Quiz
+          </ListItemText>
+        </MenuItem>
+        <MenuItem
+          className="hierarchy-section-interaction-option hierarchy-section-interaction-option-critical-thinking"
+          onClick={() => selectSectionInteraction("critical_thinking")}
+        >
+          <ListItemIcon className="hierarchy-section-interaction-option-icon">
+            <PsychologyAltOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText className="hierarchy-section-interaction-option-label">
+            Critical thinking
+          </ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

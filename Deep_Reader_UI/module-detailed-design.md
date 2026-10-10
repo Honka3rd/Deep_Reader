@@ -199,6 +199,439 @@ The `toc-edit` route is not a cold-start entry point. It requires a loaded task 
 
 The TOC editor entry trigger belongs in the hierarchy navigation header, near the document title and unit count. It is enabled only when the layout has loaded successfully. Activating it routes to `/documents/:docName/toc-edit` while preserving the loaded hierarchy in the left pane as context.
 
+### Reading Interaction UI Design
+
+This section defines the Reader UI behavior for backend reading-interaction features:
+insight, quiz, and critical-thinking session. Backend REST routes and public schemas
+for generic reading interactions are now exposed for all three interaction families.
+The current UI integration wires the first insight vertical slice through
+`ReadingInteractionService`; quiz and critical-thinking drawer API calls remain
+follow-up frontend wiring work.
+
+Reading interactions are artifact/session interactions attached to backend hierarchy
+targets. They must not become frontend hierarchy, task-layout truth, or hidden backend
+mutation. The target identity must come from backend-provided ids:
+
+- book/document target: current loaded `doc_name` / document identity
+- chapter target: `chapter_id`
+- section target: `section_id`
+- unit target: `task_unit_id`
+
+Optional parent ids may be carried by future requests for consistency checks, but the UI
+must not target interactions by title text or by visible row position alone.
+
+The UI implementation should be decomposed into four large design areas:
+
+- target/action surface: document, chapter, section, and task-unit three-dot menus
+- inline insight surface: compact target-local insight placement and statuses
+- quiz drawer: read-first quiz rendering, local practice, and generation controls
+- critical-thinking drawer: session question, answer, evaluation, and retry flow
+
+The checklist splits these areas into 18 implementation tasks so backend API exposure
+can remain narrow and each UI behavior can be validated independently.
+
+#### Interaction Entry Points
+
+Each readable target should expose a compact MUI icon button using the vertical
+three-dot `MoreVert` affordance. The button opens a MUI menu with exactly these first
+actions:
+
+- `Insights`
+- `Quiz`
+- `Critical thinking`
+
+Placement:
+
+- book/document action: in the hierarchy/navigation header near the loaded document
+  title and existing document-level controls
+- chapter action: at the right edge of each chapter row
+- section action: at the right edge of each section row
+- unit action: at the right edge of a task-unit content group header inside the reader
+  content surface
+
+Task units remain internal content-addressing units, not primary navigation nodes. The
+unit action is therefore rendered only inside reader content where task-unit grouping is
+already available from the selected section content response. The hierarchy navigation
+must not become a task-unit tree.
+
+The menu should be target-aware. Opening it records a frontend-local
+`interactionTarget` object derived from the current row/group. Selecting a menu item
+starts a read-first interaction flow for that target; it must not immediately generate,
+refresh, prepare, reparse, or mutate task-layout.
+
+#### Insight Inline Behavior
+
+Insight is expected to be short enough to live inline beneath the target that requested
+it. When the user selects `Insights`, the UI should insert an inline insight region
+directly below the target row or group and indented one visual level deeper than that
+target:
+
+- book/document insight: below the document header or first hierarchy header area,
+  indented relative to document controls
+- chapter insight: below the chapter row, before its section rows
+- section insight: below the section row, before the next sibling section
+- unit insight: below the task-unit group header/content block group inside reader
+  content
+
+The inline region should be compact, dismissible/collapsible, and status-aware. It
+should support:
+
+- loading persisted insight
+- missing/not-generated state
+- explicit generate
+- explicit refresh
+- completed insight payload
+- insufficient-content state
+- stale-target state
+- generation-failed state
+
+The inline insight region must not push raw source text, child artifact payloads, or
+task-unit content into `/documents/task-layout`. It may show bounded metadata such as
+status, generated time, target level, and artifact reference summary when backend API
+schemas expose those fields.
+
+Only one inline insight per target should be open at a time. Multiple targets may keep
+their own collapsed insight summaries locally, but frontend collapse/open state is not
+backend truth and must not be persisted as artifact state.
+
+#### Quiz Drawer Behavior
+
+Quiz interaction needs more space than inline insight because it includes question
+items, answer reveal, local answer inputs, generation/refresh controls, and validation
+states. Selecting `Quiz` should open a right-side MUI drawer anchored to the current
+reader workspace.
+
+The drawer should display the current target breadcrumb, for example:
+
+```text
+Book > Chapter > Section > Unit
+```
+
+The quiz drawer should use read-first behavior:
+
+- first load persisted quiz artifact for the target through the generic quiz read route
+- show `not_generated` without calling LLM
+- provide an explicit `Generate quiz` action
+- provide an explicit `Refresh quiz` action only when overwriting/regenerating is
+  intended
+- show completed quiz items with their type-specific UI
+- show insufficient-content, stale-target, validation-failed, and generation-failed
+  states distinctly
+
+The drawer may support local answer practice before backend answer-submission exists.
+Those local answers are UI state only. They must not be described as persisted quiz
+results unless a backend endpoint explicitly supports saving or evaluating them.
+
+Existing `/documents/section-quiz` and `/documents/chapter-quiz` routes are legacy
+section/chapter quiz generation routes and should not be treated as the full
+target-agnostic quiz interaction API. The new drawer should wait for generic
+read/generate quiz routes before implementation, or use a clearly marked temporary
+compatibility adapter if the maintainer explicitly chooses that bridge later.
+
+#### Critical-Thinking Drawer Behavior
+
+Critical thinking is a session-shaped interaction and should also use the right-side
+drawer. It must not be rendered inline because the user needs room for prompt reading,
+answer writing, evaluation feedback, and retry controls.
+
+The first-version drawer flow is:
+
+1. Read current/persisted critical-thinking session state for the target through the
+   generic critical-thinking read route.
+2. If missing, show an explicit `Generate question` action.
+3. After question generation, show the single generated question and an answer input.
+4. On submit, send one user answer for evaluation through the submit route.
+5. If evaluation succeeds, show feedback, score, and suggested refinement.
+6. If evaluation fails, preserve the submitted answer and expose `Retry evaluation`.
+
+The UI should recognize these first-version statuses:
+
+- `not_generated`
+- `question_generated`
+- `insufficient_content`
+- `answer_submitted`
+- `evaluation_failed`
+- `completed`
+- `stale_target`
+
+Critical-thinking drawer state may cache typed answer text locally while the drawer is
+open, but that draft is not backend truth. Closing the drawer should warn only if there
+is unsent local answer text; it should not imply a backend session was created unless
+the generation route already succeeded.
+
+#### Shared Interaction State Model
+
+The next UI slice should introduce a dedicated feature folder:
+
+- `src/features/reading-interactions/model.ts`: target identity, status normalization,
+  target breadcrumb helpers, inline insight placement helpers, menu action definitions,
+  and drawer mode derivation
+- `src/features/reading-interactions/controller.ts`: target menu state, inline insight
+  state, drawer state, read-first request orchestration, explicit generate/refresh,
+  critical-thinking submit/retry, and stale response suppression
+- `src/features/reading-interactions/view.tsx`: target action menu, inline insight
+  region, quiz drawer, critical-thinking drawer, compact status views
+- `src/features/reading-interactions/index.ts`: public feature exports
+
+REST usage is centralized in `ReadingInteractionService` rather than placed directly in
+views. The first implementation covers insight read/generate/refresh and maps the
+shared backend target/envelope contract into inline insight state. Drawer interactions
+for quiz and critical-thinking should extend the same service/controller boundary
+without using legacy section/chapter quiz routes as the generic drawer API.
+
+#### Remaining Frontend API Wiring Plan
+
+The frontend API wiring is intentionally split into three major steps:
+
+1. Insight inline API wiring: completed. `ReadingInteractionService` supports
+   insight read/generate/refresh, and the inline insight surface maps backend
+   analysis envelopes into local view state.
+2. Quiz drawer API wiring: remaining. This should be delivered as a drawer-focused
+   vertical slice without touching critical-thinking flow.
+3. Critical-thinking drawer API wiring: remaining. This should be delivered after or
+   separate from quiz wiring because it has a session lifecycle, draft-answer state,
+   submit semantics, and retry semantics.
+
+The remaining two major steps are split into smaller implementation tasks:
+
+Quiz drawer API wiring:
+
+- add quiz request/response API types and `ReadingInteractionService` methods for
+  `readQuiz`, `generateQuiz`, and `refreshQuiz`
+- map `QuizInteractionResponse` into `QuizViewState`, including strict item ids,
+  item types, options, answers, explanations, metadata, error/reason fields, and
+  status normalization
+- wire drawer open to read-first quiz loading while preserving local practice answers
+  and reveal toggles as frontend-only state
+- wire explicit `Generate quiz` and `Refresh quiz` controls to service calls, keeping
+  legacy `/documents/section-quiz` and `/documents/chapter-quiz` out of the drawer API
+
+Critical-thinking drawer API wiring:
+
+- add critical-thinking request/response API types and `ReadingInteractionService`
+  methods for read, generate-question, submit-answer, and retry-evaluation
+- map `CriticalThinkingSessionResponse` into `CriticalThinkingViewState`, including
+  session id, question, submitted answer, evaluation feedback, score, suggested
+  refinement, status, metadata, and retryable error state
+- wire drawer open to read-first critical-thinking session loading without creating a
+  question session from the read path
+- wire explicit generate-question, submit-answer, and retry-evaluation controls while
+  keeping unsent draft answers frontend-local and sending the shared target object plus
+  backend session id for submit/retry calls
+
+Both remaining steps must keep stale response suppression in the controller, keep REST
+calls out of view components, keep `/documents/task-layout` unchanged, and avoid
+persisting drawer open state, local quiz practice answers, or unsent critical-thinking
+draft text as backend truth.
+
+Recommended frontend state:
+
+- `interactionMenuTarget`: current target for the open three-dot menu
+- `openInlineInsightsByTarget`: local map of target key to inline insight view state
+- `interactionDrawer`: closed / quiz / critical-thinking with target key
+- `interactionArtifactsByTarget`: local cache of read responses, keyed by target level
+  and id
+- `interactionRequestStatus`: read / generate / refresh / submit / retry status
+- `draftCriticalThinkingAnswer`: local unsent answer text for the active session
+
+All of this state is frontend-local projection/control state. It must not mutate
+backend hierarchy, task-layout, profile diagnostics, parser metadata, or artifact
+persistence except through explicit future interaction mutation routes.
+
+#### Frontend Data Structures For Minimal API Exposure
+
+The UI should define a small internal model before backend route wiring begins. This
+model is a frontend contract for rendering and request orchestration; it is not a
+claim that backend schemas already exist. Future backend APIs can use this model as a
+guide for minimal exposure: return enough target identity, status, artifact metadata,
+and interaction payload to render the feature, while keeping hierarchy ownership and
+artifact persistence in the backend.
+
+Recommended target model:
+
+```ts
+type ReadingInteractionTargetLevel =
+  | "document"
+  | "chapter"
+  | "section"
+  | "task_unit";
+
+type ReadingInteractionKind =
+  | "insight"
+  | "quiz"
+  | "critical_thinking";
+
+interface ReadingInteractionTarget {
+  targetLevel: ReadingInteractionTargetLevel;
+  docName: string;
+  documentId?: string;
+  chapterId?: string;
+  sectionId?: string;
+  taskUnitId?: string;
+  parentChapterId?: string;
+  parentSectionId?: string;
+  displayTitle: string;
+  breadcrumb: string[];
+  sourceStructureVersion?: string;
+  sourceHash?: string;
+}
+
+type ReadingInteractionTargetKey = string;
+```
+
+`ReadingInteractionTargetKey` should be a deterministic frontend key derived from
+`targetLevel` plus backend ids. It is only a cache/rendering key. It must not become a
+backend identifier and must not be derived from mutable display title text alone.
+
+Recommended status model:
+
+```ts
+type InteractionStatus =
+  | "idle"
+  | "loading"
+  | "not_generated"
+  | "generating"
+  | "refreshing"
+  | "submitting"
+  | "retrying"
+  | "completed"
+  | "insufficient_content"
+  | "stale_target"
+  | "generation_failed"
+  | "validation_failed"
+  | "evaluation_failed";
+
+interface InteractionMetadataView {
+  artifactId?: string;
+  sessionId?: string;
+  generatedAt?: string;
+  updatedAt?: string;
+  targetLevel: ReadingInteractionTargetLevel;
+  referencedArtifactSummary?: Array<{
+    artifactId: string;
+    artifactType: string;
+    targetLevel: ReadingInteractionTargetLevel;
+  }>;
+}
+```
+
+Recommended view state model:
+
+```ts
+interface InsightViewState {
+  targetKey: ReadingInteractionTargetKey;
+  target: ReadingInteractionTarget;
+  status: InteractionStatus;
+  content?: string;
+  metadata?: InteractionMetadataView;
+  expanded: boolean;
+  errorMessage?: string;
+}
+
+interface QuizItemView {
+  itemId: string;
+  itemType: "short_answer" | "multiple_choice" | "true_false";
+  prompt: string;
+  options?: string[];
+  answer?: string;
+  explanation?: string;
+}
+
+interface QuizViewState {
+  targetKey: ReadingInteractionTargetKey;
+  target: ReadingInteractionTarget;
+  status: InteractionStatus;
+  items: QuizItemView[];
+  answersByItemId: Record<string, string>;
+  revealByItemId: Record<string, boolean>;
+  metadata?: InteractionMetadataView;
+  errorMessage?: string;
+}
+
+interface CriticalThinkingViewState {
+  targetKey: ReadingInteractionTargetKey;
+  target: ReadingInteractionTarget;
+  status: InteractionStatus;
+  question?: string;
+  draftAnswer: string;
+  submittedAnswer?: string;
+  evaluation?: {
+    feedback: string;
+    score?: number;
+    suggestedRefinement?: string;
+  };
+  metadata?: InteractionMetadataView;
+  errorMessage?: string;
+}
+
+interface InteractionDrawerState {
+  kind: "quiz" | "critical_thinking" | null;
+  targetKey?: ReadingInteractionTargetKey;
+}
+```
+
+Recommended cache/request model:
+
+```ts
+interface InteractionArtifactCache {
+  insightsByTarget: Record<ReadingInteractionTargetKey, InsightViewState>;
+  quizzesByTarget: Record<ReadingInteractionTargetKey, QuizViewState>;
+  criticalThinkingByTarget: Record<
+    ReadingInteractionTargetKey,
+    CriticalThinkingViewState
+  >;
+}
+
+interface InteractionRequestState {
+  targetKey: ReadingInteractionTargetKey;
+  kind: ReadingInteractionKind;
+  operation: "read" | "generate" | "refresh" | "submit" | "retry";
+  status: "pending" | "succeeded" | "failed";
+  requestId: string;
+}
+```
+
+Backend API exposure should stay minimal and target-aware. The UI should need:
+
+- a generic target envelope that echoes `targetLevel`, document identity, backend ids,
+  and optional parent ids for consistency checks
+- separate read, generate, refresh, submit, and retry operations so read paths never
+  trigger LLM work
+- normalized status and reason/error fields that map into `InteractionStatus`
+- artifact/session metadata such as artifact id, session id, generated time, updated
+  time, and backend-owned source version/hash when available
+- bounded referenced-artifact summaries, not raw child artifact payloads
+- quiz item type and prompt/option/answer/explanation fields needed for rendering
+- critical-thinking question, submitted answer, evaluation feedback, optional score,
+  and suggested refinement when the session reaches those states
+
+The UI should not require backend APIs to expose raw source text, expanded child
+content, full artifact dependency graphs, task-layout mutations, drawer state,
+collapsed/expanded state, local quiz practice answers, or unsent critical-thinking
+draft text.
+
+#### Interaction API Boundary
+
+Backend routes support separate read and write paths:
+
+- read persisted interaction artifact/session
+- generate or refresh insight
+- generate or refresh quiz
+- generate critical-thinking question session
+- submit critical-thinking answer for evaluation
+- retry failed critical-thinking evaluation
+
+The UI must not call generation from a read path, and must not hide LLM/cost-bearing
+work behind menu open, target selection, document load, section selection, or drawer
+open. Explicit user commands such as `Generate`, `Refresh`, `Submit answer`, and `Retry
+evaluation` are the only places where interaction mutation should occur.
+
+Frontend API wiring should only use backend-implemented public contracts. The current
+`src/types/api.ts` reading-interaction types mirror the implemented insight analysis
+target/envelope/payload schema used by `ReadingInteractionService`; quiz and
+critical-thinking type/service expansion should be added with the same evidence before
+their drawer controls call backend routes.
+
 ### TOC Editor Page Contract
 
 The TOC editor exists to support documents where automatic table-of-contents recognition is missing, failed, or needs correction. It must not be treated as a visual-only tree editor; user edits must be validated before they can produce an explicit hard reparse.
@@ -411,17 +844,22 @@ This control remains a document-name entry surface, not a document library UI. I
 
 ## Non-Goals
 
+The list below describes the completed first Reader slice, not the next reading
+interaction design slice.
+
 - document upload
 - document library
 - summary UI
-- quiz UI
+- quiz/critical-thinking backend mutation from drawer open or read paths
+- quiz or critical-thinking drawer API calls before their planned service/controller
+  wiring tasks are implemented
 - free QA
 - annotation
 - text selection
 - content-block highlight
 - ask-about-selection
-- artifact creation
-- artifact persistence UI
+- artifact creation outside explicit future interaction routes
+- artifact persistence UI outside explicit future interaction routes
 - generic reparse UI outside the explicit TOC editor flow
 - enhanced parse diagnostics UI
 - authentication

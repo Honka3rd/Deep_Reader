@@ -23,11 +23,23 @@ from document_structure.manual_structure_projection import (
 )
 from api_schemas import (
     ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS,
+    AnalysisArtifactPayloadResponse,
+    AnalysisInteractionGenerateRequest,
+    AnalysisInteractionReadRequest,
+    AnalysisInteractionRefreshRequest,
+    AnalysisInteractionResponse,
     AnchorEvidenceResponse,
+    ArtifactAwareInteractionMetadataResponse,
     ArtifactTargetRefResponse,
     ArtifactAvailabilityResponse,
     BatchTaskUnitContentRequest,
     BatchTaskUnitContentResponse,
+    CriticalThinkingAnswerSubmitRequest,
+    CriticalThinkingEvaluationRetryRequest,
+    CriticalThinkingQuestionGenerateRequest,
+    CriticalThinkingSessionPayloadResponse,
+    CriticalThinkingSessionReadRequest,
+    CriticalThinkingSessionResponse,
     DocumentTaskLayoutChapterResponse,
     ChapterQuizRequest,
     ChapterQuizResponse,
@@ -51,9 +63,18 @@ from api_schemas import (
     ManualStructureValidationResponse,
     ParseProvenanceResponse,
     ProfileStructureDiagnosticsResponse,
+    QuizArtifactItemResponse,
+    QuizArtifactPayloadResponse,
+    QuizInteractionGenerateRequest,
+    QuizInteractionReadRequest,
+    QuizInteractionRefreshRequest,
+    QuizInteractionResponse,
     QuizQuestionResponse,
     ReparseDocumentStructureRequest,
     ReparseDocumentStructureResponse,
+    ReadingInteractionResponseEnvelope,
+    ReadingInteractionTargetRequest,
+    ReadingInteractionTargetResponse,
     SectionTaskLayoutResponse,
     SectionQuizResponse,
     SectionTaskRequest,
@@ -469,6 +490,245 @@ def _resolve_task_unit_content_failure_status(reason: str) -> int:
         return 404
     return 400
 
+
+_READING_INTERACTION_STATUS_HTTP_STATUS: dict[str, int] = {
+    "not_generated": 200,
+    "completed": 200,
+    "insufficient_content": 200,
+    "question_generated": 200,
+    "answer_submitted": 200,
+    "evaluation_failed": 200,
+    "stale_target": 409,
+    "validation_failed": 422,
+    "generation_failed": 502,
+}
+
+
+def _reading_interaction_http_status(status: str) -> int:
+    """Map interaction envelope status to an HTTP status for public routes."""
+    return _READING_INTERACTION_STATUS_HTTP_STATUS.get(status.strip().lower(), 500)
+
+
+def _reading_interaction_exception_status(error: Exception) -> int:
+    """Map route-layer interaction exceptions to stable HTTP statuses."""
+    if isinstance(error, FileNotFoundError):
+        return 404
+    if isinstance(error, ValidationError):
+        return 422
+    if isinstance(error, ValueError):
+        message = str(error).lower()
+        if "not found" in message:
+            return 404
+        if "stale" in message or "conflict" in message:
+            return 409
+        return 400
+    return 500
+
+
+def _raise_reading_interaction_http_exception(error: Exception) -> None:
+    """Raise a public HTTP error for reading interaction routes."""
+    raise HTTPException(
+        status_code=_reading_interaction_exception_status(error),
+        detail=str(error),
+    )
+
+
+def _reading_target_kwargs(
+    target: ReadingInteractionTargetRequest,
+) -> dict[str, str | None]:
+    """Map public reading target schema into app-layer keyword args."""
+    return {
+        "doc_name": target.doc_name,
+        "target_level": target.target_type,
+        "chapter_id": target.chapter_id,
+        "section_id": target.section_id,
+        "task_unit_id": target.task_unit_id,
+    }
+
+
+def _map_artifact_context_metadata(
+    metadata: dict[str, object],
+) -> ArtifactAwareInteractionMetadataResponse | None:
+    """Map persisted artifact-reference metadata into public response metadata."""
+    raw_reference = metadata.get("artifact_reference")
+    if not isinstance(raw_reference, dict):
+        return None
+    return ArtifactAwareInteractionMetadataResponse(
+        artifact_context_mode=str(raw_reference.get("artifact_context_mode", "none")),
+        primary_source_evidence_ids=[
+            str(value)
+            for value in raw_reference.get("primary_source_evidence_ids", [])
+        ],
+        referenced_artifact_ids=[
+            str(value)
+            for value in raw_reference.get("referenced_artifact_ids", [])
+        ],
+        referenced_artifact_types=[
+            str(value)
+            for value in raw_reference.get("referenced_artifact_types", [])
+        ],
+        referenced_artifact_target_levels=[
+            str(value)
+            for value in raw_reference.get("referenced_artifact_target_levels", [])
+        ],
+        coverage_counts=dict(raw_reference.get("coverage_counts", {})),
+        deduplication_hint_applied=bool(
+            raw_reference.get("deduplication_hint_applied", False)
+        ),
+        abstraction_hint_applied=bool(
+            raw_reference.get("abstraction_hint_applied", False)
+        ),
+        artifact_context_pruned_reason=(
+            None
+            if raw_reference.get("artifact_context_pruned_reason") is None
+            else str(raw_reference.get("artifact_context_pruned_reason"))
+        ),
+    )
+
+
+def _map_reading_interaction_envelope(result) -> ReadingInteractionResponseEnvelope:
+    """Map app reading-interaction DTO into the shared public envelope."""
+    target = result.target
+    metadata = dict(result.metadata)
+    return ReadingInteractionResponseEnvelope(
+        target=ReadingInteractionTargetResponse(
+            doc_name=target.doc_name,
+            target_type=target.target_level,
+            target_id=target.target_id,
+            document_id=target.document_id,
+            document_title=target.document_title,
+            chapter_id=target.chapter_id,
+            section_id=target.section_id,
+            task_unit_id=target.task_unit_id,
+            title=target.title,
+        ),
+        interaction_type=result.interaction_type,
+        status=result.status,
+        artifact_id=result.artifact_id,
+        session_id=result.session_id,
+        schema_version=(
+            None
+            if metadata.get("output_schema_version") is None
+            else str(metadata.get("output_schema_version"))
+        ),
+        prompt_instruction_version=(
+            None
+            if metadata.get("prompt_instruction_version") is None
+            else str(metadata.get("prompt_instruction_version"))
+        ),
+        reason=result.reason,
+        artifact_context_metadata=_map_artifact_context_metadata(metadata),
+    )
+
+
+def _map_analysis_interaction_response(result) -> AnalysisInteractionResponse:
+    """Map app analysis result into the public analysis response schema."""
+    payload = None
+    if result.status == "completed":
+        raw_payload = dict(result.payload)
+        interpretation = raw_payload.get("interpretation")
+        if not isinstance(interpretation, str) or not interpretation.strip():
+            interpretation = raw_payload.get("reasoning")
+        payload = AnalysisArtifactPayloadResponse(
+            summary=str(raw_payload.get("summary", "")),
+            reasoning=str(raw_payload.get("reasoning", "")),
+            interpretation=str(interpretation or ""),
+            explanation=(
+                None
+                if raw_payload.get("explanation") is None
+                else str(raw_payload.get("explanation"))
+            ),
+            key_points=[
+                str(key_point)
+                for key_point in raw_payload.get("key_points", [])
+            ],
+        )
+    return AnalysisInteractionResponse(
+        envelope=_map_reading_interaction_envelope(result),
+        payload=payload,
+    )
+
+
+def _map_quiz_interaction_response(result) -> QuizInteractionResponse:
+    """Map app quiz result into the public quiz response schema."""
+    payload = None
+    if result.status == "completed":
+        raw_payload = dict(result.payload)
+        raw_items = raw_payload.get("items", [])
+        payload = QuizArtifactPayloadResponse(
+            max_items=(
+                None
+                if result.metadata.get("max_items") is None
+                else int(result.metadata.get("max_items"))
+            ),
+            items=[
+                _map_quiz_interaction_item(raw_item, index)
+                for index, raw_item in enumerate(raw_items)
+            ],
+        )
+    return QuizInteractionResponse(
+        envelope=_map_reading_interaction_envelope(result),
+        payload=payload,
+    )
+
+
+def _map_quiz_interaction_item(
+    raw_item: object,
+    index: int,
+) -> QuizArtifactItemResponse:
+    """Map internal quiz item keys to the drawer-oriented public schema."""
+    if not isinstance(raw_item, dict):
+        raise ValueError(f"quiz item {index} must be an object")
+    item_id = raw_item.get("item_id")
+    item_type = raw_item.get("item_type", raw_item.get("type"))
+    prompt = raw_item.get("prompt", raw_item.get("question"))
+    options = raw_item.get("options", raw_item.get("choices"))
+    return QuizArtifactItemResponse(
+        item_id=str(item_id or f"q{index + 1}"),
+        item_type=str(item_type or ""),
+        prompt=str(prompt or ""),
+        options=None if options is None else [str(option) for option in options],
+        answer=raw_item.get("answer"),
+        explanation=(
+            None
+            if raw_item.get("explanation") is None
+            else str(raw_item.get("explanation"))
+        ),
+    )
+
+
+def _map_critical_thinking_session_response(result) -> CriticalThinkingSessionResponse:
+    """Map app critical-thinking session result into the public response schema."""
+    payload = None
+    if result.status in {
+        "question_generated",
+        "answer_submitted",
+        "evaluation_failed",
+        "completed",
+    }:
+        raw_payload = dict(result.payload)
+        submitted_answer = raw_payload.get(
+            "submitted_answer",
+            raw_payload.get("answer"),
+        )
+        payload = CriticalThinkingSessionPayloadResponse(
+            question=(
+                None
+                if raw_payload.get("question") is None
+                else str(raw_payload.get("question"))
+            ),
+            submitted_answer=(
+                None
+                if submitted_answer is None
+                else str(submitted_answer)
+            ),
+            evaluation=raw_payload.get("evaluation"),
+        )
+    return CriticalThinkingSessionResponse(
+        envelope=_map_reading_interaction_envelope(result),
+        payload=payload,
+    )
+
 # ---------------------------
 # Health Check
 # ---------------------------
@@ -642,6 +902,255 @@ Returns:
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post(
+    "/documents/reading-interactions/insight/read",
+    response_model=AnalysisInteractionResponse,
+)
+def read_analysis_interaction(
+    request: AnalysisInteractionReadRequest,
+    response: Response,
+):
+    """Read a persisted inline insight/analysis artifact without generation."""
+    try:
+        result = section_task_coordinator.read_analysis_artifact(
+            **_reading_target_kwargs(request.target)
+        )
+        mapped_response = _map_analysis_interaction_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/insight/generate",
+    response_model=AnalysisInteractionResponse,
+)
+def generate_analysis_interaction(
+    request: AnalysisInteractionGenerateRequest,
+    response: Response,
+):
+    """Generate or reuse a persisted inline insight/analysis artifact."""
+    try:
+        result = section_task_coordinator.generate_analysis_artifact(
+            **_reading_target_kwargs(request.target),
+            prompt_instruction_version=request.prompt_instruction_version,
+        )
+        mapped_response = _map_analysis_interaction_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/insight/refresh",
+    response_model=AnalysisInteractionResponse,
+)
+def refresh_analysis_interaction(
+    request: AnalysisInteractionRefreshRequest,
+    response: Response,
+):
+    """Explicitly regenerate the current inline insight/analysis artifact."""
+    try:
+        result = section_task_coordinator.refresh_analysis_artifact(
+            **_reading_target_kwargs(request.target),
+            prompt_instruction_version=request.prompt_instruction_version,
+        )
+        mapped_response = _map_analysis_interaction_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/quiz/read",
+    response_model=QuizInteractionResponse,
+)
+def read_quiz_interaction(
+    request: QuizInteractionReadRequest,
+    response: Response,
+):
+    """Read a persisted target-agnostic quiz artifact without generation."""
+    try:
+        result = section_task_coordinator.read_quiz_artifact(
+            **_reading_target_kwargs(request.target)
+        )
+        mapped_response = _map_quiz_interaction_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/quiz/generate",
+    response_model=QuizInteractionResponse,
+)
+def generate_quiz_interaction(
+    request: QuizInteractionGenerateRequest,
+    response: Response,
+):
+    """Generate or reuse a persisted target-agnostic quiz artifact."""
+    try:
+        result = section_task_coordinator.generate_quiz_artifact(
+            **_reading_target_kwargs(request.target),
+            prompt_instruction_version=request.prompt_instruction_version,
+        )
+        mapped_response = _map_quiz_interaction_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/quiz/refresh",
+    response_model=QuizInteractionResponse,
+)
+def refresh_quiz_interaction(
+    request: QuizInteractionRefreshRequest,
+    response: Response,
+):
+    """Explicitly regenerate the current target-agnostic quiz artifact."""
+    try:
+        result = section_task_coordinator.refresh_quiz_artifact(
+            **_reading_target_kwargs(request.target),
+            prompt_instruction_version=request.prompt_instruction_version,
+        )
+        mapped_response = _map_quiz_interaction_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/critical-thinking/read",
+    response_model=CriticalThinkingSessionResponse,
+)
+def read_critical_thinking_interaction(
+    request: CriticalThinkingSessionReadRequest,
+    response: Response,
+):
+    """Read a persisted critical-thinking session without generation."""
+    try:
+        result = section_task_coordinator.read_critical_thinking_session(
+            **_reading_target_kwargs(request.target),
+            session_id=request.session_id,
+        )
+        mapped_response = _map_critical_thinking_session_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/critical-thinking/generate-question",
+    response_model=CriticalThinkingSessionResponse,
+)
+def generate_critical_thinking_question_interaction(
+    request: CriticalThinkingQuestionGenerateRequest,
+    response: Response,
+):
+    """Generate and persist one critical-thinking question session."""
+    try:
+        result = section_task_coordinator.generate_critical_thinking_question(
+            **_reading_target_kwargs(request.target),
+            prompt_instruction_version=request.prompt_instruction_version,
+        )
+        mapped_response = _map_critical_thinking_session_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/critical-thinking/submit-answer",
+    response_model=CriticalThinkingSessionResponse,
+)
+def submit_critical_thinking_answer_interaction(
+    request: CriticalThinkingAnswerSubmitRequest,
+    response: Response,
+):
+    """Submit an answer and evaluate the critical-thinking session."""
+    try:
+        result = section_task_coordinator.submit_critical_thinking_answer(
+            **_reading_target_kwargs(request.target),
+            session_id=request.session_id,
+            answer=request.answer,
+        )
+        mapped_response = _map_critical_thinking_session_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post(
+    "/documents/reading-interactions/critical-thinking/retry-evaluation",
+    response_model=CriticalThinkingSessionResponse,
+)
+def retry_critical_thinking_evaluation_interaction(
+    request: CriticalThinkingEvaluationRetryRequest,
+    response: Response,
+):
+    """Retry evaluation while preserving the generated question and answer."""
+    try:
+        result = section_task_coordinator.retry_critical_thinking_evaluation(
+            **_reading_target_kwargs(request.target),
+            session_id=request.session_id,
+        )
+        mapped_response = _map_critical_thinking_session_response(result)
+        response.status_code = _reading_interaction_http_status(
+            mapped_response.envelope.status
+        )
+        return mapped_response
+    except (FileNotFoundError, ValueError, ValidationError) as error:
+        _raise_reading_interaction_http_exception(error)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
 
 
 @app.post("/documents/section-summary", response_model=SectionTaskResponse)

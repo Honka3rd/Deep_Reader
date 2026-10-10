@@ -49,6 +49,16 @@
 | `POST /documents/summarize-chapter` | chapter summary path | write path |
 | `POST /documents/chapter-quiz` | chapter quiz path | write path |
 | `POST /documents/reparse-structure` | explicit reparse path | explicit mutation |
+| `POST /documents/reading-interactions/insight/read` | `SectionTaskCoordinator.read_analysis_artifact` | read persisted current artifact |
+| `POST /documents/reading-interactions/insight/generate` | `SectionTaskCoordinator.generate_analysis_artifact` | explicit interaction write path |
+| `POST /documents/reading-interactions/insight/refresh` | `SectionTaskCoordinator.refresh_analysis_artifact` | explicit replacement write path |
+| `POST /documents/reading-interactions/quiz/read` | `SectionTaskCoordinator.read_quiz_artifact` | read persisted current quiz artifact |
+| `POST /documents/reading-interactions/quiz/generate` | `SectionTaskCoordinator.generate_quiz_artifact` | explicit target-agnostic quiz write path |
+| `POST /documents/reading-interactions/quiz/refresh` | `SectionTaskCoordinator.refresh_quiz_artifact` | explicit quiz replacement write path |
+| `POST /documents/reading-interactions/critical-thinking/read` | `SectionTaskCoordinator.read_critical_thinking_session` | read persisted session state |
+| `POST /documents/reading-interactions/critical-thinking/generate-question` | `SectionTaskCoordinator.generate_critical_thinking_question` | explicit question/session write path |
+| `POST /documents/reading-interactions/critical-thinking/submit-answer` | `SectionTaskCoordinator.submit_critical_thinking_answer` | explicit answer/evaluation write path |
+| `POST /documents/reading-interactions/critical-thinking/retry-evaluation` | `SectionTaskCoordinator.retry_critical_thinking_evaluation` | explicit evaluation retry write path |
 
 ## 8. Projection-Only and Mutation Boundary
 
@@ -192,14 +202,84 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
 4. The existing `GET /documents/{doc_name}/task-units/{task_unit_id}/content` endpoint remains compatibility/fallback behavior. **[Code-Confirmed] + [Future Direction]**
 5. The route remains a read-only on-demand content path and does not expand `/documents/task-layout`, trigger prepare/reparse, mutate profile diagnostics, write artifacts, or compute parser semantics in route code. **[Code-Confirmed] + [From HLD]**
 
-## 20. Future Direction Note: Reading Interaction Route Boundary
+## 20. Reading Interaction Route Exposure Audit
 
-> 本節記錄 analysis / quiz / critical-thinking route planning；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+> 本節記錄 analysis / quiz / critical-thinking route planning 與目前 REST exposure audit。Analysis/insight, target-agnostic quiz, and critical-thinking session route families are now exposed from `main.py`. **[Code-Confirmed]**
+
+### 20.1 Current Route Exposure
+
+1. `main.py` currently exposes the legacy task routes `POST /documents/section-quiz` and `POST /documents/chapter-quiz`; these routes generate the older section/chapter quiz payloads through `SectionTaskCoordinator.generate_section_quiz(...)` and `generate_chapter_quiz(...)`. **[Code-Confirmed]**
+2. `main.py` exposes generic analysis/insight routes for reading persisted analysis artifacts, explicitly generating analysis artifacts, and explicitly refreshing/replacing the current analysis artifact. These routes map shared reading target request schemas to app orchestration and return `AnalysisInteractionResponse`. **[Code-Confirmed]**
+3. `main.py` exposes generic target-agnostic quiz routes for reading persisted quiz artifacts, explicitly generating quiz artifacts, and explicitly refreshing/replacing the current quiz artifact. These routes map shared reading target request schemas to app orchestration and return `QuizInteractionResponse`; they do not use the legacy `/section-quiz` or `/chapter-quiz` endpoints. **[Code-Confirmed]**
+4. `main.py` exposes generic critical-thinking session routes for reading existing session state, generating one question session, submitting an answer with evaluation, and retrying a failed evaluation. These routes map shared reading target request schemas plus session ids to app orchestration and return `CriticalThinkingSessionResponse`. **[Code-Confirmed]**
+5. `main.py` imports and maps the analysis, quiz, and critical-thinking public response schemas, but it does not directly import or orchestrate `AnalysisInteractionOrchestrator`, `QuizInteractionOrchestrator`, or `CriticalThinkingSessionService`; service/orchestrator access remains behind `SectionTaskCoordinator` and DI assembly. **[Code-Confirmed]**
+6. Existing task-layout and task-unit content routes must not be treated as substitutes for reading-interaction artifact routes. `/documents/task-layout` remains lightweight projection, and task-unit content routes remain on-demand content reads. **[From HLD] + [Code-Confirmed]**
+
+### 20.2 Future Route Boundary
 
 1. Route families should be organized around explicit read versus write semantics: read persisted artifact/session state, generate or refresh artifact, generate critical-thinking session/question, submit answer, and retry evaluation. **[Maintainer-Provided] + [Future Direction]**
-2. Read routes must never call LLM, generate artifacts, refresh artifacts, mutate task-layout, or prepare/reparse documents. Missing artifacts should return a stable missing/not-generated response. **[Maintainer-Provided] + [From HLD]**
-3. Generate/refresh routes are explicit mutation paths and should be the insertion point for future cost, quota, and permission checks. **[Maintainer-Provided] + [Future Direction]**
-4. Route mapping should pass a validated reading target to app orchestration and avoid route-level hierarchy search, prompt assembly, context selection, or parser decisions. **[From HLD] + [Future Direction]**
-5. Critical-thinking route mapping should keep three first-version operations clear: generate question session, submit answer for evaluation, and retry failed evaluation. **[Maintainer-Provided] + [Future Direction]**
-6. Route responses should expose structured statuses including missing/not-generated, insufficient-content, generation failed, validation failed, evaluation failed, and completed where appropriate. **[Maintainer-Provided] + [Future Direction]**
+2. Read routes must never call LLM, generate artifacts, refresh artifacts, mutate task-layout, or prepare/reparse documents. Missing artifacts/sessions return a stable `not_generated` response. The exposed insight, quiz, and critical-thinking read routes follow this policy and are covered by route regressions. **[Code-Confirmed] + [From HLD]**
+3. Generate/refresh routes are explicit mutation paths and should be the insertion point for future cost, quota, and permission checks. Insight and quiz generate/refresh currently preserve this route split. **[Code-Confirmed] + [Future Direction]**
+4. Route mapping passes a validated reading target to app orchestration and avoids route-level hierarchy search, prompt assembly, context selection, parser decisions, or artifact persistence internals. **[Code-Confirmed] + [From HLD]**
+5. Critical-thinking route mapping keeps three first-version write operations clear: generate question session, submit answer for evaluation, and retry failed evaluation. **[Code-Confirmed]**
+6. Route responses expose structured statuses including missing/not-generated, insufficient-content, generation failed, validation failed, evaluation failed, and completed where appropriate. **[Code-Confirmed] + [Future Direction]**
 7. No interaction route should expand `/documents/task-layout` or use task-layout as artifact truth; task-layout remains a lightweight hierarchy projection. **[From HLD] + [Future Direction]**
+
+### 20.2.1 Reading Interaction HTTP Status Policy
+
+The route-owned status policy is currently applied to analysis/insight, quiz, and critical-thinking route families. **[Code-Confirmed]**
+
+| Condition / Envelope Status | HTTP Status | Route Meaning |
+|---|---:|---|
+| malformed request schema | `422` | FastAPI/Pydantic rejected the request before app orchestration. |
+| missing document or hierarchy target | `404` | The request is well-formed, but the document or requested target id is absent. |
+| `not_generated` | `200` | Read succeeded and no current artifact/session exists. |
+| `completed` | `200` | Operation succeeded with completed artifact/session payload. |
+| `insufficient_content` | `200` | Operation reached a terminal recoverable state without payload generation. |
+| `question_generated` | `200` | Planned critical-thinking generation succeeded with a saved/generated question state. |
+| `answer_submitted` | `200` | Planned critical-thinking answer submission state is accepted. |
+| `evaluation_failed` | `200` | Planned critical-thinking evaluation failed as a retryable interaction state while preserving answer context. |
+| `stale_target` | `409` | Target/source context is stale or conflicts with the active hierarchy. |
+| `validation_failed` | `422` | Backend accepted the request but produced/received an invalid interaction payload state. |
+| `generation_failed` | `502` | Upstream generation/model output failed validation or could not produce the requested artifact. |
+| unexpected route exception | `500` | Route-level fallback for unclassified server failures. |
+
+This policy does not move hierarchy search, prompt construction, context selection, or artifact persistence into `main.py`; it only converts app DTO status or route exceptions into stable HTTP status codes. **[Code-Confirmed] + [From HLD]**
+
+### 20.3 Proposed Frontend-Facing Route Family
+
+> 本節記錄 route exposure plan and status。Analysis/insight, quiz, and critical-thinking endpoints are code-confirmed. **[Code-Confirmed]**
+
+1. Read-first insight/analysis routes are exposed:
+   - `POST /documents/reading-interactions/insight/read`
+   - `POST /documents/reading-interactions/insight/generate`
+   - `POST /documents/reading-interactions/insight/refresh`
+2. Read-first quiz routes are exposed:
+   - `POST /documents/reading-interactions/quiz/read`
+   - `POST /documents/reading-interactions/quiz/generate`
+   - `POST /documents/reading-interactions/quiz/refresh`
+3. Critical-thinking session routes are exposed:
+   - `POST /documents/reading-interactions/critical-thinking/read`
+   - `POST /documents/reading-interactions/critical-thinking/generate-question`
+   - `POST /documents/reading-interactions/critical-thinking/submit-answer`
+   - `POST /documents/reading-interactions/critical-thinking/retry-evaluation`
+4. All request bodies carry the shared reading target request object from `api_schemas.py`. Critical-thinking submit/retry requests carry the same target object plus `session_id`, preserving hierarchy-aware session lookup through app orchestration instead of route-local global session lookup. Route paths identify interaction kind and operation; target identity stays in the request body so the same route shape works for book/chapter/section/task-unit UI menus. **[Code-Confirmed]**
+5. The `read` operation is what the UI should call when opening inline insight or drawer panels. Insight, quiz, and critical-thinking read routes return persisted state or `not_generated`; they do not synthesize content, call LLM, create sessions, or mutate artifacts. **[Code-Confirmed]**
+6. `generate`, `refresh`, `generate-question`, `submit-answer`, and `retry-evaluation` are explicit write paths. `refresh` is distinct from read and keeps a clear future insertion point for permission/cost confirmation before replacing a current artifact. **[Code-Confirmed] + [Future Direction]**
+7. The legacy `POST /documents/section-quiz` and `POST /documents/chapter-quiz` routes remain compatibility/task endpoints until replaced. They should not be documented to the frontend as the generic quiz drawer API. **[Code-Confirmed] + [Future Direction]**
+8. Route handlers should only validate schema, call app orchestration, and map result/status to HTTP response. They must not perform hierarchy search, prompt construction, context selection, parser decisions, or hidden task-layout persistence mutation. **[From HLD] + [Future Direction]**
+
+### 20.4 Frontend Exposure Completion Plan: Route/Test-Owned Tasks
+
+> 本節把 frontend exposure 12-task plan 中由 `main.py` / route regression 擁有的任務固定為 implementation backlog。These tasks turn app orchestration into a stable frontend API surface without treating legacy quiz routes as the new drawer API. **[Code-Confirmed] + [Future Direction]**
+
+| Task ID | Task | Scope | Completion Evidence |
+|---|---|---|---|
+| FE-INT-07 | Define route family and HTTP status mapping | Finalize request/response mapping and HTTP status policy for read, generate, refresh, submit-answer, and retry-evaluation operations. | Implemented for insight, quiz, and critical-thinking route families by `main.py` helpers and route regressions in `scripts/test_analysis_interaction_routes.py`, `scripts/test_quiz_interaction_routes.py`, and `scripts/test_critical_thinking_interaction_routes.py`. |
+| FE-INT-08 | Add no-auto-generation read regressions | Protect read routes from LLM calls, artifact writes, session creation, prepare, reparse, task-layout mutation, and profile diagnostics write-back. | Implemented across the exposed read route family: insight read uses a read-only poison coordinator, quiz read proves absent artifacts return `not_generated` without write dispatch, and critical-thinking read proves missing sessions do not generate questions or submit/retry evaluation. |
+| FE-INT-09 | Add insight vertical slice route tests | Cover insight read/generate/refresh over at least one hierarchy target. | Implemented by `scripts/test_analysis_interaction_routes.py`; tests prove inline insight responses use shared envelope plus insight payload and preserve read/write split. |
+| FE-INT-10 | Add quiz vertical slice route tests | Cover quiz read/generate/refresh with strict item validation. | Implemented by `scripts/test_quiz_interaction_routes.py`; tests prove quiz routes use the new generic API, not legacy section/chapter quiz endpoints, map strict quiz items into drawer payloads, and reject invalid item/count/type shapes. |
+| FE-INT-11 | Add critical-thinking session route tests | Cover read, generate-question, submit-answer, evaluation failure preservation, retry-evaluation, and completed evaluation. | Implemented by `scripts/test_critical_thinking_interaction_routes.py`; tests prove missing reads do not generate sessions, generated-but-unanswered sessions persist, answer submission is preserved on evaluation failure, retry completes evaluation, and retry does not regenerate the question. |
+| FE-INT-12 | Synchronize implementation documentation and checklists after API exposure | After coding completes, update detailed design/checklists with actual route names, schema names, orchestration methods, tests, and any adjusted boundaries. | Implemented by synchronizing `main`, `api_schemas`, `app`, and `scripts` module memory with the code-confirmed insight, quiz, and critical-thinking route families; `progress.md` remains untouched because no progress-sync request/skill is active. |
+
+Route/test-owned tasks must preserve `/documents/task-layout` as lightweight projection, keep task-unit content on the on-demand content route, and avoid route-level hierarchy search, prompt assembly, parser decisions, or artifact persistence internals. **[From HLD] + [Maintainer-Provided]**

@@ -132,6 +132,41 @@ It is used to:
   Notes: Regression validates completed analysis from strict JSON/dict payloads, required `summary`/`reasoning`/`explanation` fields, schema/prompt/context metadata, insufficient-content fast path without generator calls, invalid JSON and missing fields as `generation_failed`, and fail-fast rejection of non-analysis requests.
   Timestamp: 2026-10-08
 
+- [x] Covers analysis interaction public route vertical slice
+  Evidence: `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`.
+  Notes: Regression validates `POST /documents/reading-interactions/insight/read`, `/insight/generate`, and `/insight/refresh` route mapping, schema-normalized target handoff, shared envelope serialization, compact analysis payload mapping, reasoning-to-interpretation fallback, and read/write dispatch separation.
+  Timestamp: 2026-10-10
+
+- [x] Covers reading interaction route HTTP status policy for insight routes
+  Evidence: `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`.
+  Notes: Regression validates malformed insight requests fail with `422` before app dispatch, missing hierarchy targets map to `404`, `insufficient_content` remains a `200` envelope state without payload, `stale_target` maps to `409`, `generation_failed` maps to `502`, `validation_failed` maps to `422`, and successful read/generate/refresh remain `200`.
+  Timestamp: 2026-10-10
+
+- [x] Covers no-auto-generation insight read route behavior
+  Evidence: `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`.
+  Notes: Regression uses a read-only poison coordinator for `POST /documents/reading-interactions/insight/read` and proves absent artifact reads return `not_generated` without payload while route dispatch remains limited to `read_analysis_artifact`. Accidental non-read coordinator access, including generation/refresh/session/prepare/reparse/task-layout/profile diagnostic paths, fails the test.
+  Timestamp: 2026-10-10
+
+- [x] Covers quiz interaction public route vertical slice
+  Evidence: `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`.
+  Notes: Regression validates `POST /documents/reading-interactions/quiz/read`, `/quiz/generate`, and `/quiz/refresh` route mapping, schema-normalized target handoff, shared envelope serialization, drawer quiz payload item mapping, prompt version handoff, request `max_items` validation, generated item type validation, and separation from legacy section/chapter quiz routes.
+  Timestamp: 2026-10-10
+
+- [x] Covers critical-thinking interaction public route vertical slice
+  Evidence: `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`.
+  Notes: Regression validates `POST /documents/reading-interactions/critical-thinking/read`, `/generate-question`, `/submit-answer`, and `/retry-evaluation` route mapping, no-generation missing reads, shared target handoff, generated session id mapping, answer preservation on evaluation failure, retry completion without regenerating the question, and malformed submit rejection before dispatch.
+  Timestamp: 2026-10-10
+
+- [x] Covers complete public reading interaction route exposure set
+  Evidence: `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `.venv` execution of those route/schema regressions.
+  Notes: Regression coverage now spans insight read/generate/refresh, quiz read/generate/refresh, and critical-thinking read/generate-question/submit-answer/retry-evaluation with shared target/envelope schema usage, no-auto-generation read behavior, explicit write-path dispatch, and malformed payload rejection before app dispatch.
+  Timestamp: 2026-10-10
+
+- [x] Covers document-backed analysis interaction artifact store
+  Evidence: `Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`; `python3 -m py_compile Deep_Reflective_Reader/section_tasks/reading_interaction_artifact_store.py Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`.
+  Notes: Regression validates missing current analysis reads return `None`, saved analysis artifacts receive deterministic artifact ids, persisted metadata is stored under `reading_interaction_artifacts`, and readback round-trips through the shared `CommonArtifact` adapter without creating a separate persistence category.
+  Timestamp: 2026-10-10
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

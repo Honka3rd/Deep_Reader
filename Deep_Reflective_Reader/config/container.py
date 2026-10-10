@@ -59,6 +59,13 @@ from section_tasks.chapter_quiz_task_prompt_builder import (
 )
 from section_tasks.chapter_quiz_service import ChapterQuizService
 from section_tasks.chapter_summary_service import ChapterSummaryService
+from section_tasks.analysis_interaction_llm_generator import (
+    AnalysisInteractionLLMGenerator,
+)
+from section_tasks.analysis_interaction_orchestrator import (
+    AnalysisInteractionOrchestrator,
+)
+from section_tasks.analysis_interaction_service import AnalysisInteractionService
 from section_tasks.section_quiz_task_prompt_builder import (
     SectionQuizTaskPromptBuilder,
 )
@@ -81,6 +88,9 @@ from section_tasks.task_unit_split_resolver_selector import (
 )
 from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.topic_guidance_registry import TopicGuidanceRegistry
+from section_tasks.reading_interaction_artifact_store import (
+    DocumentReadingInteractionArtifactStore,
+)
 from app.section_task_coordinator import SectionTaskCoordinator
 from question.standardized.question_standardizer import QuestionStandardizer
 from config.faiss_storage_config import FaissStorageConfig
@@ -454,6 +464,23 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         task_unit_resolver=task_unit_resolver,
         quiz_min_section_chars=config.quiz_min_section_chars,
     )
+    analysis_interaction_generator = providers.Singleton(
+        AnalysisInteractionLLMGenerator,
+        llm_provider=llm_provider,
+    )
+    reading_interaction_artifact_store = providers.Singleton(
+        DocumentReadingInteractionArtifactStore,
+        document_artifact_repository=structured_document_artifact_repository,
+    )
+    analysis_interaction_service = providers.Singleton(
+        AnalysisInteractionService,
+        generator=analysis_interaction_generator,
+    )
+    analysis_interaction_orchestrator = providers.Singleton(
+        AnalysisInteractionOrchestrator,
+        service=analysis_interaction_service,
+        artifact_store=reading_interaction_artifact_store,
+    )
     enhanced_parse_trigger_evaluator = providers.Singleton(
         EnhancedParseTriggerEvaluator,
         min_section_count=config.enhanced_parse_min_section_count,
@@ -480,6 +507,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         task_unit_resolver=task_unit_resolver,
         enhanced_parse_trigger_evaluator=enhanced_parse_trigger_evaluator,
         semantic_top_k_candidates_max=config.task_unit_semantic_top_k_candidates_max,
+        analysis_interaction_orchestrator=analysis_interaction_orchestrator,
     )
 
     @classmethod

@@ -182,3 +182,72 @@ export interface SectionSelection {
   section: SectionLayout;
   taskUnits: TaskUnitMetadata[];
 }
+
+export type ReadingInteractionTargetType =
+  | "document"
+  | "chapter"
+  | "section"
+  | "task_unit";
+
+export interface ReadingInteractionTargetRequest {
+  doc_name: string;
+  target_type: ReadingInteractionTargetType;
+  chapter_id?: string | null;
+  section_id?: string | null;
+  task_unit_id?: string | null;
+  source_structure_version?: number | null;
+  source_hash?: string | null;
+}
+
+export interface ReadingInteractionTargetResponse {
+  doc_name: string;
+  target_type: ReadingInteractionTargetType;
+  target_id: string;
+  document_id?: string | null;
+  document_title?: string | null;
+  chapter_id?: string | null;
+  section_id?: string | null;
+  task_unit_id?: string | null;
+  title?: string | null;
+}
+
+export interface ArtifactAwareInteractionMetadataResponse {
+  artifact_context_mode?: string | null;
+  primary_source_evidence_ids?: string[];
+  referenced_artifact_ids?: string[];
+  referenced_artifact_types?: string[];
+  referenced_artifact_target_levels?: ReadingInteractionTargetType[];
+  coverage_counts?: Record<string, number>;
+  deduplication_hint_applied?: boolean;
+  abstraction_hint_applied?: boolean;
+  artifact_context_pruned_reason?: string | null;
+}
+
+export interface ReadingInteractionResponseEnvelope {
+  target: ReadingInteractionTargetResponse;
+  interaction_type: string;
+  status: string;
+  artifact_id?: string | null;
+  session_id?: string | null;
+  generated_at?: string | null;
+  updated_at?: string | null;
+  schema_version?: string | null;
+  prompt_instruction_version?: string | null;
+  source_structure_version?: number | null;
+  source_hash?: string | null;
+  reason?: string | null;
+  artifact_context_metadata?: ArtifactAwareInteractionMetadataResponse | null;
+}
+
+export interface AnalysisArtifactPayloadResponse {
+  summary: string;
+  reasoning: string;
+  interpretation: string;
+  explanation?: string | null;
+  key_points?: string[];
+}
+
+export interface AnalysisInteractionResponse {
+  envelope: ReadingInteractionResponseEnvelope;
+  payload?: AnalysisArtifactPayloadResponse | null;
+}

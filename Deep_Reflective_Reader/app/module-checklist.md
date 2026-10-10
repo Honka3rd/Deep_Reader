@@ -91,6 +91,41 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
   Notes: `commit_manual_structure_reparse(...)` accepts schema-valid `page_range` manual anchors, loads preparation-owned page-boundary source evidence, rejects missing/stale/ambiguous evidence before save, and commits only after `document_structure` materializes a valid hierarchy-only draft. Invalid page-backed commits do not save hierarchy, mutate task-layout/profile/artifacts, or fallback to common parser.
 
+- [x] Audit app-layer reading interaction orchestration exposure
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/app/module-detailed-design.md`; `Deep_Reflective_Reader/section_tasks/module-detailed-design.md`; `Deep_Reflective_Reader/main.py`.
+  Notes: Confirmed that app-layer target resolution exists, and `section_tasks/` owns code-confirmed service/orchestrator behavior for analysis, quiz interaction, and critical-thinking sessions. At audit time, `SectionTaskCoordinator` had not yet exposed public REST-facing read/generate/submit/retry orchestration methods; FE-INT-05 records the later method-contract implementation.
+  Timestamp: 2026-10-08
+
+- [x] FE-INT-05 Define REST-facing app orchestration method contracts
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`; `python3 -m py_compile Deep_Reflective_Reader/app/section_task_coordinator.py Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`.
+  Notes: `SectionTaskCoordinator` now exposes app methods for analysis read/generate/refresh, quiz read/generate/refresh, and critical-thinking read/generate-question/submit-answer/retry-evaluation. Each method resolves the target once, delegates to the configured service/orchestrator/session-store dependency, and returns response-safe `ReadingInteractionResponseDTO` metadata without raw target content or frontend UI state.
+  Timestamp: 2026-10-09
+
+- [x] FE-INT-06 Define artifact persistence/read contract for public interaction APIs
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_orchestrator.py`; `Deep_Reflective_Reader/section_tasks/quiz_interaction_orchestrator.py`; `Deep_Reflective_Reader/section_tasks/critical_thinking_session_service.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_persistence_contract.py`; `Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_app_reading_interaction_persistence_contract.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`; `python3 -m py_compile Deep_Reflective_Reader/scripts/test_app_reading_interaction_persistence_contract.py Deep_Reflective_Reader/app/section_task_coordinator.py`.
+  Notes: App-level public interaction behavior is now locked by regression coverage: read paths return persisted current artifacts/sessions or `not_generated` without generation or placeholder writes; explicit generate/refresh writes persist only validated current-artifact statuses; insufficient-content can be persisted as a terminal result; stale targets surface as `stale_target` without overwriting current artifacts; critical-thinking failed evaluation preserves and saves the submitted answer for retry under the same session id. Hard reparse derived-resource cleanup remains owned by the repository reparse boundary, not ordinary interaction read/generate methods.
+  Timestamp: 2026-10-09
+
+- [x] Add analysis artifact read/generate orchestration as the first vertical slice
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_llm_generator.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_artifact_store.py`; `Deep_Reflective_Reader/config/container.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`.
+  Notes: Analysis/insight now has a wired app vertical slice: route requests dispatch through `SectionTaskCoordinator` analysis read/generate/refresh methods, target resolution remains hierarchy-only, reads return persisted current analysis or `not_generated`, and explicit generate/refresh calls the LLM-backed analysis service through the configured orchestrator/store path. The response DTO remains compact for inline insight and does not carry raw target content or frontend UI state.
+  Timestamp: 2026-10-10
+
+- [x] Add quiz artifact read/generate orchestration through the same target abstraction
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_persistence_contract.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`.
+  Notes: App orchestration exposes `read_quiz_artifact(...)`, `generate_quiz_artifact(...)`, and `refresh_quiz_artifact(...)` using the shared hierarchy-aware target resolver. The coordinator delegates to the quiz interaction orchestrator, returns response-ready DTOs, keeps LLM type-mix decisions in the service layer, and route regressions verify the generic drawer API stays separate from legacy section/chapter quiz endpoints.
+  Timestamp: 2026-10-10
+
+- [x] Add critical-thinking session orchestration
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_persistence_contract.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`.
+  Notes: App orchestration exposes `read_critical_thinking_session(...)`, `generate_critical_thinking_question(...)`, `submit_critical_thinking_answer(...)`, and `retry_critical_thinking_evaluation(...)`. Reads remain separate from question generation, answer submission preserves failed evaluations under the same session id, and route regressions verify retry completes evaluation without regenerating the question.
+  Timestamp: 2026-10-10
+
+- [x] Return response-ready reading interaction DTOs from app orchestration
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`.
+  Notes: App orchestration maps analysis artifacts, quiz artifacts, and critical-thinking sessions into `ReadingInteractionResponseDTO` with shared target metadata, status, artifact/session ids, provenance, and metadata handoff. DTOs do not carry frontend-only state such as drawer visibility, menu state, inline expansion, loading state, or pending answer drafts.
+  Timestamp: 2026-10-10
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -108,18 +143,6 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/reading_target_resolver.py`; `Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`.
   Notes: `SectionTaskCoordinator.resolve_reading_target(...)` loads one base hierarchy snapshot and delegates to `ReadingTargetResolver` for document/book, chapter, section, and task-unit targets. The resolver validates optional parent ids and rejects title-primary lookup, root `sections[]`, `structure_nodes`, and duplicate hierarchy matches.
   Timestamp: 2026-10-08
-- [ ] Add analysis artifact read/generate orchestration as the first vertical slice
-  Evidence needed: read path returns persisted analysis or missing/not-generated without LLM calls; generate path explicitly builds context, calls LLM service, validates output, and persists the artifact.
-  Notes: Must preserve explicit write-path semantics and avoid backend session cache as artifact truth.
-  Timestamp: 2026-10-05
-- [ ] Add quiz artifact read/generate orchestration through the same target abstraction
-  Evidence needed: orchestration passes configured target-level max count and valid quiz type enum to the service, then persists only validated quiz output or insufficient-content status.
-  Notes: LLM decides the type mix; backend enforces count/type validation before artifact success.
-  Timestamp: 2026-10-05
-- [ ] Add critical-thinking session orchestration
-  Evidence needed: explicit routes/services can generate a persisted question session, submit one user answer for evaluation, and retry failed evaluation without losing the answer.
-  Notes: First version is question -> answer -> evaluation only; no question pool or history browsing requirement.
-  Timestamp: 2026-10-05
 - [ ] Add future cost and permission gates around generation, refresh, evaluation, and retry write paths
   Evidence needed: app orchestration exposes a single guard point before costly LLM actions and never gates ordinary persisted-artifact reads.
   Notes: Permission policy can evolve later, but the route/service split must leave a clean insertion point.

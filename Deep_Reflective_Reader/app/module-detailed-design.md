@@ -42,6 +42,9 @@
 - `EnhancedParseRecommendationDTO`
 - `ProfileStructureDiagnosticsDTO`
 - `ResolvedTaskUnit`（coordinator internal runtime contract）
+- `ReadingInteractionTargetDTO`
+- `ReadingInteractionResponseDTO`
+- `CriticalThinkingSessionStoreResult`
 
 ## 7. Coordinator Responsibility Slices
 
@@ -213,20 +216,21 @@ Root-cause boundary:
 
 ## 21. Future Direction Note: Reading Target LLM Interaction Orchestration
 
-> 本節記錄 book/chapter/section/task-unit LLM interaction 的 app-layer governance，來自 Grill-me requirements 收斂；不代表目前 implementation。 **[Maintainer-Provided] + [Future Direction]**
+> 本節記錄 book/chapter/section/task-unit LLM interaction 的 app-layer governance，來自 Grill-me requirements 收斂。Target resolver, REST-facing app method contracts, app-level persistence/read behavior contracts, and public route wiring are implemented. Durable backend adapter assembly remains code-confirmed for the analysis/insight vertical slice and separate future configuration work for broader production-grade service wiring. **[Code-Confirmed] + [Future Direction]**
 
 1. app layer exposes a target-agnostic resolver boundary for reading interactions over `document`, `chapter`, `section`, and `task_unit` targets through `SectionTaskCoordinator.resolve_reading_target(...)`. **[Code-Confirmed]**
 2. Target identity is deterministic: document/book uses `doc_name`, chapter uses `chapter_id`, section uses `section_id`, and task unit uses `task_unit_id`; optional parent ids are accepted only for consistency validation. **[Code-Confirmed]**
 3. Target resolution stays hierarchy-aware and fail-fast; no title-primary targeting, root `sections[]`, `structure_nodes`, synthetic legacy hierarchy, or metadata/LLM classification fallback may become authority. **[Code-Confirmed] + [From HLD]**
-4. Artifact read and generation must be split. Read endpoints load persisted artifacts only and return missing/not-generated when absent; they must not call LLM or create backend session cache as truth. **[Maintainer-Provided] + [Future Direction]**
-5. Generate, refresh, critical-thinking answer evaluation, and evaluation retry are explicit write paths and should be the future hooks for cost and permission gating. **[Maintainer-Provided] + [Future Direction]**
-6. Initial interaction types are `analysis`, `quiz`, and `critical_thinking_session`. `analysis` and `quiz` are current artifact per target; critical thinking is multi-session per target. **[Maintainer-Provided] + [Future Direction]**
-7. Critical-thinking orchestration is intentionally simple for the first version: generate one question, accept one user answer, and evaluate that answer. A generated-but-unanswered session is persisted with non-completed status instead of being discarded. **[Maintainer-Provided] + [Future Direction]**
-8. Critical-thinking statuses should include at least `question_generated`, `insufficient_content`, `answer_submitted`, `evaluation_failed`, and `completed`. Failed evaluation must preserve the submitted user answer and allow explicit retry. **[Maintainer-Provided] + [Future Direction]**
-9. app orchestration should delegate target context construction to `context/`, prompt construction to `prompts/`, strict output validation to service/schema boundaries, LLM calls to provider-backed services, and artifact persistence to repository/storage boundaries. **[From HLD] + [Future Direction]**
-10. Insufficient target content is a valid persisted outcome for all interaction types, with reason metadata, so OCR noise or symbol-only task units can terminate quickly and avoid repeated LLM cost. **[Maintainer-Provided] + [Future Direction]**
-11. Hard reparse invalidates/deletes derived interaction artifacts through the existing document-scoped derived-resource lifecycle; no historical artifact layer is required for the first version. **[Maintainer-Provided] + [From HLD]**
-12. First implementation vertical slice should be target resolver plus `analysis`, then extend the same abstraction to `quiz` and critical-thinking sessions. **[Maintainer-Provided] + [Future Direction]**
+4. `SectionTaskCoordinator` now exposes REST-facing app methods for analysis read/generate/refresh, quiz read/generate/refresh, and critical-thinking read/generate-question/submit-answer/retry-evaluation. These methods resolve the hierarchy target once, delegate to configured service/orchestrator dependencies, and return response-safe app DTOs without raw target content. **[Code-Confirmed]**
+5. Artifact read and generation are split at the app/service boundary. Read paths load persisted artifacts/sessions only and return `not_generated` when absent; they do not call LLM services or persist placeholders. **[Code-Confirmed]**
+6. Generate, refresh, critical-thinking answer evaluation, and evaluation retry are explicit write paths. They are the future hooks for cost and permission gating; ordinary persisted-artifact reads stay outside the costly-action gate. **[Code-Confirmed] + [Future Direction]**
+7. Initial interaction types are `analysis`, `quiz`, and `critical_thinking_session`. `analysis` and `quiz` are current artifact per target; critical thinking is multi-session per target. **[Maintainer-Provided] + [Future Direction]**
+8. Critical-thinking orchestration is intentionally simple for the first version: generate one question, accept one user answer, and evaluate that answer. A generated-but-unanswered session is saved with non-completed status instead of being discarded. **[Code-Confirmed]**
+9. Critical-thinking statuses include `question_generated`, `insufficient_content`, `answer_submitted`, `evaluation_failed`, and `completed`. Failed evaluation preserves the submitted user answer, is saved as a retryable session state, and can be completed through explicit retry. **[Code-Confirmed]**
+10. app orchestration should delegate target context construction to `context/`, prompt construction to `prompts/`, strict output validation to service/schema boundaries, LLM calls to provider-backed services, and artifact persistence to repository/storage boundaries. **[From HLD] + [Future Direction]**
+11. Insufficient target content is a valid persisted outcome for analysis and quiz current-artifact flows, with reason metadata, so OCR noise or symbol-only task units can terminate quickly and avoid repeated LLM cost. Critical-thinking insufficient-content question-generation results are saved as session outcomes by the app session store boundary. **[Code-Confirmed]**
+12. Hard reparse invalidates/deletes derived interaction artifacts through the existing document-scoped derived-resource lifecycle; ordinary interaction read/generate methods do not own derived-resource cleanup. No historical artifact layer is required for the first version. **[Code-Confirmed] + [From HLD]**
+13. Public app orchestration now covers `analysis`, `quiz`, and `critical_thinking_session` method contracts and route dispatch. The first durable container-backed vertical slice remains `analysis`/insight; broader durable adapter assembly for quiz and critical-thinking is still owned by future configuration/service wiring work. **[Code-Confirmed] + [Future Direction]**
 
 ### 21.1 Artifact-Aware Generation Orchestration
 
@@ -235,3 +239,31 @@ Root-cause boundary:
 3. Lower-level artifact lookup should be scoped by the resolved hierarchy target and should never scan unrelated documents or use title matching as target resolution. **[From HLD] + [Maintainer-Provided]**
 4. Missing lower-level artifacts should be treated as an empty secondary context, not as an error and not as a reason to auto-generate child artifacts. **[Maintainer-Provided] + [Future Direction]**
 5. Generated artifact metadata should expose whether artifact-aware context was used, which lower-level artifact ids were referenced, and whether deduplication/abstraction hints were applied. **[Maintainer-Provided] + [Future Direction]**
+
+### 21.2 REST-Facing Orchestration Plan For Frontend Contract
+
+> 本節規劃並記錄 `main.py` route 到 `section_tasks/` service/orchestrator 的 app-layer seam。`SectionTaskCoordinator` now exposes these public method contracts and their app-level persistence/read behavior, and `main.py` routes dispatch to them for insight, quiz, and critical-thinking. Durable backend adapter assembly is code-confirmed for the analysis/insight vertical slice and remains future work where not yet wired through `config/`. **[Code-Confirmed] + [Future Direction]**
+
+1. First app-layer surface is `analysis` read/generate/refresh because the frontend can render its short payload inline below book/chapter/section/unit nodes. The first vertical slice is wired through the container and public insight routes. **[Code-Confirmed]**
+2. `read_analysis_artifact(...)`, `generate_analysis_artifact(...)`, and `refresh_analysis_artifact(...)` resolve the target once, delegate to the configured analysis interaction orchestrator, and return `ReadingInteractionResponseDTO`. **[Code-Confirmed]**
+3. `read_quiz_artifact(...)`, `generate_quiz_artifact(...)`, and `refresh_quiz_artifact(...)` resolve the target once, delegate to the configured quiz interaction orchestrator, and return `ReadingInteractionResponseDTO`. The app layer does not decide quiz type mix. **[Code-Confirmed]**
+4. `read_critical_thinking_session(...)`, `generate_critical_thinking_question(...)`, `submit_critical_thinking_answer(...)`, and `retry_critical_thinking_evaluation(...)` resolve the target once, delegate to configured critical-thinking service/store dependencies, and return `ReadingInteractionResponseDTO`. Failed evaluation preservation is validated and saved at the service/session-store boundary. **[Code-Confirmed]**
+5. All operations call `resolve_reading_target(...)` before service work and fail fast for stale or inconsistent hierarchy ids. Optional parent ids validate consistency only; titles remain display metadata. **[Code-Confirmed] + [From HLD]**
+6. App orchestration returns response-ready DTOs but keeps UI behavior state out of backend persistence: drawer state, menu state, inline expansion, pending answer drafts, and loading spinners remain frontend state. **[Code-Confirmed] + [From HLD]**
+9. Generation, refresh, answer evaluation, and retry share a clear app-layer insertion point for future cost/quota/permission policy. Persisted-artifact reads stay outside that costly-action gate. **[Code-Confirmed] + [Future Direction]**
+10. Analysis and quiz stores represent current-artifact semantics: read returns only a persisted current artifact or `not_generated`; generate reuses current artifacts unless refresh is requested; refresh replaces the current artifact only after the service returns a persistable validated status. **[Code-Confirmed]**
+11. `completed` and `insufficient_content` analysis/quiz outputs are persistable; `generation_failed` and `stale_target` are surfaced but not saved as current artifacts. **[Code-Confirmed]**
+12. Critical-thinking session writes save generated questions, evaluation failures that preserve submitted answers, and completed retry results under the same session id. **[Code-Confirmed]**
+
+### 21.3 Frontend Exposure Completion Plan: App-Owned Tasks
+
+> 本節把 frontend exposure 12-task plan 中由 `app/` 擁有的任務固定為 implementation backlog。These tasks expose existing interaction foundations through `SectionTaskCoordinator` without moving service logic into the route layer. **[Code-Confirmed] + [Future Direction]**
+
+| Task ID | Task | Scope | Completion Evidence |
+|---|---|---|---|
+| FE-INT-05 | Define REST-facing app orchestration method contracts | Specify and implement app methods for analysis read/generate/refresh, quiz read/generate/refresh, critical-thinking read/generate-question/submit-answer/retry-evaluation. | Implemented by `SectionTaskCoordinator` methods plus `ReadingInteractionResponseDTO`; coordinator tests prove every method resolves the target once, delegates to the correct service/orchestrator, and returns response-ready DTOs without raw target content. |
+| FE-INT-06 | Define artifact persistence/read contract for public interaction APIs | Align app read/write behavior with artifact/session storage semantics: read-only reads, explicit writes, insufficient-content persistence, stale-target handling, and refresh replacement. | Implemented and regression-tested by app persistence contract coverage: reads do not generate, writes persist only validated outcomes, insufficient-content persists as a terminal/current result where applicable, stale targets do not overwrite current artifacts, failed critical-thinking evaluation preserves submitted answers for retry, and hard reparse cleanup remains the repository derived-resource boundary. |
+| Analysis vertical slice | Wire analysis/insight read, generate, and refresh through the app orchestration boundary. | Public insight routes call `SectionTaskCoordinator` analysis methods, the container supplies `AnalysisInteractionLLMGenerator`, `AnalysisInteractionService`, `DocumentReadingInteractionArtifactStore`, and `AnalysisInteractionOrchestrator`, and regressions prove read/write split plus compact inline response mapping. |
+| Route dispatch vertical slice | Dispatch public insight, quiz, and critical-thinking routes through app orchestration methods. | `main.py` routes call the corresponding `SectionTaskCoordinator` methods for read/write operations, and route regressions prove route mapping without moving target resolution, prompt construction, service validation, or persistence internals into the route layer. |
+
+App-owned tasks must preserve hierarchy-only target resolution, fail-fast parent-id consistency checks, no title-primary lookup, no route-owned prompt/context logic, and no task-layout/profile hidden mutation. **[From HLD] + [Maintainer-Provided]**

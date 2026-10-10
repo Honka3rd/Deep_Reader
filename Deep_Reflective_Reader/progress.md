@@ -32,7 +32,7 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 16 | 0 | Manual Structure Explicit Commit Captured |
+| `app/` | package | `app/module-checklist.md` | 17 | 0 | Reading Interaction Exposure Audit Captured |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -52,11 +52,11 @@ It is used to:
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 17 | 0 | Page/Layout Task-Layout Consumption Contract Captured |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 16 | 0 | Page-Backed Manual Structure Schema Semantics Captured |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 17 | 0 | Reading Interaction Schema Exposure Audit Captured |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 17 | 0 | Page-Backed Manual Structure Route Mapping Captured |
+| `main.py` | root-python-module | `main.module-checklist.md` | 18 | 0 | Reading Interaction Route Exposure Audit Captured |
 
 ## 5. Package Module Progress
 
@@ -64,8 +64,8 @@ It is used to:
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `Manual Structure Explicit Commit Captured`
-- Completed item count: `16`
+- Status: `Reading Interaction Exposure Audit Captured`
+- Completed item count: `17`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -84,6 +84,7 @@ It is used to:
 - [x] Gates manual structure commit path with raw source evidence loading and stale source-hash rejection.
 - [x] Builds manual structure draft hierarchy after source evidence gates before repository persistence.
 - [x] Orchestrates explicit manual structure reparse commit through the structured-document repository save boundary.
+- [x] Audits app-layer reading interaction exposure and confirms target resolution exists while REST-facing read/generate/submit/retry orchestration remains unwired.
 
 #### Needs Confirmation
 
@@ -743,8 +744,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
-- Status: `Page-Backed Manual Structure Schema Semantics Captured`
-- Completed item count: `16`
+- Status: `Reading Interaction Schema Exposure Audit Captured`
+- Completed item count: `17`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -765,6 +766,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines source-agnostic manual structure validation/preview response schemas with normalized entries, warnings/errors, lightweight preview chapter/section shape, and parser provenance preview.
 - [x] Defines source-agnostic manual structure commit reparse request schema with `parser_mode=manual_structure` gating and required manual plan payload.
 - [x] Defines page-backed manual-structure validation/commit schema semantics, with route regressions covering schema-valid `page_range`, missing/unsupported page evidence, out-of-range page anchors, stale source evidence, and successful page-backed commit response mapping.
+- [x] Audits reading interaction schema exposure and confirms generic reading target plus analysis/target-agnostic quiz/critical-thinking public schemas are not yet implemented.
 
 #### Needs Confirmation
 
@@ -839,8 +841,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
-- Status: `Page-Backed Manual Structure Route Mapping Captured`
-- Completed item count: `17`
+- Status: `Reading Interaction Route Exposure Audit Captured`
+- Completed item count: `18`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -862,6 +864,7 @@ No unresolved confirmation items identified in module checklist.
 - [x] Delegates manual structure validation route projection checks to `document_structure.manual_structure_projection`.
 - [x] Supports manual structure commit through the explicit `/documents/reparse-structure` mutation route.
 - [x] Maps page-backed manual-structure validation and commit failures through stable route statuses for missing/unsupported page evidence, stale source evidence, out-of-range/unprojectable page anchors, and successful page-backed commit response mapping.
+- [x] Audits reading interaction REST route exposure and confirms generic analysis, target-agnostic quiz, and critical-thinking session route families are not yet exposed.
 
 #### Needs Confirmation
 

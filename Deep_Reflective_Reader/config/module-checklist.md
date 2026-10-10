@@ -39,6 +39,11 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/config/faiss_storage_config.py; Deep_Reflective_Reader/config/structured_document_storage_config.py; Deep_Reflective_Reader/config/module-detailed-design.md (Known Legacy / Compatibility Behavior)`
   Notes: Storage naming compatibility is handled at config boundary.
 
+- [x] Wire analysis reading interaction dependencies into the container
+  Evidence: `Deep_Reflective_Reader/config/container.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_llm_generator.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_orchestrator.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_artifact_store.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`.
+  Notes: `ApplicationLookupContainer` now assembles the first analysis/insight vertical slice by wiring the LLM-backed generator, strict analysis service, document-backed current-artifact store, analysis orchestrator, and `SectionTaskCoordinator` injection. Config owns assembly only; hierarchy semantics, route behavior, prompt validation, and artifact persistence semantics stay in their owning modules.
+  Timestamp: 2026-10-10
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

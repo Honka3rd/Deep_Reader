@@ -1,7 +1,27 @@
-import { Box, Button, Chip, Stack, Typography } from "@mui/material";
-import { useEffect, useMemo, useRef, useState } from "react";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import PsychologyAltOutlinedIcon from "@mui/icons-material/PsychologyAltOutlined";
+import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
+import TipsAndUpdatesOutlinedIcon from "@mui/icons-material/TipsAndUpdatesOutlined";
+import {
+  Box,
+  Button,
+  Chip,
+  IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Stack,
+  Typography,
+} from "@mui/material";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { ContentBlock, RequestStatus, SectionSelection } from "../../types/api";
 import { StateView } from "../../shared/components/StateView";
+import {
+  InlineInsightRegion,
+  type InsightViewState,
+  type ReadingInteractionKind,
+} from "../reading-interactions";
 import {
   headingFromSelection,
   paginateMeasuredGroups,
@@ -16,6 +36,18 @@ interface ReaderContentViewProps {
   contentBlocks: ContentBlock[];
   contentGroups: ReaderContentGroup[];
   error: string;
+  onSelectTaskUnitInteraction?: (
+    selection: SectionSelection,
+    group: ReaderContentGroup,
+    kind: ReadingInteractionKind,
+  ) => void;
+  getTaskUnitInlineInsight?: (
+    selection: SectionSelection,
+    group: ReaderContentGroup,
+  ) => InsightViewState | null;
+  onDismissInlineInsight?: (targetKey: string) => void;
+  onGenerateInlineInsight?: (targetKey: string) => void;
+  onRefreshInlineInsight?: (targetKey: string) => void;
 }
 
 export function ReaderContentView({
@@ -25,11 +57,21 @@ export function ReaderContentView({
   contentBlocks,
   contentGroups,
   error,
+  onSelectTaskUnitInteraction,
+  getTaskUnitInlineInsight,
+  onDismissInlineInsight,
+  onGenerateInlineInsight,
+  onRefreshInlineInsight,
 }: ReaderContentViewProps) {
   const pageListRef = useRef<HTMLDivElement | null>(null);
   const measurementRef = useRef<HTMLDivElement | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [pages, setPages] = useState<ReaderContentPage[]>([]);
+  const [taskUnitInteractionMenu, setTaskUnitInteractionMenu] = useState<{
+    anchorEl: HTMLElement;
+    group: ReaderContentGroup;
+  } | null>(null);
+  const taskUnitInteractionMenuOpen = Boolean(taskUnitInteractionMenu);
 
   useEffect(() => {
     setCurrentPageIndex(0);
@@ -87,13 +129,29 @@ export function ReaderContentView({
       .filter((group): group is ReaderContentGroup => Boolean(group));
   }, [activePage, contentGroups]);
 
-  const visibleBlocks = activeGroups.length > 0
-    ? activeGroups.flatMap((group) => group.blocks)
-    : contentBlocks;
   const pageCount = pages.length || (contentStatus === "success" ? 1 : 0);
   const displayPageIndex = Math.min(currentPageIndex, Math.max(0, pageCount - 1));
   const canGoPrevious = displayPageIndex > 0;
   const canGoNext = displayPageIndex + 1 < pageCount;
+
+  function openTaskUnitInteractionMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    group: ReaderContentGroup,
+  ) {
+    setTaskUnitInteractionMenu({ anchorEl: event.currentTarget, group });
+  }
+
+  function closeTaskUnitInteractionMenu() {
+    setTaskUnitInteractionMenu(null);
+  }
+
+  function selectTaskUnitInteraction(kind: ReadingInteractionKind) {
+    const group = taskUnitInteractionMenu?.group;
+    closeTaskUnitInteractionMenu();
+    if (selectedSection && group) {
+      onSelectTaskUnitInteraction?.(selectedSection, group, kind);
+    }
+  }
 
   if (layoutStatus === "initial") {
     return (
@@ -196,10 +254,70 @@ export function ReaderContentView({
               .filter(Boolean)
               .join(" ")}
           >
-            {visibleBlocks.map((block, index) => (
-              <ContentBlockView block={block} index={index} key={`${block.block_id}:${index}`} />
-            ))}
+            {activeGroups.length > 0
+              ? activeGroups.map((group) => (
+                  <ReaderContentGroupView
+                    group={group}
+                    insight={
+                      selectedSection ? getTaskUnitInlineInsight?.(selectedSection, group) : null
+                    }
+                    key={group.taskUnitId}
+                    onDismissInlineInsight={onDismissInlineInsight}
+                    onGenerateInlineInsight={onGenerateInlineInsight}
+                    onOpenInteractionMenu={openTaskUnitInteractionMenu}
+                    onRefreshInlineInsight={onRefreshInlineInsight}
+                    showInteraction
+                  />
+                ))
+              : contentBlocks.map((block, index) => (
+                  <ContentBlockView
+                    block={block}
+                    index={index}
+                    key={`${block.block_id}:${index}`}
+                  />
+                ))}
           </Stack>
+          <Menu
+            className="reader-task-unit-interaction-menu"
+            id="reader-task-unit-interaction-menu"
+            anchorEl={taskUnitInteractionMenu?.anchorEl || null}
+            open={taskUnitInteractionMenuOpen}
+            onClose={closeTaskUnitInteractionMenu}
+          >
+            <MenuItem
+              className="reader-task-unit-interaction-option reader-task-unit-interaction-option-insight"
+              onClick={() => selectTaskUnitInteraction("insight")}
+            >
+              <ListItemIcon className="reader-task-unit-interaction-option-icon">
+                <TipsAndUpdatesOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText className="reader-task-unit-interaction-option-label">
+                Insights
+              </ListItemText>
+            </MenuItem>
+            <MenuItem
+              className="reader-task-unit-interaction-option reader-task-unit-interaction-option-quiz"
+              onClick={() => selectTaskUnitInteraction("quiz")}
+            >
+              <ListItemIcon className="reader-task-unit-interaction-option-icon">
+                <QuizOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText className="reader-task-unit-interaction-option-label">
+                Quiz
+              </ListItemText>
+            </MenuItem>
+            <MenuItem
+              className="reader-task-unit-interaction-option reader-task-unit-interaction-option-critical-thinking"
+              onClick={() => selectTaskUnitInteraction("critical_thinking")}
+            >
+              <ListItemIcon className="reader-task-unit-interaction-option-icon">
+                <PsychologyAltOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText className="reader-task-unit-interaction-option-label">
+                Critical thinking
+              </ListItemText>
+            </MenuItem>
+          </Menu>
           <Box
             aria-hidden="true"
             className="reader-content-pagination-measure"
@@ -212,18 +330,87 @@ export function ReaderContentView({
                 key={group.taskUnitId}
                 spacing={2.25}
               >
-                {group.blocks.map((block, index) => (
-                  <ContentBlockView
-                    block={block}
-                    index={index}
-                    key={`${group.taskUnitId}:${block.block_id}:${index}`}
-                  />
-                ))}
+                <ReaderContentGroupView group={group} showInteraction={false} />
               </Stack>
             ))}
           </Box>
         </>
       ) : null}
+    </Box>
+  );
+}
+
+function ReaderContentGroupView({
+  group,
+  insight,
+  showInteraction,
+  onDismissInlineInsight,
+  onGenerateInlineInsight,
+  onOpenInteractionMenu,
+  onRefreshInlineInsight,
+}: {
+  group: ReaderContentGroup;
+  insight?: InsightViewState | null;
+  showInteraction: boolean;
+  onDismissInlineInsight?: (targetKey: string) => void;
+  onGenerateInlineInsight?: (targetKey: string) => void;
+  onOpenInteractionMenu?: (
+    event: MouseEvent<HTMLButtonElement>,
+    group: ReaderContentGroup,
+  ) => void;
+  onRefreshInlineInsight?: (targetKey: string) => void;
+}) {
+  const title = group.title?.trim() || group.taskUnitId;
+
+  return (
+    <Box className="reader-content-task-unit-group">
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        className="reader-content-task-unit-header"
+      >
+        <Box className="reader-content-task-unit-heading">
+          <Typography className="reader-content-task-unit-title" component="h2" variant="h2">
+            {title}
+          </Typography>
+          <Typography
+            className="reader-content-task-unit-id"
+            variant="caption"
+            color="text.secondary"
+          >
+            {group.taskUnitId}
+          </Typography>
+        </Box>
+        {showInteraction ? (
+          <IconButton
+            className="reader-task-unit-interaction-trigger"
+            aria-label={`Task-unit reading interactions for ${title}`}
+            size="small"
+            onClick={(event) => onOpenInteractionMenu?.(event, group)}
+          >
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+        ) : null}
+      </Stack>
+      {insight ? (
+        <InlineInsightRegion
+          className="reader-task-unit-inline-insight"
+          insight={insight}
+          onDismiss={onDismissInlineInsight}
+          onGenerate={onGenerateInlineInsight}
+          onRefresh={onRefreshInlineInsight}
+        />
+      ) : null}
+      <Stack spacing={2.25} className="reader-content-task-unit-blocks">
+        {group.blocks.map((block, index) => (
+          <ContentBlockView
+            block={block}
+            index={index}
+            key={`${group.taskUnitId}:${block.block_id}:${index}`}
+          />
+        ))}
+      </Stack>
     </Box>
   );
 }

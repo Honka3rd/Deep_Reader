@@ -87,6 +87,56 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/document_structure/manual_structure_projection.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_validate_route.py`
   Notes: `POST /documents/manual-structure/validate` now maps API request DTOs into the deterministic `document_structure` projector and maps the projector result back to the existing public response schema. Route logic no longer owns overlap/projection validation, while remaining non-mutating and lightweight.
 
+- [x] Audit reading interaction REST route exposure
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/main.module-detailed-design.md`; route decorator scan for `GET/POST` handlers.
+  Notes: Confirmed that generic reading-interaction REST routes for `analysis`, target-agnostic quiz artifacts, and `critical_thinking_session` are not exposed yet. Existing `/documents/section-quiz` and `/documents/chapter-quiz` remain legacy section/chapter quiz generation routes, not the new read/generate/submit/retry route family.
+  Timestamp: 2026-10-08
+
+- [x] FE-INT-09 Add insight vertical slice route tests
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`.
+  Notes: Adds `POST /documents/reading-interactions/insight/read`, `/insight/generate`, and `/insight/refresh`. Route tests prove read dispatches only to app read and returns `not_generated` without payload, generate/refresh dispatch explicitly to their write paths, shared envelope fields map to public schema, and compact analysis payloads preserve reasoning/interpretation behavior for inline insight rendering.
+  Timestamp: 2026-10-10
+
+- [x] FE-INT-07 Define route family and HTTP status mapping
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/main.module-detailed-design.md`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`.
+  Notes: Adds route-level reading interaction HTTP status helpers and applies them to insight read/generate/refresh. Malformed schema requests remain FastAPI `422`; missing document/target maps to `404`; recoverable envelope states `not_generated`, `completed`, `insufficient_content`, `question_generated`, `answer_submitted`, and `evaluation_failed` map to `200`; `stale_target` maps to `409`; `validation_failed` maps to `422`; `generation_failed` maps to `502`; unexpected route exceptions map to `500`. Route handlers still only validate schema, dispatch to app orchestration, and map responses.
+  Timestamp: 2026-10-10
+
+- [x] FE-INT-08 Add no-auto-generation route regressions for interaction reads
+  Evidence: `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/main.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`.
+  Notes: Adds a read-only poison coordinator regression for the currently exposed insight read route. The test proves absent artifact reads return HTTP `200` with envelope status `not_generated` and no payload while the route is limited to `read_analysis_artifact`; any accidental coordinator access for generation, refresh, session creation, prepare/reparse, task-layout mutation, or profile diagnostics write-back would fail the regression. Planned quiz and critical-thinking read routes remain future work and must reuse the same no-auto-generation policy when exposed.
+  Timestamp: 2026-10-10
+
+- [x] FE-INT-10 Add quiz vertical slice route tests
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`.
+  Notes: Adds generic `POST /documents/reading-interactions/quiz/read`, `/quiz/generate`, and `/quiz/refresh` route mapping. Route tests prove quiz read returns `not_generated` without payload or write dispatch, generate/refresh call the new generic quiz app orchestration methods, legacy `/section-quiz` and `/chapter-quiz` generation methods are not used, drawer quiz payload items are mapped with stable item ids/options/answers, and invalid request counts or invalid generated item types fail with `422`.
+  Timestamp: 2026-10-10
+
+- [x] Add explicit quiz generate/refresh route
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`.
+  Notes: `POST /documents/reading-interactions/quiz/generate` and `/quiz/refresh` validate the shared reading target request, dispatch through `SectionTaskCoordinator.generate_quiz_artifact(...)` and `refresh_quiz_artifact(...)`, map completed quiz artifacts into `QuizInteractionResponse`, preserve prompt instruction version handoff, and keep the legacy section/chapter quiz routes separate from the frontend drawer API.
+  Timestamp: 2026-10-10
+
+- [x] Add read-only reading interaction artifact routes
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `.venv` execution of all three route regression scripts; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`.
+  Notes: Completes the read route family for insight, quiz, and critical-thinking sessions. The critical-thinking read route returns `not_generated` without session id or payload when no session is requested/found, and the route test proves it does not dispatch generation, answer submission, or evaluation retry.
+  Timestamp: 2026-10-10
+
+- [x] FE-INT-11 Add critical-thinking session route tests
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`.
+  Notes: Adds generic critical-thinking `read`, `generate-question`, `submit-answer`, and `retry-evaluation` route mapping. Route tests cover no-generation missing reads, generated question session persistence, existing-session read, evaluation failure preserving submitted answer with retry eligibility, retry completion without regenerating the question, and malformed submit rejection before dispatch.
+  Timestamp: 2026-10-10
+
+- [x] Add critical-thinking session routes
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `python3 -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`.
+  Notes: Exposes `POST /documents/reading-interactions/critical-thinking/read`, `/generate-question`, `/submit-answer`, and `/retry-evaluation`. Submit/retry requests carry the shared reading target plus `session_id`, preserving the hierarchy-aware app/session-store boundary rather than requiring route-level global session lookup.
+  Timestamp: 2026-10-10
+
+- [x] FE-INT-12 Synchronize implementation documentation and checklists after API exposure
+  Evidence: `Deep_Reflective_Reader/main.module-detailed-design.md`; `Deep_Reflective_Reader/main.module-checklist.md`; `Deep_Reflective_Reader/api_schemas.module-detailed-design.md`; `Deep_Reflective_Reader/api_schemas.module-checklist.md`; `Deep_Reflective_Reader/app/module-detailed-design.md`; `Deep_Reflective_Reader/app/module-checklist.md`; `Deep_Reflective_Reader/scripts/module-detailed-design.md`; `Deep_Reflective_Reader/scripts/module-checklist.md`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; route regressions for analysis, quiz, and critical-thinking interactions.
+  Notes: Module memory now reflects the code-confirmed public route names, schema names, app orchestration methods, route regression coverage, and route/app/schema boundaries for insight, quiz, and critical-thinking API exposure. `progress.md` was intentionally not updated because this pass was not a progress-sync task.
+  Timestamp: 2026-10-10
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -109,31 +159,6 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Separate existing-layout read flow from prepare-then-read flow
   Evidence needed: route behavior or client-facing contract makes it clear that `/documents/task-layout` is the preferred existing-layout read path, while `/documents/prepare-task-layout` is reserved for first-time prepare, explicit repair, or fallback.
   Notes: Repeated UI selection of an already prepared document should not implicitly enter OCR/language/profile or LLM-backed work merely to display the current layout. Route observability should report whether prepare-then-read reused existing structured artifacts or performed expensive preparation.
-
-- [ ] Add read-only reading interaction artifact routes
-  Evidence needed: routes return persisted analysis/quiz/session state or missing/not-generated without invoking LLM or mutating persistence.
-  Notes: Read routes must not trigger generation, prepare, reparse, task-layout mutation, or profile diagnostics write-back.
-  Timestamp: 2026-10-05
-
-- [ ] Add explicit analysis generate/refresh route
-  Evidence needed: route validates target request, dispatches to app orchestration, maps strict success/insufficient-content/generation-failure responses, and keeps cost gating insertable.
-  Notes: First implementation vertical slice should use this route family.
-  Timestamp: 2026-10-05
-
-- [ ] Add explicit quiz generate/refresh route
-  Evidence needed: route passes valid quiz type enum and target-level max count policy through request/config boundaries and maps strict validation failures.
-  Notes: The route should not decide quiz type mix itself.
-  Timestamp: 2026-10-05
-
-- [ ] Add critical-thinking session routes
-  Evidence needed: routes support question generation, answer submission with evaluation, and evaluation retry while preserving generated-but-unanswered sessions.
-  Notes: First version remains one question, one user answer, one evaluation.
-  Timestamp: 2026-10-05
-
-- [ ] Add no-auto-generation route regressions for interaction reads
-  Evidence needed: tests prove read routes do not call LLM or write artifacts when persisted artifacts are absent.
-  Notes: This protects cost and permission boundaries.
-  Timestamp: 2026-10-05
 
 - [x] Add batch task-unit content read route
   Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.
