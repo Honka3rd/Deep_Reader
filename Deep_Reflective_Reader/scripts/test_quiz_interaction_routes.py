@@ -142,6 +142,47 @@ def _section_target_payload() -> dict[str, object]:
     }
 
 
+def _content_block_target_payload() -> dict[str, object]:
+    return {
+        "target": {
+            "doc_name": " book.json ",
+            "target_type": "content_block",
+            "chapter_id": " chapter-1 ",
+            "section_id": " section-1 ",
+            "task_unit_id": " task-unit-1 ",
+            "content_block_id": " task-unit-1:block:0 ",
+        }
+    }
+
+
+def _content_block_response(
+    *,
+    status: str = "completed",
+    payload: dict[str, object] | None = None,
+    artifact_id: str | None = None,
+    metadata: dict[str, object] | None = None,
+) -> ReadingInteractionResponseDTO:
+    return ReadingInteractionResponseDTO(
+        target=ReadingInteractionTargetDTO(
+            doc_name="book.json",
+            document_id="doc-1",
+            document_title="Document One",
+            target_level="content_block",
+            target_id="task-unit-1:block:0",
+            chapter_id="chapter-1",
+            section_id="section-1",
+            task_unit_id="task-unit-1",
+            content_block_id="task-unit-1:block:0",
+            title="Unit One",
+        ),
+        interaction_type="quiz",
+        status=status,
+        payload={} if payload is None else payload,
+        metadata={} if metadata is None else metadata,
+        artifact_id=artifact_id,
+    )
+
+
 def _install_fake(fake: _FakeSectionTaskCoordinator) -> object:
     original_coordinator = main.section_task_coordinator
     main.section_task_coordinator = fake
@@ -217,6 +258,100 @@ def test_quiz_generate_route_maps_completed_payload() -> None:
     )
     _assert(fake.legacy_section_quiz_calls == [], "must not call legacy section quiz")
     _assert(fake.legacy_chapter_quiz_calls == [], "must not call legacy chapter quiz")
+
+
+def test_quiz_generic_routes_preserve_content_block_target_identity() -> None:
+    fake = _FakeSectionTaskCoordinator()
+    fake.read_response = _content_block_response(status="not_generated", payload={})
+    fake.generate_response = _content_block_response(
+        payload={
+            "items": [
+                {
+                    "type": "short_answer",
+                    "question": "What is local?",
+                    "answer": "The selected block.",
+                }
+            ]
+        },
+        artifact_id="quiz::doc-1::content_block::task-unit-1:block:0",
+        metadata={
+            "artifact_id": "quiz::doc-1::content_block::task-unit-1:block:0",
+            "output_schema_version": "quiz_interaction_v1",
+            "max_items": 1,
+        },
+    )
+    fake.refresh_response = _content_block_response(
+        payload={
+            "items": [
+                {
+                    "type": "true_false",
+                    "question": "This quiz targets one block.",
+                    "answer": True,
+                }
+            ]
+        },
+        artifact_id="quiz::doc-1::content_block::task-unit-1:block:0",
+        metadata={
+            "artifact_id": "quiz::doc-1::content_block::task-unit-1:block:0",
+            "output_schema_version": "quiz_interaction_v1",
+            "max_items": 1,
+        },
+    )
+    original_coordinator = _install_fake(fake)
+    try:
+        client = TestClient(main.app)
+        read_response = client.post(
+            "/documents/reading-interactions/quiz/read",
+            json=_content_block_target_payload(),
+        )
+        generate_response = client.post(
+            "/documents/reading-interactions/quiz/generate",
+            json=_content_block_target_payload(),
+        )
+        refresh_response = client.post(
+            "/documents/reading-interactions/quiz/refresh",
+            json=_content_block_target_payload(),
+        )
+    finally:
+        _restore_fake(original_coordinator)
+
+    _assert(read_response.status_code == 200, f"unexpected status: {read_response.text}")
+    _assert(generate_response.status_code == 200, f"unexpected status: {generate_response.text}")
+    _assert(refresh_response.status_code == 200, f"unexpected status: {refresh_response.text}")
+    generated = generate_response.json()
+    refreshed = refresh_response.json()
+    _assert(
+        generated["envelope"]["target"]["target_type"] == "content_block",
+        "generate response should preserve content-block target type",
+    )
+    _assert(
+        generated["envelope"]["target"]["content_block_id"]
+        == "task-unit-1:block:0",
+        "generate response should preserve content_block_id",
+    )
+    _assert(
+        generated["payload"]["max_items"] == 1,
+        "content-block quiz response should expose block max item limit",
+    )
+    _assert(
+        refreshed["envelope"]["target"]["content_block_id"]
+        == "task-unit-1:block:0",
+        "refresh response should preserve content_block_id",
+    )
+    _assert(
+        fake.read_calls[0]["content_block_id"] == "task-unit-1:block:0",
+        "read dispatch should include content_block_id",
+    )
+    _assert(
+        fake.generate_calls[0]["content_block_id"] == "task-unit-1:block:0",
+        "generate dispatch should include content_block_id",
+    )
+    _assert(
+        fake.refresh_calls[0]["content_block_id"] == "task-unit-1:block:0",
+        "refresh dispatch should include content_block_id",
+    )
+    _assert(fake.legacy_section_quiz_calls == [], "generic route must not call legacy section quiz")
+    _assert(fake.legacy_chapter_quiz_calls == [], "generic route must not call legacy chapter quiz")
 
 
 def test_quiz_refresh_route_dispatches_explicit_refresh() -> None:
@@ -313,6 +448,7 @@ def test_quiz_generate_route_rejects_invalid_item_shape() -> None:
 def main_test() -> None:
     test_quiz_read_route_returns_missing_without_generation()
     test_quiz_generate_route_maps_completed_payload()
+    test_quiz_generic_routes_preserve_content_block_target_identity()
     test_quiz_refresh_route_dispatches_explicit_refresh()
     test_quiz_routes_reject_invalid_request_before_dispatch()
     test_quiz_generate_route_rejects_invalid_item_shape()

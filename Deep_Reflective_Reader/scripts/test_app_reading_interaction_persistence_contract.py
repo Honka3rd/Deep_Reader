@@ -108,6 +108,14 @@ class FakePreparationPipeline:
         )
 
 
+class FakeDocumentProfileStore:
+    def exists(self, config: object) -> bool:
+        return False
+
+    def load(self, config: object) -> object:
+        raise AssertionError("profile should not be loaded when it does not exist")
+
+
 class InMemoryCurrentArtifactStore:
     def __init__(self) -> None:
         self.artifacts: dict[tuple[str, str, str], ReadingInteractionArtifact] = {}
@@ -203,7 +211,7 @@ def _coordinator(
     return SectionTaskCoordinator(
         document_preparation_pipeline=preparation_pipeline or FakePreparationPipeline(),
         document_artifact_repository=object(),
-        document_profile_store=object(),
+        document_profile_store=FakeDocumentProfileStore(),
         chapter_summary_service=object(),
         chapter_quiz_service=object(),
         task_unit_resolver=object(),
@@ -306,7 +314,10 @@ def test_quiz_persists_insufficient_content_and_rejects_invalid_success() -> Non
 
     insufficient_store = InMemoryCurrentArtifactStore()
     insufficient_coordinator = _coordinator(
-        preparation_pipeline=FakePreparationPipeline(section_content="@@@ !!! ###"),
+        preparation_pipeline=FakePreparationPipeline(
+            section_content="@@@ !!! ###",
+            task_unit_content="@@@ !!! ###",
+        ),
         quiz_orchestrator=QuizInteractionOrchestrator(
             service=QuizInteractionService(generator),
             artifact_store=insufficient_store,

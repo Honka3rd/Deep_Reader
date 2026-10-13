@@ -32,6 +32,20 @@ def _target() -> ResolvedReadingTarget:
     )
 
 
+def _content_block_target() -> ResolvedReadingTarget:
+    return ResolvedReadingTarget(
+        document_id="doc-1",
+        document_title="Document One",
+        target_level="content_block",
+        target_id="unit-1:content:0",
+        content="Selected block source text.",
+        chapter_id="chapter-1",
+        section_id="section-1",
+        task_unit_id="unit-1",
+        content_block_id="unit-1:content:0",
+    )
+
+
 def _expect_value_error(fn, expected: str) -> None:
     try:
         fn()
@@ -63,6 +77,20 @@ def test_request_accepts_resolved_target_and_normalizes_metadata() -> None:
     )
 
 
+def test_request_copy_preserves_ancestor_context_field() -> None:
+    request = ReadingInteractionRequest(
+        target=_target(),
+        interaction_type="analysis",
+        ancestor_context=None,
+    )
+    copied = request.with_secondary_context("Secondary context.")
+
+    _assert(
+        copied.ancestor_context is request.ancestor_context,
+        "request copy should preserve ancestor_context field",
+    )
+
+
 def test_artifact_from_resolved_target_serializes_without_raw_target() -> None:
     artifact = ReadingInteractionArtifact.from_target(
         target=_target(),
@@ -84,6 +112,26 @@ def test_artifact_from_resolved_target_serializes_without_raw_target() -> None:
     _assert(payload["section_id"] == "section-1", "section id should be preserved")
     _assert("target" not in payload, "serialized artifact should not include raw target object")
     _assert("content" not in payload, "serialized artifact should not duplicate source content")
+
+
+def test_artifact_from_content_block_target_preserves_block_identity() -> None:
+    artifact = ReadingInteractionArtifact.from_target(
+        target=_content_block_target(),
+        interaction_type="analysis",
+        status="insufficient_content",
+        reason="selected block source text is below the readable threshold",
+    )
+
+    payload = artifact.to_dict()
+
+    _assert(payload["target_level"] == "content_block", "target level should preserve block")
+    _assert(payload["target_id"] == "unit-1:content:0", "target id should preserve block id")
+    _assert(payload["task_unit_id"] == "unit-1", "parent task unit should be preserved")
+    _assert(
+        payload["content_block_id"] == "unit-1:content:0",
+        "content_block_id should be preserved for downstream artifact mapping",
+    )
+    _assert("content" not in payload, "serialized artifact should not duplicate block source text")
 
 
 def test_insufficient_content_status_requires_reason_but_not_payload() -> None:
@@ -161,7 +209,9 @@ def test_critical_thinking_statuses_are_scoped_to_critical_thinking_sessions() -
 
 if __name__ == "__main__":
     test_request_accepts_resolved_target_and_normalizes_metadata()
+    test_request_copy_preserves_ancestor_context_field()
     test_artifact_from_resolved_target_serializes_without_raw_target()
+    test_artifact_from_content_block_target_preserves_block_identity()
     test_insufficient_content_status_requires_reason_but_not_payload()
     test_rejects_invalid_success_shape_and_invalid_type_or_status()
     test_critical_thinking_statuses_are_scoped_to_critical_thinking_sessions()

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import re
 
 from section_tasks.reading_interaction_service_contracts import (
     ReadingInteractionRequest,
 )
+from shared.task_unit_model import TaskUnitContentBlock
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,75 @@ class ReadingInteractionTargetValidity:
         return cls(valid=False, reason=normalized_reason)
 
 
+def content_block_source_evidence_validity(
+    content_block: TaskUnitContentBlock,
+    *,
+    source_hash: str | None = None,
+    source_structure_version: int | None = None,
+) -> ReadingInteractionTargetValidity:
+    """
+    Validate optional client-observed content-block source evidence.
+
+    Missing client evidence means the target is treated as current for this
+    policy slice. When the client supplies evidence, the block metadata must
+    carry a matching value; missing or mismatched evidence is surfaced as a
+    recoverable stale-target preflight result rather than a hard validation
+    error or silent regeneration.
+    """
+    normalized_source_hash = _normalize_optional_text(source_hash)
+    if normalized_source_hash is None and source_structure_version is None:
+        return ReadingInteractionTargetValidity.current()
+
+    metadata = content_block.metadata if isinstance(content_block.metadata, dict) else {}
+    block_label = content_block.block_id.strip() or "<unknown>"
+
+    if normalized_source_hash is not None:
+        block_source_hash = _normalize_optional_text(metadata.get("source_hash"))
+        if block_source_hash is None:
+            return ReadingInteractionTargetValidity.stale(
+                "content_block target source_hash is unavailable for stale-target check: "
+                f"content_block_id='{block_label}'"
+            )
+        if block_source_hash != normalized_source_hash:
+            return ReadingInteractionTargetValidity.stale(
+                "content_block target source_hash mismatch: "
+                f"content_block_id='{block_label}'"
+            )
+
+    if source_structure_version is not None:
+        block_structure_version = _normalize_optional_int(
+            metadata.get("source_structure_version")
+        )
+        if block_structure_version is None:
+            return ReadingInteractionTargetValidity.stale(
+                "content_block target source_structure_version is unavailable "
+                f"for stale-target check: content_block_id='{block_label}'"
+            )
+        if block_structure_version != source_structure_version:
+            return ReadingInteractionTargetValidity.stale(
+                "content_block target source_structure_version mismatch: "
+                f"content_block_id='{block_label}'"
+            )
+
+    return ReadingInteractionTargetValidity.current()
+
+
+def _normalize_optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _normalize_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass(frozen=True)
 class ReadingInteractionPreflightResult:
     """Recoverable pre-generation status for reading interaction services."""
@@ -65,6 +136,7 @@ class ReadingInteractionValidityPolicy:
         interaction_label: str,
         min_content_chars: int,
         min_alnum_chars: int,
+        require_semantic_content: bool = False,
         target_validity_checker: (
             Callable[[ReadingInteractionRequest], ReadingInteractionTargetValidity]
             | None
@@ -77,6 +149,7 @@ class ReadingInteractionValidityPolicy:
         self._interaction_label = interaction_label
         self._min_content_chars = min_content_chars
         self._min_alnum_chars = min_alnum_chars
+        self._require_semantic_content = require_semantic_content
         self._target_validity_checker = (
             target_validity_checker
             if target_validity_checker is not None
@@ -116,4 +189,105 @@ class ReadingInteractionValidityPolicy:
                 "target content lacks enough readable text for "
                 f"{self._interaction_label}"
             )
+        if self._require_semantic_content:
+            semantic_reason = _semantic_content_insufficient_reason(
+                stripped_content,
+                interaction_label=self._interaction_label,
+            )
+            if semantic_reason is not None:
+                return semantic_reason
         return None
+
+
+_TOKEN_PATTERN = re.compile(r"[\w]+", re.UNICODE)
+_CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
+_SENTENCE_SIGNAL_PATTERN = re.compile(r"[。！？.!?;；:：,，、]")
+_INDEX_LINE_PATTERN = re.compile(
+    r"^\s*(?:[\w\u3400-\u9fff][\w\s\u3400-\u9fff:：,，、.-]{0,48})"
+    r"(?:\.{2,}|…{1,}|[\s\t]{2,})?\s*\d{1,4}\s*$",
+    re.UNICODE,
+)
+
+
+def _semantic_content_insufficient_reason(
+    content: str,
+    *,
+    interaction_label: str,
+) -> str | None:
+    tokens = _TOKEN_PATTERN.findall(content.lower())
+    cjk_chars = _CJK_PATTERN.findall(content)
+    nonempty_lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+    if _looks_repetitive(tokens):
+        return f"target content is too repetitive for {interaction_label}"
+
+    if _looks_like_index_or_toc(nonempty_lines):
+        return f"target content looks index-like rather than readable for {interaction_label}"
+
+    if _looks_like_fragmented_headings(nonempty_lines, tokens, len(cjk_chars)):
+        return (
+            "target content looks like fragmented headings rather than readable "
+            f"source text for {interaction_label}"
+        )
+
+    if _looks_like_ocr_junk(content, tokens, len(cjk_chars)):
+        return f"target content looks like OCR noise for {interaction_label}"
+
+    return None
+
+
+def _looks_repetitive(tokens: list[str]) -> bool:
+    if len(tokens) < 8:
+        return False
+    counts: dict[str, int] = {}
+    for token in tokens:
+        counts[token] = counts.get(token, 0) + 1
+    unique_ratio = len(counts) / len(tokens)
+    most_common_ratio = max(counts.values()) / len(tokens)
+    return unique_ratio <= 0.25 or most_common_ratio >= 0.55
+
+
+def _looks_like_index_or_toc(lines: list[str]) -> bool:
+    if len(lines) < 4:
+        return False
+    index_like_count = sum(1 for line in lines if _INDEX_LINE_PATTERN.match(line))
+    return index_like_count / len(lines) >= 0.7
+
+
+def _looks_like_fragmented_headings(
+    lines: list[str],
+    tokens: list[str],
+    cjk_char_count: int,
+) -> bool:
+    if len(lines) < 5:
+        return False
+    sentence_line_count = sum(1 for line in lines if _SENTENCE_SIGNAL_PATTERN.search(line))
+    average_tokens_per_line = len(tokens) / len(lines)
+    average_cjk_per_line = cjk_char_count / len(lines)
+    return (
+        sentence_line_count / len(lines) <= 0.25
+        and average_tokens_per_line <= 3.0
+        and average_cjk_per_line <= 12.0
+    )
+
+
+def _looks_like_ocr_junk(
+    content: str,
+    tokens: list[str],
+    cjk_char_count: int,
+) -> bool:
+    visible_chars = [char for char in content if not char.isspace()]
+    if len(visible_chars) < 20:
+        return False
+    readable_chars = sum(1 for char in visible_chars if char.isalnum())
+    symbol_ratio = 1 - (readable_chars / len(visible_chars))
+    short_token_ratio = (
+        sum(1 for token in tokens if len(token) <= 2) / len(tokens) if tokens else 1.0
+    )
+    has_sentence_signal = _SENTENCE_SIGNAL_PATTERN.search(content) is not None
+    return (
+        symbol_ratio >= 0.45
+        and short_token_ratio >= 0.7
+        and cjk_char_count < 12
+        and not has_sentence_signal
+    )

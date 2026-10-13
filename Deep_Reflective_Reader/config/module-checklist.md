@@ -44,6 +44,11 @@ It is used to:
   Notes: `ApplicationLookupContainer` now assembles the first analysis/insight vertical slice by wiring the LLM-backed generator, strict analysis service, document-backed current-artifact store, analysis orchestrator, and `SectionTaskCoordinator` injection. Config owns assembly only; hierarchy semantics, route behavior, prompt validation, and artifact persistence semantics stay in their owning modules.
   Timestamp: 2026-10-10
 
+- [x] Wire quiz and critical-thinking reading interaction dependencies into the container
+  Evidence: `Deep_Reflective_Reader/config/container.py`; `Deep_Reflective_Reader/section_tasks/quiz_interaction_llm_generator.py`; `Deep_Reflective_Reader/section_tasks/critical_thinking_llm_generator.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_artifact_store.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_container_wiring.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`.
+  Notes: `ApplicationLookupContainer` now injects `quiz_interaction_orchestrator`, `critical_thinking_session_service`, and `critical_thinking_session_store` into `SectionTaskCoordinator`. This closes the route-exists-but-service-unconfigured gap for `/documents/reading-interactions/quiz/generate` and the critical-thinking route family while keeping route mapping, hierarchy resolution, prompt validation, and persistence semantics in their owning modules.
+  Timestamp: 2026-10-10
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

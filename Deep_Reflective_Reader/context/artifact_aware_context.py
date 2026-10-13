@@ -19,6 +19,16 @@ class ArtifactContextSummary:
 
 
 @dataclass(frozen=True)
+class ArtifactContextTarget:
+    """Minimal target identity for artifact-aware context policy decisions."""
+
+    target_level: str
+    target_id: str
+    task_unit_id: str | None = None
+    content_block_id: str | None = None
+
+
+@dataclass(frozen=True)
 class ArtifactAwareContextResult:
     """Artifact-aware secondary context projection and provenance metadata."""
 
@@ -54,6 +64,28 @@ class ArtifactAwareContextResult:
 
 class ArtifactAwareContextBuilder:
     """Build compact lower-level artifact context without embedding payloads."""
+
+    def build_for_target(
+        self,
+        *,
+        target: ArtifactContextTarget,
+        artifacts: list[ArtifactContextSummary],
+        max_artifacts: int | None = None,
+        max_context_chars: int | None = None,
+    ) -> ArtifactAwareContextResult:
+        """
+        Build secondary artifact context after applying target-level policy.
+
+        Content-block targets keep the selected block text as the primary source.
+        They may use parent task-unit artifacts as secondary context, but sibling
+        content-block artifacts are excluded until a dedicated sibling-context
+        policy exists.
+        """
+        return self.build_secondary_context(
+            self._artifacts_allowed_for_target(target=target, artifacts=artifacts),
+            max_artifacts=max_artifacts,
+            max_context_chars=max_context_chars,
+        )
 
     def build_secondary_context(
         self,
@@ -200,6 +232,59 @@ class ArtifactAwareContextBuilder:
             abstraction_hint_applied=has_abstraction_signal,
             artifact_context_pruned_reason=pruned_reason,
         )
+
+    @classmethod
+    def _artifacts_allowed_for_target(
+        cls,
+        *,
+        target: ArtifactContextTarget,
+        artifacts: list[ArtifactContextSummary],
+    ) -> list[ArtifactContextSummary]:
+        target_level = target.target_level.strip()
+        if target_level != "content_block":
+            return list(artifacts)
+
+        task_unit_id = cls._normalize_optional_text(target.task_unit_id)
+        if task_unit_id is None:
+            return []
+
+        return [
+            artifact
+            for artifact in artifacts
+            if cls._is_parent_task_unit_artifact(
+                artifact=artifact,
+                task_unit_id=task_unit_id,
+            )
+        ]
+
+    @classmethod
+    def _is_parent_task_unit_artifact(
+        cls,
+        *,
+        artifact: ArtifactContextSummary,
+        task_unit_id: str,
+    ) -> bool:
+        target_level = artifact.target_level.strip()
+        target_id = artifact.target_id.strip()
+        metadata_task_unit_id = cls._normalize_optional_text(
+            artifact.metadata.get("task_unit_id")
+        )
+        metadata_content_block_id = cls._normalize_optional_text(
+            artifact.metadata.get("content_block_id")
+        )
+        return (
+            target_level == "task_unit"
+            and target_id == task_unit_id
+            and metadata_content_block_id is None
+            and (metadata_task_unit_id is None or metadata_task_unit_id == task_unit_id)
+        )
+
+    @staticmethod
+    def _normalize_optional_text(value: object) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
     @staticmethod
     def _format_pruned_reason(

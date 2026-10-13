@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from section_tasks.ancestor_summary_context import (
+    ANCESTOR_SUMMARY_CONTEXT_METADATA_KEY,
+    AncestorSummaryPromptContext,
+)
 from section_tasks.reading_target_resolver import ResolvedReadingTarget
 
 
@@ -26,6 +30,8 @@ _CRITICAL_THINKING_ONLY_STATUSES = frozenset(
 )
 ARTIFACT_CONTEXT_METADATA_KEY = "artifact_context"
 ARTIFACT_REFERENCE_METADATA_KEY = "artifact_reference"
+EXTERNAL_RESEARCH_METADATA_KEY = "external_research"
+EXTERNAL_RESEARCH_MODE = "external_research"
 _ARTIFACT_REFERENCE_FIELDS = (
     "artifact_context_mode",
     "primary_source_evidence_ids",
@@ -62,6 +68,119 @@ def build_artifact_reference_metadata(
     return reference_metadata or None
 
 
+def build_ancestor_context_metadata(
+    request: "ReadingInteractionRequest",
+) -> dict[str, object] | None:
+    """Return bounded ancestor-context provenance without summary or source text."""
+    if request.ancestor_context is None:
+        return None
+
+    ancestor_metadata = request.ancestor_context.to_metadata()[
+        ANCESTOR_SUMMARY_CONTEXT_METADATA_KEY
+    ]
+    metadata = dict(ancestor_metadata)
+    metadata["context_mode"] = "ancestor_summary_context"
+    metadata["primary_source_target_level"] = request.target.target_level
+    metadata["primary_source_target_id"] = request.target.target_id
+    if request.target.chapter_id:
+        metadata["primary_source_chapter_id"] = request.target.chapter_id
+    if request.target.section_id:
+        metadata["primary_source_section_id"] = request.target.section_id
+    if request.target.task_unit_id:
+        metadata["primary_source_task_unit_id"] = request.target.task_unit_id
+    if request.target.content_block_id:
+        metadata["primary_source_content_block_id"] = request.target.content_block_id
+
+    return metadata
+
+
+@dataclass(frozen=True)
+class ExternalResearchSourceReference:
+    """Labelled provenance for explicit external research mode."""
+
+    source_id: str
+    label: str
+    source_type: str
+    title: str | None = None
+    url: str | None = None
+    retrieved_at: str | None = None
+
+    def __post_init__(self) -> None:
+        source_id = self.source_id.strip()
+        label = self.label.strip()
+        source_type = self.source_type.strip()
+        title = None if self.title is None else self.title.strip() or None
+        url = None if self.url is None else self.url.strip() or None
+        retrieved_at = (
+            None if self.retrieved_at is None else self.retrieved_at.strip() or None
+        )
+        if not source_id or not label or not source_type:
+            raise ValueError(
+                "external research source requires source_id, label, and source_type"
+            )
+        object.__setattr__(self, "source_id", source_id)
+        object.__setattr__(self, "label", label)
+        object.__setattr__(self, "source_type", source_type)
+        object.__setattr__(self, "title", title)
+        object.__setattr__(self, "url", url)
+        object.__setattr__(self, "retrieved_at", retrieved_at)
+
+    def to_metadata(self) -> dict[str, object]:
+        return {
+            "source_id": self.source_id,
+            "label": self.label,
+            "source_type": self.source_type,
+            "title": self.title,
+            "url": self.url,
+            "retrieved_at": self.retrieved_at,
+        }
+
+
+@dataclass(frozen=True)
+class ExternalResearchContext:
+    """Explicit opt-in external research context with bounded provenance only."""
+
+    sources: tuple[ExternalResearchSourceReference, ...]
+    mode: str = EXTERNAL_RESEARCH_MODE
+    usage_scope: str = "background_only"
+    provenance_required: bool = True
+
+    def __post_init__(self) -> None:
+        mode = self.mode.strip()
+        usage_scope = self.usage_scope.strip()
+        sources = tuple(self.sources)
+        if mode != EXTERNAL_RESEARCH_MODE:
+            raise ValueError("external research context mode must be external_research")
+        if usage_scope not in {"background_only", "background_research_task"}:
+            raise ValueError(
+                "external research usage_scope must be background_only or "
+                "background_research_task"
+            )
+        if not sources:
+            raise ValueError("external research context requires labelled sources")
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "usage_scope", usage_scope)
+        object.__setattr__(self, "sources", sources)
+
+    def to_metadata(self) -> dict[str, object]:
+        return {
+            "mode": self.mode,
+            "usage_scope": self.usage_scope,
+            "provenance_required": self.provenance_required,
+            "source_count": len(self.sources),
+            "sources": [source.to_metadata() for source in self.sources],
+        }
+
+
+def build_external_research_metadata(
+    request: "ReadingInteractionRequest",
+) -> dict[str, object] | None:
+    """Return external research provenance only when explicit mode is attached."""
+    if request.external_research_context is None:
+        return None
+    return request.external_research_context.to_metadata()
+
+
 @dataclass(frozen=True)
 class ReadingInteractionRequest:
     """Target-agnostic request contract for reading interaction services."""
@@ -70,6 +189,8 @@ class ReadingInteractionRequest:
     interaction_type: str
     refresh: bool = False
     secondary_context: str = ""
+    ancestor_context: AncestorSummaryPromptContext | None = None
+    external_research_context: ExternalResearchContext | None = None
     context_metadata: dict[str, object] = field(default_factory=dict)
     prompt_instruction_version: str | None = None
 
@@ -107,6 +228,8 @@ class ReadingInteractionRequest:
             interaction_type=self.interaction_type,
             refresh=self.refresh,
             secondary_context=secondary_context,
+            ancestor_context=self.ancestor_context,
+            external_research_context=self.external_research_context,
             context_metadata=context_metadata,
             prompt_instruction_version=self.prompt_instruction_version,
         )
@@ -126,6 +249,7 @@ class ReadingInteractionArtifact:
     chapter_id: str | None = None
     section_id: str | None = None
     task_unit_id: str | None = None
+    content_block_id: str | None = None
     reason: str | None = None
 
     @classmethod
@@ -149,6 +273,7 @@ class ReadingInteractionArtifact:
             chapter_id=target.chapter_id,
             section_id=target.section_id,
             task_unit_id=target.task_unit_id,
+            content_block_id=target.content_block_id,
             payload={} if payload is None else dict(payload),
             metadata={} if metadata is None else dict(metadata),
             reason=reason,
@@ -208,6 +333,7 @@ class ReadingInteractionArtifact:
             "chapter_id": self.chapter_id,
             "section_id": self.section_id,
             "task_unit_id": self.task_unit_id,
+            "content_block_id": self.content_block_id,
             "payload": dict(self.payload),
             "metadata": dict(self.metadata),
             "reason": self.reason,

@@ -153,19 +153,155 @@ export interface DocumentListResponse {
   total: number;
 }
 
+export type DocumentManagementSourceType = "txt" | "pdf" | "unknown";
+export type DocumentManagementSourceStatus =
+  | "available"
+  | "missing"
+  | "unsupported"
+  | "failed";
+export type DocumentManagementPreparationStatus =
+  | "not_prepared"
+  | "ready"
+  | "failed"
+  | "stale"
+  | "unknown";
+
+export interface DocumentManagementItem {
+  docName: string;
+  title?: string | null;
+  author?: string | null;
+  language?: string | null;
+  profileLabel?: string | null;
+  profileSummary?: string | null;
+  source?: string | null;
+  sourceFilename?: string | null;
+  sourceType?: DocumentManagementSourceType;
+  sourceSizeBytes?: number | null;
+  sourceHash?: string | null;
+  sourceStatus?: DocumentManagementSourceStatus;
+  preparationStatus?: DocumentManagementPreparationStatus;
+  uploadedAt?: string | null;
+  updatedAt?: string | null;
+  lastReadAt?: string | null;
+  lastError?: string | null;
+}
+
+export interface DocumentManagementListResult {
+  items: DocumentManagementItem[];
+  query?: string | null;
+  total: number;
+}
+
+export type DocumentUploadConflictPolicy = "reject" | "replace" | "create_distinct";
+export type DocumentUploadSourceStatus = "uploaded" | "failed";
+export type DocumentUploadFailureReason =
+  | "missing_source"
+  | "unsupported_file_type"
+  | "file_too_large"
+  | "duplicate_conflict"
+  | "unsafe_filename"
+  | "validation_failure"
+  | "storage_failure";
+
+export interface DocumentUploadResponse {
+  doc_name: string;
+  title?: string | null;
+  source_filename: string;
+  source_type: DocumentManagementSourceType;
+  source_size_bytes: number;
+  source_hash?: string | null;
+  uploaded_at?: string | null;
+  source_status: DocumentUploadSourceStatus;
+  preparation_status: DocumentManagementPreparationStatus;
+  conflict_policy?: DocumentUploadConflictPolicy | null;
+  reason?: DocumentUploadFailureReason | string | null;
+}
+
+export type DocumentLifecycleAction =
+  | "archive"
+  | "restore"
+  | "delete"
+  | "rename";
+
+export type DocumentLifecycleStatus =
+  | "accepted"
+  | "rejected"
+  | "conflict"
+  | "failed";
+
+export type DocumentLifecycleFailureReason =
+  | "missing_document"
+  | "unsupported_action"
+  | "conflict"
+  | "validation_failure"
+  | "storage_failure"
+  | "unsafe_name"
+  | "not_implemented";
+
+export interface DocumentLifecycleActionRequest {
+  doc_name: string;
+  action: DocumentLifecycleAction;
+  new_doc_name?: string | null;
+  expected_source_hash?: string | null;
+  expected_structure_version?: string | null;
+  confirm?: boolean;
+}
+
+export interface DocumentLifecycleActionResponse {
+  doc_name: string;
+  action: DocumentLifecycleAction;
+  status: DocumentLifecycleStatus;
+  new_doc_name?: string | null;
+  reason?: DocumentLifecycleFailureReason | string | null;
+  source_affected?: boolean;
+  structured_artifacts_affected?: boolean;
+  derived_resources_affected?: boolean;
+  archived?: boolean | null;
+  deleted?: boolean | null;
+}
+
 export interface ContentBlock {
   block_id: string;
   content: string;
   block_type?: string | null;
   metadata?: Record<string, unknown>;
+  artifact_target_refs?: ContentBlockArtifactTargetRef[] | null;
+  interaction_availability?: ContentBlockInteractionAvailability | null;
+}
+
+export interface ContentBlockArtifactTargetRef {
+  target_level?: ReadingInteractionTargetType | string | null;
+  target_id?: string | null;
+  task_unit_id?: string | null;
+  content_block_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface ContentBlockInteractionAvailabilitySlot {
+  interaction_type: string;
+  status: string;
+  artifact_id?: string | null;
+  session_id?: string | null;
+  reason?: string | null;
+  generated_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ContentBlockInteractionAvailability {
+  insight?: ContentBlockInteractionAvailabilitySlot | null;
+  quiz?: ContentBlockInteractionAvailabilitySlot | null;
+  critical_thinking?: ContentBlockInteractionAvailabilitySlot | null;
 }
 
 export interface TaskUnitContent {
   document_id?: string;
   document_title?: string | null;
+  chapter_id?: string | null;
+  section_id?: string | null;
   task_unit_id: string;
   title?: string | null;
   container_title?: string | null;
+  content?: string | null;
   content_blocks?: ContentBlock[];
   chapter_title?: string | null;
   section_title?: string | null;
@@ -187,7 +323,8 @@ export type ReadingInteractionTargetType =
   | "document"
   | "chapter"
   | "section"
-  | "task_unit";
+  | "task_unit"
+  | "content_block";
 
 export interface ReadingInteractionTargetRequest {
   doc_name: string;
@@ -195,6 +332,7 @@ export interface ReadingInteractionTargetRequest {
   chapter_id?: string | null;
   section_id?: string | null;
   task_unit_id?: string | null;
+  content_block_id?: string | null;
   source_structure_version?: number | null;
   source_hash?: string | null;
 }
@@ -208,6 +346,7 @@ export interface ReadingInteractionTargetResponse {
   chapter_id?: string | null;
   section_id?: string | null;
   task_unit_id?: string | null;
+  content_block_id?: string | null;
   title?: string | null;
 }
 
@@ -250,4 +389,48 @@ export interface AnalysisArtifactPayloadResponse {
 export interface AnalysisInteractionResponse {
   envelope: ReadingInteractionResponseEnvelope;
   payload?: AnalysisArtifactPayloadResponse | null;
+}
+
+export type QuizArtifactItemType =
+  | "short_answer"
+  | "multiple_choice"
+  | "true_false";
+
+export interface QuizArtifactItemResponse {
+  item_id: string;
+  item_type: QuizArtifactItemType;
+  prompt: string;
+  options?: string[] | null;
+  answer: string | boolean;
+  explanation?: string | null;
+}
+
+export interface QuizArtifactPayloadResponse {
+  items: QuizArtifactItemResponse[];
+  max_items?: number | null;
+}
+
+export interface QuizInteractionResponse {
+  envelope: ReadingInteractionResponseEnvelope;
+  payload?: QuizArtifactPayloadResponse | null;
+}
+
+export interface CriticalThinkingEvaluationResponse {
+  feedback: string;
+  score?: number | null;
+  suggested_refinement?: string | null;
+  strengths?: string | null;
+  improvements?: string | null;
+}
+
+export interface CriticalThinkingSessionPayloadResponse {
+  question?: string | null;
+  submitted_answer?: string | null;
+  evaluation?: CriticalThinkingEvaluationResponse | null;
+  retry_eligible: boolean;
+}
+
+export interface CriticalThinkingSessionResponse {
+  envelope: ReadingInteractionResponseEnvelope;
+  payload?: CriticalThinkingSessionPayloadResponse | null;
 }

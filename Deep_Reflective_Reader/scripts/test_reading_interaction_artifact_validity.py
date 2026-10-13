@@ -12,6 +12,7 @@ from section_tasks.analysis_interaction_service import AnalysisInteractionServic
 from section_tasks.artifact_validity import (  # noqa: E402
     ReadingInteractionTargetValidity,
     ReadingInteractionValidityPolicy,
+    content_block_source_evidence_validity,
 )
 from section_tasks.critical_thinking_session_service import (  # noqa: E402
     CriticalThinkingSessionService,
@@ -22,6 +23,7 @@ from section_tasks.reading_interaction_service_contracts import (  # noqa: E402
     ReadingInteractionRequest,
 )
 from section_tasks.reading_target_resolver import ResolvedReadingTarget  # noqa: E402
+from shared.task_unit_model import TaskUnitContentBlock  # noqa: E402
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -85,6 +87,67 @@ def test_shared_validity_policy_detects_stale_before_content_checks() -> None:
     _assert(result is not None, "stale target should fail preflight")
     _assert(result.status == "stale_target", "stale should take priority")
     _assert("structure version" in result.reason, "stale reason should be preserved")
+
+
+def test_content_block_source_evidence_policy_reports_stale_target() -> None:
+    block = TaskUnitContentBlock(
+        block_id="unit-1:content:0",
+        content="Block content.",
+        metadata={
+            "source_hash": "hash-current",
+            "source_structure_version": 3,
+        },
+    )
+
+    current_without_client_evidence = content_block_source_evidence_validity(block)
+    current_with_matching_evidence = content_block_source_evidence_validity(
+        block,
+        source_hash=" hash-current ",
+        source_structure_version=3,
+    )
+    stale_hash = content_block_source_evidence_validity(
+        block,
+        source_hash="hash-old",
+    )
+    stale_structure_version = content_block_source_evidence_validity(
+        block,
+        source_structure_version=2,
+    )
+    stale_missing_metadata = content_block_source_evidence_validity(
+        TaskUnitContentBlock(
+            block_id="unit-1:content:1",
+            content="Block content.",
+            metadata={},
+        ),
+        source_hash="hash-current",
+    )
+
+    _assert(
+        current_without_client_evidence.valid,
+        "missing client source evidence should not make the block stale",
+    )
+    _assert(
+        current_with_matching_evidence.valid,
+        "matching source evidence should keep block target current",
+    )
+    _assert(not stale_hash.valid, "source_hash mismatch should be stale")
+    _assert(
+        stale_hash.reason is not None and "source_hash mismatch" in stale_hash.reason,
+        "source_hash mismatch should include a reason",
+    )
+    _assert(
+        not stale_structure_version.valid,
+        "source_structure_version mismatch should be stale",
+    )
+    _assert(
+        stale_structure_version.reason is not None
+        and "source_structure_version mismatch" in stale_structure_version.reason,
+        "structure version mismatch should include a reason",
+    )
+    _assert(
+        not stale_missing_metadata.valid,
+        "client evidence must not silently pass when block metadata is missing",
+    )
 
 
 def test_analysis_service_reports_stale_target_without_generator_call() -> None:
@@ -233,6 +296,7 @@ def test_stale_and_insufficient_statuses_require_reasons() -> None:
 
 if __name__ == "__main__":
     test_shared_validity_policy_detects_stale_before_content_checks()
+    test_content_block_source_evidence_policy_reports_stale_target()
     test_analysis_service_reports_stale_target_without_generator_call()
     test_quiz_service_reports_stale_target_without_generator_call()
     test_critical_thinking_reports_stale_target_without_generator_call()

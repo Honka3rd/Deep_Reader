@@ -6,11 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ROOT_DIR}/.env.local"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
 UI_DIR="${ROOT_DIR}/Deep_Reader_UI"
-
-if [[ ! -f "${ENV_FILE}" ]]; then
-  printf 'Missing local environment file: %s\n' "${ENV_FILE}" >&2
-  exit 1
-fi
+ENV_LOADER="${ROOT_DIR}/scripts/load_local_env.sh"
 
 if ! command -v docker >/dev/null 2>&1; then
   printf 'Docker is required but was not found.\n' >&2
@@ -22,14 +18,8 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-set -a
-EXISTING_OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 # shellcheck disable=SC1090
-source "${ENV_FILE}"
-if [[ -n "${EXISTING_OPENAI_API_KEY}" && -z "${OPENAI_API_KEY:-}" ]]; then
-  OPENAI_API_KEY="${EXISTING_OPENAI_API_KEY}"
-fi
-set +a
+source "${ENV_LOADER}" "${ENV_FILE}"
 
 : "${DEEP_READER_UI_PORT:?DEEP_READER_UI_PORT is required in .env.local}"
 

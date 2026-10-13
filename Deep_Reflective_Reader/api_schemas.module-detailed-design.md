@@ -32,6 +32,12 @@
 - `PrepareDocumentRequest/Response`
 - `DocumentListItemResponse`
 - `DocumentListResponse`
+- `DocumentManagementItemResponse`
+- `DocumentManagementListResponse`
+- `DocumentUploadMetadataRequest`
+- `DocumentUploadResponse`
+- `DocumentLifecycleActionRequest`
+- `DocumentLifecycleActionResponse`
 - `GetDocumentTaskLayoutRequest`
 - `DocumentTaskLayoutResponse`
 - `SummarizeChapterRequest`, `ChapterQuizRequest`
@@ -76,6 +82,8 @@ The shared reading interaction schema family is now verified against the public 
 3. Critical-thinking routes use `CriticalThinkingSessionReadRequest`, `CriticalThinkingQuestionGenerateRequest`, `CriticalThinkingAnswerSubmitRequest`, `CriticalThinkingEvaluationRetryRequest`, `CriticalThinkingEvaluationResponse`, `CriticalThinkingSessionPayloadResponse`, and `CriticalThinkingSessionResponse`. **[Code-Confirmed]**
 4. All route families share `ReadingInteractionTargetRequest`, `ReadingInteractionTargetResponse`, `ReadingInteractionResponseEnvelope`, and `ArtifactAwareInteractionMetadataResponse` instead of defining route-local target, status, provenance, or UI-state variants. **[Code-Confirmed]**
 5. Schema validation remains a boundary check only. It does not perform hierarchy lookup, prompt construction, persistence mutation, LLM calls, or frontend drawer/inline state management. **[Code-Confirmed] + [From HLD]**
+6. `ReadingInteractionTargetRequest` now accepts `target_type=content_block` only when `task_unit_id` and `content_block_id` are present, while allowing optional parent `chapter_id` / `section_id` consistency ids. The shared target schema is used by insight, quiz, and critical-thinking route families, and route regressions confirm those families preserve `content_block_id` through app dispatch and shared envelopes without route-local target variants. Schema validation remains boundary-only; resolver source slicing, service generation, and artifact persistence are owned outside `api_schemas.py`. **[Code-Confirmed]**
+7. Frontend per-block menus should build `content_block` targets from the task-unit content response by mapping `content_blocks[].block_id` to `ReadingInteractionTargetRequest.content_block_id` and carrying the response-level `task_unit_id` plus optional `chapter_id` / `section_id`. `content_blocks[].metadata.source_hash`, when available, may be passed as optional source evidence; rendered row position, block text, pagination index, and UI menu state are not valid target identity. **[Code-Confirmed]**
 
 ## 7. Public API vs Internal DTO Boundary
 
@@ -171,7 +179,7 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 5. 上述 schema normalization 不包含 persistence migration、不包含 task-layout heavy payload 擴張、不包含 retrieval/LLM integration。 **[Code-Confirmed]**
 
 6. future `TaskUnitContentResponse` 可由 simple `content: str` 演進為更完整 structured content blocks / segments。 **[From Proposal] + [Inferred]**
-7. future rich-content schema 可引入 `content_block_id` / `content_segment_id` 細分互動語義（若與現有 `block_id` 需要分層命名再決策）。 **[From Proposal] + [Needs Confirmation]**
+7. reading-interaction request schema already exposes `content_block_id` for `content_block` targets as the first public-contract slice. Full resolver/source-context/persistence semantics remain future work. **[Code-Confirmed] + [Future Direction]**
 8. future block-level metadata 可擴展為 artifact metadata（discovery/availability）與 evidence/quote/annotation target metadata。 **[Inferred]**
 9. future content blocks 可作 QA evidence target、quote target、annotation target、retrieval grounding target。 **[From Proposal] + [Inferred]**
 10. content blocks 是 API interaction target，不是 persisted hierarchy level；不取代 hierarchy-first contract `chapters[].sections[].task_units[]`。 **[Code-Confirmed] + [From HLD]**
@@ -182,6 +190,103 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 15. content endpoint context 下的最小 target constraints：`content_block` level 必須含 `task_unit_id + content_block_id`；`task_unit` level 必須含 `task_unit_id`。其他 level 保留 enum 表達能力，但不宣稱本 endpoint 支援 artifact write semantics。 **[Code-Confirmed] + [Maintainer-Confirmed]**
 16. `target_level` 使用 shared single-source enum（`shared.artifact_target_model.ArtifactTargetLevel`）驗證，非法值在 schema/shared boundary fail-fast；不做 silent coercion/silent fallback。 **[Code-Confirmed] + [Maintainer-Confirmed]**
 17. metadata glossary keys 由 `api_schemas.ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS` 單一常量維護，schema validation 與 endpoint mapping 共用同一來源，避免雙份定義漂移。 **[Code-Confirmed]**
+
+## 16.1 Document Management, Upload, And Lifecycle Schemas
+
+> 本節記錄 file-management / upload 的 public schema 邊界。Lightweight upload
+> metadata / response DTOs are implemented and used by the explicit upload route.
+> Lightweight management status and lifecycle action DTOs are also defined, while
+> destructive lifecycle route behavior remains future work. **[Code-Confirmed] +
+> [Future Direction]**
+
+1. File management should expose lightweight document-source candidates and lifecycle
+   status, not raw text, hierarchy, task-unit content, profile payloads, retrieval
+   records, or interaction artifacts. **[From HLD] + [Future Direction]**
+2. `DocumentUploadMetadataRequest` defines the route-adjacent metadata DTO for explicit
+   multipart uploads: optional display title plus explicit conflict policy vocabulary
+   `reject`, `replace`, or `create_distinct`. File bytes remain FastAPI multipart input,
+   not a Pydantic field. **[Code-Confirmed]**
+3. `DocumentUploadResponse` returns backend-owned document identity plus lightweight
+   source metadata: source filename, source type, source size, optional source hash,
+   optional upload time, source status, preparation status, optional conflict policy,
+   and failure reason when applicable. **[Code-Confirmed]**
+4. `DocumentManagementItemResponse` and `DocumentManagementListResponse` implement the
+   lightweight document-management list/status schema. They expose backend-owned
+   document identity, source label, source filename/type/size, source status,
+   preparation status, optional timestamps, and optional last error only.
+   **[Code-Confirmed]**
+5. Management schemas keep the no-heavy-payload contract and must not turn task-layout
+   into a document management payload. They forbid extra fields, preventing raw text,
+   hierarchy, task-unit content, content blocks, profile payloads, retrieval records, or
+   interaction artifacts from being serialized through the management list.
+   **[Code-Confirmed]**
+6. Conflict handling vocabulary is explicit at the schema boundary and implemented by
+   the upload route: `reject`, `replace`, and `create_distinct`. **[Code-Confirmed]**
+7. `DocumentLifecycleActionRequest` defines the route-adjacent request DTO for future
+   explicit lifecycle mutations. Supported action vocabulary is `archive`, `restore`,
+   `delete`, and `rename`; `rename` requires `new_doc_name`, non-rename actions reject
+   `new_doc_name`, and optional expected source/hash evidence is metadata only.
+   **[Code-Confirmed]**
+8. `DocumentLifecycleActionResponse` defines the lightweight response DTO for future
+   lifecycle mutations. Supported status vocabulary is `accepted`, `rejected`,
+   `conflict`, `failed`, and `not_implemented`; non-accepted terminal statuses require
+   a typed reason. The response can distinguish source effects, structured-artifact
+   effects, derived-resource effects, archive state, delete state, and rename target
+   without exposing raw document payloads. **[Code-Confirmed]**
+9. Lifecycle schema presence alone does not implement archive/delete/rename behavior.
+   Future destructive routes must remain explicit, route-level, confirmation-aware, and
+   delegated to storage/service cleanup policy rather than hidden behind list/read/open
+   flows. **[Code-Confirmed] + [Future Direction]**
+10. Maintainer-scoped lifecycle MVP currently targets only `delete` and `rename` route
+   implementation. Both are implemented through explicit lifecycle routes. `archive`
+   and `restore` remain reserved schema vocabulary and must not be surfaced as
+   implemented actions until explicitly reprioritized. **[Code-Confirmed] +
+   [Maintainer-Provided] + [Future Direction]**
+11. `POST /documents/lifecycle/delete` uses `DocumentLifecycleActionRequest` and
+   `DocumentLifecycleActionResponse`. The route requires `action=delete` and
+   `confirm=true`, returns typed rejected states for missing/unconfirmed/wrong-action
+   cases, and keeps responses lightweight with effect flags instead of raw text,
+   hierarchy, profile payloads, retrieval records, or artifacts. **[Code-Confirmed]**
+12. `POST /documents/lifecycle/rename` uses `DocumentLifecycleActionRequest` and
+   `DocumentLifecycleActionResponse`. The route requires `action=rename` and
+   `new_doc_name`, returns typed rejected/conflict states for missing/wrong-action/target
+   conflict cases, and keeps responses lightweight with the accepted `new_doc_name` plus
+   effect flags only. **[Code-Confirmed]**
+13. Failure reason vocabulary covers unsupported file type, file too large,
+   duplicate/conflict, unsafe filename, storage failure, missing source, and validation
+   failure. Failed upload responses require a reason; successful upload responses must
+   not include one. **[Code-Confirmed]**
+14. Upload success must not imply preparation success. Preparation readiness belongs to
+   explicit prepare/reparse contracts and should be represented as status, not hidden
+   side effect. The upload response preparation-status vocabulary therefore excludes
+   `ready` and is limited to `not_prepared`, `failed`, `stale`, or `unknown`.
+   **[Code-Confirmed]**
+15. Upload and lifecycle schemas forbid extra fields, preventing route-local expansion of
+   raw text, task-layout payloads, prepare flags, hierarchy, content blocks, profile
+   payloads, retrieval records, or interaction artifacts. **[Code-Confirmed]**
+16. `POST /documents/upload` uses these schemas for route-adjacent metadata and typed
+    responses. The route stores/registers raw source candidates only; post-upload
+    prepare/open/retry orchestration remains separate future work. **[Code-Confirmed]**
+
+## 16.2 Future Direction: Summary And Note Interaction Schemas
+
+> 本節規劃新增 `summary` / `note` interactive action 的 public schema 邊界；
+> 不代表目前 schema 已實作。 **[Future Direction]**
+
+1. Summary should reuse the shared `ReadingInteractionTargetRequest`,
+   `ReadingInteractionTargetResponse`, and response envelope pattern, while defining a
+   dedicated `SummaryArtifactPayloadResponse` and read/generate/refresh request family.
+   **[Future Direction]**
+2. Summary payload should expose compact generated fields only, such as headline,
+   body, key retained points, optional continuity hints, schema version, and prompt
+   instruction version. It should not reuse `AnalysisArtifactPayloadResponse` or expose
+   raw source text / raw ancestor summaries. **[Future Direction]**
+3. Note schemas should represent user-authored text with explicit max length validation,
+   optional title/tags, target metadata, note id, created/updated timestamps, and stable
+   validation errors for oversized text. **[Future Direction]**
+4. Note request/response schemas should not include LLM prompt fields, generated
+   interaction payloads, raw target content, drawer/menu state, draft editing state, or
+   frontend scroll/selection state. **[Future Direction]**
 
 ## 17. Future Direction Note: Manual Structure Override API Schema
 

@@ -103,8 +103,8 @@ It is used to:
 
 - [x] FE-INT-06 Define artifact persistence/read contract for public interaction APIs
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_orchestrator.py`; `Deep_Reflective_Reader/section_tasks/quiz_interaction_orchestrator.py`; `Deep_Reflective_Reader/section_tasks/critical_thinking_session_service.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_persistence_contract.py`; `Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_app_reading_interaction_persistence_contract.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`; `python3 -m py_compile Deep_Reflective_Reader/scripts/test_app_reading_interaction_persistence_contract.py Deep_Reflective_Reader/app/section_task_coordinator.py`.
-  Notes: App-level public interaction behavior is now locked by regression coverage: read paths return persisted current artifacts/sessions or `not_generated` without generation or placeholder writes; explicit generate/refresh writes persist only validated current-artifact statuses; insufficient-content can be persisted as a terminal result; stale targets surface as `stale_target` without overwriting current artifacts; critical-thinking failed evaluation preserves and saves the submitted answer for retry under the same session id. Hard reparse derived-resource cleanup remains owned by the repository reparse boundary, not ordinary interaction read/generate methods.
-  Timestamp: 2026-10-09
+  Notes: App-level public interaction behavior is now locked by regression coverage: read paths return persisted current artifacts/sessions or `not_generated` without generation or placeholder writes; explicit generate/refresh writes persist only validated current-artifact statuses; completed current artifacts are reused by generate, while persisted insufficient-content analysis/quiz artifacts are preflight-rechecked on read/generate so stale insufficient-content results can recover; stale targets surface as `stale_target` without overwriting current artifacts; critical-thinking failed evaluation preserves and saves the submitted answer for retry under the same session id. Hard reparse derived-resource cleanup remains owned by the repository reparse boundary, not ordinary interaction read/generate methods.
+  Timestamp: 2026-10-11
 
 - [x] Add analysis artifact read/generate orchestration as the first vertical slice
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_llm_generator.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_artifact_store.py`; `Deep_Reflective_Reader/config/container.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`.
@@ -121,10 +121,25 @@ It is used to:
   Notes: App orchestration exposes `read_critical_thinking_session(...)`, `generate_critical_thinking_question(...)`, `submit_critical_thinking_answer(...)`, and `retry_critical_thinking_evaluation(...)`. Reads remain separate from question generation, answer submission preserves failed evaluations under the same session id, and route regressions verify retry completes evaluation without regenerating the question.
   Timestamp: 2026-10-10
 
+- [x] Reuse current critical-thinking session on read without session id
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`; `python3 -m py_compile Deep_Reflective_Reader/app/section_task_coordinator.py Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`.
+  Notes: `read_critical_thinking_session(...)` now loads the latest persisted current session for the resolved target when callers omit `session_id`, and returns `not_generated` only when no current session exists. The response can derive `session_id` from persisted session metadata, so frontend read-first target clicks can reopen existing questions without generating new sessions or needing prior session-id knowledge.
+  Timestamp: 2026-10-13
+
 - [x] Return response-ready reading interaction DTOs from app orchestration
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_app_reading_interaction_orchestration.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`.
   Notes: App orchestration maps analysis artifacts, quiz artifacts, and critical-thinking sessions into `ReadingInteractionResponseDTO` with shared target metadata, status, artifact/session ids, provenance, and metadata handoff. DTOs do not carry frontend-only state such as drawer visibility, menu state, inline expansion, loading state, or pending answer drafts.
   Timestamp: 2026-10-10
+
+- [x] Accept content-block target identity at the app reading-interaction boundary
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/reading_target_resolver.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/main.py Deep_Reflective_Reader/app/section_task_coordinator.py Deep_Reflective_Reader/section_tasks/reading_target_resolver.py Deep_Reflective_Reader/scripts/test_reading_interaction_api_schemas.py Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`.
+  Notes: App-level reading interaction methods now accept and forward `content_block_id` to the resolver boundary so route dispatch does not drop block target identity. Resolver support remains explicitly unimplemented for this slice; the app layer does not slice block source text, write block artifacts, mutate task-layout, or add successful block-level generation behavior.
+  Timestamp: 2026-10-11
+
+- [x] Project content-block interaction availability during task-unit content reads
+  Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_artifact_store.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`; `python3 -m py_compile Deep_Reflective_Reader/app/section_task_coordinator.py Deep_Reflective_Reader/section_tasks/reading_interaction_artifact_store.py Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`.
+  Notes: App task-unit content assembly now projects menu-ready availability for canonical content-block targets from existing analysis, quiz, and critical-thinking state. The projection remains read-only, emits no artifact payload or UI state, does not persist placeholders, and skips non-canonical segmented render blocks until segmented artifact-target alignment is explicitly implemented.
+  Timestamp: 2026-10-11
 
 ## Needs Confirmation
 
@@ -139,6 +154,18 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Preserve fail-fast hierarchy lookup semantics for content-block interactions
 - [ ] Keep task-layout API lightweight and separate from on-demand rich-content read API
 - [ ] Route future content-block interactions through explicit id-based targeting and service boundaries
+- [ ] Define document management orchestration service boundary.
+  Evidence needed: app-layer service/coordinator contract reads document source/preparation status without entering prepare, OCR, profile, retrieval, task-layout mutation, or interaction generation.
+  Notes: File-management UI state remains frontend-local; app responses should be response-ready DTOs only.
+  Timestamp: 2026-10-13
+- [ ] Define upload orchestration boundary.
+  Evidence needed: app-layer upload flow validates/registers raw source candidates, returns lightweight source metadata/status, and stops before prepare unless explicitly requested by a separate flow.
+  Notes: Conflict handling should be centralized here rather than in route code or UI.
+  Timestamp: 2026-10-13
+- [ ] Define document lifecycle cleanup policy.
+  Evidence needed: archive/delete/replace behavior coordinates raw source, structured/profile/retrieval artifacts, and reading-interaction artifacts through explicit policy.
+  Notes: Destructive behavior must preserve user-scope and raw-file ownership boundaries.
+  Timestamp: 2026-10-13
 - [x] Define reading-target resolver orchestration for document/chapter/section/task-unit interactions
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/section_tasks/reading_target_resolver.py`; `Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_target_resolver.py`.
   Notes: `SectionTaskCoordinator.resolve_reading_target(...)` loads one base hierarchy snapshot and delegates to `ReadingTargetResolver` for document/book, chapter, section, and task-unit targets. The resolver validates optional parent ids and rejects title-primary lookup, root `sections[]`, `structure_nodes`, and duplicate hierarchy matches.
@@ -155,6 +182,14 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence needed: generated artifact result metadata includes whether lower-level artifacts were referenced, referenced artifact ids, and deduplication/abstraction hint flags.
   Notes: Metadata supports UI observability and future debugging.
   Timestamp: 2026-10-05
+- [ ] Add app orchestration methods for summary read/generate/refresh
+  Evidence needed: coordinator resolves a hierarchy-aware target once, dispatches summary read without generation, and performs higher-level summary preparation only for explicit generate/refresh paths.
+  Notes: Response DTOs should carry summary envelope/payload metadata without raw ancestor text or frontend UI state.
+  Timestamp: 2026-10-13
+- [ ] Add app orchestration methods for user-authored notes
+  Evidence needed: coordinator supports note read/list/save/delete or an explicitly chosen note route pattern with target validation and length-limit errors before persistence.
+  Notes: Notes must not call LLMs, prepare/reparse documents, generate summaries, mutate task-layout, or write profile diagnostics.
+  Timestamp: 2026-10-13
 - [x] Orchestrate batch task-unit content lookup through a single hierarchy load
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.
   Notes: Coordinator batch path resolves the document/hierarchy once, validates ordered unique task-unit ids, returns per-task-unit content in request order, and preserves single endpoint segmented semantics. It replaces frontend selected-section request fan-out with one on-demand content call while remaining read-only and avoiding task-layout heavy payload, profile write-back, parser authority, and legacy fallback paths.

@@ -10,6 +10,7 @@ from section_tasks.reading_interaction_service_contracts import (
 
 
 PERSISTED_ANALYSIS_STATUSES = frozenset({"completed", "insufficient_content"})
+REUSABLE_ANALYSIS_STATUSES = frozenset({"completed"})
 
 
 class AnalysisInteractionArtifactStore(Protocol):
@@ -52,6 +53,15 @@ class AnalysisInteractionOrchestrator:
         self._validate_request(request)
         existing_artifact = self._artifact_store.get_analysis_artifact(request)
         if existing_artifact is not None:
+            if (
+                existing_artifact.status == "insufficient_content"
+                and self._service.preflight(request) is None
+            ):
+                return ReadingInteractionArtifact.from_target(
+                    target=request.target,
+                    interaction_type=self.interaction_type,
+                    status="not_generated",
+                )
             return existing_artifact
         return ReadingInteractionArtifact.from_target(
             target=request.target,
@@ -67,7 +77,10 @@ class AnalysisInteractionOrchestrator:
         self._validate_request(request)
         if not request.refresh:
             existing_artifact = self._artifact_store.get_analysis_artifact(request)
-            if existing_artifact is not None:
+            if (
+                existing_artifact is not None
+                and existing_artifact.status in REUSABLE_ANALYSIS_STATUSES
+            ):
                 return existing_artifact
 
         generated_artifact = self._service.generate(request)

@@ -80,6 +80,17 @@ class FakePreparationPipeline:
         )
 
 
+class FakeDocumentProfileStore:
+    def __init__(self, language: str | None = None) -> None:
+        self.language = language
+
+    def exists(self, config: object) -> bool:
+        return self.language is not None
+
+    def load(self, config: object) -> SimpleNamespace:
+        return SimpleNamespace(document_language_code=self.language)
+
+
 class FakeInteractionOrchestrator:
     def __init__(self, interaction_type: str) -> None:
         self.interaction_type = interaction_type
@@ -195,6 +206,7 @@ class FakeCriticalThinkingSessionStore:
     def __init__(self) -> None:
         self.sessions: dict[str, ReadingInteractionArtifact] = {}
         self.get_calls: list[tuple[ReadingInteractionRequest, str]] = []
+        self.get_current_calls: list[ReadingInteractionRequest] = []
         self.save_calls: list[ReadingInteractionArtifact] = []
         self._active_session_id: str | None = None
         self._next_id = 1
@@ -208,6 +220,15 @@ class FakeCriticalThinkingSessionStore:
         self._active_session_id = session_id
         return self.sessions.get(session_id)
 
+    def get_current_critical_thinking_session(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact | None:
+        self.get_current_calls.append(request)
+        if self._active_session_id is None:
+            return None
+        return self.sessions.get(self._active_session_id)
+
     def save_critical_thinking_session(
         self,
         artifact: ReadingInteractionArtifact,
@@ -217,11 +238,25 @@ class FakeCriticalThinkingSessionStore:
         if session_id is None:
             session_id = f"session-{self._next_id}"
             self._next_id += 1
-        self.sessions[session_id] = artifact
+        artifact_to_save = ReadingInteractionArtifact(
+            interaction_type=artifact.interaction_type,
+            status=artifact.status,
+            target_level=artifact.target_level,
+            target_id=artifact.target_id,
+            document_id=artifact.document_id,
+            chapter_id=artifact.chapter_id,
+            section_id=artifact.section_id,
+            task_unit_id=artifact.task_unit_id,
+            content_block_id=artifact.content_block_id,
+            payload=dict(artifact.payload),
+            metadata={**artifact.metadata, "session_id": session_id},
+            reason=artifact.reason,
+        )
+        self.sessions[session_id] = artifact_to_save
         self._active_session_id = session_id
         return CriticalThinkingSessionStoreResult(
             session_id=session_id,
-            artifact=artifact,
+            artifact=artifact_to_save,
         )
 
 
@@ -232,11 +267,12 @@ def _coordinator(
     quiz_orchestrator: FakeInteractionOrchestrator | None = None,
     critical_service: FakeCriticalThinkingService | None = None,
     critical_store: FakeCriticalThinkingSessionStore | None = None,
+    document_profile_store: FakeDocumentProfileStore | None = None,
 ) -> SectionTaskCoordinator:
     return SectionTaskCoordinator(
         document_preparation_pipeline=preparation_pipeline or FakePreparationPipeline(),
         document_artifact_repository=object(),
-        document_profile_store=object(),
+        document_profile_store=document_profile_store or FakeDocumentProfileStore(),
         chapter_summary_service=object(),
         chapter_quiz_service=object(),
         task_unit_resolver=object(),
@@ -346,6 +382,11 @@ def test_critical_thinking_methods_resolve_once_and_delegate() -> None:
         section_id="section-1",
         session_id=generated.session_id,
     )
+    read_current = coordinator.read_critical_thinking_session(
+        doc_name="book.json",
+        target_level="section",
+        section_id="section-1",
+    )
     submitted = coordinator.submit_critical_thinking_answer(
         doc_name="book.json",
         target_level="section",
@@ -360,11 +401,23 @@ def test_critical_thinking_methods_resolve_once_and_delegate() -> None:
         session_id=generated.session_id or "",
     )
 
-    _assert(len(prep.calls) == 5, "each critical-thinking method should resolve once")
+    _assert(len(prep.calls) == 6, "each critical-thinking method should resolve once")
     _assert(missing.status == "not_generated", "session-less read should not generate")
     _assert(len(service.generate_requests) == 1, "question generation should delegate")
     _assert(len(store.save_calls) == 3, "generate, submit/evaluate, retry should save")
     _assert(read_existing.status == "question_generated", "read should load persisted session")
+    _assert(
+        read_current.status == "question_generated",
+        "session-less read should reuse the current persisted session",
+    )
+    _assert(
+        read_current.session_id == generated.session_id,
+        "current-session read should return the saved session id",
+    )
+    _assert(
+        len(service.generate_requests) == 1,
+        "current-session read must not generate another question",
+    )
     _assert(len(service.submit_calls) == 1, "submit should call service submit")
     _assert(service.submit_calls[0][1] == "  Institutions matter.  ", "raw answer goes to service")
     _assert(len(service.evaluate_calls) == 2, "submit and retry should evaluate")
@@ -373,8 +426,30 @@ def test_critical_thinking_methods_resolve_once_and_delegate() -> None:
     _assert(generated.session_id == submitted.session_id == retried.session_id, "session id should persist")
 
 
+def test_reading_interaction_request_uses_profile_language_metadata() -> None:
+    service = FakeCriticalThinkingService()
+    coordinator = _coordinator(
+        critical_service=service,
+        critical_store=FakeCriticalThinkingSessionStore(),
+        document_profile_store=FakeDocumentProfileStore(language="zh"),
+    )
+
+    coordinator.generate_critical_thinking_question(
+        doc_name="book.json",
+        target_level="section",
+        section_id="section-1",
+    )
+
+    request = service.generate_requests[0]
+    _assert(
+        request.context_metadata["document_language"] == "zh",
+        "reading interaction request should carry profile language for prompt output",
+    )
+
+
 if __name__ == "__main__":
     test_analysis_methods_resolve_once_and_delegate()
     test_quiz_methods_resolve_once_and_delegate()
     test_critical_thinking_methods_resolve_once_and_delegate()
+    test_reading_interaction_request_uses_profile_language_metadata()
     print("app reading interaction orchestration tests passed")

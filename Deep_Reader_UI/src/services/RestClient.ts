@@ -4,23 +4,44 @@ export class RestClient {
   constructor(private readonly apiBase: string = API_BASE) {}
 
   async requestJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const { ok, payload, status } = await this.requestJsonWithStatus<T>(path, options);
+
+    if (!ok) {
+      throw new Error(this.resolveErrorDetail(payload, status));
+    }
+
+    return payload as T;
+  }
+
+  async requestJsonWithStatus<T>(
+    path: string,
+    options: RequestInit = {},
+  ): Promise<{ ok: boolean; payload: T; status: number }> {
     const response = await fetch(`${this.apiBase}${path}`, {
       ...options,
-      headers: {
-        "content-type": "application/json",
-        ...(options.headers || {}),
-      },
+      headers: this.buildHeaders(options),
     });
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json")
       ? await response.json()
       : await response.text();
 
-    if (!response.ok) {
-      throw new Error(this.resolveErrorDetail(payload, response.status));
+    return {
+      ok: response.ok,
+      payload: payload as T,
+      status: response.status,
+    };
+  }
+
+  private buildHeaders(options: RequestInit): HeadersInit {
+    if (options.body instanceof FormData) {
+      return options.headers || {};
     }
 
-    return payload as T;
+    return {
+      "content-type": "application/json",
+      ...(options.headers || {}),
+    };
   }
 
   private resolveErrorDetail(payload: unknown, status: number): string {

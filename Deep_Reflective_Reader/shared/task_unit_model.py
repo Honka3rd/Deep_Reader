@@ -143,6 +143,7 @@ class TaskUnitContentBlock:
     block_type: str | None = None
     artifact_ids: list[str] | None = None
     artifact_target_refs: list[ArtifactTargetRef] | None = None
+    interaction_availability: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -157,6 +158,11 @@ class TaskUnitContentBlock:
                 if self.artifact_target_refs is None
                 else [target_ref.to_dict() for target_ref in self.artifact_target_refs]
             ),
+            "interaction_availability": (
+                None
+                if self.interaction_availability is None
+                else dict(self.interaction_availability)
+            ),
             "metadata": None if self.metadata is None else dict(self.metadata),
         }
 
@@ -165,6 +171,7 @@ class TaskUnitContentBlock:
         """Deserialize content block from dictionary payload."""
         artifact_ids_payload = data.get("artifact_ids")
         artifact_target_refs_payload = data.get("artifact_target_refs")
+        interaction_availability_payload = data.get("interaction_availability")
         metadata_payload = data.get("metadata")
         parsed_target_refs: list[ArtifactTargetRef] | None = None
         if isinstance(artifact_target_refs_payload, list):
@@ -179,6 +186,13 @@ class TaskUnitContentBlock:
                 raise TypeError(
                     "TaskUnitContentBlock.from_dict expected artifact_target_refs list entries as dict payloads"
                 )
+        if (
+            interaction_availability_payload is not None
+            and not isinstance(interaction_availability_payload, dict)
+        ):
+            raise TypeError(
+                "TaskUnitContentBlock.from_dict expected interaction_availability as dict payload"
+            )
         return cls(
             block_id=str(data["block_id"]),
             content=str(data.get("content", "")),
@@ -189,6 +203,14 @@ class TaskUnitContentBlock:
                 else [str(value) for value in artifact_ids_payload]
             ),
             artifact_target_refs=parsed_target_refs,
+            interaction_availability=(
+                None
+                if interaction_availability_payload is None
+                else {
+                    str(key): value
+                    for key, value in interaction_availability_payload.items()
+                }
+            ),
             metadata=(
                 None
                 if metadata_payload is None

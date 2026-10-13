@@ -1,10 +1,16 @@
 from uuid import uuid4
+from datetime import datetime, timezone
+from email import policy
+from email.parser import BytesParser
+import hashlib
+import json
 from pathlib import Path
 import re
 import logging
+import shutil
 import time
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import ValidationError
 
 from app.qa_coordinator import QACoordinator
@@ -50,6 +56,11 @@ from api_schemas import (
     AskDocumentResponse,
     DocumentListItemResponse,
     DocumentListResponse,
+    DocumentLifecycleActionRequest,
+    DocumentLifecycleActionResponse,
+    DocumentManagementItemResponse,
+    DocumentManagementListResponse,
+    DocumentUploadResponse,
     DocumentTaskLayoutResponse,
     EnhancedParseRecommendationResponse,
     GetDocumentTaskLayoutRequest,
@@ -129,6 +140,8 @@ async def request_logging_middleware(request, call_next):
 
 _RAW_DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")
 _RAW_DOCUMENT_BASE_DIR = Path("data/raw")
+_DERIVED_DOCUMENT_BASE_DIR = Path("data/faiss")
+_DOCUMENT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 
 
 def _raw_document_doc_name(path: Path, sibling_counts: dict[str, int]) -> str:
@@ -138,14 +151,146 @@ def _raw_document_doc_name(path: Path, sibling_counts: dict[str, int]) -> str:
     return path.stem
 
 
+def _raw_document_sibling_counts(base_dir: Path = _RAW_DOCUMENT_BASE_DIR) -> dict[str, int]:
+    """Return supported raw-file stem counts for doc_name disambiguation."""
+    if not base_dir.exists():
+        return {}
+    sibling_counts: dict[str, int] = {}
+    for path in base_dir.iterdir():
+        if path.is_file() and path.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS:
+            sibling_counts[path.stem] = sibling_counts.get(path.stem, 0) + 1
+    return sibling_counts
+
+
+def _normalize_upload_filename(filename: str | None) -> str:
+    """Validate and normalize a user-uploaded raw source filename."""
+    normalized = (filename or "").strip()
+    if (
+        not normalized
+        or "/" in normalized
+        or "\\" in normalized
+        or "\x00" in normalized
+        or normalized in {".", ".."}
+    ):
+        raise ValueError("unsafe_filename")
+    suffix = Path(normalized).suffix.casefold()
+    if suffix not in _RAW_DOCUMENT_EXTENSIONS:
+        raise ValueError("unsupported_file_type")
+    return normalized
+
+
+def _parse_document_upload_multipart(
+    content_type: str | None,
+    body: bytes,
+) -> tuple[str, bytes, str | None, str]:
+    """Parse the minimal multipart fields needed by the upload route."""
+    if not content_type or "multipart/form-data" not in content_type.lower():
+        raise ValueError("validation_failure")
+
+    message_bytes = (
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
+        + body
+    )
+    message = BytesParser(policy=policy.default).parsebytes(message_bytes)
+    if not message.is_multipart():
+        raise ValueError("validation_failure")
+
+    file_name: str | None = None
+    file_bytes: bytes | None = None
+    title: str | None = None
+    conflict_policy = "reject"
+
+    for part in message.iter_parts():
+        field_name = part.get_param("name", header="content-disposition")
+        if not field_name:
+            continue
+        payload = part.get_payload(decode=True) or b""
+        if field_name == "file":
+            file_name = part.get_filename()
+            file_bytes = payload
+        elif field_name == "title":
+            decoded_title = payload.decode("utf-8", errors="replace").strip()
+            title = decoded_title or None
+        elif field_name == "conflict_policy":
+            decoded_policy = payload.decode("utf-8", errors="replace").strip()
+            if decoded_policy:
+                conflict_policy = decoded_policy.lower().replace("-", "_")
+
+    if file_name is None or file_bytes is None:
+        raise ValueError("missing_source")
+    if conflict_policy not in {"reject", "replace", "create_distinct"}:
+        raise ValueError("validation_failure")
+    return file_name, file_bytes, title, conflict_policy
+
+
+def _resolve_upload_destination(
+    filename: str,
+    conflict_policy: str,
+    base_dir: Path = _RAW_DOCUMENT_BASE_DIR,
+) -> Path:
+    """Resolve destination path according to the explicit upload conflict policy."""
+    destination = base_dir / filename
+    if not destination.exists():
+        return destination
+
+    if conflict_policy == "reject":
+        raise FileExistsError("duplicate_conflict")
+    if conflict_policy == "replace":
+        return destination
+
+    stem = destination.stem
+    suffix = destination.suffix
+    for index in range(1, 1000):
+        candidate = base_dir / f"{stem} ({index}){suffix}"
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError("duplicate_conflict")
+
+
+def _build_document_upload_response(
+    *,
+    destination: Path,
+    source_size_bytes: int,
+    source_hash: str | None,
+    source_status: str,
+    title: str | None = None,
+    conflict_policy: str | None = None,
+    reason: str | None = None,
+) -> DocumentUploadResponse:
+    """Build a lightweight upload response without preparing the document."""
+    sibling_counts = _raw_document_sibling_counts(destination.parent)
+    return DocumentUploadResponse(
+        doc_name=_raw_document_doc_name(destination, sibling_counts),
+        title=title or destination.stem,
+        source_filename=destination.name,
+        source_type=destination.suffix.casefold().lstrip(".") or "unknown",
+        source_size_bytes=source_size_bytes,
+        source_hash=source_hash,
+        uploaded_at=datetime.now(timezone.utc).isoformat(),
+        source_status=source_status,
+        preparation_status="not_prepared" if source_status == "uploaded" else "unknown",
+        conflict_policy=conflict_policy,
+        reason=reason,
+    )
+
+
+def _document_upload_failure_source_type(filename: str) -> str:
+    """Return a schema-safe source type for failed upload responses."""
+    source_type = Path(filename).suffix.casefold().lstrip(".")
+    if source_type in {"txt", "pdf"}:
+        return source_type
+    return "unknown"
+
+
 def _list_raw_documents(
     query: str | None = None,
     limit: int = 200,
-    base_dir: Path = _RAW_DOCUMENT_BASE_DIR,
+    base_dir: Path | None = None,
 ) -> list[DocumentListItem]:
     """List raw document files as lightweight discovery candidates."""
     bounded_limit = max(1, min(limit, 200))
     normalized_query = (query or "").strip().casefold()
+    base_dir = base_dir or _RAW_DOCUMENT_BASE_DIR
     if not base_dir.exists():
         return []
 
@@ -175,6 +320,387 @@ def _list_raw_documents(
         if len(candidates) >= bounded_limit:
             break
     return candidates
+
+
+def _raw_document_source_type(path: Path) -> str:
+    """Return schema-safe source type for supported raw document paths."""
+    source_type = path.suffix.casefold().lstrip(".")
+    if source_type in {"txt", "pdf"}:
+        return source_type
+    return "unknown"
+
+
+def _list_raw_document_management_items(
+    query: str | None = None,
+    limit: int = 200,
+    base_dir: Path | None = None,
+) -> list[DocumentManagementItemResponse]:
+    """List raw document files for document-management status without heavy payloads."""
+    bounded_limit = max(1, min(limit, 200))
+    normalized_query = (query or "").strip().casefold()
+    base_dir = base_dir or _RAW_DOCUMENT_BASE_DIR
+    if not base_dir.exists():
+        return []
+
+    raw_paths = [
+        path
+        for path in sorted(base_dir.iterdir(), key=lambda candidate: candidate.name.casefold())
+        if path.is_file() and path.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS
+    ]
+    sibling_counts: dict[str, int] = {}
+    for path in raw_paths:
+        sibling_counts[path.stem] = sibling_counts.get(path.stem, 0) + 1
+
+    candidates: list[DocumentManagementItemResponse] = []
+    for path in raw_paths:
+        doc_name = _raw_document_doc_name(path, sibling_counts)
+        title = path.stem
+        searchable = f"{doc_name} {title}".casefold()
+        if normalized_query and normalized_query not in searchable:
+            continue
+        stat = path.stat()
+        modified_at = datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat()
+        candidates.append(
+            DocumentManagementItemResponse(
+                doc_name=doc_name,
+                title=title,
+                source=f"raw{path.suffix.casefold()}",
+                source_filename=path.name,
+                source_type=_raw_document_source_type(path),
+                source_size_bytes=stat.st_size,
+                source_status="available",
+                preparation_status="not_prepared",
+                updated_at=modified_at,
+            )
+        )
+        if len(candidates) >= bounded_limit:
+            break
+    return candidates
+
+
+def _structured_document_management_item(
+    item: DocumentListItem,
+) -> DocumentManagementItemResponse:
+    """Map a structured document candidate into a lightweight management row."""
+    return DocumentManagementItemResponse(
+        doc_name=item.doc_name,
+        title=item.title,
+        source=item.source,
+        source_type="unknown",
+        source_status="unknown",
+        preparation_status="ready",
+    )
+
+
+def _merge_document_management_items(
+    structured_items: list[DocumentListItem],
+    raw_items: list[DocumentManagementItemResponse],
+    limit: int,
+) -> list[DocumentManagementItemResponse]:
+    """Merge structured readiness with raw source metadata by document name."""
+    bounded_limit = max(1, min(limit, 200))
+    merged_by_name: dict[str, DocumentManagementItemResponse] = {}
+
+    for item in structured_items:
+        merged_by_name[item.doc_name] = _structured_document_management_item(item)
+
+    for raw_item in raw_items:
+        existing = merged_by_name.get(raw_item.doc_name)
+        if existing is None:
+            merged_by_name[raw_item.doc_name] = raw_item
+            continue
+
+        existing_sources = {
+            source.strip()
+            for source in existing.source.split("+")
+            if source.strip()
+        }
+        existing_sources.add(raw_item.source)
+        merged_by_name[raw_item.doc_name] = DocumentManagementItemResponse(
+            doc_name=existing.doc_name,
+            title=existing.title or raw_item.title,
+            source="+".join(sorted(existing_sources)),
+            source_filename=raw_item.source_filename,
+            source_type=raw_item.source_type,
+            source_size_bytes=raw_item.source_size_bytes,
+            source_status=raw_item.source_status,
+            preparation_status=existing.preparation_status,
+            uploaded_at=raw_item.uploaded_at,
+            updated_at=raw_item.updated_at,
+            last_error=existing.last_error or raw_item.last_error,
+        )
+
+    return sorted(
+        merged_by_name.values(),
+        key=lambda item: item.doc_name.casefold(),
+    )[:bounded_limit]
+
+
+def _validate_document_lifecycle_doc_name(doc_name: str) -> str:
+    """Validate a document lifecycle target name for file-backed cleanup."""
+    normalized = doc_name.strip()
+    if (
+        not normalized
+        or "/" in normalized
+        or "\\" in normalized
+        or "\x00" in normalized
+        or normalized in {".", ".."}
+    ):
+        raise ValueError("unsafe_name")
+    return normalized
+
+
+def _resolve_raw_document_delete_path(
+    doc_name: str,
+    base_dir: Path | None = None,
+) -> Path | None:
+    """Resolve a raw source path by public doc_name without falling back to content."""
+    base_dir = base_dir or _RAW_DOCUMENT_BASE_DIR
+    if not base_dir.exists():
+        return None
+
+    normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
+    direct_candidate = base_dir / normalized_doc_name
+    if (
+        direct_candidate.is_file()
+        and direct_candidate.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS
+    ):
+        return direct_candidate
+
+    raw_paths = [
+        path
+        for path in sorted(base_dir.iterdir(), key=lambda candidate: candidate.name.casefold())
+        if path.is_file() and path.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS
+    ]
+    sibling_counts: dict[str, int] = {}
+    for path in raw_paths:
+        sibling_counts[path.stem] = sibling_counts.get(path.stem, 0) + 1
+
+    matches = [
+        path
+        for path in raw_paths
+        if _raw_document_doc_name(path, sibling_counts) == normalized_doc_name
+    ]
+    if not matches:
+        return None
+    if len(matches) > 1:
+        raise ValueError("conflict")
+    return matches[0]
+
+
+def _structured_document_base_dir() -> Path:
+    """Return the active file-backed structured document directory."""
+    base_dir = getattr(document_artifact_repository, "base_dir", None)
+    if isinstance(base_dir, Path):
+        return base_dir
+    if isinstance(base_dir, str):
+        return Path(base_dir)
+    return Path("data/structured")
+
+
+def _resolve_structured_document_delete_path(doc_name: str) -> Path:
+    """Resolve the structured JSON artifact path for a lifecycle target."""
+    normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
+    suffix = ".structured.json"
+    if normalized_doc_name.endswith(suffix):
+        file_name = normalized_doc_name
+    elif Path(normalized_doc_name).suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS:
+        file_name = f"{Path(normalized_doc_name).stem}{suffix}"
+    else:
+        file_name = f"{normalized_doc_name}{suffix}"
+    return _structured_document_base_dir() / file_name
+
+
+def _resolve_faiss_document_artifact_dir(doc_name: str) -> Path:
+    """Resolve the current file-backed derived artifact directory without creating it."""
+    normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
+    if Path(normalized_doc_name).suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS:
+        normalized_doc_name = Path(normalized_doc_name).stem
+    return _DERIVED_DOCUMENT_BASE_DIR / normalized_doc_name
+
+
+def _delete_document_file_backed_artifacts(doc_name: str) -> dict[str, bool]:
+    """Delete file-backed document artifacts for an explicit lifecycle request."""
+    normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
+    raw_path = _resolve_raw_document_delete_path(normalized_doc_name)
+    structured_path = _resolve_structured_document_delete_path(normalized_doc_name)
+    derived_dir = _resolve_faiss_document_artifact_dir(normalized_doc_name)
+
+    source_affected = False
+    structured_affected = False
+    derived_affected = False
+
+    if raw_path is not None and raw_path.exists():
+        raw_path.unlink()
+        source_affected = True
+
+    if structured_path.exists():
+        structured_path.unlink()
+        structured_affected = True
+
+    if derived_dir.exists():
+        if not derived_dir.is_dir():
+            raise ValueError("storage_failure")
+        shutil.rmtree(derived_dir)
+        derived_affected = True
+
+    return {
+        "source_affected": source_affected,
+        "structured_artifacts_affected": structured_affected,
+        "derived_resources_affected": derived_affected,
+    }
+
+
+def _document_lifecycle_namespace(doc_name: str) -> str:
+    """Return extension-free namespace for structured/derived lifecycle operations."""
+    normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
+    suffix = ".structured.json"
+    if normalized_doc_name.endswith(suffix):
+        return normalized_doc_name[: -len(suffix)]
+    if Path(normalized_doc_name).suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS:
+        return Path(normalized_doc_name).stem
+    return normalized_doc_name
+
+
+def _resolve_raw_document_rename_target(
+    *,
+    current_raw_path: Path | None,
+    new_doc_name: str,
+) -> Path | None:
+    """Resolve raw-source rename target while preserving current extension by default."""
+    if current_raw_path is None:
+        return None
+    normalized_new_name = _validate_document_lifecycle_doc_name(new_doc_name)
+    new_path = Path(normalized_new_name)
+    if new_path.suffix:
+        if new_path.suffix.casefold() not in _RAW_DOCUMENT_EXTENSIONS:
+            raise ValueError("unsupported_action")
+        target_filename = new_path.name
+    else:
+        target_filename = f"{normalized_new_name}{current_raw_path.suffix}"
+    return current_raw_path.parent / target_filename
+
+
+def _resolve_structured_document_rename_target(new_doc_name: str) -> Path:
+    """Resolve structured JSON rename target for a lifecycle rename request."""
+    new_namespace = _document_lifecycle_namespace(new_doc_name)
+    return _structured_document_base_dir() / f"{new_namespace}.structured.json"
+
+
+def _resolve_faiss_document_rename_target(new_doc_name: str) -> Path:
+    """Resolve derived artifact directory target for a lifecycle rename request."""
+    return _DERIVED_DOCUMENT_BASE_DIR / _document_lifecycle_namespace(new_doc_name)
+
+
+def _assert_rename_target_available(source: Path | None, target: Path | None) -> None:
+    """Fail when a lifecycle rename target already exists for a different artifact."""
+    if source is None or target is None:
+        return
+    try:
+        if source.resolve() == target.resolve():
+            return
+    except FileNotFoundError:
+        pass
+    if target.exists():
+        raise ValueError("conflict")
+
+
+def _update_renamed_structured_document_metadata(
+    structured_path: Path,
+    *,
+    old_doc_name: str,
+    new_doc_name: str,
+) -> None:
+    """Update lightweight top-level identity metadata after structured file rename."""
+    if not structured_path.exists():
+        return
+    try:
+        payload = json.loads(structured_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("storage_failure") from error
+    if not isinstance(payload, dict):
+        raise ValueError("storage_failure")
+
+    old_namespace = _document_lifecycle_namespace(old_doc_name)
+    new_namespace = _document_lifecycle_namespace(new_doc_name)
+    if payload.get("document_id") in {None, old_doc_name, old_namespace}:
+        payload["document_id"] = new_namespace
+    if payload.get("title") in {None, old_doc_name, old_namespace}:
+        payload["title"] = new_namespace
+    try:
+        structured_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as error:
+        raise ValueError("storage_failure") from error
+
+
+def _rename_document_file_backed_artifacts(
+    *,
+    doc_name: str,
+    new_doc_name: str,
+) -> dict[str, bool | str]:
+    """Rename file-backed document artifacts for an explicit lifecycle request."""
+    old_doc_name = _validate_document_lifecycle_doc_name(doc_name)
+    normalized_new_doc_name = _validate_document_lifecycle_doc_name(new_doc_name)
+    if _document_lifecycle_namespace(old_doc_name) == _document_lifecycle_namespace(
+        normalized_new_doc_name
+    ):
+        raise ValueError("conflict")
+
+    raw_path = _resolve_raw_document_delete_path(old_doc_name)
+    raw_target = _resolve_raw_document_rename_target(
+        current_raw_path=raw_path,
+        new_doc_name=normalized_new_doc_name,
+    )
+    structured_path = _resolve_structured_document_delete_path(old_doc_name)
+    structured_target = _resolve_structured_document_rename_target(normalized_new_doc_name)
+    derived_dir = _resolve_faiss_document_artifact_dir(old_doc_name)
+    derived_target = _resolve_faiss_document_rename_target(normalized_new_doc_name)
+
+    source_exists = raw_path is not None and raw_path.exists()
+    structured_exists = structured_path.exists()
+    derived_exists = derived_dir.exists()
+    if not (source_exists or structured_exists or derived_exists):
+        raise FileNotFoundError("missing_document")
+
+    _assert_rename_target_available(raw_path if source_exists else None, raw_target)
+    _assert_rename_target_available(
+        structured_path if structured_exists else None,
+        structured_target,
+    )
+    _assert_rename_target_available(derived_dir if derived_exists else None, derived_target)
+
+    source_affected = False
+    structured_affected = False
+    derived_affected = False
+
+    if source_exists and raw_path is not None and raw_target is not None:
+        raw_path.rename(raw_target)
+        source_affected = True
+
+    if structured_exists:
+        structured_path.rename(structured_target)
+        _update_renamed_structured_document_metadata(
+            structured_target,
+            old_doc_name=old_doc_name,
+            new_doc_name=normalized_new_doc_name,
+        )
+        structured_affected = True
+
+    if derived_exists:
+        if not derived_dir.is_dir():
+            raise ValueError("storage_failure")
+        derived_dir.rename(derived_target)
+        derived_affected = True
+
+    return {
+        "new_doc_name": _document_lifecycle_namespace(normalized_new_doc_name),
+        "source_affected": source_affected,
+        "structured_artifacts_affected": structured_affected,
+        "derived_resources_affected": derived_affected,
+    }
 
 
 def _merge_document_candidates(
@@ -274,6 +800,11 @@ def _map_task_unit_content_response(
                         _map_artifact_target_ref_response(target_ref)
                         for target_ref in content_block.artifact_target_refs
                     ]
+                ),
+                interaction_availability=(
+                    None
+                    if getattr(content_block, "interaction_availability", None) is None
+                    else dict(content_block.interaction_availability)
                 ),
                 metadata=(
                     None
@@ -543,6 +1074,9 @@ def _reading_target_kwargs(
         "chapter_id": target.chapter_id,
         "section_id": target.section_id,
         "task_unit_id": target.task_unit_id,
+        "content_block_id": target.content_block_id,
+        "source_hash": target.source_hash,
+        "source_structure_version": target.source_structure_version,
     }
 
 
@@ -600,6 +1134,7 @@ def _map_reading_interaction_envelope(result) -> ReadingInteractionResponseEnvel
             chapter_id=target.chapter_id,
             section_id=target.section_id,
             task_unit_id=target.task_unit_id,
+            content_block_id=target.content_block_id,
             title=target.title,
         ),
         interaction_type=result.interaction_type,
@@ -790,6 +1325,319 @@ def list_documents(
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/documents/management", response_model=DocumentManagementListResponse)
+def list_document_management_items(
+    q: str | None = Query(
+        None,
+        description="Optional case-insensitive substring query against document name/title.",
+    ),
+    limit: int = Query(
+        50,
+        ge=1,
+        le=200,
+        description="Maximum number of document management rows to return.",
+    ),
+):
+    """List lightweight document source/preparation status for file management UI."""
+    normalized_query = None if q is None or not q.strip() else q.strip()
+    try:
+        structured_items = document_artifact_repository.list_documents(
+            query=normalized_query,
+            limit=200,
+        )
+        raw_items = _list_raw_document_management_items(
+            query=normalized_query,
+            limit=200,
+        )
+        merged_items = _merge_document_management_items(
+            structured_items=structured_items,
+            raw_items=raw_items,
+            limit=limit,
+        )
+        return DocumentManagementListResponse(
+            items=merged_items,
+            query=normalized_query,
+            total=len(merged_items),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/documents/upload", response_model=DocumentUploadResponse)
+async def upload_document(request: Request, response: Response):
+    """Store a raw document source candidate without preparing or parsing it."""
+    body = await request.body()
+    try:
+        filename, file_bytes, title, conflict_policy = _parse_document_upload_multipart(
+            request.headers.get("content-type"),
+            body,
+        )
+        normalized_filename = _normalize_upload_filename(filename)
+
+        if not file_bytes:
+            response.status_code = 400
+            return DocumentUploadResponse(
+                doc_name=Path(normalized_filename).stem,
+                title=title or Path(normalized_filename).stem,
+                source_filename=normalized_filename,
+                source_type=_document_upload_failure_source_type(normalized_filename),
+                source_size_bytes=0,
+                source_status="failed",
+                preparation_status="unknown",
+                conflict_policy=conflict_policy,
+                reason="missing_source",
+            )
+        if len(file_bytes) > _DOCUMENT_UPLOAD_MAX_BYTES:
+            response.status_code = 413
+            return DocumentUploadResponse(
+                doc_name=Path(normalized_filename).stem,
+                title=title or Path(normalized_filename).stem,
+                source_filename=normalized_filename,
+                source_type=_document_upload_failure_source_type(normalized_filename),
+                source_size_bytes=len(file_bytes),
+                source_status="failed",
+                preparation_status="unknown",
+                conflict_policy=conflict_policy,
+                reason="file_too_large",
+            )
+
+        _RAW_DOCUMENT_BASE_DIR.mkdir(parents=True, exist_ok=True)
+        destination = _resolve_upload_destination(
+            normalized_filename,
+            conflict_policy,
+            _RAW_DOCUMENT_BASE_DIR,
+        )
+        destination.write_bytes(file_bytes)
+        response.status_code = 201
+        return _build_document_upload_response(
+            destination=destination,
+            source_size_bytes=len(file_bytes),
+            source_hash=hashlib.sha256(file_bytes).hexdigest(),
+            source_status="uploaded",
+            title=title,
+            conflict_policy=conflict_policy,
+        )
+    except FileExistsError:
+        response.status_code = 409
+        filename = filename if "filename" in locals() else "upload"
+        normalized_filename = Path(filename).name
+        return DocumentUploadResponse(
+            doc_name=Path(normalized_filename).stem or "upload",
+            title=title if "title" in locals() else None,
+            source_filename=normalized_filename,
+            source_type=_document_upload_failure_source_type(normalized_filename),
+            source_size_bytes=len(file_bytes) if "file_bytes" in locals() else 0,
+            source_status="failed",
+            preparation_status="unknown",
+            conflict_policy=conflict_policy if "conflict_policy" in locals() else "reject",
+            reason="duplicate_conflict",
+        )
+    except ValueError as error:
+        reason = str(error)
+        status_code = 415 if reason == "unsupported_file_type" else 400
+        response.status_code = status_code
+        filename = filename if "filename" in locals() else "upload"
+        normalized_filename = Path(filename).name or "upload"
+        source_type = _document_upload_failure_source_type(normalized_filename)
+        if reason not in {
+            "unsupported_file_type",
+            "unsafe_filename",
+            "missing_source",
+            "validation_failure",
+        }:
+            reason = "validation_failure"
+        return DocumentUploadResponse(
+            doc_name=Path(normalized_filename).stem or "upload",
+            title=title if "title" in locals() else None,
+            source_filename=normalized_filename,
+            source_type=source_type,
+            source_size_bytes=len(file_bytes) if "file_bytes" in locals() else 0,
+            source_status="failed",
+            preparation_status="unknown",
+            conflict_policy=conflict_policy if "conflict_policy" in locals() else "reject",
+            reason=reason,
+        )
+    except Exception:
+        logger.exception("document_upload_failed")
+        response.status_code = 500
+        filename = filename if "filename" in locals() else "upload"
+        normalized_filename = Path(filename).name or "upload"
+        return DocumentUploadResponse(
+            doc_name=Path(normalized_filename).stem or "upload",
+            title=title if "title" in locals() else None,
+            source_filename=normalized_filename,
+            source_type=_document_upload_failure_source_type(normalized_filename),
+            source_size_bytes=len(file_bytes) if "file_bytes" in locals() else 0,
+            source_status="failed",
+            preparation_status="unknown",
+            conflict_policy=conflict_policy if "conflict_policy" in locals() else "reject",
+            reason="storage_failure",
+        )
+
+
+@app.post(
+    "/documents/lifecycle/delete",
+    response_model=DocumentLifecycleActionResponse,
+)
+def delete_document_lifecycle(
+    request: DocumentLifecycleActionRequest,
+    response: Response,
+):
+    """Explicitly delete a document candidate and file-backed derived artifacts."""
+    try:
+        doc_name = _validate_document_lifecycle_doc_name(request.doc_name)
+        if request.action != "delete":
+            response.status_code = 400
+            return DocumentLifecycleActionResponse(
+                doc_name=doc_name,
+                action=request.action,
+                status="rejected",
+                reason="unsupported_action",
+                deleted=False,
+            )
+
+        if not request.confirm:
+            response.status_code = 400
+            return DocumentLifecycleActionResponse(
+                doc_name=doc_name,
+                action="delete",
+                status="rejected",
+                reason="validation_failure",
+                deleted=False,
+            )
+
+        effects = _delete_document_file_backed_artifacts(doc_name)
+        deleted = any(effects.values())
+        if not deleted:
+            response.status_code = 404
+            return DocumentLifecycleActionResponse(
+                doc_name=doc_name,
+                action="delete",
+                status="rejected",
+                reason="missing_document",
+                deleted=False,
+            )
+
+        return DocumentLifecycleActionResponse(
+            doc_name=doc_name,
+            action="delete",
+            status="accepted",
+            source_affected=effects["source_affected"],
+            structured_artifacts_affected=effects["structured_artifacts_affected"],
+            derived_resources_affected=effects["derived_resources_affected"],
+            archived=False,
+            deleted=True,
+        )
+    except ValueError as error:
+        reason = str(error)
+        if reason not in {
+            "unsafe_name",
+            "conflict",
+            "validation_failure",
+            "storage_failure",
+        }:
+            reason = "validation_failure"
+        response.status_code = 409 if reason == "conflict" else 400
+        return DocumentLifecycleActionResponse(
+            doc_name=(request.doc_name or "document").strip() or "document",
+            action="delete",
+            status="conflict" if reason == "conflict" else "rejected",
+            reason=reason if reason != "unsafe_name" else "unsafe_name",
+            deleted=False,
+        )
+    except Exception:
+        logger.exception("document_lifecycle_delete_failed")
+        response.status_code = 500
+        return DocumentLifecycleActionResponse(
+            doc_name=request.doc_name,
+            action="delete",
+            status="failed",
+            reason="storage_failure",
+            deleted=False,
+        )
+
+
+@app.post(
+    "/documents/lifecycle/rename",
+    response_model=DocumentLifecycleActionResponse,
+)
+def rename_document_lifecycle(
+    request: DocumentLifecycleActionRequest,
+    response: Response,
+):
+    """Explicitly rename a document candidate and file-backed derived artifacts."""
+    try:
+        doc_name = _validate_document_lifecycle_doc_name(request.doc_name)
+        if request.action != "rename":
+            response.status_code = 400
+            return DocumentLifecycleActionResponse(
+                doc_name=doc_name,
+                action=request.action,
+                status="rejected",
+                reason="unsupported_action",
+            )
+        if request.new_doc_name is None:
+            response.status_code = 400
+            return DocumentLifecycleActionResponse(
+                doc_name=doc_name,
+                action="rename",
+                status="rejected",
+                reason="validation_failure",
+            )
+
+        effects = _rename_document_file_backed_artifacts(
+            doc_name=doc_name,
+            new_doc_name=request.new_doc_name,
+        )
+        return DocumentLifecycleActionResponse(
+            doc_name=doc_name,
+            action="rename",
+            status="accepted",
+            new_doc_name=str(effects["new_doc_name"]),
+            source_affected=bool(effects["source_affected"]),
+            structured_artifacts_affected=bool(
+                effects["structured_artifacts_affected"]
+            ),
+            derived_resources_affected=bool(effects["derived_resources_affected"]),
+        )
+    except FileNotFoundError:
+        response.status_code = 404
+        return DocumentLifecycleActionResponse(
+            doc_name=request.doc_name,
+            action="rename",
+            status="rejected",
+            reason="missing_document",
+        )
+    except ValueError as error:
+        reason = str(error)
+        if reason not in {
+            "unsafe_name",
+            "unsupported_action",
+            "conflict",
+            "validation_failure",
+            "storage_failure",
+        }:
+            reason = "validation_failure"
+        response.status_code = 409 if reason == "conflict" else 400
+        return DocumentLifecycleActionResponse(
+            doc_name=(request.doc_name or "document").strip() or "document",
+            action="rename",
+            status="conflict" if reason == "conflict" else "rejected",
+            reason=reason,
+        )
+    except Exception:
+        logger.exception("document_lifecycle_rename_failed")
+        response.status_code = 500
+        return DocumentLifecycleActionResponse(
+            doc_name=request.doc_name,
+            action="rename",
+            status="failed",
+            reason="storage_failure",
+        )
 
 
 @app.post("/documents/prepare", response_model=PrepareDocumentResponse)

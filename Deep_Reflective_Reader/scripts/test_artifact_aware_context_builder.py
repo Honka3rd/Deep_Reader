@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from context.artifact_aware_context import (  # noqa: E402
     ArtifactAwareContextBuilder,
+    ArtifactContextTarget,
     ArtifactContextSummary,
 )
 
@@ -202,6 +203,98 @@ def test_exports_provenance_metadata_without_context_payload() -> None:
     )
 
 
+def test_content_block_policy_allows_parent_task_unit_artifacts_only() -> None:
+    result = ArtifactAwareContextBuilder().build_for_target(
+        target=ArtifactContextTarget(
+            target_level="content_block",
+            target_id="unit-1:block:0",
+            task_unit_id="unit-1",
+            content_block_id="unit-1:block:0",
+        ),
+        artifacts=[
+            ArtifactContextSummary(
+                artifact_id="analysis-unit-1",
+                artifact_type="analysis",
+                target_level="task_unit",
+                target_id="unit-1",
+                focus="parent task-unit interpretation",
+                metadata={"task_unit_id": "unit-1"},
+            ),
+            ArtifactContextSummary(
+                artifact_id="analysis-block-sibling",
+                artifact_type="analysis",
+                target_level="content_block",
+                target_id="unit-1:block:1",
+                focus="sibling block interpretation",
+                metadata={
+                    "task_unit_id": "unit-1",
+                    "content_block_id": "unit-1:block:1",
+                },
+            ),
+            ArtifactContextSummary(
+                artifact_id="quiz-other-unit",
+                artifact_type="quiz",
+                target_level="task_unit",
+                target_id="unit-2",
+                concepts=("other unit",),
+                metadata={"task_unit_id": "unit-2"},
+            ),
+        ],
+    )
+    metadata = result.to_metadata()
+
+    _assert(
+        result.referenced_artifact_ids == ["analysis-unit-1"],
+        "content-block context should keep only parent task-unit artifacts",
+    )
+    _assert(
+        result.referenced_artifact_target_levels == ["task_unit"],
+        "content-block secondary context should not reference sibling block levels",
+    )
+    _assert(
+        "parent task-unit interpretation" in result.context_text,
+        "parent task-unit artifact summary should be available as secondary context",
+    )
+    _assert(
+        "sibling block interpretation" not in result.context_text,
+        "sibling content-block artifacts should not enter secondary context",
+    )
+    _assert(
+        metadata["referenced_artifact_ids"] == ["analysis-unit-1"],
+        "provenance metadata should only record the kept parent artifact",
+    )
+    _assert("context_text" not in metadata, "metadata must not persist context text")
+    _assert("payload" not in metadata, "metadata must not persist child payloads")
+
+
+def test_non_content_block_policy_preserves_existing_artifact_candidates() -> None:
+    result = ArtifactAwareContextBuilder().build_for_target(
+        target=ArtifactContextTarget(
+            target_level="section",
+            target_id="section-1",
+        ),
+        artifacts=[
+            ArtifactContextSummary(
+                artifact_id="analysis-unit-1",
+                artifact_type="analysis",
+                target_level="task_unit",
+                target_id="unit-1",
+            ),
+            ArtifactContextSummary(
+                artifact_id="quiz-unit-2",
+                artifact_type="quiz",
+                target_level="task_unit",
+                target_id="unit-2",
+            ),
+        ],
+    )
+
+    _assert(
+        result.referenced_artifact_ids == ["analysis-unit-1", "quiz-unit-2"],
+        "non-content-block targets should preserve existing artifact candidate behavior",
+    )
+
+
 def test_omits_empty_pruning_reason_from_provenance_metadata() -> None:
     metadata = ArtifactAwareContextBuilder().build_secondary_context([]).to_metadata()
 
@@ -236,6 +329,8 @@ if __name__ == "__main__":
     test_prunes_duplicates_and_max_artifacts()
     test_applies_artifact_context_char_budget_after_primary_context_priority()
     test_exports_provenance_metadata_without_context_payload()
+    test_content_block_policy_allows_parent_task_unit_artifacts_only()
+    test_non_content_block_policy_preserves_existing_artifact_candidates()
     test_omits_empty_pruning_reason_from_provenance_metadata()
     test_rejects_negative_artifact_context_char_budget()
     test_rejects_negative_max_artifacts()

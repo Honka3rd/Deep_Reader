@@ -10,10 +10,14 @@ from section_tasks.artifact_validity import (
 )
 from context.artifact_aware_context import ArtifactAwareContextResult
 from section_tasks.reading_interaction_service_contracts import (
+    ANCESTOR_SUMMARY_CONTEXT_METADATA_KEY,
     ARTIFACT_REFERENCE_METADATA_KEY,
     ReadingInteractionArtifact,
     ReadingInteractionRequest,
+    build_ancestor_context_metadata,
     build_artifact_reference_metadata,
+    build_external_research_metadata,
+    EXTERNAL_RESEARCH_METADATA_KEY,
 )
 
 
@@ -26,9 +30,15 @@ CRITICAL_THINKING_QUESTION_INSTRUCTION = (
 )
 CRITICAL_THINKING_EVALUATION_INSTRUCTION = (
     "You are evaluating a user's answer for critical thinking training. Assess the "
-    "answer against the question and reading target. Return a strict JSON object "
-    "with non-empty string fields: feedback, strengths, improvements. You may also "
-    "include numeric score from 0 to 5."
+    "answer against the question and reading target. Also evaluate information gain: "
+    "answers that mostly copy or repeat the question, primary source, existing "
+    "insight, or uncited borrowed viewpoints should score lower even when fluent. "
+    "Answers should score higher when they add an evidence-bound distinction, "
+    "reframing, uncertainty reduction, or productive surprise while preserving "
+    "critical-thinking discipline and avoiding unsupported novelty. Return a strict "
+    "JSON object with non-empty string fields: feedback, strengths, improvements. "
+    "Use those existing fields and the optional score to reflect information gain; "
+    "do not add new JSON fields. You may also include numeric score from 0 to 5."
 )
 CRITICAL_THINKING_CONTINUITY_GUIDANCE = (
     "Critical-thinking learning-continuity guidance: Treat lower-level "
@@ -227,6 +237,7 @@ class CriticalThinkingSessionService:
         reason: str | None = None,
     ) -> ReadingInteractionArtifact:
         metadata = self._metadata(
+            request=request,
             prompt_instruction_version=request.prompt_instruction_version,
             context_metadata=request.context_metadata,
         )
@@ -260,6 +271,7 @@ class CriticalThinkingSessionService:
             chapter_id=session.chapter_id,
             section_id=session.section_id,
             task_unit_id=session.task_unit_id,
+            content_block_id=session.content_block_id,
             payload=dict(payload),
             metadata=metadata,
             reason=reason,
@@ -268,6 +280,7 @@ class CriticalThinkingSessionService:
     @staticmethod
     def _metadata(
         *,
+        request: ReadingInteractionRequest,
         prompt_instruction_version: str | None,
         context_metadata: dict[str, object],
     ) -> dict[str, object]:
@@ -284,6 +297,12 @@ class CriticalThinkingSessionService:
             artifact_reference = build_artifact_reference_metadata(context_metadata)
             if artifact_reference is not None:
                 metadata[ARTIFACT_REFERENCE_METADATA_KEY] = artifact_reference
+        ancestor_context_metadata = build_ancestor_context_metadata(request)
+        if ancestor_context_metadata is not None:
+            metadata[ANCESTOR_SUMMARY_CONTEXT_METADATA_KEY] = ancestor_context_metadata
+        external_research_metadata = build_external_research_metadata(request)
+        if external_research_metadata is not None:
+            metadata[EXTERNAL_RESEARCH_METADATA_KEY] = external_research_metadata
         return metadata
 
     def _require_session(self, session: ReadingInteractionArtifact) -> None:
@@ -314,7 +333,9 @@ class CriticalThinkingSessionService:
     ) -> dict[str, Any]:
         if isinstance(raw_output, str):
             try:
-                parsed_output = json.loads(raw_output)
+                parsed_output = CriticalThinkingSessionService._load_json_object_text(
+                    raw_output
+                )
             except json.JSONDecodeError as error:
                 raise ValueError(f"invalid {output_name} JSON: {error.msg}") from error
         elif isinstance(raw_output, dict):
@@ -325,6 +346,26 @@ class CriticalThinkingSessionService:
         if not isinstance(parsed_output, dict):
             raise ValueError(f"{output_name} output must be a JSON object")
         return parsed_output
+
+    @staticmethod
+    def _load_json_object_text(raw_output: str) -> Any:
+        output = raw_output.strip()
+        if not output:
+            raise json.JSONDecodeError("Expecting value", raw_output, 0)
+
+        if output.startswith("```"):
+            lines = output.splitlines()
+            if len(lines) >= 3 and lines[-1].strip() == "```":
+                output = "\n".join(lines[1:-1]).strip()
+
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            object_start = output.find("{")
+            if object_start < 0:
+                raise
+            parsed_output, _ = json.JSONDecoder().raw_decode(output[object_start:])
+            return parsed_output
 
     @staticmethod
     def _parse_and_validate_question(

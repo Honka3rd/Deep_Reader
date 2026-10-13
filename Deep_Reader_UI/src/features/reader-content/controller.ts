@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
-import type { ContentBlock, RequestStatus, SectionSelection } from "../../types/api";
+import type { RequestStatus, SectionSelection } from "../../types/api";
 import type { TaskUnitContentService } from "../../services";
 import { taskUnitContentService } from "../../services";
 import {
   aggregateContentBlocks,
   buildContentGroups,
+  type ReaderContentBlock,
   type ReaderContentGroup,
 } from "./model";
 
@@ -18,7 +19,7 @@ export function useReaderContentController({
   service = taskUnitContentService,
 }: UseReaderContentControllerOptions) {
   const [selectedSection, setSelectedSection] = useState<SectionSelection | null>(null);
-  const [contentBlocks, setContentBlocks] = useState<ContentBlock[]>([]);
+  const [contentBlocks, setContentBlocks] = useState<ReaderContentBlock[]>([]);
   const [contentGroups, setContentGroups] = useState<ReaderContentGroup[]>([]);
   const [contentStatus, setContentStatus] = useState<RequestStatus>("initial");
   const [contentError, setContentError] = useState("");

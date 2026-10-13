@@ -31,15 +31,20 @@ def _target(
         "The passage argues that incentives shape behavior, but also implies "
         "that institutions and assumptions affect the final outcome."
     ),
+    *,
+    target_level: str = "section",
 ) -> ResolvedReadingTarget:
+    is_content_block = target_level == "content_block"
     return ResolvedReadingTarget(
         document_id="doc-1",
         document_title="Document One",
-        target_level="section",
-        target_id="section-1",
+        target_level=target_level,
+        target_id="unit-1:block:0" if is_content_block else "section-1",
         content=content,
         chapter_id="chapter-1",
         section_id="section-1",
+        task_unit_id="unit-1" if is_content_block else None,
+        content_block_id="unit-1:block:0" if is_content_block else None,
     )
 
 
@@ -48,9 +53,11 @@ def _request(
         "The passage argues that incentives shape behavior, but also implies "
         "that institutions and assumptions affect the final outcome."
     ),
+    *,
+    target_level: str = "section",
 ) -> ReadingInteractionRequest:
     return ReadingInteractionRequest(
-        target=_target(content),
+        target=_target(content, target_level=target_level),
         interaction_type="critical_thinking_session",
         context_metadata={"context_mode": "full_target"},
         prompt_instruction_version="critical_thinking_prompt_v1",
@@ -261,6 +268,81 @@ def test_insufficient_content_and_invalid_question_do_not_complete() -> None:
     )
 
 
+def test_content_block_preflight_allows_readable_and_rejects_tiny_blocks() -> None:
+    calls: list[str] = []
+
+    def question_generator(
+        request: ReadingInteractionRequest,
+        instruction: str,
+    ) -> dict[str, str]:
+        calls.append(request.target.target_id)
+        return {"question": "Which assumption matters most in this block?"}
+
+    service = CriticalThinkingSessionService(
+        question_generator,
+        lambda session, instruction: {},
+    )
+    readable = service.generate_question(
+        _request(
+            "This block makes a claim about incentives and hidden assumptions.",
+            target_level="content_block",
+        )
+    )
+    tiny = service.generate_question(_request("tiny", target_level="content_block"))
+
+    _assert(
+        readable.status == "question_generated",
+        "readable content block should generate a critical-thinking question",
+    )
+    _assert(
+        readable.content_block_id == "unit-1:block:0",
+        "content-block critical-thinking session should preserve block identity",
+    )
+    _assert(tiny.status == "insufficient_content", "tiny block should fast path")
+    _assert(
+        calls == ["unit-1:block:0"],
+        "question generator should be called only for readable content blocks",
+    )
+
+
+def test_accepts_json_object_wrapped_by_model_text() -> None:
+    service = CriticalThinkingSessionService(
+        lambda request, instruction: (
+            "```json\n"
+            "{\"question\":\"Which assumption should the reader test?\"}"
+            "\n```"
+        ),
+        lambda session, instruction: (
+            "Here is the evaluation:\n"
+            "{\"feedback\":\"Good reasoning\","
+            "\"strengths\":\"Names an assumption\","
+            "\"improvements\":\"Use more evidence\","
+            "\"score\":4}"
+        ),
+    )
+
+    generated = service.generate_question(_request())
+    answered = service.submit_answer(generated, "The assumption is too strong.")
+    completed = service.evaluate_answer(answered)
+
+    _assert(
+        generated.status == "question_generated",
+        "fenced JSON question should be accepted",
+    )
+    _assert(
+        generated.payload["question"] == "Which assumption should the reader test?",
+        "question should be parsed from fenced JSON",
+    )
+    _assert(
+        completed.status == "completed",
+        "evaluation JSON with leading text should be accepted",
+    )
+    _assert(
+        completed.payload["evaluation"]["score"] == 4,
+        "evaluation fields should be parsed from extracted JSON",
+    )
+
+
 def test_rejects_invalid_lifecycle_transitions() -> None:
     service = _service()
     question = service.generate_question(_request())
@@ -311,6 +393,8 @@ if __name__ == "__main__":
     test_submit_answer_and_evaluate_completed_session()
     test_evaluation_failure_preserves_answer_for_retry()
     test_insufficient_content_and_invalid_question_do_not_complete()
+    test_content_block_preflight_allows_readable_and_rejects_tiny_blocks()
+    test_accepts_json_object_wrapped_by_model_text()
     test_rejects_invalid_lifecycle_transitions()
     test_rejects_non_critical_thinking_requests()
     print("critical-thinking session service tests passed")

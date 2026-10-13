@@ -106,6 +106,15 @@ def _completed_artifact() -> ReadingInteractionArtifact:
     )
 
 
+def _insufficient_artifact() -> ReadingInteractionArtifact:
+    return ReadingInteractionArtifact.from_target(
+        target=_target("@@@ !!! ###"),
+        interaction_type="quiz",
+        status="insufficient_content",
+        reason="target content is too short for quiz generation",
+    )
+
+
 def test_read_missing_artifact_does_not_generate_or_persist() -> None:
     generator_calls: list[str] = []
 
@@ -142,6 +151,28 @@ def test_read_existing_artifact_returns_persisted_result() -> None:
     artifact = orchestrator.read(_request())
 
     _assert(artifact is existing, "read should return current persisted artifact")
+
+
+def test_read_existing_insufficient_content_rechecks_current_target() -> None:
+    store = InMemoryQuizArtifactStore()
+    existing = _insufficient_artifact()
+    store.save_quiz_artifact(existing)
+    orchestrator = QuizInteractionOrchestrator(
+        service=QuizInteractionService(lambda request, max_items, valid_types: {}),
+        artifact_store=store,
+    )
+
+    readable = orchestrator.read(_request())
+    still_insufficient = orchestrator.read(_request(content="@@@ !!! ###"))
+
+    _assert(
+        readable.status == "not_generated",
+        "readable targets should not stay masked by stale insufficient artifacts",
+    )
+    _assert(
+        still_insufficient is existing,
+        "still-insufficient targets should keep the persisted insufficient artifact",
+    )
 
 
 def test_generate_missing_artifact_persists_completed_result() -> None:
@@ -249,11 +280,76 @@ def test_generate_reuses_existing_artifact_unless_refresh_is_requested() -> None
     _assert(store.save_calls == 1, "only refresh should write a new artifact")
 
 
+def test_generate_rechecks_existing_insufficient_content_artifact() -> None:
+    generator_calls: list[str] = []
+
+    def generator(
+        request: ReadingInteractionRequest,
+        max_items: int,
+        valid_types: tuple[str, ...],
+    ) -> dict[str, object]:
+        generator_calls.append(request.target.target_id)
+        return _generated_payload("Recovered question?")
+
+    store = InMemoryQuizArtifactStore()
+    store.save_quiz_artifact(_insufficient_artifact())
+    store.save_calls = 0
+    orchestrator = QuizInteractionOrchestrator(
+        service=QuizInteractionService(generator),
+        artifact_store=store,
+    )
+
+    recovered = orchestrator.generate(_request())
+
+    _assert(
+        recovered.status == "completed",
+        "generate should recheck persisted insufficient-content artifacts",
+    )
+    _assert(generator_calls == ["section-1"], "readable content should call generator")
+    _assert(
+        recovered.payload["items"][0]["question"] == "Recovered question?",
+        "rechecked quiz should replace the insufficient artifact",
+    )
+    _assert(store.save_calls == 1, "recovered quiz should be persisted")
+
+
+def test_generate_rechecks_still_insufficient_artifact_without_generator_call() -> None:
+    generator_calls: list[str] = []
+
+    def generator(
+        request: ReadingInteractionRequest,
+        max_items: int,
+        valid_types: tuple[str, ...],
+    ) -> dict[str, object]:
+        generator_calls.append(request.target.target_id)
+        return _generated_payload()
+
+    store = InMemoryQuizArtifactStore()
+    store.save_quiz_artifact(_insufficient_artifact())
+    store.save_calls = 0
+    orchestrator = QuizInteractionOrchestrator(
+        service=QuizInteractionService(generator),
+        artifact_store=store,
+    )
+
+    still_insufficient = orchestrator.generate(_request(content="@@@ !!! ###"))
+
+    _assert(
+        still_insufficient.status == "insufficient_content",
+        "still-insufficient content should remain insufficient",
+    )
+    _assert(generator_calls == [], "still-insufficient content should skip generator")
+    _assert(store.save_calls == 1, "rechecked insufficient status should be persisted")
+
+
 if __name__ == "__main__":
     test_read_missing_artifact_does_not_generate_or_persist()
     test_read_existing_artifact_returns_persisted_result()
+    test_read_existing_insufficient_content_rechecks_current_target()
     test_generate_missing_artifact_persists_completed_result()
     test_generate_persists_insufficient_content_without_generator_call()
     test_generate_does_not_persist_invalid_output_failure()
     test_generate_reuses_existing_artifact_unless_refresh_is_requested()
+    test_generate_rechecks_existing_insufficient_content_artifact()
+    test_generate_rechecks_still_insufficient_artifact_without_generator_call()
     print("quiz interaction read/generate split tests passed")

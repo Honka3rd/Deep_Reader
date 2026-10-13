@@ -10,10 +10,14 @@ from section_tasks.artifact_validity import (
 )
 from context.artifact_aware_context import ArtifactAwareContextResult
 from section_tasks.reading_interaction_service_contracts import (
+    ANCESTOR_SUMMARY_CONTEXT_METADATA_KEY,
     ARTIFACT_REFERENCE_METADATA_KEY,
     ReadingInteractionArtifact,
     ReadingInteractionRequest,
+    build_ancestor_context_metadata,
     build_artifact_reference_metadata,
+    build_external_research_metadata,
+    EXTERNAL_RESEARCH_METADATA_KEY,
 )
 
 
@@ -27,6 +31,7 @@ QUIZ_DEDUPLICATION_INSTRUCTION = (
 QUIZ_DEDUPLICATION_METADATA_VERSION = "quiz_deduplication_v1"
 QUIZ_TYPES = frozenset({"short_answer", "multiple_choice", "true_false"})
 DEFAULT_QUIZ_MAX_ITEMS_BY_TARGET_LEVEL = {
+    "content_block": 1,
     "task_unit": 3,
     "section": 5,
     "chapter": 10,
@@ -113,6 +118,22 @@ class QuizInteractionService:
             payload=payload,
         )
 
+    def preflight(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact | None:
+        """Return a preflight artifact for non-readable/stale targets, else None."""
+        if request.interaction_type != self.interaction_type:
+            raise ValueError("QuizInteractionService requires interaction_type='quiz'")
+        preflight_result = self._validity_policy.preflight(request)
+        if preflight_result is None:
+            return None
+        return self._artifact(
+            request=request,
+            status=preflight_result.status,
+            reason=preflight_result.reason,
+        )
+
     def _request_with_secondary_context(
         self,
         request: ReadingInteractionRequest,
@@ -159,6 +180,12 @@ class QuizInteractionService:
             )
             if artifact_reference is not None:
                 metadata[ARTIFACT_REFERENCE_METADATA_KEY] = artifact_reference
+        ancestor_context_metadata = build_ancestor_context_metadata(request)
+        if ancestor_context_metadata is not None:
+            metadata[ANCESTOR_SUMMARY_CONTEXT_METADATA_KEY] = ancestor_context_metadata
+        external_research_metadata = build_external_research_metadata(request)
+        if external_research_metadata is not None:
+            metadata[EXTERNAL_RESEARCH_METADATA_KEY] = external_research_metadata
 
         return ReadingInteractionArtifact.from_target(
             target=request.target,
@@ -204,7 +231,9 @@ class QuizInteractionService:
     ) -> dict[str, object]:
         if isinstance(raw_output, str):
             try:
-                parsed_output = json.loads(raw_output)
+                parsed_output = QuizInteractionService._load_json_object_text(
+                    raw_output
+                )
             except json.JSONDecodeError as error:
                 raise ValueError(f"invalid quiz JSON: {error.msg}") from error
         elif isinstance(raw_output, dict):
@@ -221,9 +250,7 @@ class QuizInteractionService:
         if not raw_items:
             raise ValueError("quiz output requires at least one item")
         if len(raw_items) > max_items:
-            raise ValueError(
-                f"quiz output contains {len(raw_items)} items; max is {max_items}"
-            )
+            raw_items = raw_items[:max_items]
 
         return {
             "items": [
@@ -231,6 +258,26 @@ class QuizInteractionService:
                 for index, raw_item in enumerate(raw_items)
             ]
         }
+
+    @staticmethod
+    def _load_json_object_text(raw_output: str) -> Any:
+        output = raw_output.strip()
+        if not output:
+            raise json.JSONDecodeError("Expecting value", raw_output, 0)
+
+        if output.startswith("```"):
+            lines = output.splitlines()
+            if len(lines) >= 3 and lines[-1].strip() == "```":
+                output = "\n".join(lines[1:-1]).strip()
+
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            object_start = output.find("{")
+            if object_start < 0:
+                raise
+            parsed_output, _ = json.JSONDecoder().raw_decode(output[object_start:])
+            return parsed_output
 
     @staticmethod
     def _validate_item(raw_item: Any, index: int) -> dict[str, object]:
@@ -264,6 +311,8 @@ class QuizInteractionService:
             normalized_item["answer"] = answer
         else:
             choices = raw_item.get("choices")
+            if choices is None:
+                choices = raw_item.get("options")
             if not isinstance(choices, list) or len(choices) < 2:
                 raise ValueError(
                     f"{item_label} multiple_choice requires at least two choices"

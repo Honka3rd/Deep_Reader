@@ -30,19 +30,25 @@ def _target(
     target_level: str = "task_unit",
     content: str = "This passage explains incentives, causes, and effects in detail.",
 ) -> ResolvedReadingTarget:
+    is_content_block = target_level == "content_block"
     return ResolvedReadingTarget(
         document_id="doc-1",
         document_title="Document One",
         target_level=target_level,
-        target_id=f"{target_level}-1",
+        target_id="task-unit-1:block:0" if is_content_block else f"{target_level}-1",
         content=content,
         chapter_id="chapter-1" if target_level != "document" else None,
         section_id=(
             "section-1"
-            if target_level in {"section", "task_unit"}
+            if target_level in {"section", "task_unit", "content_block"}
             else None
         ),
-        task_unit_id="task-unit-1" if target_level == "task_unit" else None,
+        task_unit_id=(
+            "task-unit-1"
+            if target_level in {"task_unit", "content_block"}
+            else None
+        ),
+        content_block_id="task-unit-1:block:0" if is_content_block else None,
     )
 
 
@@ -176,7 +182,31 @@ def test_enforces_default_and_configured_target_level_limits() -> None:
         "document max should default to 25",
     )
 
-    too_many_chapter_items = QuizInteractionService(
+    content_block_artifact = QuizInteractionService(
+        lambda request, max_items, valid_types: {
+            "items": [_short_answer_item(index) for index in range(max_items + 2)]
+        }
+    ).generate(_request(target_level="content_block"))
+
+    _assert(
+        content_block_artifact.status == "completed",
+        "readable content-block quiz should complete",
+    )
+    _assert(
+        content_block_artifact.metadata["max_items"]
+        == DEFAULT_QUIZ_MAX_ITEMS_BY_TARGET_LEVEL["content_block"],
+        "content-block max should be explicitly lower than task-unit max",
+    )
+    _assert(
+        len(content_block_artifact.payload["items"]) == 1,
+        "content-block quiz should cap generated items to the block limit",
+    )
+    _assert(
+        content_block_artifact.content_block_id == "task-unit-1:block:0",
+        "content-block quiz should preserve block identity",
+    )
+
+    capped_chapter_items = QuizInteractionService(
         lambda request, max_items, valid_types: {
             "items": [_short_answer_item(index) for index in range(max_items + 1)]
         },
@@ -189,12 +219,16 @@ def test_enforces_default_and_configured_target_level_limits() -> None:
     ).generate(_request(target_level="chapter"))
 
     _assert(
-        too_many_chapter_items.status == "generation_failed",
-        "quiz over configured max should fail generation",
+        capped_chapter_items.status == "completed",
+        "quiz over configured max should be capped",
     )
     _assert(
-        "max is 3" in (too_many_chapter_items.reason or ""),
-        "failure reason should include configured max",
+        len(capped_chapter_items.payload["items"]) == 3,
+        "capped quiz should keep only configured max items",
+    )
+    _assert(
+        capped_chapter_items.payload["items"][-1]["question"] == "What is concept 2?",
+        "capped quiz should preserve original item order",
     )
 
 
@@ -250,6 +284,62 @@ def test_rejects_invalid_type_and_answer_payloads() -> None:
     )
 
 
+def test_accepts_options_alias_for_multiple_choice_output() -> None:
+    artifact = QuizInteractionService(
+        lambda request, max_items, valid_types: {
+            "items": [
+                {
+                    "type": "multiple_choice",
+                    "question": "Pick the central idea.",
+                    "options": ["Incentives", "Weather", "Typography"],
+                    "answer": "Incentives",
+                }
+            ]
+        }
+    ).generate(_request())
+
+    _assert(
+        artifact.status == "completed",
+        "LLM options alias should normalize to canonical choices",
+    )
+    item = artifact.payload["items"][0]
+    _assert(
+        item["choices"] == ["Incentives", "Weather", "Typography"],
+        "options alias should be persisted as canonical choices",
+    )
+    _assert("options" not in item, "canonical service payload should not keep alias")
+
+
+def test_accepts_json_object_wrapped_by_model_text() -> None:
+    fenced_artifact = QuizInteractionService(
+        lambda request, max_items, valid_types: (
+            "```json\n"
+            "{\"items\":[{\"type\":\"short_answer\","
+            "\"question\":\"What matters?\","
+            "\"answer\":\"Assumptions\","
+            "\"explanation\":\"The passage emphasizes assumptions.\"}]}"
+            "\n```"
+        )
+    ).generate(_request())
+    leading_text_artifact = QuizInteractionService(
+        lambda request, max_items, valid_types: (
+            "Here is the quiz JSON:\n"
+            "{\"items\":[{\"type\":\"true_false\","
+            "\"question\":\"The passage discusses causes.\","
+            "\"answer\":true}]}"
+        )
+    ).generate(_request())
+
+    _assert(
+        fenced_artifact.status == "completed",
+        "fenced quiz JSON should complete",
+    )
+    _assert(
+        leading_text_artifact.status == "completed",
+        "quiz JSON with leading text should complete",
+    )
+
+
 def test_insufficient_content_does_not_call_generator() -> None:
     calls: list[str] = []
 
@@ -270,6 +360,30 @@ def test_insufficient_content_does_not_call_generator() -> None:
     _assert(artifact.reason is not None, "insufficient content should include reason")
 
 
+def test_content_block_preflight_rejects_tiny_block_without_generator() -> None:
+    calls: list[str] = []
+
+    def generator(
+        request: ReadingInteractionRequest,
+        max_items: int,
+        valid_types: tuple[str, ...],
+    ) -> dict[str, object]:
+        calls.append(request.target.target_id)
+        return {"items": [_short_answer_item(0)]}
+
+    artifact = QuizInteractionService(generator).generate(
+        _request(target_level="content_block", content="tiny")
+    )
+
+    _assert(artifact.status == "insufficient_content", "tiny block should fast path")
+    _assert(calls == [], "generator should not be called for tiny content blocks")
+    _assert(
+        artifact.metadata["max_items"]
+        == DEFAULT_QUIZ_MAX_ITEMS_BY_TARGET_LEVEL["content_block"],
+        "insufficient content-block artifacts should still report block quiz limit",
+    )
+
+
 def test_rejects_non_quiz_requests_and_bad_limit_config() -> None:
     service = QuizInteractionService(
         lambda request, max_items, valid_types: {"items": [_short_answer_item(0)]}
@@ -286,7 +400,7 @@ def test_rejects_non_quiz_requests_and_bad_limit_config() -> None:
     _expect_value_error(
         lambda: QuizInteractionService(
             lambda request, max_items, valid_types: {"items": [_short_answer_item(0)]},
-            max_items_by_target_level={"task_unit": 0},
+            max_items_by_target_level={"content_block": 0},
         ),
         "positive integers",
     )
@@ -297,6 +411,9 @@ if __name__ == "__main__":
     test_accepts_fewer_than_limit_for_section()
     test_enforces_default_and_configured_target_level_limits()
     test_rejects_invalid_type_and_answer_payloads()
+    test_accepts_options_alias_for_multiple_choice_output()
+    test_accepts_json_object_wrapped_by_model_text()
     test_insufficient_content_does_not_call_generator()
+    test_content_block_preflight_rejects_tiny_block_without_generator()
     test_rejects_non_quiz_requests_and_bad_limit_config()
     print("quiz interaction service tests passed")

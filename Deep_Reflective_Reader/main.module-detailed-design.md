@@ -40,6 +40,10 @@
 |---|---|---|
 | `GET /health` | direct route handler | stateless read |
 | `GET /documents` | `DocumentArtifactRepository.list_documents` | lightweight read/search |
+| `GET /documents/management` | structured list + raw source metadata merge | lightweight management status read |
+| `POST /documents/upload` | route-local raw source registration | explicit raw-source write |
+| `POST /documents/lifecycle/delete` | file-backed document candidate cleanup | explicit delete mutation |
+| `POST /documents/lifecycle/rename` | file-backed document candidate rename | explicit rename mutation |
 | `POST /documents/prepare` | prepare pipeline via coordinator path | write-capable orchestration |
 | `POST /documents/ask` | `QACoordinator` | runtime QA |
 | `POST /documents/task-layout` | `SectionTaskCoordinator.get_document_task_layout` | projection/read-centric |
@@ -170,6 +174,83 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
 8. route response should not expose raw text or heavy content payload; preview may expose normalized hierarchy labels/ranges and validation errors only. **[Future Direction]**
 9. This note does not add endpoints, source code, schema fields, or runtime behavior in this pass. **[Doc-Confirmed]**
 
+## 16.1 Document Management, Upload, And Lifecycle Routes
+
+> 本節記錄 file-management / upload 的 route-layer boundary. The explicit raw-source
+> upload route, lightweight management status route, explicit delete lifecycle route, and
+> explicit rename lifecycle route are implemented. **[Code-Confirmed]**
+
+1. `GET /documents` remains the current lightweight discovery route for compact reader
+   document selection. **[Code-Confirmed]**
+2. `GET /documents/management` is the richer lightweight management/status read route.
+   It merges structured document candidates with raw source metadata and returns source
+   status plus preparation status without raw text, hierarchy, content blocks, profile
+   payloads, retrieval records, or artifacts. **[Code-Confirmed]**
+3. Management rows mark structured artifacts as `preparation_status=ready`, raw-only
+   candidates as `preparation_status=not_prepared`, and same-name raw+structured
+   candidates as one merged row preserving raw source metadata while keeping structured
+   readiness. **[Code-Confirmed]**
+4. `POST /documents/upload` is an explicit multipart raw-source write route. It stores a
+   supported `.txt` or `.pdf` raw source candidate under the raw document directory and
+   returns `DocumentUploadResponse` with lightweight source metadata. **[Code-Confirmed]**
+5. The upload route accepts optional `title` and `conflict_policy` fields. Conflict
+   policy supports `reject`, `replace`, and `create_distinct`; default duplicate handling
+   is reject with a typed `duplicate_conflict` response. **[Code-Confirmed]**
+   `create_distinct` preserves the existing raw source and resolves the upload to a
+   backend-owned unique filename/doc_name, for example `Book (1).txt` and `Book (1)`.
+   **[Code-Confirmed]**
+6. Upload route failures return the typed upload response shape with stable failure
+   reasons such as unsupported file type, unsafe filename, duplicate conflict, missing
+   source, validation failure, file too large, or storage failure. **[Code-Confirmed]**
+7. Upload routes must not silently call `/documents/prepare`, `/documents/task-layout`,
+   OCR, profile generation, reparse, retrieval build, or reading-interaction generation.
+   The current route only writes raw source bytes and lets `GET /documents` discover the
+   raw candidate. **[Code-Confirmed] + [From HLD]**
+8. Explicit prepare/open flows remain separate: upload success does not equate upload
+   with prepared layout readiness and returns `preparation_status=not_prepared`.
+   **[Code-Confirmed]**
+9. Document management lifecycle routes such as archive/delete/rename must be explicit
+   mutation routes with stable HTTP status mapping and confirmation-oriented frontend
+   affordances. They must use explicit lifecycle request/response schemas rather than
+   extending list/read/open/upload routes with hidden destructive behavior.
+   **[Code-Confirmed] + [Future Direction]**
+10. Current upload storage is a minimal route-level raw-file registration slice over the
+    existing file-backed raw directory. A future storage service should own validation,
+    storage, conflict handling, user scope, and cleanup policy when document management
+    evolves beyond this raw-source slice. **[Code-Confirmed] + [Future Direction]**
+11. Route responses must preserve user-scope and raw-file ownership boundaries; no list or
+    upload response should imply cross-user document sharing. **[From Proposal] + [Future Direction]**
+12. Lifecycle route policy is now fixed at the API boundary: route handlers may validate
+    lifecycle requests and map lightweight lifecycle responses, but cleanup of raw
+    sources, structured artifacts, retrieval indexes, profiles, and reading-interaction
+    artifacts must be delegated to a storage/service layer outside `main.py`.
+    **[Code-Confirmed] + [Future Direction]**
+13. `POST /documents/lifecycle/delete` is an explicit destructive lifecycle mutation
+    route. It requires `action=delete` and `confirm=true`, removes matching file-backed
+    raw source, structured JSON artifact, and derived FAISS/profile directory when
+    present, and returns a lightweight `DocumentLifecycleActionResponse` with effect
+    flags only. It does not call prepare, reparse, task-layout, OCR/profile generation,
+    retrieval build, or reading-interaction generation. **[Code-Confirmed]**
+14. Maintainer-scoped lifecycle MVP is limited to `delete` and `rename`. `archive` and
+    `restore` remain reserved lifecycle vocabulary only and should not be implemented or
+    exposed in the file-management UI until explicitly reprioritized. **[Maintainer-Provided] + [Future Direction]**
+15. Delete routing is now explicit and confirmation-gated at the API boundary. The
+    frontend must still ask the user for confirmation before issuing the delete request;
+    backend `confirm=true` is a route-level guard, not a replacement for user-facing UI
+    confirmation. **[Code-Confirmed] + [Maintainer-Provided]**
+16. Future rename routing must be an explicit mutation that changes backend-owned
+    document identity or display identity according to storage policy, rejects conflicts
+    deterministically, and must not be simulated through upload replace/create-distinct
+    flows. **[Maintainer-Provided] + [Future Direction]**
+17. `POST /documents/lifecycle/rename` is an explicit lifecycle mutation route. It
+    requires `action=rename` and `new_doc_name`, renames matching file-backed raw source,
+    structured JSON artifact, and derived FAISS/profile directory when present, updates
+    lightweight top-level structured JSON identity metadata, rejects target conflicts
+    deterministically, and returns `DocumentLifecycleActionResponse` effect flags only.
+    It does not call prepare, reparse, task-layout, OCR/profile generation, retrieval
+    build, reading-interaction generation, or upload conflict-policy behavior.
+    **[Code-Confirmed]**
+
 ## 17. Route Mapping For TOC Anchor Evidence
 
 > 本節支援 UI TOC editor 的 page-first anchor UX。
@@ -214,6 +295,8 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
 4. `main.py` exposes generic critical-thinking session routes for reading existing session state, generating one question session, submitting an answer with evaluation, and retrying a failed evaluation. These routes map shared reading target request schemas plus session ids to app orchestration and return `CriticalThinkingSessionResponse`. **[Code-Confirmed]**
 5. `main.py` imports and maps the analysis, quiz, and critical-thinking public response schemas, but it does not directly import or orchestrate `AnalysisInteractionOrchestrator`, `QuizInteractionOrchestrator`, or `CriticalThinkingSessionService`; service/orchestrator access remains behind `SectionTaskCoordinator` and DI assembly. **[Code-Confirmed]**
 6. Existing task-layout and task-unit content routes must not be treated as substitutes for reading-interaction artifact routes. `/documents/task-layout` remains lightweight projection, and task-unit content routes remain on-demand content reads. **[From HLD] + [Code-Confirmed]**
+7. Reading-interaction routes preserve `content_block_id` from schema-validated `content_block` target requests when dispatching to `SectionTaskCoordinator` and when mapping shared response envelopes. Route regressions cover insight read/generate/refresh, quiz read/generate/refresh, and critical-thinking read/generate-question/submit-answer/retry-evaluation. Route mapping itself still does not resolve block source text, perform hierarchy search, construct prompts, choose context, or own artifact persistence. **[Code-Confirmed]**
+8. For UI per-block menus, route mapping expects the frontend to submit `target_type=content_block`, parent `task_unit_id`, optional parent `chapter_id` / `section_id`, and `content_block_id` copied from `content_blocks[].block_id` in the task-unit content response. The same target object is valid across insight, quiz, and critical-thinking generic route families. Route code must still avoid legacy quiz dispatch, UI state fields, hidden task-layout mutation, and route-local source slicing. **[Code-Confirmed]**
 
 ### 20.2 Future Route Boundary
 
@@ -268,6 +351,25 @@ This policy does not move hierarchy search, prompt construction, context selecti
 6. `generate`, `refresh`, `generate-question`, `submit-answer`, and `retry-evaluation` are explicit write paths. `refresh` is distinct from read and keeps a clear future insertion point for permission/cost confirmation before replacing a current artifact. **[Code-Confirmed] + [Future Direction]**
 7. The legacy `POST /documents/section-quiz` and `POST /documents/chapter-quiz` routes remain compatibility/task endpoints until replaced. They should not be documented to the frontend as the generic quiz drawer API. **[Code-Confirmed] + [Future Direction]**
 8. Route handlers should only validate schema, call app orchestration, and map result/status to HTTP response. They must not perform hierarchy search, prompt construction, context selection, parser decisions, or hidden task-layout persistence mutation. **[From HLD] + [Future Direction]**
+
+### 20.3.1 Future Summary And Note Route Families
+
+> 本節規劃新增 `summary` / `note` route family 的 route-layer 邊界；不代表目前
+> route 已實作。 **[Future Direction]**
+
+1. Summary routes should follow the existing generic reading-interaction route family:
+   read returns current persisted summary or `not_generated`; generate is an explicit
+   write path; refresh is an explicit replacement path. **[Future Direction]**
+2. Summary route handlers should perform schema mapping and HTTP status mapping only.
+   Prompt construction, higher-level summary preparation, generation, validation, and
+   persistence must remain in app/section_tasks boundaries. **[Future Direction]**
+3. Note routes should be explicit user mutation/read routes, such as save/list/delete
+   or create/update/delete/read. They must not call LLM-backed summary generation,
+   insight generation, quiz generation, critical-thinking session creation, prepare,
+   reparse, retrieval build, or task-layout mutation. **[Future Direction]**
+4. Route responses for both actions should preserve the no-heavy-payload rule and must
+   not expose raw target text, raw ancestor summaries, frontend drawer/menu state,
+   draft editing state, or selected-row state. **[Future Direction]**
 
 ### 20.4 Frontend Exposure Completion Plan: Route/Test-Owned Tasks
 

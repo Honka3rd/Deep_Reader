@@ -321,6 +321,7 @@ class ReadingInteractionTargetDTO:
     chapter_id: str | None = None
     section_id: str | None = None
     task_unit_id: str | None = None
+    content_block_id: str | None = None
     title: str | None = None
 
 
@@ -389,6 +390,12 @@ class _CriticalThinkingSessionStore(Protocol):
     ) -> ReadingInteractionArtifact | None:
         ...
 
+    def get_current_critical_thinking_session(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact | None:
+        ...
+
     def save_critical_thinking_session(
         self,
         artifact: ReadingInteractionArtifact,
@@ -449,6 +456,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
     ) -> ResolvedReadingTarget:
         """Resolve a reading interaction target through the hierarchy-only path."""
         normalized_doc_name = doc_name.strip()
@@ -472,6 +482,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
         )
 
     def read_analysis_artifact(
@@ -482,6 +495,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
     ) -> ReadingInteractionResponseDTO:
         """Read current analysis artifact state without generation."""
         request = self._build_reading_interaction_request(
@@ -491,6 +507,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
         )
         artifact = self._require_analysis_interaction_orchestrator().read(request)
         return self._build_reading_interaction_response(
@@ -506,6 +525,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
         refresh: bool = False,
         prompt_instruction_version: str | None = None,
     ) -> ReadingInteractionResponseDTO:
@@ -517,6 +539,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
             refresh=refresh,
             prompt_instruction_version=prompt_instruction_version,
         )
@@ -534,6 +559,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
         prompt_instruction_version: str | None = None,
     ) -> ReadingInteractionResponseDTO:
         """Explicitly regenerate an analysis artifact."""
@@ -543,6 +571,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
             refresh=True,
             prompt_instruction_version=prompt_instruction_version,
         )
@@ -555,6 +586,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
     ) -> ReadingInteractionResponseDTO:
         """Read current quiz artifact state without generation."""
         request = self._build_reading_interaction_request(
@@ -564,6 +598,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
         )
         artifact = self._require_quiz_interaction_orchestrator().read(request)
         return self._build_reading_interaction_response(
@@ -579,6 +616,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
         refresh: bool = False,
         prompt_instruction_version: str | None = None,
     ) -> ReadingInteractionResponseDTO:
@@ -590,6 +630,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
             refresh=refresh,
             prompt_instruction_version=prompt_instruction_version,
         )
@@ -607,6 +650,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
         prompt_instruction_version: str | None = None,
     ) -> ReadingInteractionResponseDTO:
         """Explicitly regenerate a target-agnostic quiz artifact."""
@@ -616,6 +662,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
             refresh=True,
             prompt_instruction_version=prompt_instruction_version,
         )
@@ -629,6 +678,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
     ) -> ReadingInteractionResponseDTO:
         """Read one critical-thinking session without generating a question."""
         request = self._build_reading_interaction_request(
@@ -638,9 +690,21 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
         )
         normalized_session_id = self._normalize_optional_text(session_id)
         if normalized_session_id is None:
+            artifact = (
+                self._require_critical_thinking_session_store()
+                .get_current_critical_thinking_session(request)
+            )
+            if artifact is not None:
+                return self._build_reading_interaction_response(
+                    request=request,
+                    artifact=artifact,
+                )
             artifact = ReadingInteractionArtifact.from_target(
                 target=request.target,
                 interaction_type="critical_thinking_session",
@@ -679,6 +743,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
         prompt_instruction_version: str | None = None,
     ) -> ReadingInteractionResponseDTO:
         """Generate and save one critical-thinking question session."""
@@ -689,6 +756,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
             prompt_instruction_version=prompt_instruction_version,
         )
         artifact = self._require_critical_thinking_session_service().generate_question(
@@ -713,6 +783,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
     ) -> ReadingInteractionResponseDTO:
         """Submit an answer and evaluate it through an explicit write path."""
         request = self._build_reading_interaction_request(
@@ -722,6 +795,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
         )
         normalized_session_id = self._normalize_required_text(
             session_id,
@@ -752,6 +828,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
     ) -> ReadingInteractionResponseDTO:
         """Retry evaluation for a submitted or evaluation-failed session."""
         request = self._build_reading_interaction_request(
@@ -761,6 +840,9 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
         )
         normalized_session_id = self._normalize_required_text(
             session_id,
@@ -791,6 +873,9 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         section_id: str | None = None,
         task_unit_id: str | None = None,
+        content_block_id: str | None = None,
+        source_hash: str | None = None,
+        source_structure_version: int | None = None,
         refresh: bool = False,
         prompt_instruction_version: str | None = None,
     ) -> ReadingInteractionRequest:
@@ -800,14 +885,43 @@ class SectionTaskCoordinator:
             chapter_id=chapter_id,
             section_id=section_id,
             task_unit_id=task_unit_id,
+            content_block_id=content_block_id,
+            source_hash=source_hash,
+            source_structure_version=source_structure_version,
         )
+        context_metadata: dict[str, object] = {
+            "context_mode": "full_target",
+            "doc_name": doc_name.strip(),
+        }
+        document_language = self._resolve_reading_interaction_language(
+            doc_name=doc_name,
+            target=target,
+        )
+        if document_language is not None:
+            context_metadata["document_language"] = document_language
         return ReadingInteractionRequest(
             target=target,
             interaction_type=interaction_type,
             refresh=refresh,
-            context_metadata={"context_mode": "full_target", "doc_name": doc_name.strip()},
+            context_metadata=context_metadata,
             prompt_instruction_version=prompt_instruction_version,
         )
+
+    def _resolve_reading_interaction_language(
+        self,
+        *,
+        doc_name: str,
+        target: ResolvedReadingTarget,
+    ) -> str | None:
+        document_profile = self._load_existing_document_profile(doc_name.strip())
+        profile_language = (
+            None
+            if document_profile is None
+            else (document_profile.document_language_code or "").strip() or None
+        )
+        if profile_language is not None:
+            return profile_language
+        return (target.document_language or "").strip() or None
 
     def _build_reading_interaction_response(
         self,
@@ -832,6 +946,11 @@ class SectionTaskCoordinator:
             raw_artifact_id = artifact.metadata.get("artifact_id")
             if isinstance(raw_artifact_id, str) and raw_artifact_id.strip():
                 resolved_artifact_id = raw_artifact_id.strip()
+        resolved_session_id = self._normalize_optional_text(session_id)
+        if resolved_session_id is None:
+            raw_session_id = artifact.metadata.get("session_id")
+            if isinstance(raw_session_id, str) and raw_session_id.strip():
+                resolved_session_id = raw_session_id.strip()
         return ReadingInteractionResponseDTO(
             target=target,
             interaction_type=artifact.interaction_type,
@@ -840,7 +959,7 @@ class SectionTaskCoordinator:
             metadata=dict(artifact.metadata),
             reason=artifact.reason,
             artifact_id=resolved_artifact_id,
-            session_id=self._normalize_optional_text(session_id),
+            session_id=resolved_session_id,
         )
 
     @staticmethod
@@ -858,6 +977,8 @@ class SectionTaskCoordinator:
             title = target.section.title
         elif target.target_level == "task_unit" and target.task_unit is not None:
             title = target.task_unit.title
+        elif target.target_level == "content_block" and target.task_unit is not None:
+            title = target.task_unit.title
 
         return ReadingInteractionTargetDTO(
             doc_name=doc_name,
@@ -868,6 +989,7 @@ class SectionTaskCoordinator:
             chapter_id=target.chapter_id,
             section_id=target.section_id,
             task_unit_id=target.task_unit_id,
+            content_block_id=target.content_block_id,
             title=title,
         )
 
@@ -1651,6 +1773,7 @@ class SectionTaskCoordinator:
             contents.append(
                 self._build_task_unit_content_dto(
                     document=structured_document,
+                    doc_name=doc_name,
                     task_unit=match[0],
                     section=match[1],
                     chapter=match[2],
@@ -1664,6 +1787,7 @@ class SectionTaskCoordinator:
         self,
         *,
         document: StructuredDocument,
+        doc_name: str,
         task_unit: TaskUnit,
         section: StructuredSection,
         chapter: StructuredChapter | None,
@@ -1685,6 +1809,14 @@ class SectionTaskCoordinator:
             else task_unit.to_content_blocks()
         )
         content_blocks = self._normalize_content_blocks_for_rendering(content_blocks)
+        content_blocks = self._project_content_block_interaction_availability(
+            document=document,
+            doc_name=doc_name,
+            task_unit=task_unit,
+            section=section,
+            chapter=chapter,
+            content_blocks=content_blocks,
+        )
 
         return TaskUnitContentDTO(
             document_id=document.document_id,
@@ -1702,6 +1834,177 @@ class SectionTaskCoordinator:
             chapter_title=(None if chapter is None else chapter.title),
             is_fallback_generated=task_unit.is_fallback_generated,
         )
+
+    def _project_content_block_interaction_availability(
+        self,
+        *,
+        document: StructuredDocument,
+        doc_name: str,
+        task_unit: TaskUnit,
+        section: StructuredSection,
+        chapter: StructuredChapter | None,
+        content_blocks: list[TaskUnitContentBlock],
+    ) -> list[TaskUnitContentBlock]:
+        """Attach lightweight persisted interaction state for block menus."""
+        projected_blocks: list[TaskUnitContentBlock] = []
+        for content_block in content_blocks:
+            availability = dict(content_block.interaction_availability or {})
+            block_request_fields = {
+                "document": document,
+                "doc_name": doc_name,
+                "task_unit": task_unit,
+                "section": section,
+                "chapter": chapter,
+                "content_block": content_block,
+            }
+            analysis_slot = self._read_content_block_availability_slot(
+                interaction_type="analysis",
+                **block_request_fields,
+            )
+            if analysis_slot is not None:
+                availability["insight"] = analysis_slot
+
+            quiz_slot = self._read_content_block_availability_slot(
+                interaction_type="quiz",
+                **block_request_fields,
+            )
+            if quiz_slot is not None:
+                availability["quiz"] = quiz_slot
+
+            critical_thinking_slot = self._read_content_block_availability_slot(
+                interaction_type="critical_thinking_session",
+                **block_request_fields,
+            )
+            if critical_thinking_slot is not None:
+                availability["critical_thinking"] = critical_thinking_slot
+
+            projected_blocks.append(
+                replace(
+                    content_block,
+                    interaction_availability=(availability or None),
+                )
+            )
+        return projected_blocks
+
+    def _read_content_block_availability_slot(
+        self,
+        *,
+        interaction_type: str,
+        document: StructuredDocument,
+        doc_name: str,
+        task_unit: TaskUnit,
+        section: StructuredSection,
+        chapter: StructuredChapter | None,
+        content_block: TaskUnitContentBlock,
+    ) -> dict[str, str | None] | None:
+        try:
+            request = self._build_content_block_availability_request(
+                document=document,
+                doc_name=doc_name,
+                task_unit=task_unit,
+                section=section,
+                chapter=chapter,
+                content_block=content_block,
+                interaction_type=interaction_type,
+            )
+        except ValueError:
+            return None
+        artifact: ReadingInteractionArtifact | None
+        if interaction_type == "analysis":
+            if self.analysis_interaction_orchestrator is None:
+                return None
+            artifact = self.analysis_interaction_orchestrator.read(request)
+        elif interaction_type == "quiz":
+            if self.quiz_interaction_orchestrator is None:
+                return None
+            artifact = self.quiz_interaction_orchestrator.read(request)
+        elif interaction_type == "critical_thinking_session":
+            if self.critical_thinking_session_store is None:
+                return None
+            artifact = (
+                self.critical_thinking_session_store
+                .get_current_critical_thinking_session(request)
+            )
+            if artifact is None:
+                artifact = ReadingInteractionArtifact.from_target(
+                    target=request.target,
+                    interaction_type=interaction_type,
+                    status="not_generated",
+                )
+        else:
+            raise ValueError(
+                f"unsupported content-block availability type: '{interaction_type}'"
+            )
+        return self._build_content_block_availability_slot(artifact)
+
+    def _build_content_block_availability_request(
+        self,
+        *,
+        document: StructuredDocument,
+        doc_name: str,
+        task_unit: TaskUnit,
+        section: StructuredSection,
+        chapter: StructuredChapter | None,
+        content_block: TaskUnitContentBlock,
+        interaction_type: str,
+    ) -> ReadingInteractionRequest:
+        target = self.reading_target_resolver.resolve(
+            document=document,
+            target_level="content_block",
+            chapter_id=(None if chapter is None else chapter.chapter_id),
+            section_id=section.section_id,
+            task_unit_id=task_unit.unit_id,
+            content_block_id=content_block.block_id,
+        )
+        return ReadingInteractionRequest(
+            target=target,
+            interaction_type=interaction_type,
+            context_metadata={
+                "context_mode": "full_target",
+                "doc_name": doc_name.strip(),
+            },
+        )
+
+    @staticmethod
+    def _build_content_block_availability_slot(
+        artifact: ReadingInteractionArtifact,
+    ) -> dict[str, str | None]:
+        raw_artifact_id = artifact.metadata.get("artifact_id")
+        raw_session_id = artifact.metadata.get("session_id")
+        return {
+            "interaction_type": artifact.interaction_type,
+            "status": artifact.status,
+            "artifact_id": (
+                raw_artifact_id.strip()
+                if isinstance(raw_artifact_id, str) and raw_artifact_id.strip()
+                else None
+            ),
+            "session_id": (
+                raw_session_id.strip()
+                if isinstance(raw_session_id, str) and raw_session_id.strip()
+                else None
+            ),
+            "reason": artifact.reason,
+            "generated_at": SectionTaskCoordinator._optional_metadata_text(
+                artifact.metadata,
+                "generated_at",
+            ),
+            "updated_at": SectionTaskCoordinator._optional_metadata_text(
+                artifact.metadata,
+                "updated_at",
+            ),
+        }
+
+    @staticmethod
+    def _optional_metadata_text(
+        metadata: dict[str, object],
+        key: str,
+    ) -> str | None:
+        value = metadata.get(key)
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()
+        return normalized or None
 
     @staticmethod
     def _normalize_content_blocks_for_rendering(

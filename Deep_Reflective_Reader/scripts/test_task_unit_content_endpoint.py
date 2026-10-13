@@ -31,6 +31,10 @@ from document_structure.structured_document import (
 )
 from document_structure.text_normalization import normalize_ocr_text
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
+from section_tasks.reading_interaction_service_contracts import (
+    ReadingInteractionArtifact,
+    ReadingInteractionRequest,
+)
 from shared.task_artifacts import DocumentTaskArtifacts
 from shared.task_unit_model import (
     ArtifactTargetLevel,
@@ -155,11 +159,115 @@ class _FailIfResolverCalled:
         raise RuntimeError("task unit resolver should not be called when cache is valid")
 
 
+class _FakeReadingInteractionOrchestrator:
+    def __init__(
+        self,
+        *,
+        interaction_type: str,
+        status: str,
+        metadata: dict[str, object] | None = None,
+        reason: str | None = None,
+    ) -> None:
+        self.interaction_type = interaction_type
+        self.status = status
+        self.metadata = dict(metadata or {})
+        self.reason = reason
+        self.read_calls: list[ReadingInteractionRequest] = []
+
+    def read(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact:
+        self.read_calls.append(request)
+        payload: dict[str, object] = {}
+        if self.status == "completed":
+            payload = (
+                {"items": [{"question": "Block?", "answer": "Block."}]}
+                if self.interaction_type == "quiz"
+                else {
+                    "summary": "Block summary",
+                    "reasoning": "Block reasoning",
+                    "explanation": "Block explanation",
+                }
+            )
+        return ReadingInteractionArtifact.from_target(
+            target=request.target,
+            interaction_type=self.interaction_type,
+            status=self.status,
+            payload=payload,
+            metadata=self.metadata,
+            reason=self.reason,
+        )
+
+    def generate(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact:
+        raise RuntimeError("availability projection must not generate artifacts")
+
+
+class _FakeCriticalThinkingStore:
+    def __init__(self) -> None:
+        self.current_calls: list[ReadingInteractionRequest] = []
+
+    def get_current_critical_thinking_session(
+        self,
+        request: ReadingInteractionRequest,
+    ) -> ReadingInteractionArtifact | None:
+        self.current_calls.append(request)
+        return ReadingInteractionArtifact.from_target(
+            target=request.target,
+            interaction_type="critical_thinking_session",
+            status="question_generated",
+            payload={"question": "Which block assumption matters?"},
+            metadata={
+                "session_id": "critical-thinking-session-1",
+                "updated_at": "2026-10-11T12:02:00Z",
+            },
+        )
+
+    def get_critical_thinking_session(
+        self,
+        request: ReadingInteractionRequest,
+        session_id: str,
+    ) -> ReadingInteractionArtifact | None:
+        _ = (request, session_id)
+        raise RuntimeError("availability projection must use current-session lookup")
+
+    def save_critical_thinking_session(
+        self,
+        artifact: ReadingInteractionArtifact,
+    ):
+        _ = artifact
+        raise RuntimeError("availability projection must not save sessions")
+
+
 def _build_section(*, section_id: str, chapter_id: str, title: str, unit_id: str, content: str) -> StructuredSection:
     content_block_id = f"{unit_id}:content:0"
     content_block = TaskUnitContentBlock(
         block_id=content_block_id,
         content=content,
+        interaction_availability={
+            "insight": {
+                "interaction_type": "analysis",
+                "status": "completed",
+                "artifact_id": f"analysis::doc-content::content_block::{content_block_id}",
+                "generated_at": "2026-10-11T12:00:00Z",
+            },
+            "quiz": {
+                "interaction_type": "quiz",
+                "status": "not_generated",
+            },
+            "critical_thinking": {
+                "interaction_type": "critical_thinking_session",
+                "status": "question_generated",
+                "session_id": (
+                    "critical_thinking_session::doc-content::content_block::"
+                    f"{content_block_id}::session"
+                ),
+                "updated_at": "2026-10-11T12:01:00Z",
+            },
+        },
         artifact_target_refs=[
             ArtifactTargetRef(
                 target_level=ArtifactTargetLevel.CONTENT_BLOCK,
@@ -384,6 +492,9 @@ def _build_legacy_sections_only_document() -> StructuredDocument:
 def _build_coordinator(
     document: StructuredDocument,
     page_boundaries: list[PdfPageTextBoundary] | None = None,
+    analysis_interaction_orchestrator=None,  # noqa: ANN001
+    quiz_interaction_orchestrator=None,  # noqa: ANN001
+    critical_thinking_session_store=None,  # noqa: ANN001
 ) -> tuple[SectionTaskCoordinator, _SpyRepository]:
     repository = _SpyRepository()
     coordinator = SectionTaskCoordinator(
@@ -397,6 +508,9 @@ def _build_coordinator(
         chapter_quiz_service=_NoopQuizService(),
         task_unit_resolver=_FailIfResolverCalled(),
         enhanced_parse_trigger_evaluator=EnhancedParseTriggerEvaluator(),
+        analysis_interaction_orchestrator=analysis_interaction_orchestrator,
+        quiz_interaction_orchestrator=quiz_interaction_orchestrator,
+        critical_thinking_session_store=critical_thinking_session_store,
     )
     return coordinator, repository
 
@@ -525,9 +639,19 @@ def test_task_layout_id_then_content_lookup_success() -> None:
             "task-layout should expose lightweight parser provenance",
         )
         unit_id = layout_payload["chapters"][0]["sections"][0]["task_units"][0]["unit_id"]
+        serialized_layout = str(layout_payload)
         _assert(
             "content_blocks" not in layout_payload["chapters"][0]["sections"][0]["task_units"][0],
             "task-layout task_unit metadata must stay lightweight without content_blocks",
+        )
+        _assert(
+            "interaction_availability" not in serialized_layout
+            and "artifact_target_refs" not in serialized_layout
+            and "quote_span_start" not in serialized_layout
+            and "quote_span_end" not in serialized_layout
+            and "Block summary" not in serialized_layout
+            and "Critical thinking" not in serialized_layout,
+            "task-layout must not expose block availability, artifact refs, payload text, or block spans",
         )
         _assert(
             layout_payload["chapters"][0]["anchor_evidence"]["anchor_type"] == "char_range",
@@ -608,6 +732,7 @@ def test_task_layout_id_then_content_lookup_success() -> None:
                 "block_type",
                 "artifact_ids",
                 "artifact_target_refs",
+                "interaction_availability",
                 "metadata",
             },
             "content block response should keep normalized API schema shape",
@@ -617,8 +742,46 @@ def test_task_layout_id_then_content_lookup_success() -> None:
             and payload["content_blocks"][0]["artifact_ids"] is None
             and isinstance(payload["content_blocks"][0]["artifact_target_refs"], list)
             and len(payload["content_blocks"][0]["artifact_target_refs"]) == 2
+            and isinstance(payload["content_blocks"][0]["interaction_availability"], dict)
             and payload["content_blocks"][0]["metadata"] is None,
-            "default optional block fields should serialize as null in current adapter path",
+            "content block optional fields should serialize with lightweight availability only",
+        )
+        availability = payload["content_blocks"][0]["interaction_availability"]
+        _assert(
+            availability["insight"]["interaction_type"] == "analysis"
+            and availability["insight"]["status"] == "completed"
+            and availability["insight"]["artifact_id"].startswith("analysis::"),
+            "content block should expose menu-ready insight availability only",
+        )
+        _assert(
+            availability["quiz"] == {
+                "interaction_type": "quiz",
+                "status": "not_generated",
+                "artifact_id": None,
+                "session_id": None,
+                "reason": None,
+                "generated_at": None,
+                "updated_at": None,
+            },
+            "content block quiz availability should expose missing state without payload",
+        )
+        _assert(
+            availability["critical_thinking"]["interaction_type"]
+            == "critical_thinking_session"
+            and availability["critical_thinking"]["session_id"].startswith(
+                "critical_thinking_session::"
+            ),
+            "content block should expose critical-thinking session availability",
+        )
+        _assert(
+            all(
+                "payload" not in slot
+                and "content" not in slot
+                and "drawer_open" not in slot
+                for slot in availability.values()
+                if isinstance(slot, dict)
+            ),
+            "block availability must stay lightweight without artifact payload, text, or UI state",
         )
         _assert(
             payload["content_blocks"][0]["artifact_target_refs"][0]["target_level"]
@@ -698,6 +861,94 @@ def test_batch_task_unit_content_lookup_preserves_order_and_read_only() -> None:
         main.section_task_coordinator = original
 
 
+def test_task_unit_content_auto_projects_block_interaction_availability() -> None:
+    analysis_orchestrator = _FakeReadingInteractionOrchestrator(
+        interaction_type="analysis",
+        status="completed",
+        metadata={
+            "artifact_id": "analysis::doc-content::content_block::task-unit-1:content:0",
+            "generated_at": "2026-10-11T12:00:00Z",
+        },
+    )
+    quiz_orchestrator = _FakeReadingInteractionOrchestrator(
+        interaction_type="quiz",
+        status="not_generated",
+    )
+    critical_thinking_store = _FakeCriticalThinkingStore()
+    coordinator, repository = _build_coordinator(
+        _build_cache_valid_document(),
+        analysis_interaction_orchestrator=analysis_orchestrator,
+        quiz_interaction_orchestrator=quiz_orchestrator,
+        critical_thinking_session_store=critical_thinking_store,
+    )
+    client = TestClient(main.app)
+    original = main.section_task_coordinator
+    main.section_task_coordinator = coordinator
+    try:
+        response = client.get(
+            "/documents/Doc Content/task-units/task-unit-1/content"
+        )
+        _assert(response.status_code == 200, "content lookup should succeed")
+        block_payload = response.json()["content_blocks"][0]
+        availability = block_payload["interaction_availability"]
+
+        _assert(
+            availability["insight"] == {
+                "interaction_type": "analysis",
+                "status": "completed",
+                "artifact_id": "analysis::doc-content::content_block::task-unit-1:content:0",
+                "session_id": None,
+                "reason": None,
+                "generated_at": "2026-10-11T12:00:00Z",
+                "updated_at": None,
+            },
+            "insight availability should be projected from the analysis artifact",
+        )
+        _assert(
+            availability["quiz"] == {
+                "interaction_type": "quiz",
+                "status": "not_generated",
+                "artifact_id": None,
+                "session_id": None,
+                "reason": None,
+                "generated_at": None,
+                "updated_at": None,
+            },
+            "missing quiz artifact should project not_generated availability",
+        )
+        _assert(
+            availability["critical_thinking"]["interaction_type"]
+            == "critical_thinking_session"
+            and availability["critical_thinking"]["status"] == "question_generated"
+            and availability["critical_thinking"]["session_id"]
+            == "critical-thinking-session-1"
+            and availability["critical_thinking"]["updated_at"]
+            == "2026-10-11T12:02:00Z",
+            "critical-thinking availability should be projected from the current session",
+        )
+        _assert(
+            analysis_orchestrator.read_calls[0].target.content_block_id
+            == "task-unit-1:content:0"
+            and quiz_orchestrator.read_calls[0].target.content_block_id
+            == "task-unit-1:content:0"
+            and critical_thinking_store.current_calls[0].target.content_block_id
+            == "task-unit-1:content:0",
+            "availability projection should read the block target, not the parent task unit",
+        )
+        _assert(
+            all(
+                "payload" not in slot
+                and "content" not in slot
+                and "drawer_open" not in slot
+                for slot in availability.values()
+            ),
+            "auto-projected availability must not expose artifact payload, text, or UI state",
+        )
+        _assert(repository.write_calls == 0, "availability projection must remain read-only")
+    finally:
+        main.section_task_coordinator = original
+
+
 def test_batch_task_unit_content_duplicate_request_id_fails_fast() -> None:
     coordinator, repository = _build_coordinator(_build_cache_valid_document())
     client = TestClient(main.app)
@@ -758,6 +1009,11 @@ def test_task_unit_content_segmented_true_returns_deterministic_multi_blocks() -
         }
         for block in payload["content_blocks"]:
             _assert(block["metadata"] is not None, "segmented block metadata must exist")
+            _assert(
+                block["artifact_target_refs"] is None
+                and block["interaction_availability"] is None,
+                "segmented render blocks should not invent artifact refs or interaction availability",
+            )
             _assert(
                 set(block["metadata"].keys()) == expected_metadata_keys,
                 "segmented block metadata keys mismatch",

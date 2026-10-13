@@ -137,6 +137,11 @@ It is used to:
   Notes: Module memory now reflects the code-confirmed public route names, schema names, app orchestration methods, route regression coverage, and route/app/schema boundaries for insight, quiz, and critical-thinking API exposure. `progress.md` was intentionally not updated because this pass was not a progress-sync task.
   Timestamp: 2026-10-10
 
+- [x] Preserve content-block target identity through reading-interaction routes
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py`; `.venv` execution of analysis, quiz, and critical-thinking route regression scripts; `python3 -m py_compile Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py Deep_Reflective_Reader/scripts/test_quiz_interaction_routes.py Deep_Reflective_Reader/scripts/test_critical_thinking_interaction_routes.py Deep_Reflective_Reader/main.py Deep_Reflective_Reader/api_schemas.py`.
+  Notes: Shared reading-interaction route mapping forwards schema-normalized `content_block_id` with `target_level=content_block` to the app boundary and maps returned shared envelopes with the same block identity. Coverage now spans insight read/generate/refresh, quiz read/generate/refresh, and critical-thinking read/generate-question/submit-answer/retry-evaluation while keeping route code free of hierarchy search, prompt/context selection, artifact persistence internals, legacy quiz dispatch, and UI state.
+  Timestamp: 2026-10-11
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
@@ -159,6 +164,41 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Separate existing-layout read flow from prepare-then-read flow
   Evidence needed: route behavior or client-facing contract makes it clear that `/documents/task-layout` is the preferred existing-layout read path, while `/documents/prepare-task-layout` is reserved for first-time prepare, explicit repair, or fallback.
   Notes: Repeated UI selection of an already prepared document should not implicitly enter OCR/language/profile or LLM-backed work merely to display the current layout. Route observability should report whether prepare-then-read reused existing structured artifacts or performed expensive preparation.
+
+- [ ] Expose summary reading-interaction route family
+  Evidence needed: routes map summary read/generate/refresh requests through app orchestration, reuse shared envelope/status mapping, and keep read paths no-auto-generation.
+  Notes: Route handlers should not build prompts, prepare ancestor summaries, persist artifacts directly, or expose raw source/ancestor text.
+  Timestamp: 2026-10-13
+
+- [ ] Expose note route family for user-authored annotations
+  Evidence needed: routes map note read/list/save/delete or equivalent explicit note operations through app orchestration with stable validation and HTTP status mapping.
+  Notes: Note routes must not call LLMs, prepare/reparse, generate summaries, mutate task-layout, or persist frontend-only UI state.
+  Timestamp: 2026-10-13
+
+- [x] Add explicit document upload route.
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_document_upload_route.py`; validation: `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_upload_route.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_list_search_api.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_document_upload_route.py`.
+  Notes: Adds `POST /documents/upload` as an explicit multipart raw-source write route for `.txt` and `.pdf` candidates. The route stores raw source bytes under the raw document directory, returns lightweight `DocumentUploadResponse` metadata, supports `reject`, `replace`, and `create_distinct` conflict policies, and returns typed failure reasons for duplicate, unsupported type, unsafe filename, missing source, validation, too-large, and storage failures. `create_distinct` preserves the existing source and returns the backend-owned unique filename/doc_name, such as `Book (1).txt` / `Book (1)`. Upload does not silently prepare, reparse, run OCR/profile, build retrieval, call task-layout, or generate interactions.
+  Timestamp: 2026-10-13
+
+- [x] Add document management status/list route contract.
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_document_management_route.py`; validation: `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_management_route.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_list_search_api.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_document_management_route.py`.
+  Notes: Adds `GET /documents/management` as an additive lightweight management/status read route. It keeps `GET /documents` compact, merges structured document readiness with raw source metadata, exposes source/preparation status for the management UI, and does not return raw text, hierarchy, task-unit content, content blocks, profile payloads, retrieval records, or artifacts.
+  Timestamp: 2026-10-13
+
+- [x] Add explicit document lifecycle mutation route policy.
+  Evidence: `Deep_Reflective_Reader/main.module-detailed-design.md`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/api_schemas.module-detailed-design.md`; `Deep_Reflective_Reader/scripts/test_document_lifecycle_api_schemas.py`; validation: `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_lifecycle_api_schemas.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_document_lifecycle_api_schemas.py`.
+  Notes: Defines lifecycle mutation route policy and schema boundary for future `archive`, `restore`, `delete`, and `rename` actions. Destructive routes are intentionally not implemented in this task; future route handlers must stay explicit, use stable lifecycle response statuses, and delegate raw-source / structured-artifact / derived-resource cleanup outside `main.py`.
+  Timestamp: 2026-10-13
+
+- [x] Implement explicit document delete route.
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_document_delete_route.py`; validation: `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_delete_route.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_management_route.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_document_delete_route.py`.
+  Notes: Adds `POST /documents/lifecycle/delete` as an explicit destructive lifecycle route requiring `action=delete` and `confirm=true`. The route removes matching file-backed raw source, structured JSON artifact, and derived FAISS/profile directory when present, maps missing/unconfirmed/wrong-action cases to typed lifecycle responses, and does not hide deletion behind list/read/open/upload/task-layout routes or trigger prepare/reparse/OCR/profile/retrieval/interaction generation.
+  Timestamp: 2026-10-13
+
+- [x] Implement explicit document rename route.
+  Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_document_rename_route.py`; validation: `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_rename_route.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_delete_route.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_document_rename_route.py`.
+  Notes: Adds `POST /documents/lifecycle/rename` as an explicit lifecycle mutation route requiring `action=rename` and `new_doc_name`. The route renames matching file-backed raw source, structured JSON artifact, and derived FAISS/profile directory when present, updates lightweight top-level structured JSON identity metadata, maps missing/wrong-action/conflict cases to typed lifecycle responses, and does not simulate rename through upload replace/create-distinct behavior.
+  Timestamp: 2026-10-13
 
 - [x] Add batch task-unit content read route
   Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.

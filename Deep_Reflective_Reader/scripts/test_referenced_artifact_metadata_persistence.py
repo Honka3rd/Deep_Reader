@@ -145,9 +145,9 @@ def _assert_reference_metadata(artifact: ReadingInteractionArtifact) -> None:
 def test_analysis_artifact_persists_referenced_artifact_metadata() -> None:
     artifact = AnalysisInteractionService(
         lambda request: {
-            "summary": "Summary",
-            "reasoning": "Reasoning",
-            "explanation": "Explanation",
+            "summary": "Incentives and institutions shape the chapter argument.",
+            "reasoning": "The primary source compares incentives, institutions, and assumptions.",
+            "explanation": "The referenced artifacts remain secondary to the chapter source.",
         },
         artifact_context_provider=_artifact_context_provider,
     ).generate(_request("analysis"))

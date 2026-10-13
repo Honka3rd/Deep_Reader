@@ -50,6 +50,18 @@ New future tasks for this module must be added here first as unchecked items:
 - [ ] Define preparation pipeline behavior for DB-backed structured persistence
 - [ ] Preserve current file-based prepare outputs during migration
 - [ ] Define future storage abstraction boundary for structured/profile/retrieval artifacts
+- [ ] Define raw source upload intake contract.
+  Evidence needed: preparation/upload intake validates supported source type, normalized filename/doc_name, source size, source hash, and storage result before returning a document candidate.
+  Notes: Upload intake must not run language detection, profile, structured parsing, OCR, retrieval build, task-layout, or interaction generation.
+  Timestamp: 2026-10-13
+- [ ] Define upload conflict and source-hash policy.
+  Evidence needed: duplicate raw source handling is explicit and source hash is available for later prepare/reparse/stale-source checks.
+  Notes: Silent overwrite is not allowed without an app-level conflict policy.
+  Timestamp: 2026-10-13
+- [ ] Define upload-to-prepare handoff tests.
+  Evidence needed: uploaded raw candidates can be prepared only through explicit prepare/reparse flows, and failed upload leaves no partial prepared artifacts.
+  Notes: Upload success means source availability, not structured/profile/retrieval readiness.
+  Timestamp: 2026-10-13
 - [x] Define source-agnostic manual structure reparse preparation handoff
   Evidence needed: preparation can provide raw text, language, source identity, and optional page boundaries/provenance to manual structure validation/reparse without assuming OCR/PDF-only input.
   Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_preparation_handoff.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.

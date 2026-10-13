@@ -15,7 +15,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import type { ContentBlock, RequestStatus, SectionSelection } from "../../types/api";
+import type { RequestStatus, SectionSelection } from "../../types/api";
 import { StateView } from "../../shared/components/StateView";
 import {
   InlineInsightRegion,
@@ -23,8 +23,12 @@ import {
   type ReadingInteractionKind,
 } from "../reading-interactions";
 import {
+  contentBlockInteractionAvailabilityHint,
+  contentBlockInteractionEligibility,
   headingFromSelection,
   paginateMeasuredGroups,
+  type ContentBlockInteractionAvailabilityHint,
+  type ReaderContentBlock,
   type ReaderContentGroup,
   type ReaderContentPage,
 } from "./model";
@@ -33,7 +37,7 @@ interface ReaderContentViewProps {
   layoutStatus: RequestStatus;
   contentStatus: RequestStatus;
   selectedSection: SectionSelection | null;
-  contentBlocks: ContentBlock[];
+  contentBlocks: ReaderContentBlock[];
   contentGroups: ReaderContentGroup[];
   error: string;
   onSelectTaskUnitInteraction?: (
@@ -41,9 +45,18 @@ interface ReaderContentViewProps {
     group: ReaderContentGroup,
     kind: ReadingInteractionKind,
   ) => void;
+  onSelectContentBlockInteraction?: (
+    selection: SectionSelection,
+    block: ReaderContentBlock,
+    kind: ReadingInteractionKind,
+  ) => void;
   getTaskUnitInlineInsight?: (
     selection: SectionSelection,
     group: ReaderContentGroup,
+  ) => InsightViewState | null;
+  getContentBlockInlineInsight?: (
+    selection: SectionSelection,
+    block: ReaderContentBlock,
   ) => InsightViewState | null;
   onDismissInlineInsight?: (targetKey: string) => void;
   onGenerateInlineInsight?: (targetKey: string) => void;
@@ -58,7 +71,9 @@ export function ReaderContentView({
   contentGroups,
   error,
   onSelectTaskUnitInteraction,
+  onSelectContentBlockInteraction,
   getTaskUnitInlineInsight,
+  getContentBlockInlineInsight,
   onDismissInlineInsight,
   onGenerateInlineInsight,
   onRefreshInlineInsight,
@@ -71,7 +86,12 @@ export function ReaderContentView({
     anchorEl: HTMLElement;
     group: ReaderContentGroup;
   } | null>(null);
+  const [contentBlockInteractionMenu, setContentBlockInteractionMenu] = useState<{
+    anchorEl: HTMLElement;
+    block: ReaderContentBlock;
+  } | null>(null);
   const taskUnitInteractionMenuOpen = Boolean(taskUnitInteractionMenu);
+  const contentBlockInteractionMenuOpen = Boolean(contentBlockInteractionMenu);
 
   useEffect(() => {
     setCurrentPageIndex(0);
@@ -145,12 +165,47 @@ export function ReaderContentView({
     setTaskUnitInteractionMenu(null);
   }
 
+  function openContentBlockInteractionMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    block: ReaderContentBlock,
+  ) {
+    setContentBlockInteractionMenu({ anchorEl: event.currentTarget, block });
+  }
+
+  function closeContentBlockInteractionMenu() {
+    setContentBlockInteractionMenu(null);
+  }
+
   function selectTaskUnitInteraction(kind: ReadingInteractionKind) {
     const group = taskUnitInteractionMenu?.group;
     closeTaskUnitInteractionMenu();
     if (selectedSection && group) {
       onSelectTaskUnitInteraction?.(selectedSection, group, kind);
     }
+  }
+
+  function selectContentBlockInteraction(kind: ReadingInteractionKind) {
+    const block = contentBlockInteractionMenu?.block;
+    closeContentBlockInteractionMenu();
+    if (selectedSection && block) {
+      onSelectContentBlockInteraction?.(selectedSection, block, kind);
+    }
+  }
+
+  function contentBlockMenuHint(
+    kind: ReadingInteractionKind,
+  ): ContentBlockInteractionAvailabilityHint | null {
+    const block = contentBlockInteractionMenu?.block;
+    return block ? contentBlockInteractionAvailabilityHint(block, kind) : null;
+  }
+
+  function formatContentBlockMenuHint(
+    hint: ContentBlockInteractionAvailabilityHint | null,
+  ): string | undefined {
+    if (!hint) {
+      return undefined;
+    }
+    return hint.reason ? `${hint.label}: ${hint.reason}` : hint.label;
   }
 
   if (layoutStatus === "initial") {
@@ -261,9 +316,12 @@ export function ReaderContentView({
                     insight={
                       selectedSection ? getTaskUnitInlineInsight?.(selectedSection, group) : null
                     }
+                    selectedSection={selectedSection}
                     key={group.taskUnitId}
+                    getContentBlockInlineInsight={getContentBlockInlineInsight}
                     onDismissInlineInsight={onDismissInlineInsight}
                     onGenerateInlineInsight={onGenerateInlineInsight}
+                    onOpenContentBlockInteractionMenu={openContentBlockInteractionMenu}
                     onOpenInteractionMenu={openTaskUnitInteractionMenu}
                     onRefreshInlineInsight={onRefreshInlineInsight}
                     showInteraction
@@ -272,8 +330,18 @@ export function ReaderContentView({
               : contentBlocks.map((block, index) => (
                   <ContentBlockView
                     block={block}
+                    insight={
+                      selectedSection
+                        ? getContentBlockInlineInsight?.(selectedSection, block)
+                        : null
+                    }
                     index={index}
                     key={`${block.block_id}:${index}`}
+                    onDismissInlineInsight={onDismissInlineInsight}
+                    onGenerateInlineInsight={onGenerateInlineInsight}
+                    onOpenInteractionMenu={openContentBlockInteractionMenu}
+                    onRefreshInlineInsight={onRefreshInlineInsight}
+                    showInteraction
                   />
                 ))}
           </Stack>
@@ -318,6 +386,55 @@ export function ReaderContentView({
               </ListItemText>
             </MenuItem>
           </Menu>
+          <Menu
+            className="reader-content-block-interaction-menu"
+            id="reader-content-block-interaction-menu"
+            anchorEl={contentBlockInteractionMenu?.anchorEl || null}
+            open={contentBlockInteractionMenuOpen}
+            onClose={closeContentBlockInteractionMenu}
+          >
+            <MenuItem
+              className="reader-content-block-interaction-option reader-content-block-interaction-option-insight"
+              onClick={() => selectContentBlockInteraction("insight")}
+            >
+              <ListItemIcon className="reader-content-block-interaction-option-icon">
+                <TipsAndUpdatesOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                className="reader-content-block-interaction-option-label"
+                primary="Insights"
+                secondary={formatContentBlockMenuHint(contentBlockMenuHint("insight"))}
+              />
+            </MenuItem>
+            <MenuItem
+              className="reader-content-block-interaction-option reader-content-block-interaction-option-quiz"
+              onClick={() => selectContentBlockInteraction("quiz")}
+            >
+              <ListItemIcon className="reader-content-block-interaction-option-icon">
+                <QuizOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                className="reader-content-block-interaction-option-label"
+                primary="Quiz"
+                secondary={formatContentBlockMenuHint(contentBlockMenuHint("quiz"))}
+              />
+            </MenuItem>
+            <MenuItem
+              className="reader-content-block-interaction-option reader-content-block-interaction-option-critical-thinking"
+              onClick={() => selectContentBlockInteraction("critical_thinking")}
+            >
+              <ListItemIcon className="reader-content-block-interaction-option-icon">
+                <PsychologyAltOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                className="reader-content-block-interaction-option-label"
+                primary="Critical thinking"
+                secondary={formatContentBlockMenuHint(
+                  contentBlockMenuHint("critical_thinking"),
+                )}
+              />
+            </MenuItem>
+          </Menu>
           <Box
             aria-hidden="true"
             className="reader-content-pagination-measure"
@@ -343,17 +460,29 @@ export function ReaderContentView({
 function ReaderContentGroupView({
   group,
   insight,
+  selectedSection,
   showInteraction,
+  getContentBlockInlineInsight,
   onDismissInlineInsight,
   onGenerateInlineInsight,
+  onOpenContentBlockInteractionMenu,
   onOpenInteractionMenu,
   onRefreshInlineInsight,
 }: {
   group: ReaderContentGroup;
   insight?: InsightViewState | null;
+  selectedSection?: SectionSelection | null;
   showInteraction: boolean;
+  getContentBlockInlineInsight?: (
+    selection: SectionSelection,
+    block: ReaderContentBlock,
+  ) => InsightViewState | null;
   onDismissInlineInsight?: (targetKey: string) => void;
   onGenerateInlineInsight?: (targetKey: string) => void;
+  onOpenContentBlockInteractionMenu?: (
+    event: MouseEvent<HTMLButtonElement>,
+    block: ReaderContentBlock,
+  ) => void;
   onOpenInteractionMenu?: (
     event: MouseEvent<HTMLButtonElement>,
     group: ReaderContentGroup,
@@ -403,23 +532,80 @@ function ReaderContentGroupView({
         />
       ) : null}
       <Stack spacing={2.25} className="reader-content-task-unit-blocks">
-        {group.blocks.map((block, index) => (
-          <ContentBlockView
-            block={block}
-            index={index}
-            key={`${group.taskUnitId}:${block.block_id}:${index}`}
-          />
-        ))}
+        {group.blocks.length > 0 ? (
+          group.blocks.map((block, index) => (
+            <ContentBlockView
+              block={block}
+              insight={
+                selectedSection
+                  ? getContentBlockInlineInsight?.(selectedSection, block)
+                  : null
+              }
+              index={index}
+              key={`${group.taskUnitId}:${block.block_id}:${index}`}
+              onDismissInlineInsight={onDismissInlineInsight}
+              onGenerateInlineInsight={onGenerateInlineInsight}
+              onOpenInteractionMenu={onOpenContentBlockInteractionMenu}
+              onRefreshInlineInsight={onRefreshInlineInsight}
+              showInteraction={showInteraction}
+            />
+          ))
+        ) : (
+          <Typography
+            className="reader-content-task-unit-empty"
+            color="text.secondary"
+            variant="body2"
+          >
+            No renderable content blocks for this task unit.
+          </Typography>
+        )}
       </Stack>
     </Box>
   );
 }
 
-function ContentBlockView({ block, index }: { block: ContentBlock; index: number }) {
+function ContentBlockView({
+  block,
+  insight,
+  index,
+  showInteraction,
+  onDismissInlineInsight,
+  onGenerateInlineInsight,
+  onOpenInteractionMenu,
+  onRefreshInlineInsight,
+}: {
+  block: ReaderContentBlock;
+  insight?: InsightViewState | null;
+  index: number;
+  showInteraction: boolean;
+  onDismissInlineInsight?: (targetKey: string) => void;
+  onGenerateInlineInsight?: (targetKey: string) => void;
+  onOpenInteractionMenu?: (
+    event: MouseEvent<HTMLButtonElement>,
+    block: ReaderContentBlock,
+  ) => void;
+  onRefreshInlineInsight?: (targetKey: string) => void;
+}) {
+  const interactionEligibility = contentBlockInteractionEligibility(block);
+  const showBlockInteraction = showInteraction && interactionEligibility.eligible;
+  const blockLabel = block.block_id.trim() || `content block ${index + 1}`;
+
   return (
     <Box
       component="section"
-      className="content-block reader-content-block"
+      className={[
+        "content-block",
+        "reader-content-block",
+        interactionEligibility.eligible
+          ? "reader-content-block-interaction-eligible"
+          : "reader-content-block-render-only",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-content-block-interaction-eligible={
+        interactionEligibility.eligible ? "true" : "false"
+      }
+      data-content-block-interaction-reason={interactionEligibility.reason}
       key={`${block.block_id}:${index}`}
     >
       <Stack
@@ -440,10 +626,29 @@ function ContentBlockView({ block, index }: { block: ContentBlock; index: number
         >
           {block.block_id}
         </Typography>
+        {showBlockInteraction ? (
+          <IconButton
+            className="reader-content-block-interaction-trigger"
+            aria-label={`Content-block reading interactions for ${blockLabel}`}
+            size="small"
+            onClick={(event) => onOpenInteractionMenu?.(event, block)}
+          >
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+        ) : null}
       </Stack>
       <Typography className="reader-content-block-body" variant="body1">
         {block.content}
       </Typography>
+      {insight ? (
+        <InlineInsightRegion
+          className="reader-content-block-inline-insight"
+          insight={insight}
+          onDismiss={onDismissInlineInsight}
+          onGenerate={onGenerateInlineInsight}
+          onRefresh={onRefreshInlineInsight}
+        />
+      ) : null}
     </Box>
   );
 }

@@ -139,6 +139,9 @@ Expected layout behavior:
 - The hierarchy pane should constrain its own height and let `.chapter-list` own
   hierarchy overflow. The hierarchy header remains visible while the chapter/section
   list scrolls inside its parent.
+- Long document-level inline insight content in the hierarchy pane should own a bounded
+  local scroll surface, so generated book insights do not force document-level scroll
+  or become clipped by the fixed reader workspace.
 - The content pane should constrain its own height and let the reader-content internal
   surface own content overflow. The right pane should not push `.reader-layout` taller
   than the viewport.
@@ -175,6 +178,7 @@ manual TOC commit semantics.
 The Reader UI is organized by user-facing responsibility:
 
 - `src/features/book-search/`: top document-search entry feature.
+- `src/features/file-management/`: document library surface for read-only catalog loading, empty/error/list states, and explicit document-open row actions.
 - `src/features/hierarchy-navigation/`: lower-left chapter/section hierarchy navigation feature.
 - `src/features/reader-content/`: lower-right section content rendering feature.
 - `src/features/toc-editor/`: right-pane manual TOC editing feature for source documents whose table of contents is missing, incorrect, or not automatically recognized.
@@ -204,9 +208,11 @@ The TOC editor entry trigger belongs in the hierarchy navigation header, near th
 This section defines the Reader UI behavior for backend reading-interaction features:
 insight, quiz, and critical-thinking session. Backend REST routes and public schemas
 for generic reading interactions are now exposed for all three interaction families.
-The current UI integration wires the first insight vertical slice through
-`ReadingInteractionService`; quiz and critical-thinking drawer API calls remain
-follow-up frontend wiring work.
+The current UI integration wires hierarchy-level document/chapter/section/task-unit
+targets through `ReadingInteractionService` for insight, quiz, and critical-thinking
+flows. The next backend-ready frontend slice is content-block target integration, with
+target identity gates so only backend-addressable segmented rows start interaction
+flows.
 
 Reading interactions are artifact/session interactions attached to backend hierarchy
 targets. They must not become frontend hierarchy, task-layout truth, or hidden backend
@@ -216,19 +222,23 @@ mutation. The target identity must come from backend-provided ids:
 - chapter target: `chapter_id`
 - section target: `section_id`
 - unit target: `task_unit_id`
+- content-block target: `task_unit_id` plus canonical `content_blocks[].block_id` as
+  `content_block_id`, with optional parent `chapter_id` / `section_id`
 
 Optional parent ids may be carried by future requests for consistency checks, but the UI
 must not target interactions by title text or by visible row position alone.
 
 The UI implementation should be decomposed into four large design areas:
 
-- target/action surface: document, chapter, section, and task-unit three-dot menus
+- target/action surface: document, chapter, section, task-unit, and content-block
+  three-dot menus
 - inline insight surface: compact target-local insight placement and statuses
 - quiz drawer: read-first quiz rendering, local practice, and generation controls
 - critical-thinking drawer: session question, answer, evaluation, and retry flow
 
-The checklist splits these areas into 18 implementation tasks so backend API exposure
-can remain narrow and each UI behavior can be validated independently.
+The original checklist split these areas into small implementation tasks so backend API
+exposure could remain narrow and each UI behavior could be validated independently.
+The follow-up content-block slice is now split separately below.
 
 #### Interaction Entry Points
 
@@ -248,11 +258,62 @@ Placement:
 - section action: at the right edge of each section row
 - unit action: at the right edge of a task-unit content group header inside the reader
   content surface
+- content-block action: at the right edge of each visible `ContentBlockView` row once
+  the UI implementation consumes the backend `content_block` target contract
 
 Task units remain internal content-addressing units, not primary navigation nodes. The
 unit action is therefore rendered only inside reader content where task-unit grouping is
 already available from the selected section content response. The hierarchy navigation
 must not become a task-unit tree.
+
+Current implementation distinction:
+
+- `taskUnitId` identifies the task-unit group that owns interaction targeting.
+- `content_blocks[].block_id` identifies a rendered content block inside that task
+  unit, for example `7725:content:0`.
+- The task-unit interaction menu is currently rendered at the task-unit group header,
+  not beside each `content_blocks[]` row.
+- A visible block id such as `7725:content:0` therefore does not currently get its own
+  three-dot menu because `ContentBlockView` renders block metadata/body only and the
+  frontend `ReadingInteractionTarget` model has no `content_block` target level.
+
+Maintainer direction: business interaction should eventually happen at the visible
+content-block level. Backend support for `content_block` reading-interaction targets
+now exists: public target schema, hierarchy-aware block resolution, selected-block
+source context, block-scoped artifact identity, generic route acceptance, and shared
+response envelopes are code-confirmed. `ContentBlockView` can therefore render a
+per-block `MoreVert` affordance in a later UI implementation using the block id as
+target identity instead of borrowing the parent task-unit target.
+
+Backend handoff contract for a content-block menu:
+
+- use the loaded document `doc_name`;
+- use `TaskUnitContentResponse.task_unit_id` from the owning task-unit content response;
+- carry `TaskUnitContentResponse.chapter_id` and `section_id` when present;
+- submit `content_blocks[].block_id` as `target.content_block_id`;
+- submit `target_type: "content_block"`;
+- optionally pass `content_blocks[].metadata.source_hash` as stale-target evidence.
+
+The UI must not derive block target identity from visible row position, pagination
+page number, rendered block text, menu state, drawer state, or draft answer state.
+`metadata.content_block_id`, when present, is only advisory duplication; the canonical
+source for request `content_block_id` is `content_blocks[].block_id`.
+
+Canonical eligibility rule:
+
+- A visible content block may open a block-level interaction menu only when the UI can
+  construct a backend-valid `content_block` target from response-owned ids.
+- The UI may present the block-level menu when the selected task-unit content response
+  provides both response-owned `task_unit_id` and `content_blocks[].block_id`.
+- Backend `interaction_availability` and `artifact_target_refs` are confidence/status
+  hints for the menu, not a hard display gate. Some `segmented=true` render payloads
+  may omit those fields while still carrying enough target identity for a read-first
+  backend validation attempt.
+- If a block is render-only, the UI may omit the block menu or show a disabled
+  affordance with local explanatory copy; it must not silently fall back to the parent
+  task-unit target while visually implying a block-specific interaction.
+- Failed `content_block_id not found` responses should be surfaced as target-invalid or
+  stale-target UI states, not retried as title/position based targets.
 
 The menu should be target-aware. Opening it records a frontend-local
 `interactionTarget` object derived from the current row/group. Selecting a menu item
@@ -386,43 +447,84 @@ The frontend API wiring is intentionally split into three major steps:
 1. Insight inline API wiring: completed. `ReadingInteractionService` supports
    insight read/generate/refresh, and the inline insight surface maps backend
    analysis envelopes into local view state.
-2. Quiz drawer API wiring: remaining. This should be delivered as a drawer-focused
-   vertical slice without touching critical-thinking flow.
-3. Critical-thinking drawer API wiring: remaining. This should be delivered after or
-   separate from quiz wiring because it has a session lifecycle, draft-answer state,
-   submit semantics, and retry semantics.
+2. Quiz drawer API wiring: in progress. Quiz request/response API types and
+   `ReadingInteractionService` methods are implemented, and generic quiz responses
+   can be mapped into drawer view state. Drawer open now performs read-first quiz
+   loading without generation; explicit generate/refresh UI wiring is implemented.
+   Critical-thinking flow remains separate.
+3. Critical-thinking drawer API wiring: in progress. Request/response API types and
+   `ReadingInteractionService` methods are implemented, and backend session responses
+   can be mapped into drawer view state. Drawer open now performs read-first
+   critical-thinking session loading without question generation; explicit
+   generate/submit/retry UI wiring is implemented. This remains separate from quiz
+   wiring because it has a session lifecycle, draft-answer state, submit semantics,
+   and retry semantics.
 
 The remaining two major steps are split into smaller implementation tasks:
 
 Quiz drawer API wiring:
 
 - add quiz request/response API types and `ReadingInteractionService` methods for
-  `readQuiz`, `generateQuiz`, and `refreshQuiz`
+  `readQuiz`, `generateQuiz`, and `refreshQuiz` (completed)
 - map `QuizInteractionResponse` into `QuizViewState`, including strict item ids,
   item types, options, answers, explanations, metadata, error/reason fields, and
-  status normalization
+  status normalization (completed)
 - wire drawer open to read-first quiz loading while preserving local practice answers
-  and reveal toggles as frontend-only state
+  and reveal toggles as frontend-only state (completed)
 - wire explicit `Generate quiz` and `Refresh quiz` controls to service calls, keeping
   legacy `/documents/section-quiz` and `/documents/chapter-quiz` out of the drawer API
+  (completed)
 
 Critical-thinking drawer API wiring:
 
 - add critical-thinking request/response API types and `ReadingInteractionService`
-  methods for read, generate-question, submit-answer, and retry-evaluation
+  methods for read, generate-question, submit-answer, and retry-evaluation (completed)
 - map `CriticalThinkingSessionResponse` into `CriticalThinkingViewState`, including
   session id, question, submitted answer, evaluation feedback, score, suggested
-  refinement, status, metadata, and retryable error state
+  refinement, status, metadata, and retryable error state (completed)
 - wire drawer open to read-first critical-thinking session loading without creating a
-  question session from the read path
+  question session from the read path (completed)
 - wire explicit generate-question, submit-answer, and retry-evaluation controls while
   keeping unsent draft answers frontend-local and sending the shared target object plus
-  backend session id for submit/retry calls
+  backend session id for submit/retry calls (completed)
 
 Both remaining steps must keep stale response suppression in the controller, keep REST
 calls out of view components, keep `/documents/task-layout` unchanged, and avoid
 persisting drawer open state, local quiz practice answers, or unsent critical-thinking
 draft text as backend truth.
+
+#### Backend-Ready Content-Block Frontend Task Split
+
+The backend now exposes enough `content_block` target support for a guarded frontend
+integration. The implementation should be split into eight tasks:
+
+1. Extend frontend interaction target identity to include `content_block`, including
+   deterministic target keys, breadcrumbs, API target serialization, parent ids, and
+   optional `source_hash` evidence.
+2. Preserve response-owned content-block owner context in reader-content aggregation:
+   each rendered block must retain its owning task-unit response id, optional parent
+   chapter/section ids, block id, and optional source evidence.
+3. Define and implement block eligibility in the reader-content model so only
+   response-owned task-unit/block identities can start backend interaction flows.
+4. Add `ContentBlockView` three-dot menu affordance for eligible blocks only, using
+   the existing Insights / Quiz / Critical thinking action vocabulary and MUI menu
+   behavior.
+5. Route content-block menu actions through the existing reading-interaction
+   controller so insight stays inline and quiz / critical-thinking continue to use the
+   shared drawer without new route families.
+6. Consume optional `interaction_availability` slots from task-unit content responses
+   for menu/status hints without storing artifact payloads, source text, or UI state in
+   task-layout.
+7. Normalize content-block error states across inline insight and drawers, especially
+   `stale_target`, `insufficient_content`, `generation_failed`, and resolver
+   not-found responses.
+8. Add frontend validation coverage and smoke checks proving document/chapter/section/
+   task-unit flows still work, content-block flows use explicit backend ids, and
+   `/documents/task-layout` remains lightweight.
+
+These tasks are frontend implementation tasks only. They must not require backend API
+shape changes, hidden prepare/reparse calls, task-layout mutation, persisted drawer
+state, local quiz answer persistence, or unsent critical-thinking draft persistence.
 
 Recommended frontend state:
 
@@ -454,7 +556,8 @@ type ReadingInteractionTargetLevel =
   | "document"
   | "chapter"
   | "section"
-  | "task_unit";
+  | "task_unit"
+  | "content_block";
 
 type ReadingInteractionKind =
   | "insight"
@@ -468,6 +571,7 @@ interface ReadingInteractionTarget {
   chapterId?: string;
   sectionId?: string;
   taskUnitId?: string;
+  contentBlockId?: string;
   parentChapterId?: string;
   parentSectionId?: string;
   displayTitle: string;
@@ -820,13 +924,80 @@ the range workspace.
 Backend REST usage is centralized behind service classes:
 
 - `DocumentCatalogService`: `GET /documents`
+- `DocumentManagementService`: current read-only document-management boundary over `GET /documents`; maps backend-owned `doc_name`, title, and source into the future file-management item model without inventing source hash, preparation status, profile-derived display fields, upload metadata, lifecycle state, or reading history
 - `TaskLayoutService`: `POST /documents/task-layout`; `POST /documents/prepare-task-layout`
 - `TaskUnitContentService`: `POST /documents/{doc_name}/task-units/content` for selected-section batch read; `GET /documents/{doc_name}/task-units/{task_unit_id}/content?segmented=true` as single-task compatibility/fallback
 - `StructureRepairService`: `POST /documents/reparse-structure` for common / LLM structure repair
 - `ManualStructureService`: `POST /documents/manual-structure/validate`; `POST /documents/reparse-structure` with `parser_mode=manual_structure`
 - `DocumentPreparationService`: `POST /documents/prepare`
 
-These services preserve the existing backend API contract and keep manual-structure validation/commit explicit.
+These services preserve the existing backend API contract and keep manual-structure validation/commit explicit. `DocumentManagementService` is intentionally narrow until backend management/upload contracts exist; it does not call upload, delete, archive, prepare, reparse, task-layout, OCR, profile, retrieval, or reading-interaction routes.
+
+### File Management Dialog
+
+The current file-management implementation is a read-only document library dialog. The
+topbar `Library` action opens the dialog and loads document candidates through
+`DocumentManagementService`, which currently adapts the existing lightweight
+`GET /documents` API. The dialog owns frontend-local loading, empty, error, and loaded
+states and renders row-level `Open` actions.
+
+The visible library table should not treat backend `source` as a primary user-facing
+column. Source is operational metadata and is usually less useful to readers than
+document identity and reading-oriented metadata. The default list should prefer display
+fields such as document title, author/work identity when available, document language,
+profile-derived genre/type/topic signals, preparation/readiness status, and a compact
+profile summary or description. Until backend management/profile APIs expose those
+fields, the UI may show available title/doc name plus preparation status and keep source
+metadata hidden behind details or an advanced filter. The UI must not invent profile
+metadata when the backend has not provided it.
+
+The `Open` action is intentionally read-centric: it calls `POST /documents/task-layout`
+for the selected backend document candidate and does not fall back to
+`/documents/prepare-task-layout`. If no current layout exists, the user sees the backend
+error and can use explicit preparation/repair flows when those are available. This keeps
+file-management opening separate from upload, prepare, reparse, OCR, profile, retrieval,
+and reading-interaction generation.
+
+The dialog now exposes upload controls as an embedded explicit backend subflow. It
+supports file selection, advisory `.txt` / `.pdf` extension validation, selected,
+validating, uploading, uploaded, failed, cancelled, and duplicate-conflict confirmation
+states. The upload action calls `POST /documents/upload` through
+`DocumentUploadService`; upload success refreshes the catalog and offers explicit
+Prepare/Open/Upload another actions.
+
+Duplicate upload handling is two-step and user-confirmed. The first upload attempt uses
+`conflict_policy=reject`; when the backend returns `duplicate_conflict`, the UI opens a
+confirmation dialog. Only after the user confirms does the UI submit the same selected
+file again with `conflict_policy=create_distinct`, allowing the backend to save a unique
+source filename and backend-owned `doc_name` such as `Book (1)`. The UI must not
+silently replace an existing source and must not invent the unique name locally.
+
+This upload subflow stores raw source candidates only through the explicit backend
+upload route. It must not prepare/reparse documents, run OCR/profile/retrieval, call
+task-layout, or generate interactions as a hidden side effect. Backend validation remains
+authoritative for supported type, safety, size, conflict policy, and final document
+identity.
+
+Boundary validation confirms the upload controls are explicit state:
+`useFileManagementController` lists documents through `DocumentManagementService`,
+records selected file metadata in memory, performs advisory extension validation, calls
+`DocumentUploadService` for upload only after the user action, and handles duplicate
+confirmation before requesting `create_distinct`. The document library `Open` action
+still uses the read-centric task-layout path rather than hidden prepare or upload side
+effects.
+
+Library usability should include an advanced filter area for large future collections.
+The basic search should remain simple, while advanced filters can later include
+preparation/readiness status, language, profile-derived type/genre/topic, upload or
+updated time, source type, and lifecycle state once those fields are exposed by the
+backend. Filter state is frontend-local and must not become backend truth.
+
+The library should also expose a recent-reading shortcut area below the main list that
+shows the three most recently opened/read documents. The first implementation may track
+recent entries locally from successful reader opens. If a future backend exposes
+server-side reading history or `last_read_at`, the UI can replace or reconcile the
+local list with that backend-owned history. Clicking a recent book should enter the
+same read-centric document open path as the normal row `Open` action.
 
 ### Document Combo Box
 
@@ -842,13 +1013,123 @@ The first slice consumes the backend document list API for document-name candida
 
 This control remains a document-name entry surface, not a document library UI. It does not create local-only selectable documents.
 
+## Future Direction: File Management And Upload UI
+
+The Reader UI should introduce a file-management module as the parent surface for
+document inventory, document status, and explicit document lifecycle actions. File
+upload is a child workflow inside file management, not a separate primary app mode.
+This keeps the user's mental model simple: the user manages documents in one place,
+and upload is one way to add a document candidate to that managed library.
+
+The file-management surface should be planned as a document library rather than as an
+extension of the current document combo box. The current combo box remains a compact
+reader entry control backed by `GET /documents`; the future file-management module may
+reuse the same lightweight discovery contract initially, but it should add richer UI
+state around source status, preparation readiness, explicit prepare/open actions,
+upload progress, and failure recovery only after backend contracts exist.
+
+Planned feature boundaries:
+
+- `src/features/file-management/` owns the document library view, filters, status
+  presentation, row actions, recent-reading shortcuts, and composition of upload as an
+  embedded workflow.
+- `src/features/file-upload/` may exist as an internal sub-feature only if upload
+  state becomes complex enough to justify isolation; it should still be rendered from
+  file management.
+- `src/services/DocumentManagementService.ts` should own future management REST calls
+  such as list/status/delete/rename when backend routes exist.
+- `src/services/DocumentUploadService.ts` should own future upload REST calls when
+  backend upload routes exist.
+- Existing reader services must remain focused on reading: `TaskLayoutService` reads
+  layout, `TaskUnitContentService` reads content, and `DocumentPreparationService`
+  explicitly prepares a selected document.
+
+File-management UI state should distinguish:
+
+- catalog loading, loaded, empty, and failed states
+- per-document reader-facing display metadata, preparation status, and last error when
+  backend exposes those fields
+- advanced filter state for future large-library use
+- recent-reading shortcuts derived from successful reader opens or future backend
+  reading-history metadata
+- upload idle, selected, validating, uploading, uploaded, failed, and cancelled states
+- duplicate upload conflict state requiring confirmation before creating a distinct
+  backend-owned source name
+- explicit post-upload actions such as prepare, open existing layout, or retry upload
+
+The upload flow should be explicit and non-surprising:
+
+1. The user opens file management.
+2. The user chooses one or more supported files.
+3. The UI performs advisory client-side checks such as extension and size, while the
+   backend remains validation authority.
+4. The upload call stores or registers the raw source and returns a lightweight
+   document candidate/status response.
+5. If the backend reports a duplicate conflict, the UI asks the user for confirmation
+   before retrying with the backend `create_distinct` policy.
+6. After a confirmed distinct upload, the backend returns the final unique source
+   filename and `docName`; the UI displays those backend-owned values.
+7. The UI refreshes the document catalog and offers explicit next actions.
+8. Upload success must not silently call prepare, reparse, task-layout, profile
+   generation, OCR, or interaction generation.
+
+The future UI data shape should be small and backend-owned:
+
+```ts
+type DocumentManagementItem = {
+  docName: string;
+  title?: string | null;
+  author?: string | null;
+  language?: string | null;
+  profileLabel?: string | null;
+  profileSummary?: string | null;
+  sourceFilename?: string | null;
+  sourceType?: "txt" | "pdf" | "unknown";
+  sourceSizeBytes?: number | null;
+  sourceHash?: string | null;
+  sourceStatus?: "available" | "missing" | "unsupported" | "failed";
+  preparationStatus?: "not_prepared" | "ready" | "failed" | "stale" | "unknown";
+  uploadedAt?: string | null;
+  updatedAt?: string | null;
+  lastReadAt?: string | null;
+  lastError?: string | null;
+};
+```
+
+This frontend shape is a planning target only. It must not be treated as an implemented
+backend schema until `api_schemas.py`, routes, and app orchestration expose matching
+contracts.
+
+Boundary rules:
+
+- Backend document identity remains authoritative.
+- Upload creates or updates a raw source candidate only through explicit backend upload
+  routes when they exist.
+- Same-name upload must first fail/ask through the `reject` conflict path, then use
+  `create_distinct` only after explicit user confirmation; unique naming is backend-owned.
+- Opening a document still uses the read-centric task-layout flow when a layout exists.
+- Preparing or repairing a document remains an explicit user action.
+- File-management filters, sort order, selected rows, drawer state, upload progress,
+  recent-reading shortcuts, and optimistic UI rows are frontend state only unless a
+  backend history/profile API explicitly owns the corresponding fields.
+- The UI must not invent prepared status, source hash, structure version, or backend
+  lifecycle state.
+- The UI must not invent document profile fields. When profile-derived fields are
+  unavailable, it should show neutral fallback display such as title/doc name rather
+  than fabricating author, genre, language, or summary values.
+- The current lifecycle MVP should expose only delete and rename once backend routes
+  exist; archive/restore should not appear in the UI until explicitly reprioritized.
+- The UI must not hide destructive actions behind row selection. Delete requires an
+  explicit user confirmation step before the frontend calls the backend delete route.
+- Rename should be a visible row action or dialog flow that submits `new_doc_name` to the
+  backend and displays backend conflict/failure reasons without inventing local backend
+  identity state.
+
 ## Non-Goals
 
 The list below describes the completed first Reader slice, not the next reading
 interaction design slice.
 
-- document upload
-- document library
 - summary UI
 - quiz/critical-thinking backend mutation from drawer open or read paths
 - quiz or critical-thinking drawer API calls before their planned service/controller

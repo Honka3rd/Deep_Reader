@@ -107,3 +107,10 @@ No known legacy compatibility responsibility.
 6. For section generation, candidate lower-level artifacts come from task units in that section; for chapter generation, from sections/task units in that chapter; for document/book generation, from chapter/section/task-unit artifacts under the document. **[Maintainer-Provided] + [Future Direction]**
 7. Context metadata should record `artifact_context_mode`, `referenced_artifact_ids`, artifact target levels, coverage counts, deduplication hints, and pruning/compaction reasons. **[Maintainer-Provided] + [Future Direction]**
 8. Absence of lower-level artifacts must not block generation; it only means the secondary artifact context is empty. **[Maintainer-Provided] + [Future Direction]**
+9. For `content_block` reading-interaction targets, artifact-aware context has a
+   narrower policy than higher-level generation: parent task-unit artifacts for the
+   same `task_unit_id` may be used as compact secondary context, while sibling
+   `content_block` artifacts are excluded until a dedicated sibling-context policy is
+   defined. The selected block text remains primary source context, and provenance
+   metadata remains metadata-only without context text or child payloads.
+   **[Code-Confirmed]**

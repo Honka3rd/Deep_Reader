@@ -1,6 +1,7 @@
 import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
 import CheckIcon from "@mui/icons-material/Check";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import LibraryBooksOutlinedIcon from "@mui/icons-material/LibraryBooksOutlined";
 import {
   Box,
   Button,
@@ -25,11 +26,16 @@ import {
   useBookSearchController,
 } from "./features/book-search";
 import {
+  FileManagementView,
+  useFileManagementController,
+} from "./features/file-management";
+import {
   HierarchyNavigationView,
   resolveLayoutParserMode,
 } from "./features/hierarchy-navigation";
 import {
   ReaderContentView,
+  type ReaderContentBlock,
   type ReaderContentGroup,
   useReaderContentController,
 } from "./features/reader-content";
@@ -56,6 +62,9 @@ import {
   CriticalThinkingDrawerCommands,
   CriticalThinkingDrawerContent,
   mapAnalysisInteractionResponseToInsightViewState,
+  mapCriticalThinkingSessionResponseToViewState,
+  mapQuizInteractionResponseToQuizViewState,
+  normalizeReadingInteractionThrownError,
   QuizDrawerCommands,
   QuizDrawerContent,
   ReadingInteractionsView,
@@ -81,6 +90,8 @@ export default function App() {
   const [activeRepairMode, setActiveRepairMode] = useState<StructureParserMode | null>(null);
   const [repairMenuAnchor, setRepairMenuAnchor] = useState<HTMLElement | null>(null);
   const [criticalThinkingDraftDirty, setCriticalThinkingDraftDirty] = useState(false);
+  const [criticalThinkingDraftAnswersByTarget, setCriticalThinkingDraftAnswersByTarget] =
+    useState<Record<string, string>>({});
   const layoutRequestIdRef = useRef(0);
   const {
     docName,
@@ -89,6 +100,7 @@ export default function App() {
     searching: documentSearchLoading,
     loadDocumentOptions,
   } = useBookSearchController();
+  const fileManagement = useFileManagementController();
   const {
     selectedSection,
     contentBlocks,
@@ -107,6 +119,12 @@ export default function App() {
     beginInlineInsightRequest,
     applyInlineInsightState,
     failInlineInsightRequest,
+    beginQuizRequest,
+    applyQuizState,
+    failQuizRequest,
+    beginCriticalThinkingRequest,
+    applyCriticalThinkingState,
+    failCriticalThinkingRequest,
     clearSelectedInteraction,
     closeInlineInsight,
   } = useReadingInteractionMenuController();
@@ -175,6 +193,7 @@ export default function App() {
       setLayout(nextLayout);
       setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
       setLayoutStatus("success");
+      fileManagement.recordRecentDocument(trimmedDocName);
       navigate(`/documents/${encodeURIComponent(trimmedDocName)}`);
     } catch (error) {
       if (layoutRequestIdRef.current !== requestId) {
@@ -190,6 +209,43 @@ export default function App() {
   function selectDocument(nextDocName: string) {
     setDocName(nextDocName);
     void loadLayoutForDocument(nextDocName);
+  }
+
+  async function openManagedDocument(nextDocName: string) {
+    const trimmedDocName = nextDocName.trim();
+    const requestId = layoutRequestIdRef.current + 1;
+    layoutRequestIdRef.current = requestId;
+
+    if (!trimmedDocName) {
+      showNotification("Document name is required.", "error");
+      return;
+    }
+
+    setDocName(trimmedDocName);
+    setLayout(null);
+    resetContent();
+    setLayoutError("");
+    setLayoutStatus("loading");
+    fileManagement.closeLibrary();
+
+    try {
+      const nextLayout = await taskLayoutService.fetchTaskLayout(trimmedDocName);
+      if (layoutRequestIdRef.current !== requestId) {
+        return;
+      }
+      setLayout(nextLayout);
+      setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
+      setLayoutStatus("success");
+      navigate(`/documents/${encodeURIComponent(trimmedDocName)}`);
+    } catch (error) {
+      if (layoutRequestIdRef.current !== requestId) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      setLayoutStatus("error");
+      setLayoutError(message);
+      showNotification(message, "error");
+    }
   }
 
   async function repairStructure(parserMode: StructureParserMode) {
@@ -259,6 +315,8 @@ export default function App() {
         return "section";
       case "task_unit":
         return "task unit";
+      case "content_block":
+        return "content block";
       default:
         return "target";
     }
@@ -288,9 +346,57 @@ export default function App() {
         requestId,
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failInlineInsightRequest(selection.targetKey, requestId, message);
-      showNotification(message, "error");
+      const failure = normalizeReadingInteractionThrownError(selection.target, error);
+      failInlineInsightRequest(
+        selection.targetKey,
+        requestId,
+        failure.message,
+        failure.status,
+      );
+      showNotification(failure.message, "error");
+    }
+  }
+
+  async function readQuiz(selection: ReadingInteractionMenuSelection) {
+    const requestId = beginQuizRequest(selection.targetKey, "loading");
+    try {
+      const response = await readingInteractionService.readQuiz(
+        toReadingInteractionTargetRequest(selection.target),
+      );
+      applyQuizState(
+        selection.targetKey,
+        mapQuizInteractionResponseToQuizViewState(selection.target, response),
+        requestId,
+      );
+    } catch (error) {
+      const failure = normalizeReadingInteractionThrownError(selection.target, error);
+      failQuizRequest(selection.targetKey, requestId, failure.message, failure.status);
+      showNotification(failure.message, "error");
+    }
+  }
+
+  async function readCriticalThinkingSession(
+    selection: ReadingInteractionMenuSelection,
+  ) {
+    const requestId = beginCriticalThinkingRequest(selection.targetKey, "loading");
+    try {
+      const response = await readingInteractionService.readCriticalThinkingSession(
+        toReadingInteractionTargetRequest(selection.target),
+      );
+      applyCriticalThinkingState(
+        selection.targetKey,
+        mapCriticalThinkingSessionResponseToViewState(selection.target, response),
+        requestId,
+      );
+    } catch (error) {
+      const failure = normalizeReadingInteractionThrownError(selection.target, error);
+      failCriticalThinkingRequest(
+        selection.targetKey,
+        requestId,
+        failure.message,
+        failure.status,
+      );
+      showNotification(failure.message, "error");
     }
   }
 
@@ -307,6 +413,10 @@ export default function App() {
       if (selection) {
         if (selection.kind === "insight") {
           void readInlineInsight(selection);
+        } else if (selection.kind === "quiz") {
+          void readQuiz(selection);
+        } else if (selection.kind === "critical_thinking") {
+          void readCriticalThinkingSession(selection);
         } else {
           notifyReadingInteractionSelection(selection);
         }
@@ -402,6 +512,47 @@ export default function App() {
     };
   }
 
+  function contentBlockInteractionTarget(
+    selection: SectionSelection,
+    block: ReaderContentBlock,
+  ): ReadingInteractionTarget | null {
+    const trimmedDocName = docName.trim();
+    if (!trimmedDocName) {
+      return null;
+    }
+
+    const chapterId = block.ownerContext.chapterId || selection.chapter.chapter_id;
+    const sectionId = block.ownerContext.sectionId || selection.section.section_id;
+    const taskUnitId = block.ownerContext.taskUnitId;
+    const contentBlockId = block.block_id;
+    const documentTitle = layout?.title?.trim() || trimmedDocName;
+    const chapterTitle = selection.chapter.title?.trim() || chapterId;
+    const sectionTitle = selection.section.title?.trim() || sectionId;
+    const taskUnitTitle = taskUnitId;
+    const blockTitle = contentBlockId;
+
+    return {
+      targetLevel: "content_block",
+      docName: trimmedDocName,
+      documentId: layout?.document_id || block.ownerContext.documentId,
+      chapterId,
+      sectionId,
+      parentChapterId: chapterId,
+      parentSectionId: sectionId,
+      taskUnitId,
+      contentBlockId,
+      displayTitle: blockTitle,
+      breadcrumb: [
+        documentTitle,
+        chapterTitle,
+        sectionTitle,
+        taskUnitTitle,
+        blockTitle,
+      ],
+      sourceHash: block.ownerContext.sourceHash || undefined,
+    };
+  }
+
   function selectDocumentInteraction(kind: ReadingInteractionKind) {
     selectReadingInteraction(documentInteractionTarget(), kind);
   }
@@ -424,6 +575,14 @@ export default function App() {
     kind: ReadingInteractionKind,
   ) {
     selectReadingInteraction(taskUnitInteractionTarget(selection, group), kind);
+  }
+
+  function selectContentBlockInteraction(
+    selection: SectionSelection,
+    block: ReaderContentBlock,
+    kind: ReadingInteractionKind,
+  ) {
+    selectReadingInteraction(contentBlockInteractionTarget(selection, block), kind);
   }
 
   function inlineInsightForTarget(target: ReadingInteractionTarget | null) {
@@ -451,6 +610,13 @@ export default function App() {
     group: ReaderContentGroup,
   ) {
     return inlineInsightForTarget(taskUnitInteractionTarget(selection, group));
+  }
+
+  function getContentBlockInlineInsight(
+    selection: SectionSelection,
+    block: ReaderContentBlock,
+  ) {
+    return inlineInsightForTarget(contentBlockInteractionTarget(selection, block));
   }
 
   async function generateInlineInsight(targetKey: string) {
@@ -514,39 +680,157 @@ export default function App() {
     setCriticalThinkingDraftDirty(false);
   }, [selectedCriticalThinking?.targetKey]);
 
-  function generateQuiz(targetKey: string) {
-    showNotification(
-      `Generate quiz for ${targetKey} requires quiz service wiring in the frontend.`,
-      "info",
-    );
+  function updateCriticalThinkingDraftAnswer(targetKey: string, draftAnswer: string) {
+    setCriticalThinkingDraftAnswersByTarget((current) => ({
+      ...current,
+      [targetKey]: draftAnswer,
+    }));
   }
 
-  function refreshQuiz(targetKey: string) {
-    showNotification(
-      `Refresh quiz for ${targetKey} requires quiz service wiring in the frontend.`,
-      "info",
-    );
+  async function generateQuiz(targetKey: string) {
+    const quiz = quizStateByTarget[targetKey];
+    if (!quiz) {
+      return;
+    }
+
+    const requestId = beginQuizRequest(targetKey, "generating");
+    try {
+      const response = await readingInteractionService.generateQuiz(
+        toReadingInteractionTargetRequest(quiz.target),
+      );
+      applyQuizState(
+        targetKey,
+        mapQuizInteractionResponseToQuizViewState(quiz.target, response),
+        requestId,
+      );
+      showNotification("Quiz generated.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failQuizRequest(targetKey, requestId, message);
+      showNotification(message, "error");
+    }
   }
 
-  function generateCriticalThinkingQuestion(targetKey: string) {
-    showNotification(
-      `Generate critical-thinking question for ${targetKey} requires critical-thinking service wiring in the frontend.`,
-      "info",
-    );
+  async function refreshQuiz(targetKey: string) {
+    const quiz = quizStateByTarget[targetKey];
+    if (!quiz) {
+      return;
+    }
+
+    const requestId = beginQuizRequest(targetKey, "refreshing");
+    try {
+      const response = await readingInteractionService.refreshQuiz(
+        toReadingInteractionTargetRequest(quiz.target),
+      );
+      applyQuizState(
+        targetKey,
+        mapQuizInteractionResponseToQuizViewState(quiz.target, response),
+        requestId,
+      );
+      showNotification("Quiz refreshed.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failQuizRequest(targetKey, requestId, message);
+      showNotification(message, "error");
+    }
   }
 
-  function submitCriticalThinkingAnswer(targetKey: string) {
-    showNotification(
-      `Submit critical-thinking answer for ${targetKey} requires critical-thinking service wiring in the frontend.`,
-      "info",
-    );
+  async function generateCriticalThinkingQuestion(targetKey: string) {
+    const session = criticalThinkingStateByTarget[targetKey];
+    if (!session) {
+      return;
+    }
+
+    const requestId = beginCriticalThinkingRequest(targetKey, "generating");
+    try {
+      const response = await readingInteractionService.generateCriticalThinkingQuestion(
+        toReadingInteractionTargetRequest(session.target),
+      );
+      applyCriticalThinkingState(
+        targetKey,
+        mapCriticalThinkingSessionResponseToViewState(session.target, response),
+        requestId,
+      );
+      setCriticalThinkingDraftAnswersByTarget((current) => ({
+        ...current,
+        [targetKey]: "",
+      }));
+      setCriticalThinkingDraftDirty(false);
+      showNotification("Critical-thinking question generated.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failCriticalThinkingRequest(targetKey, requestId, message);
+      showNotification(message, "error");
+    }
   }
 
-  function retryCriticalThinkingEvaluation(targetKey: string) {
-    showNotification(
-      `Retry critical-thinking evaluation for ${targetKey} requires critical-thinking service wiring in the frontend.`,
-      "info",
-    );
+  async function submitCriticalThinkingAnswer(targetKey: string) {
+    const session = criticalThinkingStateByTarget[targetKey];
+    const answer = criticalThinkingDraftAnswersByTarget[targetKey]?.trim() || "";
+    const sessionId = session?.metadata?.sessionId;
+    if (!session || !sessionId) {
+      showNotification("Generate a critical-thinking question before submitting.", "warning");
+      return;
+    }
+    if (!answer) {
+      showNotification("Write an answer before submitting.", "warning");
+      return;
+    }
+
+    const requestId = beginCriticalThinkingRequest(targetKey, "submitting");
+    try {
+      const response = await readingInteractionService.submitCriticalThinkingAnswer(
+        toReadingInteractionTargetRequest(session.target),
+        {
+          sessionId,
+          answer,
+        },
+      );
+      applyCriticalThinkingState(
+        targetKey,
+        mapCriticalThinkingSessionResponseToViewState(session.target, response),
+        requestId,
+      );
+      setCriticalThinkingDraftAnswersByTarget((current) => ({
+        ...current,
+        [targetKey]: "",
+      }));
+      setCriticalThinkingDraftDirty(false);
+      showNotification("Critical-thinking answer submitted.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failCriticalThinkingRequest(targetKey, requestId, message);
+      showNotification(message, "error");
+    }
+  }
+
+  async function retryCriticalThinkingEvaluation(targetKey: string) {
+    const session = criticalThinkingStateByTarget[targetKey];
+    const sessionId = session?.metadata?.sessionId;
+    if (!session || !sessionId) {
+      showNotification("A submitted critical-thinking session is required for retry.", "warning");
+      return;
+    }
+
+    const requestId = beginCriticalThinkingRequest(targetKey, "retrying");
+    try {
+      const response = await readingInteractionService.retryCriticalThinkingEvaluation(
+        toReadingInteractionTargetRequest(session.target),
+        {
+          sessionId,
+        },
+      );
+      applyCriticalThinkingState(
+        targetKey,
+        mapCriticalThinkingSessionResponseToViewState(session.target, response),
+        requestId,
+      );
+      showNotification("Critical-thinking evaluation retried.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failCriticalThinkingRequest(targetKey, requestId, message);
+      showNotification(message, "error");
+    }
   }
 
   function closeReadingInteractionDrawer() {
@@ -554,6 +838,12 @@ export default function App() {
       showNotification("Unsent critical-thinking draft was discarded.", "warning");
     }
     setCriticalThinkingDraftDirty(false);
+    if (selectedCriticalThinking) {
+      setCriticalThinkingDraftAnswersByTarget((current) => ({
+        ...current,
+        [selectedCriticalThinking.targetKey]: "",
+      }));
+    }
     clearSelectedInteraction();
   }
 
@@ -601,6 +891,14 @@ export default function App() {
           onSelect={selectDocument}
         />
         <Box className="repair-controls structure-repair-controls">
+          <Button
+            className="file-management-trigger"
+            startIcon={<LibraryBooksOutlinedIcon />}
+            variant="outlined"
+            onClick={fileManagement.openLibrary}
+          >
+            Library
+          </Button>
           <Button
             className="structure-repair-trigger"
             id="repair-menu-button"
@@ -652,6 +950,56 @@ export default function App() {
           </Menu>
         </Box>
       </Paper>
+      <FileManagementView
+        activeFilterCount={fileManagement.activeFilterCount}
+        deleteState={fileManagement.deleteState}
+        error={fileManagement.error}
+        filterOptions={fileManagement.filterOptions}
+        filters={fileManagement.filters}
+        items={fileManagement.items}
+        open={fileManagement.open}
+        recentItems={fileManagement.recentItems}
+        renameState={fileManagement.renameState}
+        status={fileManagement.status}
+        total={fileManagement.total}
+        visibleTotal={fileManagement.visibleTotal}
+        uploadConflict={fileManagement.uploadConflict}
+        uploadDraft={fileManagement.uploadDraft}
+        uploadError={fileManagement.uploadError}
+        uploadResult={fileManagement.uploadResult}
+        uploadStatus={fileManagement.uploadStatus}
+        onCancelDelete={fileManagement.cancelDeleteDocument}
+        onCancelDuplicateUpload={fileManagement.cancelDuplicateUpload}
+        onCancelRename={fileManagement.cancelRenameDocument}
+        onCancelUpload={fileManagement.cancelUploadDraft}
+        onChangeFilter={fileManagement.changeFilter}
+        onChangeRenameDraft={fileManagement.changeRenameDraft}
+        onConfirmDelete={() => {
+          void fileManagement.confirmDeleteDocument();
+        }}
+        onConfirmDuplicateUpload={fileManagement.confirmDuplicateUpload}
+        onConfirmRename={() => {
+          void fileManagement.confirmRenameDocument();
+        }}
+        onClose={fileManagement.closeLibrary}
+        onOpenDocument={(nextDocName) => {
+          void openManagedDocument(nextDocName);
+        }}
+        onPrepareUploadedDocument={() => {
+          void fileManagement.prepareUploadedDocument();
+        }}
+        onRefresh={() => {
+          void fileManagement.loadDocuments();
+        }}
+        onRequestDelete={fileManagement.requestDeleteDocument}
+        onRequestRename={fileManagement.requestRenameDocument}
+        onResetFilters={fileManagement.resetFilters}
+        onRetryUpload={fileManagement.retryUpload}
+        onSelectUploadFile={fileManagement.selectUploadFile}
+        onUpload={() => {
+          void fileManagement.uploadSelectedFile();
+        }}
+      />
 
       <Box component="main" className="reader-layout reader-workspace">
         <Paper
@@ -698,10 +1046,12 @@ export default function App() {
                   contentBlocks={contentBlocks}
                   contentGroups={contentGroups}
                   error={contentError}
+                  getContentBlockInlineInsight={getContentBlockInlineInsight}
                   getTaskUnitInlineInsight={getTaskUnitInlineInsight}
                   onDismissInlineInsight={closeInlineInsight}
                   onGenerateInlineInsight={generateInlineInsight}
                   onRefreshInlineInsight={refreshInlineInsight}
+                  onSelectContentBlockInteraction={selectContentBlockInteraction}
                   onSelectTaskUnitInteraction={selectTaskUnitInteraction}
                 />
               }
@@ -716,10 +1066,12 @@ export default function App() {
                   contentBlocks={contentBlocks}
                   contentGroups={contentGroups}
                   error={contentError}
+                  getContentBlockInlineInsight={getContentBlockInlineInsight}
                   getTaskUnitInlineInsight={getTaskUnitInlineInsight}
                   onDismissInlineInsight={closeInlineInsight}
                   onGenerateInlineInsight={generateInlineInsight}
                   onRefreshInlineInsight={refreshInlineInsight}
+                  onSelectContentBlockInteraction={selectContentBlockInteraction}
                   onSelectTaskUnitInteraction={selectTaskUnitInteraction}
                 />
               }
@@ -749,6 +1101,11 @@ export default function App() {
             />
           ) : selectedCriticalThinking ? (
             <CriticalThinkingDrawerCommands
+              canSubmitAnswer={Boolean(
+                criticalThinkingDraftAnswersByTarget[
+                  selectedCriticalThinking.targetKey
+                ]?.trim(),
+              )}
               session={selectedCriticalThinking}
               onGenerateQuestion={generateCriticalThinkingQuestion}
               onRetryEvaluation={retryCriticalThinkingEvaluation}
@@ -762,6 +1119,7 @@ export default function App() {
           ) : selectedCriticalThinking ? (
             <CriticalThinkingDrawerContent
               session={selectedCriticalThinking}
+              onDraftAnswerChange={updateCriticalThinkingDraftAnswer}
               onDraftDirtyChange={setCriticalThinkingDraftDirty}
             />
           ) : undefined

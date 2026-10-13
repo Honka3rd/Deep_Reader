@@ -21,6 +21,7 @@ import type {
   QuizItemType,
   QuizItemView,
   QuizViewState,
+  ReadingInteractionTarget,
 } from "./model";
 
 export function ReadingInteractionsView({
@@ -116,11 +117,13 @@ export function ReadingInteractionsView({
 
 export function CriticalThinkingDrawerCommands({
   session,
+  canSubmitAnswer,
   onGenerateQuestion,
   onRetryEvaluation,
   onSubmitAnswer,
 }: {
   session: CriticalThinkingViewState;
+  canSubmitAnswer?: boolean;
   onGenerateQuestion?: (targetKey: string) => void;
   onRetryEvaluation?: (targetKey: string) => void;
   onSubmitAnswer?: (targetKey: string) => void;
@@ -133,8 +136,8 @@ export function CriticalThinkingDrawerCommands({
         Critical-thinking session
       </Typography>
       <Typography color="text.secondary" variant="body2">
-        Read-first placeholder. Opening this drawer does not generate a question or
-        submit an answer.
+        Opening this drawer reads the current session first. Question generation,
+        answer submission, and retry are explicit actions.
       </Typography>
       {statusView.showCommands ? (
         <Stack direction="row" spacing={1} className="critical-thinking-actions">
@@ -151,6 +154,7 @@ export function CriticalThinkingDrawerCommands({
           {statusView.canSubmitAnswer && onSubmitAnswer ? (
             <Button
               className="critical-thinking-submit"
+              disabled={!canSubmitAnswer}
               size="small"
               variant="outlined"
               onClick={() => onSubmitAnswer(session.targetKey)}
@@ -175,9 +179,11 @@ export function CriticalThinkingDrawerCommands({
 }
 
 export function CriticalThinkingDrawerContent({
+  onDraftAnswerChange,
   onDraftDirtyChange,
   session,
 }: {
+  onDraftAnswerChange?: (targetKey: string, draftAnswer: string) => void;
   onDraftDirtyChange?: (dirty: boolean) => void;
   session: CriticalThinkingViewState;
 }) {
@@ -191,11 +197,19 @@ export function CriticalThinkingDrawerContent({
 
   useEffect(() => {
     setDraftAnswer("");
+    onDraftAnswerChange?.(session.targetKey, "");
     onDraftDirtyChange?.(false);
-  }, [onDraftDirtyChange, session.targetKey, session.question, session.submittedAnswer]);
+  }, [
+    onDraftAnswerChange,
+    onDraftDirtyChange,
+    session.targetKey,
+    session.question,
+    session.submittedAnswer,
+  ]);
 
   function updateDraftAnswer(nextDraftAnswer: string) {
     setDraftAnswer(nextDraftAnswer);
+    onDraftAnswerChange?.(session.targetKey, nextDraftAnswer);
     onDraftDirtyChange?.(nextDraftAnswer.trim().length > 0);
   }
 
@@ -805,7 +819,7 @@ function getCriticalThinkingStatusView(session: CriticalThinkingViewState): {
     },
     stale_target: {
       label: "Stale target",
-      message: "This session may no longer match the current document structure.",
+      message: staleTargetMessage(session.target, "critical-thinking session"),
     },
     generation_failed: {
       label: "Generation failed",
@@ -813,7 +827,7 @@ function getCriticalThinkingStatusView(session: CriticalThinkingViewState): {
     },
     validation_failed: {
       label: "Validation failed",
-      message: "Critical-thinking response validation failed.",
+      message: validationFailedMessage(session.target, "Critical-thinking response"),
     },
     evaluation_failed: {
       label: "Evaluation failed",
@@ -827,7 +841,8 @@ function getCriticalThinkingStatusView(session: CriticalThinkingViewState): {
     "validation_failed",
   ].includes(session.status);
   const canSubmitAnswer = session.status === "question_generated";
-  const canRetryEvaluation = session.status === "evaluation_failed";
+  const canRetryEvaluation =
+    session.status === "evaluation_failed" && session.retryEligible !== false;
 
   return {
     ...statusMessages[session.status],
@@ -884,7 +899,7 @@ function getQuizStatusView(quiz: QuizViewState): {
     },
     stale_target: {
       label: "Stale target",
-      message: "This quiz may no longer match the current document structure.",
+      message: staleTargetMessage(quiz.target, "quiz"),
     },
     generation_failed: {
       label: "Generation failed",
@@ -892,7 +907,7 @@ function getQuizStatusView(quiz: QuizViewState): {
     },
     validation_failed: {
       label: "Validation failed",
-      message: "Quiz response validation failed.",
+      message: validationFailedMessage(quiz.target, "Quiz response"),
     },
     evaluation_failed: {
       label: "Evaluation failed",
@@ -961,7 +976,7 @@ function getInsightStatusView(insight: InsightViewState): {
     },
     stale_target: {
       label: "Stale target",
-      message: "This insight may no longer match the current document structure.",
+      message: staleTargetMessage(insight.target, "insight"),
     },
     generation_failed: {
       label: "Generation failed",
@@ -969,7 +984,7 @@ function getInsightStatusView(insight: InsightViewState): {
     },
     validation_failed: {
       label: "Validation failed",
-      message: "Insight response validation failed.",
+      message: validationFailedMessage(insight.target, "Insight response"),
     },
     evaluation_failed: {
       label: "Evaluation failed",
@@ -990,4 +1005,24 @@ function getInsightStatusView(insight: InsightViewState): {
     canRefresh,
     showCommands: canGenerate || canRefresh,
   };
+}
+
+function staleTargetMessage(
+  target: ReadingInteractionTarget,
+  interactionLabel: string,
+): string {
+  if (target.targetLevel === "content_block") {
+    return `This content block ${interactionLabel} target no longer matches the current document content. Reload the content or choose a valid block; the UI will not fall back to the parent task unit automatically.`;
+  }
+  return `This ${interactionLabel} may no longer match the current document structure.`;
+}
+
+function validationFailedMessage(
+  target: ReadingInteractionTarget,
+  interactionLabel: string,
+): string {
+  if (target.targetLevel === "content_block") {
+    return `${interactionLabel} validation failed for this content block target. The UI will not retry with row position, title text, or the parent task unit.`;
+  }
+  return `${interactionLabel} validation failed.`;
 }

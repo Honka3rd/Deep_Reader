@@ -6,9 +6,12 @@ import {
   createInitialInsightViewState,
   createInitialQuizViewState,
   type CriticalThinkingStateByTarget,
+  type CriticalThinkingStatus,
+  type CriticalThinkingViewState,
   type InlineInsightStateByTarget,
   type InsightViewState,
   type InteractionStatus,
+  type QuizViewState,
   type QuizStateByTarget,
   type ReadingInteractionKind,
   type ReadingInteractionTarget,
@@ -144,6 +147,14 @@ export function useReadingInteractionMenuController() {
     targetKey: ReadingInteractionTargetKey,
     requestId: number,
     errorMessage: string,
+    status: Extract<
+      InteractionStatus,
+      | "insufficient_content"
+      | "stale_target"
+      | "generation_failed"
+      | "validation_failed"
+      | "evaluation_failed"
+    > = "validation_failed",
   ) {
     if (!isLatestInteractionRequest(requestId)) {
       return;
@@ -157,7 +168,145 @@ export function useReadingInteractionMenuController() {
         ...current,
         [targetKey]: {
           ...insight,
-          status: "validation_failed",
+          status,
+          errorMessage,
+        },
+      };
+    });
+  }
+
+  function beginQuizRequest(
+    targetKey: ReadingInteractionTargetKey,
+    status: Extract<InteractionStatus, "loading" | "generating" | "refreshing">,
+  ) {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setQuizStateByTarget((current) => {
+      const quiz = current[targetKey];
+      if (!quiz) {
+        return current;
+      }
+      return {
+        ...current,
+        [targetKey]: {
+          ...quiz,
+          status,
+          errorMessage: undefined,
+        },
+      };
+    });
+    return requestId;
+  }
+
+  function applyQuizState(
+    targetKey: ReadingInteractionTargetKey,
+    nextQuiz: QuizViewState,
+    requestId: number,
+  ) {
+    if (!isLatestInteractionRequest(requestId)) {
+      return;
+    }
+    setQuizStateByTarget((current) => ({
+      ...current,
+      [targetKey]: nextQuiz,
+    }));
+  }
+
+  function failQuizRequest(
+    targetKey: ReadingInteractionTargetKey,
+    requestId: number,
+    errorMessage: string,
+    status: Extract<
+      InteractionStatus,
+      | "insufficient_content"
+      | "stale_target"
+      | "generation_failed"
+      | "validation_failed"
+      | "evaluation_failed"
+    > = "validation_failed",
+  ) {
+    if (!isLatestInteractionRequest(requestId)) {
+      return;
+    }
+    setQuizStateByTarget((current) => {
+      const quiz = current[targetKey];
+      if (!quiz) {
+        return current;
+      }
+      return {
+        ...current,
+        [targetKey]: {
+          ...quiz,
+          status,
+          errorMessage,
+        },
+      };
+    });
+  }
+
+  function beginCriticalThinkingRequest(
+    targetKey: ReadingInteractionTargetKey,
+    status: "loading" | "generating" | "submitting" | "retrying",
+  ) {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setCriticalThinkingStateByTarget((current) => {
+      const session = current[targetKey];
+      if (!session) {
+        return current;
+      }
+      return {
+        ...current,
+        [targetKey]: {
+          ...session,
+          status,
+          errorMessage: undefined,
+        },
+      };
+    });
+    return requestId;
+  }
+
+  function applyCriticalThinkingState(
+    targetKey: ReadingInteractionTargetKey,
+    nextSession: CriticalThinkingViewState,
+    requestId: number,
+  ) {
+    if (!isLatestInteractionRequest(requestId)) {
+      return;
+    }
+    setCriticalThinkingStateByTarget((current) => ({
+      ...current,
+      [targetKey]: nextSession,
+    }));
+  }
+
+  function failCriticalThinkingRequest(
+    targetKey: ReadingInteractionTargetKey,
+    requestId: number,
+    errorMessage: string,
+    status: Extract<
+      CriticalThinkingStatus,
+      | "insufficient_content"
+      | "stale_target"
+      | "generation_failed"
+      | "validation_failed"
+      | "evaluation_failed"
+    > = "validation_failed",
+  ) {
+    if (!isLatestInteractionRequest(requestId)) {
+      return;
+    }
+    setCriticalThinkingStateByTarget((current) => {
+      const session = current[targetKey];
+      if (!session) {
+        return current;
+      }
+      return {
+        ...current,
+        [targetKey]: {
+          ...session,
+          status,
           errorMessage,
         },
       };
@@ -204,6 +353,12 @@ export function useReadingInteractionMenuController() {
     beginInlineInsightRequest,
     applyInlineInsightState,
     failInlineInsightRequest,
+    beginQuizRequest,
+    applyQuizState,
+    failQuizRequest,
+    beginCriticalThinkingRequest,
+    applyCriticalThinkingState,
+    failCriticalThinkingRequest,
     clearSelectedInteraction,
     closeInlineInsight,
     toggleInlineInsightExpanded,

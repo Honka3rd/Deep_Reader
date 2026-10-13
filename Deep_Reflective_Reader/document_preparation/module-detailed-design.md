@@ -175,6 +175,28 @@ Step 6  Prepare runtime bundle
 7. Existing `force_rebuild` semantics should remain explicit: manual structure commit is a mutation/reparse operation, while validation/preview is read/analysis-oriented and should not persist a hierarchy. **[Future Direction]**
 8. This note does not introduce new API fields, parser modes, persistence behavior, or runtime route behavior. **[Doc-Confirmed]**
 
+## 18.1 Future Direction Note: Raw Source Upload Intake Boundary
+
+> 本節規劃 file upload 在 preparation layer 的 raw-source intake 邊界；不代表目前已實作。 **[Future Direction]**
+
+1. Uploaded files should enter the system as raw source candidates before any preparation
+   pipeline work. **[Future Direction]**
+2. Preparation/upload intake should validate filename normalization, supported extension,
+   source type, source size, source hash, and storage outcome before returning a document
+   candidate. **[Future Direction]**
+3. Upload intake must not run language detection, profile building, structured parsing,
+   OCR, FAISS/retrieval build, task-layout projection, or reading interaction generation
+   as a hidden side effect. **[From HLD] + [Future Direction]**
+4. The existing preparation pipeline remains the explicit path from raw source to
+   profile/structured/retrieval readiness. Upload success should be represented as source
+   availability, not prepared document readiness. **[Future Direction]**
+5. Source hash should be captured at upload/intake time so later prepare/reparse and
+   stale-source checks can compare against stable evidence. **[Future Direction]**
+6. Conflict policy should be explicit and app-coordinated; preparation should not silently
+   overwrite an existing raw source with the same display name. **[Future Direction]**
+7. User-uploaded raw files remain user-scoped and must preserve the raw-file
+   ownership/copyright boundary described in the proposal. **[From Proposal] + [Future Direction]**
+
 ## 19. Page Evidence Handoff For TOC Editing
 
 > 本節支援 UI TOC editor 的 page-first anchor UX。Manual-structure source evidence can now carry validated page boundaries; downstream `page_range` hierarchy materialization and task-layout prefill projection remain separate checkpoints. **[Maintainer-Provided] + [Code-Confirmed] + [Future Direction]**

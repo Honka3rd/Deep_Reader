@@ -78,6 +78,71 @@ No coding task should be considered complete unless the corresponding checklist 
 
 ## Future Checklist
 
+- [x] Plan file-management parent feature route and surface.
+  Evidence: `Deep_Reader_UI/module-detailed-design.md` future direction section defines file management as the parent document library surface, keeps upload as an embedded child workflow, preserves the current document combo box as a compact reader entry, and records route/service boundary expectations for future implementation.
+  Notes: This completes design governance only; no UI route, component, service, backend route, upload behavior, catalog status API, hidden prepare/reparse, or runtime mutation is implemented by this task.
+  Timestamp: 2026-10-13
+
+- [x] Define frontend document-management item model and service boundary.
+  Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/services/DocumentManagementService.ts`; `Deep_Reader_UI/src/services/index.ts`; `Deep_Reader_UI/module-detailed-design.md`; validation: `npm run check`.
+  Notes: Adds a frontend `DocumentManagementItem` / `DocumentManagementListResult` model and a narrow read-only `DocumentManagementService` that maps current `GET /documents` discovery results into backend-owned `docName`, title, and source fields only. It does not invent source hash, preparation status, structure version, upload metadata, lifecycle state, or call upload/delete/archive/prepare/reparse/task-layout routes.
+  Timestamp: 2026-10-13
+
+- [x] Implement document library loading, empty, error, and row-action UX.
+  Evidence: `Deep_Reader_UI/src/features/file-management/`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; `Deep_Reader_UI/module-detailed-design.md`; validation: `npm run check`.
+  Notes: Adds a read-only file-management dialog opened from the topbar Library action. The dialog loads document candidates through `DocumentManagementService`, renders loading/empty/error/list states, supports Refresh, and provides per-row Open actions. Open uses the read-centric task-layout route only and does not call upload, delete, archive, prepare, reparse, OCR, profile, retrieval, interaction generation, or hidden task-layout mutation.
+  Timestamp: 2026-10-13
+
+- [x] Plan upload as an embedded file-management subflow.
+  Evidence: `Deep_Reader_UI/src/features/file-management/model.ts`; `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; `Deep_Reader_UI/module-detailed-design.md`; validation: `npm run check`.
+  Notes: Upload controls now live inside the file-management dialog and expose frontend-local idle, validating, selected, failed, cancelled, plus reserved uploading/uploaded states. File selection performs advisory `.txt` / `.pdf` extension validation only. The current Upload action reports unavailable service state and does not store files, call backend upload/delete/archive routes, refresh catalog as success, prepare, reparse, OCR, profile, retrieval, task-layout, or interaction generation.
+  Timestamp: 2026-10-13
+
+- [x] Add upload service and typed error normalization after backend upload route exists.
+  Evidence: `Deep_Reader_UI/src/services/DocumentUploadService.ts`; `Deep_Reader_UI/src/services/RestClient.ts`; `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/file-management/model.ts`; `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/App.tsx`; validation: `npm run check`.
+  Notes: `DocumentUploadService` calls the backend multipart `/documents/upload` route with `conflict_policy=reject`, preserves typed `DocumentUploadResponse` payloads for non-2xx upload failures, and maps missing source, unsupported type, file-too-large, duplicate conflict, unsafe filename, validation failure, and storage failure into display-only UI errors. Frontend extension checks remain advisory; backend validation remains authority. Upload success refreshes the document catalog but does not auto-prepare, auto-open, OCR, profile, retrieval, task-layout, or interaction-generation work.
+  Timestamp: 2026-10-13
+
+- [x] Add duplicate upload confirmation before unique-name upload.
+  Evidence: `Deep_Reader_UI/src/services/DocumentUploadService.ts`; `Deep_Reader_UI/src/features/file-management/model.ts`; `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reflective_Reader/scripts/test_document_upload_route.py`; validation: `npm run check`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_upload_route.py`.
+  Notes: Upload now first submits same-name files with `conflict_policy=reject`; backend `duplicate_conflict` opens a user confirmation dialog. Only explicit confirmation retries with `conflict_policy=create_distinct`, after which the UI displays the backend-owned unique `docName` / source filename and refreshes the catalog. The UI does not silently replace files, invent unique names locally, auto-prepare, call task-layout, or generate interactions.
+  Timestamp: 2026-10-13
+
+- [x] Add explicit post-upload prepare/open/retry actions.
+  Evidence: `Deep_Reader_UI/src/features/file-management/model.ts`; `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Uploaded documents now stay in the file-management dialog with explicit next actions for Prepare, Open, and Upload another / Retry upload. Upload success refreshes the catalog but does not automatically enter prepare-task-layout or open the reader; Prepare calls `/documents/prepare` only after user action, Open uses the existing read-centric managed-document open path, and Retry upload remains a separate user action with visible status feedback.
+  Timestamp: 2026-10-13
+
+- [x] Add delete document UI flow with required user confirmation.
+  Evidence: `Deep_Reader_UI/src/services/DocumentLifecycleService.ts`; `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: File-management rows now expose an explicit Delete action that opens a confirmation dialog before calling `POST /documents/lifecycle/delete` with `action=delete` and `confirm=true`. Accepted deletion refreshes the document catalog; backend rejected/conflict/failure responses are surfaced as display messages. Delete is not triggered by row selection, Open, upload controls, task-layout, prepare, local-only state, or hidden mutation.
+  Timestamp: 2026-10-13
+
+- [x] Add rename document UI flow after backend rename route exists.
+  Evidence: `Deep_Reader_UI/src/services/DocumentLifecycleService.ts`; `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: File-management rows now expose an explicit Rename action that opens a dialog, validates a non-empty changed `new_doc_name`, submits `POST /documents/lifecycle/rename`, displays backend validation/conflict/failure reasons, refreshes the catalog after accepted rename, and does not simulate rename through upload replace/create-distinct behavior or frontend-only identity mutation. Archive/restore remain hidden because they are not part of the current lifecycle MVP.
+  Timestamp: 2026-10-13
+
+- [x] Validate file-management/upload UI boundary.
+  Evidence: `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/features/file-management/model.ts`; `Deep_Reader_UI/src/services/DocumentManagementService.ts`; `Deep_Reader_UI/module-detailed-design.md`; validation: `npm run check`.
+  Notes: Source smoke confirms catalog loading uses `DocumentManagementService` over `GET /documents`, upload file selection remains frontend-local in-memory state, unsupported file handling is advisory display state, and the current Upload action reports unavailable service state without calling upload/delete/archive/prepare/reparse/OCR/profile/retrieval/task-layout/interaction-generation routes. Conflict and successful upload states remain covered by the later backend upload-route task.
+  Timestamp: 2026-10-13
+
+- [x] Replace primary Library `source` column with reader-facing document metadata
+  Evidence: `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/features/file-management/model.ts`; `Deep_Reader_UI/src/types/api.ts`; validation: `npm run check`.
+  Notes: File-management table now uses a `Details` column instead of a primary `Source` column. The display prefers backend-provided profile summary, author/language/profile label, preparation status, or a neutral profile-unavailable fallback without inventing profile fields.
+  Timestamp: 2026-10-13
+
+- [x] Add Library advanced filter surface for large document collections
+  Evidence: `Deep_Reader_UI/src/features/file-management/model.ts`; `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/styles.css`; `Deep_Reader_UI/src/App.tsx`; validation: `npm run check`.
+  Notes: The Library dialog now exposes a local Advanced filters surface with query, readiness, language, profile label, source type, and source status filters derived only from backend-provided catalog fields. Filter state remains frontend-local, shows filtered count versus total count, supports reset, and does not mutate backend catalog, task-layout, profile diagnostics, document identity, upload state, or lifecycle state.
+  Timestamp: 2026-10-13
+
+- [x] Add recent-reading shortcuts for the last three opened books
+  Evidence: `Deep_Reader_UI/src/features/file-management/model.ts`; `Deep_Reader_UI/src/features/file-management/controller.ts`; `Deep_Reader_UI/src/features/file-management/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Library now shows up to three recent-reading shortcuts below the main document list after successful read-centric managed-document opens. Shortcuts reuse the same `onOpenDocument` / task-layout flow as row Open, remain frontend-local in-memory state, deduplicate by `docName`, keep newest first, and do not create backend reading history, mutate task-layout, prepare/reparse documents, or treat local history as backend truth.
+  Timestamp: 2026-10-13
+
 - [x] Consume selected-section task-unit content through a batch API
   Evidence: `Deep_Reader_UI/src/services/TaskUnitContentService.ts`; `Deep_Reader_UI/src/features/reader-content/controller.ts`; `Deep_Reader_UI/src/types/api.ts`; validation with `npm run check`.
   Notes: `TaskUnitContentService` exposes a batch read method, reader-content selection calls it once per section selection with ordered `task_unit_ids`, aggregation preserves backend order, and the single-task endpoint remains fallback behavior. This avoids many concurrent `GET /task-units/{id}/content?segmented=true` requests while keeping `/documents/task-layout` lightweight and preserving content-block-first rendering.
@@ -269,42 +334,99 @@ No coding task should be considered complete unless the corresponding checklist 
   Notes: Adds the first service-backed reading-interaction vertical slice for insight read/generate/refresh using the backend generic `/documents/reading-interactions/insight/*` routes. Selecting Insights performs a read-first call; Generate and Refresh are explicit write actions. The service/controller mapping uses the shared backend target/envelope/payload contract, does not call legacy quiz routes, does not mutate task-layout, and keeps inline expansion state frontend-local. Quiz and critical-thinking drawer API wiring remain follow-up tasks.
   Timestamp: 2026-10-10
 
-- [ ] Add quiz API types and service methods.
-  Evidence needed: `Deep_Reader_UI/src/types/api.ts` defines quiz target/envelope/payload types matching backend public schemas; `Deep_Reader_UI/src/services/ReadingInteractionService.ts` exposes `readQuiz`, `generateQuiz`, and `refreshQuiz` using `/documents/reading-interactions/quiz/*`.
-  Notes: Do not call legacy `/documents/section-quiz` or `/documents/chapter-quiz`; do not place REST calls in drawer views.
+- [x] Add quiz API types and service methods.
+  Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/services/ReadingInteractionService.ts`; validation: `npm run check`.
+  Notes: Adds quiz artifact item/payload/interaction response types matching the backend generic quiz schema and exposes `readQuiz`, `generateQuiz`, and `refreshQuiz` through `ReadingInteractionService` using `/documents/reading-interactions/quiz/*`. This does not call legacy `/documents/section-quiz` or `/documents/chapter-quiz`, place REST calls in drawer views, map quiz responses into drawer state, or wire drawer lifecycle/actions.
   Timestamp: 2026-10-10
 
-- [ ] Map quiz backend responses into drawer view state.
-  Evidence needed: `Deep_Reader_UI/src/features/reading-interactions/model.ts` maps `QuizInteractionResponse` into `QuizViewState` with normalized status, item ids/types/options/answers/explanations, metadata, and error/reason fields.
-  Notes: Mapping must preserve local practice answers and answer reveal state as frontend-only state and must not treat quiz practice answers as persisted backend results.
+- [x] Map quiz backend responses into drawer view state.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; validation: `npm run check`.
+  Notes: Adds `mapQuizInteractionResponseToQuizViewState` for generic `QuizInteractionResponse` payloads with normalized status, stable item ids, item types, string-option labels, answers, explanations, envelope metadata, generated/updated timestamps, and reason-backed error messages. Practice answers and answer reveal state remain drawer-local frontend state and are not treated as persisted backend quiz results. This does not wire drawer open/read lifecycle or explicit generate/refresh service calls.
   Timestamp: 2026-10-10
 
-- [ ] Wire quiz drawer read-first lifecycle.
-  Evidence needed: selecting `Quiz` opens the drawer and calls the generic quiz read route only; missing artifacts display `not_generated` without generation, refresh, task-layout mutation, prepare, or reparse.
-  Notes: Stale read responses must be ignored through the reading-interaction controller request guard.
+- [x] Wire quiz drawer read-first lifecycle.
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; validation: `npm run check`.
+  Notes: Selecting `Quiz` opens the drawer and calls `ReadingInteractionService.readQuiz` against the generic `/documents/reading-interactions/quiz/read` route only. Returned `not_generated` artifacts render through the drawer state mapper without generation, refresh, task-layout mutation, prepare, or reparse. Stale read responses are ignored through the reading-interaction controller request guard, and local practice answers/reveal state remain drawer-local.
   Timestamp: 2026-10-10
 
-- [ ] Wire quiz explicit generate and refresh actions.
-  Evidence needed: `Generate quiz` calls `/documents/reading-interactions/quiz/generate`; `Refresh quiz` calls `/documents/reading-interactions/quiz/refresh`; both update drawer state through the shared model mapper and keep legacy quiz routes out of this flow.
-  Notes: Generation and refresh are explicit write actions only; drawer open and read must never generate.
+- [x] Wire quiz explicit generate and refresh actions.
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; validation: `npm run check`.
+  Notes: `Generate quiz` calls `ReadingInteractionService.generateQuiz` against `/documents/reading-interactions/quiz/generate`, and `Refresh quiz` calls `ReadingInteractionService.refreshQuiz` against `/documents/reading-interactions/quiz/refresh`. Both actions update drawer state through `mapQuizInteractionResponseToQuizViewState` and the shared request guard. Legacy `/documents/section-quiz` and `/documents/chapter-quiz` remain outside this flow. Generation and refresh are explicit write actions only; drawer open and read still never generate.
   Timestamp: 2026-10-10
 
-- [ ] Add critical-thinking API types and service methods.
-  Evidence needed: `Deep_Reader_UI/src/types/api.ts` defines critical-thinking request/response/session/evaluation types matching backend public schemas; `Deep_Reader_UI/src/services/ReadingInteractionService.ts` exposes read, generate-question, submit-answer, and retry-evaluation methods using `/documents/reading-interactions/critical-thinking/*`.
-  Notes: Submit/retry request types must carry the shared target object plus backend `session_id`.
+- [x] Add critical-thinking API types and service methods.
+  Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/services/ReadingInteractionService.ts`; validation: `npm run check`.
+  Notes: Adds critical-thinking session payload/evaluation/response types matching the backend public schema and exposes `readCriticalThinkingSession`, `generateCriticalThinkingQuestion`, `submitCriticalThinkingAnswer`, and `retryCriticalThinkingEvaluation` using `/documents/reading-interactions/critical-thinking/*`. Submit/retry methods carry the shared target object plus backend `session_id`; submit also carries the answer. This does not map responses into drawer state, read on drawer open, generate questions, submit answers, retry evaluations, or mutate task-layout.
   Timestamp: 2026-10-10
 
-- [ ] Map critical-thinking backend responses into drawer view state.
-  Evidence needed: `Deep_Reader_UI/src/features/reading-interactions/model.ts` maps `CriticalThinkingSessionResponse` into `CriticalThinkingViewState` with session id, question, submitted answer, evaluation feedback, score, suggested refinement, status, metadata, and retryable error state.
-  Notes: Mapping must keep unsent draft text out of backend-derived state and preserve backend submitted answer separately from local draft answer.
+- [x] Map critical-thinking backend responses into drawer view state.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; validation: `npm run check`.
+  Notes: Adds `mapCriticalThinkingSessionResponseToViewState` for generic `CriticalThinkingSessionResponse` payloads with normalized status, backend session metadata, generated/evaluated timestamps, question, backend submitted answer, evaluation feedback, score, suggested refinement, retry eligibility, and reason-backed error messages. Unsent draft answer text remains drawer-local view state and is not included in backend-derived state.
   Timestamp: 2026-10-10
 
-- [ ] Wire critical-thinking drawer read-first lifecycle.
-  Evidence needed: selecting `Critical thinking` opens the drawer and calls the generic critical-thinking read route only; missing sessions display `not_generated` without generating a question, submitting an answer, retrying evaluation, mutating task-layout, prepare, or reparse.
-  Notes: Read state must remain separate from question generation and must ignore stale responses.
+- [x] Wire critical-thinking drawer read-first lifecycle.
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; validation: `npm run check`.
+  Notes: Selecting `Critical thinking` opens the drawer and calls `ReadingInteractionService.readCriticalThinkingSession` against `/documents/reading-interactions/critical-thinking/read` only. Returned `not_generated` sessions render through the drawer state mapper without generating a question, submitting an answer, retrying evaluation, mutating task-layout, prepare, or reparse. Stale read responses are ignored through the reading-interaction controller request guard.
   Timestamp: 2026-10-10
 
-- [ ] Wire critical-thinking explicit generate, submit, and retry actions.
-  Evidence needed: `Generate question`, `Submit answer`, and `Retry evaluation` call their corresponding critical-thinking routes, update drawer state through the shared mapper, preserve failed evaluation context, and do not regenerate the question during retry.
-  Notes: Draft answers remain frontend-local until submit; submit/retry must include the shared target object plus backend `session_id`.
+- [x] Wire critical-thinking explicit generate, submit, and retry actions.
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; validation: `npm run check`.
+  Notes: `Generate question`, `Submit answer`, and `Retry evaluation` call their corresponding generic critical-thinking routes, update drawer state through `mapCriticalThinkingSessionResponseToViewState`, and use the shared request guard. Submit/retry include the shared target object plus backend `session_id`; retry does not regenerate the question. Draft answers remain frontend-local until submit, are cleared after submit/target close, and are not written to task-layout or treated as backend truth.
   Timestamp: 2026-10-10
+
+- [x] Preserve task-unit interaction menu when content grouping uses compatibility payloads.
+  Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/reader-content/model.ts`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Reader content now keeps a task-unit group header for each task-unit content response and falls back from `content_blocks[]` to compatibility `content` when needed, so the task-unit `MoreVert` interaction menu remains attached to the individual unit instead of dropping to section-only interaction behavior. This is frontend render resilience only; it does not mutate task-layout, persist UI state, or create interaction artifacts outside explicit insight/quiz/critical-thinking actions.
+  Timestamp: 2026-10-11
+
+- [x] Define visible content-block interaction menu behavior.
+  Evidence: `Deep_Reader_UI/module-detailed-design.md`; backend handoff in `Deep_Reflective_Reader/section_tasks/module-detailed-design.md`; backend route/schema docs in `Deep_Reflective_Reader/api_schemas.module-detailed-design.md` and `Deep_Reflective_Reader/main.module-detailed-design.md`.
+  Notes: The behavior is now specified as a future UI implementation contract: `ContentBlockView` may render a per-block `MoreVert` menu that submits `target_type=content_block`, response-level `task_unit_id`, optional parent `chapter_id` / `section_id`, and `content_blocks[].block_id` as `target.content_block_id`, with optional `metadata.source_hash` as stale-target evidence. This checklist item completes design/handoff only; it does not implement the per-block menu, mutate task-layout, make content blocks hierarchy nodes, or make UI menu/drawer/draft state backend truth.
+  Timestamp: 2026-10-11
+
+### Backend-Ready Content-Block Interaction Frontend Task Split
+
+- [x] Extend frontend reading-interaction target model for `content_block`.
+  Evidence: `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/App.tsx`; validation: `npm run check`.
+  Notes: Adds `content_block` as a frontend target level with deterministic local target keys, API target serialization, `taskUnitId`, `contentBlockId`, optional parent chapter/section ids, and optional source hash evidence. `toReadingInteractionTargetRequest` now emits backend `target_type=content_block`, parent ids, `task_unit_id`, and `content_block_id` without deriving identity from rendered text, row position, pagination page, menu state, drawer state, or draft answer state. This is model/service-boundary preparation only; it does not render content-block menus or mutate task-layout.
+  Timestamp: 2026-10-11
+
+- [x] Preserve content-block owner context through reader-content aggregation.
+  Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/reader-content/model.ts`; `Deep_Reader_UI/src/features/reader-content/controller.ts`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; validation: `npm run check`.
+  Notes: `TaskUnitContent` now accepts response-owned optional `chapter_id` / `section_id`, and reader-content aggregation wraps every rendered block in a frontend-only `ReaderContentBlock` with `ownerContext` carrying document evidence, `taskUnitId`, optional parent ids, canonical block id via the original block, and optional `metadata.source_hash`. This preserves target construction evidence for later content-block interactions without rendering menus, mutating task-layout, persisting UI state, or adding content blocks to `/documents/task-layout`.
+  Timestamp: 2026-10-11
+
+- [x] Gate content-block menus by canonical target eligibility.
+  Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/reader-content/model.ts`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; validation: `npm run check`.
+  Notes: Content blocks now expose typed optional `artifact_target_refs` and `interaction_availability`, and reader-content provides a reusable eligibility gate that requires response-owned task-unit/block ids before a block may present the interaction menu. Availability and target refs are consumed as confidence/status hints rather than a hard display gate, so `segmented=true` payloads that omit those optional hints can still start the read-first backend validation flow. Blocks missing task-unit or block identity remain render-only and do not silently fall back to parent task-unit targets, mutate task-layout, create artifacts, or persist UI state.
+  Timestamp: 2026-10-12
+
+- [x] Add eligible content-block three-dot interaction menu in `ContentBlockView`.
+  Evidence: `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
+  Notes: Eligible block rows now expose a per-row `MoreVert` menu with the same `Insights`, `Quiz`, and `Critical thinking` actions as document/chapter/section/task-unit targets. The menu is omitted for render-only or otherwise ineligible blocks, closes locally on selection, and currently reports a frontend-only notification until the next task routes content-block actions through the reading-interaction controller. Opening/selecting the menu does not generate, refresh, prepare, reparse, mutate task-layout, create artifacts, call backend routes, or persist UI state.
+  Timestamp: 2026-10-12
+
+- [x] Route content-block actions through existing reading-interaction controller surfaces.
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; validation: `npm run check`.
+  Notes: Content-block menu selections now build a `content_block` `ReadingInteractionTarget` from response-owned block owner context, selected-section parent ids, `taskUnitId`, `contentBlockId`, and optional `sourceHash`, then route through the existing `selectInteractionAction` controller path. Content-block `Insights` render through the shared inline insight region under the selected block, while content-block `Quiz` and `Critical thinking` use the existing shared drawer read-first flow. This does not generate, refresh, prepare, reparse, mutate task-layout, persist UI state, or fall back to parent task-unit targets.
+  Timestamp: 2026-10-12
+
+- [x] Consume content-block `interaction_availability` for lightweight menu/status hints.
+  Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/reader-content/model.ts`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/features/reading-interactions/model.ts`; validation: `npm run check`.
+  Notes: Optional content-block availability slots are now normalized into lightweight menu hints for insight, quiz, and critical-thinking. The block menu renders status labels such as not-generated, ready, insufficient-content, stale-target, generation-failed, or critical-thinking session progress as secondary text when backend projection is present. Missing availability remains non-blocking and does not require artifact payloads, source text, secondary context text, drawer state, collapse state, quiz practice answers, critical-thinking drafts, task-layout mutation, or hidden backend writes.
+  Timestamp: 2026-10-12
+
+- [x] Normalize content-block interaction error states.
+  Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; validation: `npm run check`.
+  Notes: Reading-interaction response mappers and thrown request failures now normalize `insufficient_content`, `stale_target`, `generation_failed`, `evaluation_failed`, validation failures, and content-block resolver/not-found style errors into consistent inline insight and drawer states. Content-block stale/validation copy explicitly tells the user to reload or choose a valid block and does not retry with title text, visible row position, rendered text, or parent task-unit fallback. This is presentation/state normalization only; it does not change backend routes, generate artifacts, mutate task-layout, or persist UI state.
+  Timestamp: 2026-10-12
+
+- [x] Validate backend-ready content-block frontend integration.
+  Evidence: `npm run check`; targeted source smoke via `rg` over `Deep_Reader_UI/src` for document/chapter/section/task-unit/content-block target construction, `toReadingInteractionTargetRequest`, content-block id serialization, availability projection consumption, and `/documents/task-layout` route usage; `git diff --check -- Deep_Reader_UI`.
+  Notes: Validation confirms document, chapter, section, task-unit, and content-block targets are still constructed explicitly in `App.tsx`; content-block flows serialize `target_type=content_block`, parent ids, `task_unit_id`, `content_block_id`, and optional source evidence through the existing reading-interaction serializer; inline insight and drawer state remain frontend-local controller/view state; and `/documents/task-layout` remains a lightweight layout route with no content-block payload expansion or UI state persistence. The validation is source/build smoke only; it does not generate artifacts, mutate task-layout, prepare/reparse documents, or perform hidden backend writes.
+  Timestamp: 2026-10-12
+
+- [x] Bound long document-level inline insight scrolling.
+  Evidence: `Deep_Reader_UI/src/styles.css`; `Deep_Reader_UI/module-detailed-design.md`; validation: `npm run check`; `git diff --check -- Deep_Reader_UI/src/styles.css Deep_Reader_UI/module-detailed-design.md Deep_Reader_UI/module-checklist.md`.
+  Notes: Book/document inline insight now keeps long generated text inside a bounded local scroll surface in the hierarchy pane, preserving the fixed reader workspace and avoiding document-level scroll, task-layout mutation, backend API changes, artifact writes, or UI state persistence.
+  Timestamp: 2026-10-12

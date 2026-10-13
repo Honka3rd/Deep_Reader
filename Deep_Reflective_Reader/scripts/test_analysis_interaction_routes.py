@@ -140,6 +140,48 @@ def _section_target_payload() -> dict[str, object]:
     }
 
 
+def _content_block_target_payload() -> dict[str, object]:
+    return {
+        "target": {
+            "doc_name": " book.json ",
+            "target_type": "content-block",
+            "chapter_id": " chapter-1 ",
+            "section_id": " section-1 ",
+            "task_unit_id": " unit-1 ",
+            "content_block_id": " unit-1:content:0 ",
+        }
+    }
+
+
+def _content_block_response(
+    *,
+    interaction_type: str = "analysis",
+    status: str = "completed",
+    payload: dict[str, object] | None = None,
+    artifact_id: str | None = None,
+    metadata: dict[str, object] | None = None,
+) -> ReadingInteractionResponseDTO:
+    return ReadingInteractionResponseDTO(
+        target=ReadingInteractionTargetDTO(
+            doc_name="book.json",
+            document_id="doc-1",
+            document_title="Document One",
+            target_level="content_block",
+            target_id="unit-1:content:0",
+            chapter_id="chapter-1",
+            section_id="section-1",
+            task_unit_id="unit-1",
+            content_block_id="unit-1:content:0",
+            title="Unit One",
+        ),
+        interaction_type=interaction_type,
+        status=status,
+        payload={} if payload is None else payload,
+        metadata={} if metadata is None else metadata,
+        artifact_id=artifact_id,
+    )
+
+
 def test_analysis_read_route_does_not_generate() -> None:
     original_coordinator = main.section_task_coordinator
     fake = _FakeSectionTaskCoordinator()
@@ -167,6 +209,102 @@ def test_analysis_read_route_does_not_generate() -> None:
     _assert(
         fake.read_calls[0]["target_level"] == "section",
         "target_type should map to coordinator target_level",
+    )
+
+
+def test_analysis_read_route_preserves_content_block_target_identity() -> None:
+    original_coordinator = main.section_task_coordinator
+    fake = _FakeSectionTaskCoordinator()
+    main.section_task_coordinator = fake
+    try:
+        client = TestClient(main.app)
+        response = client.post(
+            "/documents/reading-interactions/insight/read",
+            json=_content_block_target_payload(),
+        )
+    finally:
+        main.section_task_coordinator = original_coordinator
+
+    _assert(response.status_code == 200, f"unexpected status: {response.text}")
+    _assert(len(fake.read_calls) == 1, "content-block read should dispatch once")
+    _assert(
+        fake.read_calls[0]["target_level"] == "content_block",
+        "content-block target_type should normalize before app dispatch",
+    )
+    _assert(
+        fake.read_calls[0]["task_unit_id"] == "unit-1",
+        "content-block parent task_unit_id should reach app dispatch",
+    )
+    _assert(
+        fake.read_calls[0]["content_block_id"] == "unit-1:content:0",
+        "content_block_id should reach app dispatch without being dropped",
+    )
+
+
+def test_analysis_generate_and_refresh_routes_preserve_content_block_target_identity() -> None:
+    original_coordinator = main.section_task_coordinator
+    fake = _FakeSectionTaskCoordinator()
+    fake.generate_response = _content_block_response(
+        payload={
+            "summary": "Block insight",
+            "reasoning": "The selected block states a local claim.",
+            "explanation": "Generated against the block target.",
+        },
+        artifact_id="analysis::doc-1::content_block::unit-1:content:0",
+        metadata={
+            "artifact_id": "analysis::doc-1::content_block::unit-1:content:0",
+            "output_schema_version": "analysis_interaction_v1",
+        },
+    )
+    fake.refresh_response = _content_block_response(
+        payload={
+            "summary": "Refreshed block insight",
+            "reasoning": "The selected block was regenerated.",
+            "explanation": "Refreshed against the block target.",
+        },
+        artifact_id="analysis::doc-1::content_block::unit-1:content:0",
+        metadata={
+            "artifact_id": "analysis::doc-1::content_block::unit-1:content:0",
+            "output_schema_version": "analysis_interaction_v1",
+        },
+    )
+    main.section_task_coordinator = fake
+    try:
+        client = TestClient(main.app)
+        generate_response = client.post(
+            "/documents/reading-interactions/insight/generate",
+            json=_content_block_target_payload(),
+        )
+        refresh_response = client.post(
+            "/documents/reading-interactions/insight/refresh",
+            json=_content_block_target_payload(),
+        )
+    finally:
+        main.section_task_coordinator = original_coordinator
+
+    _assert(generate_response.status_code == 200, f"unexpected status: {generate_response.text}")
+    _assert(refresh_response.status_code == 200, f"unexpected status: {refresh_response.text}")
+    generated = generate_response.json()
+    refreshed = refresh_response.json()
+    _assert(
+        generated["envelope"]["target"]["target_type"] == "content_block",
+        "generate response should preserve content-block target type",
+    )
+    _assert(
+        generated["envelope"]["target"]["content_block_id"] == "unit-1:content:0",
+        "generate response should preserve content_block_id",
+    )
+    _assert(
+        refreshed["envelope"]["target"]["content_block_id"] == "unit-1:content:0",
+        "refresh response should preserve content_block_id",
+    )
+    _assert(
+        fake.generate_calls[0]["content_block_id"] == "unit-1:content:0",
+        "generate dispatch should include content_block_id",
+    )
+    _assert(
+        fake.refresh_calls[0]["content_block_id"] == "unit-1:content:0",
+        "refresh dispatch should include content_block_id",
     )
 
 
@@ -300,6 +438,29 @@ def test_analysis_routes_reject_malformed_request_before_dispatch() -> None:
     _assert(fake.refresh_calls == [], "malformed request should not reach refresh")
 
 
+def test_analysis_routes_reject_malformed_content_block_request_before_dispatch() -> None:
+    original_coordinator = main.section_task_coordinator
+    fake = _FakeSectionTaskCoordinator()
+    main.section_task_coordinator = fake
+    try:
+        client = TestClient(main.app)
+        response = client.post(
+            "/documents/reading-interactions/insight/read",
+            json={
+                "target": {
+                    "doc_name": "book.json",
+                    "target_type": "content_block",
+                    "task_unit_id": "unit-1",
+                }
+            },
+        )
+    finally:
+        main.section_task_coordinator = original_coordinator
+
+    _assert(response.status_code == 422, f"unexpected status: {response.text}")
+    _assert(fake.read_calls == [], "malformed content-block target should not dispatch")
+
+
 def test_analysis_read_route_maps_missing_target_to_404() -> None:
     original_coordinator = main.section_task_coordinator
     fake = _FakeSectionTaskCoordinator()
@@ -427,10 +588,13 @@ def test_analysis_refresh_route_maps_validation_failed_to_422() -> None:
 
 def main_test() -> None:
     test_analysis_read_route_does_not_generate()
+    test_analysis_read_route_preserves_content_block_target_identity()
+    test_analysis_generate_and_refresh_routes_preserve_content_block_target_identity()
     test_analysis_read_route_has_no_costly_or_mutating_side_effects()
     test_analysis_generate_route_maps_completed_payload()
     test_analysis_refresh_route_dispatches_explicit_refresh()
     test_analysis_routes_reject_malformed_request_before_dispatch()
+    test_analysis_routes_reject_malformed_content_block_request_before_dispatch()
     test_analysis_read_route_maps_missing_target_to_404()
     test_analysis_generate_route_maps_recoverable_status_http_policy()
     test_analysis_generate_route_maps_stale_target_to_409()

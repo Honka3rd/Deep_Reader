@@ -17,6 +17,7 @@ from api_schemas import (  # noqa: E402
     AnalysisInteractionRefreshRequest,
     AnalysisInteractionResponse,
     ArtifactAwareInteractionMetadataResponse,
+    ContentBlockInteractionAvailabilityResponse,
     CriticalThinkingAnswerSubmitRequest,
     CriticalThinkingEvaluationRetryRequest,
     CriticalThinkingQuestionGenerateRequest,
@@ -30,6 +31,7 @@ from api_schemas import (  # noqa: E402
     ReadingInteractionResponseEnvelope,
     ReadingInteractionTargetRequest,
     ReadingInteractionTargetResponse,
+    TaskUnitContentBlockResponse,
 )
 from shared.artifact_target_model import ArtifactTargetLevel  # noqa: E402
 
@@ -137,6 +139,23 @@ def _assert_critical_response_validation_error(
         return
     raise AssertionError(
         f"expected critical-thinking validation error containing {expected_message!r}"
+    )
+
+
+def _assert_content_block_availability_validation_error(
+    payload: dict,
+    expected_message: str,
+) -> None:
+    try:
+        ContentBlockInteractionAvailabilityResponse.model_validate(payload)
+    except ValidationError as error:
+        _assert(
+            expected_message in str(error),
+            f"expected {expected_message!r} in content-block availability error: {error}",
+        )
+        return
+    raise AssertionError(
+        f"expected content-block availability error containing {expected_message!r}"
     )
 
 
@@ -307,6 +326,26 @@ def test_reading_interaction_target_request_accepts_id_based_targets() -> None:
     )
     _assert(task_unit_target.task_unit_id == "unit-1", "task_unit_id should trim")
 
+    content_block_target = ReadingInteractionTargetRequest.model_validate(
+        _target_payload(
+            target_type="content-block",
+            task_unit_id=" unit-1 ",
+            content_block_id=" unit-1:content:0 ",
+        )
+    )
+    _assert(
+        content_block_target.target_type == "content_block",
+        "content-block spelling should normalize",
+    )
+    _assert(
+        content_block_target.task_unit_id == "unit-1",
+        "content-block parent task_unit_id should trim",
+    )
+    _assert(
+        content_block_target.content_block_id == "unit-1:content:0",
+        "content_block_id should trim",
+    )
+
 
 def test_reading_interaction_target_request_rejects_bad_shapes_and_titles() -> None:
     _assert_target_validation_error(
@@ -319,11 +358,35 @@ def test_reading_interaction_target_request_rejects_bad_shapes_and_titles() -> N
     )
     _assert_target_validation_error(
         _target_payload(target_type="chapter", section_id="section-1"),
-        "chapter target must not include section_id or task_unit_id",
+        "chapter target must not include section_id, task_unit_id, or content_block_id",
     )
     _assert_target_validation_error(
         _target_payload(target_type="document", chapter_id="chapter-1"),
         "document target must not include child target ids",
+    )
+    _assert_target_validation_error(
+        _target_payload(
+            target_type="content_block",
+            task_unit_id=None,
+            content_block_id="unit-1:content:0",
+        ),
+        "content_block target requires task_unit_id",
+    )
+    _assert_target_validation_error(
+        _target_payload(
+            target_type="content_block",
+            task_unit_id="unit-1",
+            content_block_id=None,
+        ),
+        "content_block target requires content_block_id",
+    )
+    _assert_target_validation_error(
+        _target_payload(
+            target_type="task_unit",
+            task_unit_id="unit-1",
+            content_block_id="unit-1:content:0",
+        ),
+        "task_unit target must not include content_block_id",
     )
     _assert_target_validation_error(
         _target_payload(chapter_title="Chapter One"),
@@ -362,6 +425,23 @@ def test_reading_interaction_response_envelope_accepts_shared_metadata() -> None
             ArtifactAwareInteractionMetadataResponse,
         ),
         "artifact context metadata should validate through shared schema",
+    )
+
+    content_block_envelope = ReadingInteractionResponseEnvelope.model_validate(
+        {
+            "target": _target_response_payload(
+                target_type="content_block",
+                target_id="unit-1:content:0",
+                task_unit_id="unit-1",
+                content_block_id=" unit-1:content:0 ",
+            ),
+            "interaction_type": "analysis",
+            "status": "not_generated",
+        }
+    )
+    _assert(
+        content_block_envelope.target.content_block_id == "unit-1:content:0",
+        "content_block_id should be echoed in target response metadata",
     )
 
 
@@ -412,6 +492,109 @@ def test_reading_interaction_response_envelope_rejects_invalid_states() -> None:
             "drawer_open": True,
         },
         "Extra inputs are not permitted",
+    )
+
+
+def test_content_block_interaction_availability_is_menu_ready_and_lightweight() -> None:
+    content_block = TaskUnitContentBlockResponse.model_validate(
+        {
+            "block_id": "unit-1:content:0",
+            "content": "Visible block text.",
+            "interaction_availability": {
+                "insight": {
+                    "interaction_type": " analysis ",
+                    "status": " completed ",
+                    "artifact_id": " analysis::book::content_block::unit-1:content:0 ",
+                    "generated_at": " 2026-10-11T12:00:00Z ",
+                },
+                "quiz": {
+                    "interaction_type": "quiz",
+                    "status": "not_generated",
+                },
+                "critical_thinking": {
+                    "interaction_type": "critical_thinking_session",
+                    "status": "question_generated",
+                    "session_id": " session-1 ",
+                },
+            },
+        }
+    )
+
+    availability = content_block.interaction_availability
+    _assert(availability is not None, "content block availability should validate")
+    _assert(
+        availability.insight is not None
+        and availability.insight.interaction_type == "analysis"
+        and availability.insight.artifact_id
+        == "analysis::book::content_block::unit-1:content:0",
+        "insight availability should trim stable artifact metadata",
+    )
+    _assert(
+        availability.quiz is not None
+        and availability.quiz.status == "not_generated"
+        and availability.quiz.artifact_id is None,
+        "quiz missing state should stay explicit and lightweight",
+    )
+    _assert(
+        availability.critical_thinking is not None
+        and availability.critical_thinking.session_id == "session-1",
+        "critical-thinking availability should preserve session id",
+    )
+
+    serialized = content_block.model_dump()
+    availability_payload = serialized["interaction_availability"]
+    _assert(
+        all(
+            "payload" not in slot
+            and "content" not in slot
+            and "drawer_open" not in slot
+            for slot in availability_payload.values()
+            if isinstance(slot, dict)
+        ),
+        "availability contract must not embed artifact payload, block text, or UI state",
+    )
+
+
+def test_content_block_interaction_availability_rejects_payload_and_bad_slot_types() -> None:
+    _assert_content_block_availability_validation_error(
+        {
+            "insight": {
+                "interaction_type": "analysis",
+                "status": "completed",
+                "artifact_id": "analysis-1",
+                "payload": {"summary": "not allowed here"},
+            }
+        },
+        "Extra inputs are not permitted",
+    )
+    _assert_content_block_availability_validation_error(
+        {
+            "insight": {
+                "interaction_type": "quiz",
+                "status": "completed",
+                "artifact_id": "quiz-1",
+            }
+        },
+        "insight availability requires interaction_type='analysis'",
+    )
+    _assert_content_block_availability_validation_error(
+        {
+            "quiz": {
+                "interaction_type": "quiz",
+                "status": "generation_failed",
+            }
+        },
+        "requires reason",
+    )
+    _assert_content_block_availability_validation_error(
+        {
+            "quiz": {
+                "interaction_type": "quiz",
+                "status": "not_generated",
+                "artifact_id": "quiz-1",
+            }
+        },
+        "not_generated availability must not include artifact_id or session_id",
     )
 
 

@@ -28,9 +28,15 @@ class _FakeSectionTaskCoordinator:
         self.generate_calls: list[dict[str, object]] = []
         self.submit_calls: list[dict[str, object]] = []
         self.retry_calls: list[dict[str, object]] = []
+        self.read_response: ReadingInteractionResponseDTO | None = None
+        self.generate_response: ReadingInteractionResponseDTO | None = None
+        self.submit_response: ReadingInteractionResponseDTO | None = None
+        self.retry_response: ReadingInteractionResponseDTO | None = None
 
     def read_critical_thinking_session(self, **kwargs) -> ReadingInteractionResponseDTO:  # noqa: ANN003
         self.read_calls.append(dict(kwargs))
+        if self.read_response is not None:
+            return self.read_response
         if kwargs.get("session_id") == "session-1":
             return self._response(
                 status="question_generated",
@@ -45,6 +51,8 @@ class _FakeSectionTaskCoordinator:
 
     def generate_critical_thinking_question(self, **kwargs) -> ReadingInteractionResponseDTO:  # noqa: ANN003
         self.generate_calls.append(dict(kwargs))
+        if self.generate_response is not None:
+            return self.generate_response
         return self._response(
             status="question_generated",
             payload={"question": "Which assumption matters most?"},
@@ -57,6 +65,8 @@ class _FakeSectionTaskCoordinator:
 
     def submit_critical_thinking_answer(self, **kwargs) -> ReadingInteractionResponseDTO:  # noqa: ANN003
         self.submit_calls.append(dict(kwargs))
+        if self.submit_response is not None:
+            return self.submit_response
         return self._response(
             status="evaluation_failed",
             payload={
@@ -70,6 +80,8 @@ class _FakeSectionTaskCoordinator:
 
     def retry_critical_thinking_evaluation(self, **kwargs) -> ReadingInteractionResponseDTO:  # noqa: ANN003
         self.retry_calls.append(dict(kwargs))
+        if self.retry_response is not None:
+            return self.retry_response
         return self._response(
             status="completed",
             payload={
@@ -124,6 +136,49 @@ def _section_target_payload() -> dict[str, object]:
             "section_id": " section-1 ",
         }
     }
+
+
+def _content_block_target_payload() -> dict[str, object]:
+    return {
+        "target": {
+            "doc_name": " book.json ",
+            "target_type": "content_block",
+            "chapter_id": " chapter-1 ",
+            "section_id": " section-1 ",
+            "task_unit_id": " task-unit-1 ",
+            "content_block_id": " task-unit-1:block:0 ",
+        }
+    }
+
+
+def _content_block_response(
+    *,
+    status: str,
+    payload: dict[str, object],
+    metadata: dict[str, object] | None = None,
+    reason: str | None = None,
+    session_id: str | None = "session-1",
+) -> ReadingInteractionResponseDTO:
+    return ReadingInteractionResponseDTO(
+        target=ReadingInteractionTargetDTO(
+            doc_name="book.json",
+            document_id="doc-1",
+            document_title="Document One",
+            target_level="content_block",
+            target_id="task-unit-1:block:0",
+            chapter_id="chapter-1",
+            section_id="section-1",
+            task_unit_id="task-unit-1",
+            content_block_id="task-unit-1:block:0",
+            title="Unit One",
+        ),
+        interaction_type="critical_thinking_session",
+        status=status,
+        payload=payload,
+        metadata={} if metadata is None else metadata,
+        reason=reason,
+        session_id=session_id,
+    )
 
 
 def _install_fake(fake: _FakeSectionTaskCoordinator) -> object:
@@ -212,6 +267,116 @@ def test_critical_read_route_loads_existing_session() -> None:
     _assert(fake.read_calls[0]["session_id"] == "session-1", "session id should trim")
 
 
+def test_critical_generic_routes_preserve_content_block_target_identity() -> None:
+    fake = _FakeSectionTaskCoordinator()
+    fake.read_response = _content_block_response(
+        status="question_generated",
+        payload={"question": "What does this block assume?"},
+        metadata={"output_schema_version": "critical_thinking_session_v1"},
+    )
+    fake.generate_response = _content_block_response(
+        status="question_generated",
+        payload={"question": "What does this block assume?"},
+        metadata={"output_schema_version": "critical_thinking_session_v1"},
+    )
+    fake.submit_response = _content_block_response(
+        status="evaluation_failed",
+        payload={
+            "question": "What does this block assume?",
+            "answer": "It assumes the selected detail changes the argument.",
+        },
+        metadata={"output_schema_version": "critical_thinking_session_v1"},
+        reason="evaluation payload failed validation",
+    )
+    fake.retry_response = _content_block_response(
+        status="completed",
+        payload={
+            "question": "What does this block assume?",
+            "answer": "It assumes the selected detail changes the argument.",
+            "evaluation": {
+                "feedback": "The answer stays anchored to the selected block.",
+                "strengths": "It identifies a local assumption.",
+                "improvements": "It could quote the block directly.",
+                "score": 4,
+            },
+        },
+        metadata={"output_schema_version": "critical_thinking_session_v1"},
+    )
+    original_coordinator = _install_fake(fake)
+    try:
+        client = TestClient(main.app)
+        read_response = client.post(
+            "/documents/reading-interactions/critical-thinking/read",
+            json={**_content_block_target_payload(), "session_id": " session-1 "},
+        )
+        generate_response = client.post(
+            "/documents/reading-interactions/critical-thinking/generate-question",
+            json=_content_block_target_payload(),
+        )
+        submit_response = client.post(
+            "/documents/reading-interactions/critical-thinking/submit-answer",
+            json={
+                **_content_block_target_payload(),
+                "session_id": " session-1 ",
+                "answer": " It assumes the selected detail changes the argument. ",
+            },
+        )
+        retry_response = client.post(
+            "/documents/reading-interactions/critical-thinking/retry-evaluation",
+            json={**_content_block_target_payload(), "session_id": " session-1 "},
+        )
+    finally:
+        _restore_fake(original_coordinator)
+
+    _assert(read_response.status_code == 200, f"unexpected status: {read_response.text}")
+    _assert(generate_response.status_code == 200, f"unexpected status: {generate_response.text}")
+    _assert(submit_response.status_code == 200, f"unexpected status: {submit_response.text}")
+    _assert(retry_response.status_code == 200, f"unexpected status: {retry_response.text}")
+    generated = generate_response.json()
+    submitted = submit_response.json()
+    retried = retry_response.json()
+    _assert(
+        generated["envelope"]["target"]["target_type"] == "content_block",
+        "generate response should preserve content-block target type",
+    )
+    _assert(
+        generated["envelope"]["target"]["content_block_id"]
+        == "task-unit-1:block:0",
+        "generate response should preserve content_block_id",
+    )
+    _assert(
+        submitted["envelope"]["target"]["content_block_id"]
+        == "task-unit-1:block:0",
+        "submit response should preserve content_block_id",
+    )
+    _assert(
+        retried["envelope"]["target"]["content_block_id"]
+        == "task-unit-1:block:0",
+        "retry response should preserve content_block_id",
+    )
+    _assert(
+        fake.read_calls[0]["content_block_id"] == "task-unit-1:block:0",
+        "read dispatch should include content_block_id",
+    )
+    _assert(
+        fake.generate_calls[0]["content_block_id"] == "task-unit-1:block:0",
+        "generate dispatch should include content_block_id",
+    )
+    _assert(
+        fake.submit_calls[0]["content_block_id"] == "task-unit-1:block:0",
+        "submit dispatch should include content_block_id",
+    )
+    _assert(
+        fake.retry_calls[0]["content_block_id"] == "task-unit-1:block:0",
+        "retry dispatch should include content_block_id",
+    )
+    _assert(
+        fake.submit_calls[0]["answer"]
+        == "It assumes the selected detail changes the argument.",
+        "submit answer should normalize before dispatch",
+    )
+
+
 def test_critical_submit_preserves_answer_on_evaluation_failure() -> None:
     fake = _FakeSectionTaskCoordinator()
     original_coordinator = _install_fake(fake)
@@ -291,6 +456,7 @@ def main_test() -> None:
     test_critical_read_route_returns_missing_without_generation()
     test_critical_generate_question_route_maps_session()
     test_critical_read_route_loads_existing_session()
+    test_critical_generic_routes_preserve_content_block_target_identity()
     test_critical_submit_preserves_answer_on_evaluation_failure()
     test_critical_retry_completes_without_regenerating_question()
     test_critical_submit_rejects_malformed_request_before_dispatch()

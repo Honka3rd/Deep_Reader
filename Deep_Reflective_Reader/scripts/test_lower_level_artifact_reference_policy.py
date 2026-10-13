@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from context.artifact_aware_context import (  # noqa: E402
     ArtifactAwareContextBuilder,
     ArtifactAwareContextResult,
+    ArtifactContextTarget,
     ArtifactContextSummary,
 )
 from section_tasks.analysis_interaction_service import AnalysisInteractionService  # noqa: E402
@@ -37,6 +38,18 @@ def _assert(condition: bool, message: str) -> None:
 
 
 def _target(target_level: str = "chapter") -> ResolvedReadingTarget:
+    if target_level == "content_block":
+        return ResolvedReadingTarget(
+            document_id="doc-1",
+            document_title="Document One",
+            target_level="content_block",
+            target_id="unit-1:block:0",
+            content="This block states a local claim about incentives.",
+            chapter_id="chapter-1",
+            section_id="section-1",
+            task_unit_id="unit-1",
+            content_block_id="unit-1:block:0",
+        )
     return ResolvedReadingTarget(
         document_id="doc-1",
         document_title="Document One",
@@ -75,6 +88,43 @@ def _artifact_context_provider(
                 target_level="section",
                 target_id="section-1",
                 concepts=("incentives", "institutions"),
+            ),
+        ],
+        max_artifacts=5,
+        max_context_chars=500,
+    )
+
+
+def _content_block_artifact_context_provider(
+    request: ReadingInteractionRequest,
+) -> ArtifactAwareContextResult:
+    return ArtifactAwareContextBuilder().build_for_target(
+        target=ArtifactContextTarget(
+            target_level=request.target.target_level,
+            target_id=request.target.target_id,
+            task_unit_id=request.target.task_unit_id,
+            content_block_id=request.target.content_block_id,
+        ),
+        artifacts=[
+            ArtifactContextSummary(
+                artifact_id="analysis-unit-1",
+                artifact_type="analysis",
+                target_level="task_unit",
+                target_id="unit-1",
+                focus="parent unit argument",
+                outcome="local incentive claim needs qualification",
+                metadata={"task_unit_id": "unit-1"},
+            ),
+            ArtifactContextSummary(
+                artifact_id="analysis-block-sibling",
+                artifact_type="analysis",
+                target_level="content_block",
+                target_id="unit-1:block:1",
+                focus="sibling block should stay excluded",
+                metadata={
+                    "task_unit_id": "unit-1",
+                    "content_block_id": "unit-1:block:1",
+                },
             ),
         ],
         max_artifacts=5,
@@ -125,6 +175,51 @@ def _assert_artifact_metadata(artifact: ReadingInteractionArtifact) -> None:
     )
 
 
+def test_content_block_uses_parent_artifact_as_secondary_context_only() -> None:
+    captured: dict[str, object] = {}
+
+    def generator(request: ReadingInteractionRequest) -> dict[str, str]:
+        captured["target_content"] = request.target.content
+        captured["secondary_context"] = request.secondary_context
+        return {
+            "summary": "The block makes a local claim about incentives.",
+            "reasoning": "Uses block source with parent artifact context.",
+            "explanation": "The parent artifact remains secondary.",
+        }
+
+    artifact = AnalysisInteractionService(
+        generator,
+        artifact_context_provider=_content_block_artifact_context_provider,
+    ).generate(_request("analysis", target_level="content_block"))
+    artifact_context = artifact.metadata["context"]["artifact_context"]
+    artifact_reference = artifact.metadata["artifact_reference"]
+
+    _assert(artifact.status == "completed", "content-block analysis should complete")
+    _assert(
+        captured["target_content"]
+        == "This block states a local claim about incentives.",
+        "content-block primary source text must remain the selected block",
+    )
+    _assert(
+        "focus=parent unit argument" in captured["secondary_context"],
+        "parent task-unit artifact should be available as secondary context",
+    )
+    _assert(
+        "sibling block should stay excluded" not in captured["secondary_context"],
+        "sibling content-block artifact should not be injected",
+    )
+    _assert(
+        artifact_context["referenced_artifact_ids"] == ["analysis-unit-1"],
+        "content-block provenance should only reference parent task-unit artifact",
+    )
+    _assert(
+        artifact_reference == artifact_context,
+        "top-level reference metadata should mirror bounded provenance",
+    )
+    _assert("context_text" not in artifact_reference, "metadata must omit context text")
+    _assert("payload" not in artifact_reference, "metadata must omit child payloads")
+
+
 def test_analysis_consumes_secondary_context_without_mutating_primary_source() -> None:
     captured: dict[str, object] = {}
 
@@ -132,8 +227,8 @@ def test_analysis_consumes_secondary_context_without_mutating_primary_source() -
         captured["target_content"] = request.target.content
         captured["secondary_context"] = request.secondary_context
         return {
-            "summary": "Higher-level summary",
-            "reasoning": "Uses primary source with secondary abstraction hints.",
+            "summary": "The chapter compares incentives and institutions.",
+            "reasoning": "Uses primary source incentives with secondary abstraction hints.",
             "explanation": "Explains the chapter-level argument.",
         }
 
@@ -239,9 +334,9 @@ def test_absent_child_artifacts_do_not_block_generation() -> None:
     def generator(request: ReadingInteractionRequest) -> dict[str, str]:
         captured["secondary_context"] = request.secondary_context
         return {
-            "summary": "Summary",
-            "reasoning": "Reasoning",
-            "explanation": "Explanation",
+            "summary": "The document argument turns on incentives and institutions.",
+            "reasoning": "The source compares incentives, institutions, and assumptions.",
+            "explanation": "Generation can proceed without child artifact context.",
         }
 
     artifact = AnalysisInteractionService(
@@ -262,6 +357,7 @@ def test_absent_child_artifacts_do_not_block_generation() -> None:
 
 
 if __name__ == "__main__":
+    test_content_block_uses_parent_artifact_as_secondary_context_only()
     test_analysis_consumes_secondary_context_without_mutating_primary_source()
     test_quiz_consumes_secondary_context_as_deduplication_signal()
     test_critical_thinking_consumes_secondary_context_for_abstraction()

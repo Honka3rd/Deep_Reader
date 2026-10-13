@@ -75,6 +75,10 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence: `Deep_Reflective_Reader/context/artifact_aware_context.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`.
   Notes: `ArtifactAwareContextResult.to_metadata()` exports artifact context mode, referenced artifact ids/types/target levels, coverage counts, deduplication and abstraction hints, and pruning reason when present. It omits secondary `context_text` and raw child artifact payloads, and empty lower-level artifact context still returns non-blocking `artifact_context_mode=none`.
   Timestamp: 2026-10-08
+- [x] Define content-block artifact-aware context policy
+  Evidence: `Deep_Reflective_Reader/context/artifact_aware_context.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`; `Deep_Reflective_Reader/scripts/test_lower_level_artifact_reference_policy.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_lower_level_artifact_reference_policy.py`; `python3 -m py_compile Deep_Reflective_Reader/context/artifact_aware_context.py Deep_Reflective_Reader/scripts/test_artifact_aware_context_builder.py Deep_Reflective_Reader/scripts/test_lower_level_artifact_reference_policy.py`.
+  Notes: `ArtifactAwareContextBuilder.build_for_target(...)` now applies a content-block-specific policy: parent task-unit artifacts for the same `task_unit_id` may enter compact secondary context, while sibling `content_block` artifacts are excluded. Provenance metadata remains bounded and does not store secondary context text or child payloads.
+  Timestamp: 2026-10-11
 
 After implementation, the task owner must update this checklist and mark the task as completed:
 

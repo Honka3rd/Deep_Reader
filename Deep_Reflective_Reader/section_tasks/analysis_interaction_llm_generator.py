@@ -4,9 +4,12 @@ from llm.llm_provider import LLMProvider
 from section_tasks.reading_interaction_service_contracts import (
     ReadingInteractionRequest,
 )
+from section_tasks.reading_interaction_prompt_context import (
+    build_evidence_priority_context_text,
+)
 
 
-ANALYSIS_INTERACTION_PROMPT_VERSION = "analysis_interaction_prompt_v1"
+ANALYSIS_INTERACTION_PROMPT_VERSION = "analysis_interaction_prompt_v5"
 
 
 class AnalysisInteractionLLMGenerator:
@@ -16,21 +19,30 @@ class AnalysisInteractionLLMGenerator:
         self._llm_provider = llm_provider
 
     def __call__(self, request: ReadingInteractionRequest) -> str:
-        target = request.target
+        context_text = build_evidence_priority_context_text(
+            request,
+            secondary_context_label=(
+                "Secondary artifact context for abstraction/deduplication"
+            ),
+        )
         prompt = (
-            "You are generating a compact reading insight for an inline reading UI.\n"
+            "You are generating an interpretive reading insight for an inline reading UI.\n"
+            "Insight is not a summary action: do not primarily recap what happens.\n"
+            "Use the JSON field named summary for a short insight thesis, not for plot "
+            "summary or section overview.\n"
+            "Ground the insight in 1-3 concrete textual details from the Primary Source, "
+            "such as an action, object, bodily condition, metaphor, diction, narrative "
+            "angle, or ambiguity.\n"
+            "Explain how those details complicate or correct a simple reading of the "
+            "character, event, theme, relation, or narrative method.\n"
+            "When supported by the Primary Source, identify a tension or contrast "
+            "inside the passage.\n"
+            "Do not let the output be dominated by plot recap, chapter overview, "
+            "'this section mainly says' framing, or generic thematic summary; use only "
+            "brief orientation when needed to anchor the insight.\n"
             "Return only a strict JSON object with non-empty string fields: "
             "summary, reasoning, explanation.\n"
             "Do not include markdown, code fences, citations, or extra keys.\n\n"
-            f"Document title: {target.document_title}\n"
-            f"Target level: {target.target_level}\n"
-            f"Target id: {target.target_id}\n\n"
-            "Primary source context:\n"
-            f"{target.content}\n"
+            f"{context_text}\n"
         )
-        if request.secondary_context:
-            prompt += (
-                "\nSecondary artifact context for abstraction/deduplication:\n"
-                f"{request.secondary_context}\n"
-            )
         return self._llm_provider.complete_text(prompt)

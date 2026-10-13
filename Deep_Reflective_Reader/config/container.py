@@ -66,6 +66,15 @@ from section_tasks.analysis_interaction_orchestrator import (
     AnalysisInteractionOrchestrator,
 )
 from section_tasks.analysis_interaction_service import AnalysisInteractionService
+from section_tasks.critical_thinking_llm_generator import (
+    CriticalThinkingLLMGenerator,
+)
+from section_tasks.critical_thinking_session_service import (
+    CriticalThinkingSessionService,
+)
+from section_tasks.quiz_interaction_llm_generator import QuizInteractionLLMGenerator
+from section_tasks.quiz_interaction_orchestrator import QuizInteractionOrchestrator
+from section_tasks.quiz_interaction_service import QuizInteractionService
 from section_tasks.section_quiz_task_prompt_builder import (
     SectionQuizTaskPromptBuilder,
 )
@@ -481,6 +490,28 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         service=analysis_interaction_service,
         artifact_store=reading_interaction_artifact_store,
     )
+    quiz_interaction_generator = providers.Singleton(
+        QuizInteractionLLMGenerator,
+        llm_provider=llm_provider,
+    )
+    quiz_interaction_service = providers.Singleton(
+        QuizInteractionService,
+        generator=quiz_interaction_generator,
+    )
+    quiz_interaction_orchestrator = providers.Singleton(
+        QuizInteractionOrchestrator,
+        service=quiz_interaction_service,
+        artifact_store=reading_interaction_artifact_store,
+    )
+    critical_thinking_interaction_generator = providers.Singleton(
+        CriticalThinkingLLMGenerator,
+        llm_provider=llm_provider,
+    )
+    critical_thinking_session_service = providers.Singleton(
+        CriticalThinkingSessionService,
+        question_generator=critical_thinking_interaction_generator.provided.generate_question,
+        evaluation_generator=critical_thinking_interaction_generator.provided.evaluate_answer,
+    )
     enhanced_parse_trigger_evaluator = providers.Singleton(
         EnhancedParseTriggerEvaluator,
         min_section_count=config.enhanced_parse_min_section_count,
@@ -508,6 +539,9 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         enhanced_parse_trigger_evaluator=enhanced_parse_trigger_evaluator,
         semantic_top_k_candidates_max=config.task_unit_semantic_top_k_candidates_max,
         analysis_interaction_orchestrator=analysis_interaction_orchestrator,
+        quiz_interaction_orchestrator=quiz_interaction_orchestrator,
+        critical_thinking_session_service=critical_thinking_session_service,
+        critical_thinking_session_store=reading_interaction_artifact_store,
     )
 
     @classmethod

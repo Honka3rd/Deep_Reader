@@ -98,6 +98,15 @@ def _completed_artifact() -> ReadingInteractionArtifact:
     )
 
 
+def _insufficient_artifact() -> ReadingInteractionArtifact:
+    return ReadingInteractionArtifact.from_target(
+        target=_target("@@@ !!! ###"),
+        interaction_type="analysis",
+        status="insufficient_content",
+        reason="target content is too short for analysis",
+    )
+
+
 def test_read_missing_artifact_does_not_generate_or_persist() -> None:
     generator_calls: list[str] = []
 
@@ -134,6 +143,28 @@ def test_read_existing_artifact_returns_persisted_result() -> None:
     artifact = orchestrator.read(_request())
 
     _assert(artifact is existing, "read should return current persisted artifact")
+
+
+def test_read_existing_insufficient_content_rechecks_current_target() -> None:
+    store = InMemoryAnalysisArtifactStore()
+    existing = _insufficient_artifact()
+    store.save_analysis_artifact(existing)
+    orchestrator = AnalysisInteractionOrchestrator(
+        service=AnalysisInteractionService(lambda request: "{}"),
+        artifact_store=store,
+    )
+
+    readable = orchestrator.read(_request())
+    still_insufficient = orchestrator.read(_request(content="@@@ !!! ###"))
+
+    _assert(
+        readable.status == "not_generated",
+        "readable targets should not stay masked by stale insufficient artifacts",
+    )
+    _assert(
+        still_insufficient is existing,
+        "still-insufficient targets should keep the persisted insufficient artifact",
+    )
 
 
 def test_generate_missing_artifact_persists_completed_result() -> None:
@@ -229,11 +260,76 @@ def test_generate_reuses_existing_artifact_unless_refresh_is_requested() -> None
     _assert(store.save_calls == 1, "only refresh should write a new artifact")
 
 
+def test_generate_rechecks_existing_insufficient_content_artifact() -> None:
+    generator_calls: list[str] = []
+
+    def generator(request: ReadingInteractionRequest) -> dict[str, str]:
+        generator_calls.append(request.target.target_id)
+        return {
+            "summary": "Recovered summary",
+            "reasoning": "Recovered reasoning",
+            "explanation": "Recovered explanation",
+        }
+
+    store = InMemoryAnalysisArtifactStore()
+    store.save_analysis_artifact(_insufficient_artifact())
+    store.save_calls = 0
+    orchestrator = AnalysisInteractionOrchestrator(
+        service=AnalysisInteractionService(generator),
+        artifact_store=store,
+    )
+
+    recovered = orchestrator.generate(_request())
+
+    _assert(
+        recovered.status == "completed",
+        "generate should recheck persisted insufficient-content artifacts",
+    )
+    _assert(generator_calls == ["section-1"], "readable content should call generator")
+    _assert(
+        recovered.payload["summary"] == "Recovered summary",
+        "rechecked analysis should replace the insufficient artifact",
+    )
+    _assert(store.save_calls == 1, "recovered analysis should be persisted")
+
+
+def test_generate_rechecks_still_insufficient_artifact_without_generator_call() -> None:
+    generator_calls: list[str] = []
+
+    def generator(request: ReadingInteractionRequest) -> dict[str, str]:
+        generator_calls.append(request.target.target_id)
+        return {
+            "summary": "Summary",
+            "reasoning": "Reasoning",
+            "explanation": "Explanation",
+        }
+
+    store = InMemoryAnalysisArtifactStore()
+    store.save_analysis_artifact(_insufficient_artifact())
+    store.save_calls = 0
+    orchestrator = AnalysisInteractionOrchestrator(
+        service=AnalysisInteractionService(generator),
+        artifact_store=store,
+    )
+
+    still_insufficient = orchestrator.generate(_request(content="@@@ !!! ###"))
+
+    _assert(
+        still_insufficient.status == "insufficient_content",
+        "still-insufficient content should remain insufficient",
+    )
+    _assert(generator_calls == [], "still-insufficient content should skip generator")
+    _assert(store.save_calls == 1, "rechecked insufficient status should be persisted")
+
+
 if __name__ == "__main__":
     test_read_missing_artifact_does_not_generate_or_persist()
     test_read_existing_artifact_returns_persisted_result()
+    test_read_existing_insufficient_content_rechecks_current_target()
     test_generate_missing_artifact_persists_completed_result()
     test_generate_persists_insufficient_content_without_generator_call()
     test_generate_does_not_persist_invalid_output_failure()
     test_generate_reuses_existing_artifact_unless_refresh_is_requested()
+    test_generate_rechecks_existing_insufficient_content_artifact()
+    test_generate_rechecks_still_insufficient_artifact_without_generator_call()
     print("analysis interaction read/generate split tests passed")

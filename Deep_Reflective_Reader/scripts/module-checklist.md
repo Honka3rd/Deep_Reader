@@ -167,6 +167,36 @@ It is used to:
   Notes: Regression validates missing current analysis reads return `None`, saved analysis artifacts receive deterministic artifact ids, persisted metadata is stored under `reading_interaction_artifacts`, and readback round-trips through the shared `CommonArtifact` adapter without creating a separate persistence category.
   Timestamp: 2026-10-10
 
+- [x] Covers explicit document upload route behavior
+  Evidence: `Deep_Reflective_Reader/scripts/test_document_upload_route.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_upload_route.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_list_search_api.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_document_upload_route.py`.
+  Notes: Regression validates `POST /documents/upload` stores raw `.txt` source candidates, returns lightweight typed upload metadata, exposes uploaded raw candidates through `GET /documents`, rejects duplicate uploads by default, supports explicit replace and create-distinct conflict policies, asserts create-distinct returns a unique backend-owned `source_filename` and `doc_name`, rejects unsupported file types with `unsupported_file_type`, rejects unsafe filenames, and does not prepare/reparse/OCR/profile/retrieval/task-layout/generate interactions.
+  Timestamp: 2026-10-13
+
+- [x] Covers document management status/list route behavior
+  Evidence: `Deep_Reflective_Reader/scripts/test_document_management_route.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_management_route.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_document_management_route.py`.
+  Notes: Regression validates `GET /documents/management` merges structured readiness and raw source metadata, marks structured-only rows as ready, raw-only rows as not prepared, same-name raw+structured rows as ready while preserving raw source metadata, supports query filtering, and does not expose raw text, hierarchy, task-unit content, content blocks, profile payloads, retrieval records, or artifacts.
+  Timestamp: 2026-10-13
+
+- [x] Covers document lifecycle action schema behavior
+  Evidence: `Deep_Reflective_Reader/scripts/test_document_lifecycle_api_schemas.py`; `Deep_Reflective_Reader/api_schemas.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_lifecycle_api_schemas.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_document_lifecycle_api_schemas.py`.
+  Notes: Regression validates explicit `archive`, `restore`, `delete`, and `rename` lifecycle DTO semantics, rename target rules, typed non-success reasons, accepted response shape, source/structured/derived-resource effect flags, and rejection of raw text, hierarchy, task-layout, content-block, and artifact payload fields.
+  Timestamp: 2026-10-13
+
+- [x] Covers explicit document delete route behavior
+  Evidence: `Deep_Reflective_Reader/scripts/test_document_delete_route.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_delete_route.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_document_delete_route.py`.
+  Notes: Regression validates `POST /documents/lifecycle/delete` requires explicit confirmation, removes matching raw source, structured JSON, and derived FAISS/profile artifacts, returns typed missing/unconfirmed/wrong-action lifecycle responses, keeps response payload lightweight, and does not expose raw text, hierarchy, task-unit content, content blocks, profile payloads, retrieval records, or artifacts.
+  Timestamp: 2026-10-13
+
+- [x] Covers explicit document rename route behavior
+  Evidence: `Deep_Reflective_Reader/scripts/test_document_rename_route.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_rename_route.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_document_rename_route.py`.
+  Notes: Regression validates `POST /documents/lifecycle/rename` moves matching raw source, structured JSON, and derived FAISS/profile artifacts, updates lightweight structured JSON identity metadata, rejects target conflicts without partial overwrite, returns typed missing/wrong-action lifecycle responses, keeps response payload lightweight, and does not expose raw text, hierarchy, task-unit content, content blocks, profile payloads, retrieval records, or artifacts.
+  Timestamp: 2026-10-13
+
+- [x] Supports local development env-file injection for private LLM keys
+  Evidence: `scripts/load_local_env.sh`; `scripts/start_local_dev.sh`; `.env.local.example`; `.env.example`; validation with `bash -n scripts/load_local_env.sh scripts/start_local_dev.sh`; dry-run source validation against a temporary env file.
+  Notes: Local development startup now sources a reusable env loader that imports `.env.local` into the shell before Docker Compose receives the same env file. The template documents `.env.local` as the private ignored file, uses provider-neutral `DEEP_READER_LLM_API_KEY` for developer-owned secrets, bridges that value to the current backend runtime variable for compatibility, and includes `DEEP_READER_UI_PORT`.
+  Timestamp: 2026-10-13
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.

@@ -141,6 +141,38 @@ def test_common_artifact_round_trip_preserves_service_contract() -> None:
     )
 
 
+def test_content_block_target_round_trip_preserves_block_identity() -> None:
+    source = ReadingInteractionArtifact(
+        interaction_type="analysis",
+        status="insufficient_content",
+        target_level="content_block",
+        target_id="unit-1:content:0",
+        document_id="doc-1",
+        chapter_id="chapter-1",
+        section_id="section-1",
+        task_unit_id="unit-1",
+        content_block_id="unit-1:content:0",
+        reason="block source context is not wired yet",
+    )
+
+    common = reading_interaction_artifact_to_common_artifact(
+        source,
+        artifact_id="analysis::doc-1::content_block::unit-1:content:0",
+    )
+    restored = common_artifact_to_reading_interaction_artifact(
+        CommonArtifact.from_dict(common.to_dict())
+    )
+
+    _assert(
+        common.target.content_block_id == "unit-1:content:0",
+        "common artifact target should preserve content_block_id",
+    )
+    _assert(
+        restored.content_block_id == "unit-1:content:0",
+        "service artifact should restore content_block_id",
+    )
+
+
 def test_common_artifact_uses_defensive_payload_and_metadata_copies() -> None:
     payload = {"items": [{"type": "short_answer", "question": "Q", "answer": "A"}]}
     metadata = {"schema_version": "quiz_v1"}
@@ -249,6 +281,7 @@ def test_book_target_alias_normalizes_to_document_target() -> None:
 if __name__ == "__main__":
     test_analysis_quiz_and_critical_thinking_share_common_entity_shape()
     test_common_artifact_round_trip_preserves_service_contract()
+    test_content_block_target_round_trip_preserves_block_identity()
     test_common_artifact_uses_defensive_payload_and_metadata_copies()
     test_common_artifact_validation_rejects_unsupported_types_and_invalid_targets()
     test_book_target_alias_normalizes_to_document_target()

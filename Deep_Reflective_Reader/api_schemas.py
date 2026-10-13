@@ -23,7 +23,7 @@ ARTIFACT_CONTEXT_MODES: frozenset[str] = frozenset(
 )
 
 READING_INTERACTION_TARGET_TYPES: frozenset[str] = frozenset(
-    {"document", "book", "chapter", "section", "task_unit"}
+    {"document", "book", "chapter", "section", "task_unit", "content_block"}
 )
 
 READING_INTERACTION_TYPES: frozenset[str] = frozenset(
@@ -63,6 +63,64 @@ QUIZ_INTERACTION_ITEM_TYPES: frozenset[str] = frozenset(
 )
 
 QUIZ_INTERACTION_MAX_ITEMS = 25
+
+DOCUMENT_SOURCE_TYPES: frozenset[str] = frozenset({"txt", "pdf", "unknown"})
+
+DOCUMENT_SOURCE_STATUSES: frozenset[str] = frozenset(
+    {"uploaded", "failed"}
+)
+
+DOCUMENT_PREPARATION_STATUSES: frozenset[str] = frozenset(
+    {"not_prepared", "failed", "stale", "unknown"}
+)
+
+DOCUMENT_MANAGEMENT_SOURCE_STATUSES: frozenset[str] = frozenset(
+    {"available", "missing", "unsupported", "failed", "unknown"}
+)
+
+DOCUMENT_MANAGEMENT_PREPARATION_STATUSES: frozenset[str] = frozenset(
+    {"not_prepared", "ready", "failed", "stale", "unknown"}
+)
+
+DOCUMENT_UPLOAD_CONFLICT_POLICIES: frozenset[str] = frozenset(
+    {"reject", "replace", "create_distinct"}
+)
+
+DOCUMENT_UPLOAD_FAILURE_REASONS: frozenset[str] = frozenset(
+    {
+        "unsupported_file_type",
+        "file_too_large",
+        "duplicate_conflict",
+        "unsafe_filename",
+        "storage_failure",
+        "missing_source",
+        "validation_failure",
+    }
+)
+
+DOCUMENT_LIFECYCLE_ACTIONS: frozenset[str] = frozenset(
+    {"archive", "restore", "delete", "rename"}
+)
+
+DOCUMENT_LIFECYCLE_STATUSES: frozenset[str] = frozenset(
+    {"accepted", "rejected", "conflict", "failed", "not_implemented"}
+)
+
+DOCUMENT_LIFECYCLE_FAILURE_REASONS: frozenset[str] = frozenset(
+    {
+        "missing_document",
+        "unsupported_action",
+        "conflict",
+        "validation_failure",
+        "storage_failure",
+        "unsafe_name",
+        "not_implemented",
+    }
+)
+
+DOCUMENT_LIFECYCLE_REASON_REQUIRED_STATUSES: frozenset[str] = frozenset(
+    {"rejected", "conflict", "failed", "not_implemented"}
+)
 
 
 class PrepareDocumentRequest(BaseModel):
@@ -168,6 +226,359 @@ class DocumentListResponse(BaseModel):
     items: list[DocumentListItemResponse]
     query: str | None = None
     total: int
+
+
+class DocumentManagementItemResponse(BaseModel):
+    """Lightweight document management row without heavy document payloads."""
+
+    _ALLOWED_SOURCE_TYPES: ClassVar[frozenset[str]] = DOCUMENT_SOURCE_TYPES
+    _ALLOWED_SOURCE_STATUSES: ClassVar[frozenset[str]] = (
+        DOCUMENT_MANAGEMENT_SOURCE_STATUSES
+    )
+    _ALLOWED_PREPARATION_STATUSES: ClassVar[frozenset[str]] = (
+        DOCUMENT_MANAGEMENT_PREPARATION_STATUSES
+    )
+    model_config = ConfigDict(extra="forbid")
+
+    doc_name: str
+    title: str | None = None
+    source: str
+    source_filename: str | None = None
+    source_type: str = "unknown"
+    source_size_bytes: int | None = Field(None, ge=0)
+    source_status: str = "unknown"
+    preparation_status: str = "unknown"
+    uploaded_at: str | None = None
+    updated_at: str | None = None
+    last_error: str | None = None
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _normalize_management_item(self) -> "DocumentManagementItemResponse":
+        normalized_doc_name = self.doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+        self.doc_name = normalized_doc_name
+
+        normalized_source = self.source.strip()
+        if not normalized_source:
+            raise ValueError("source cannot be empty")
+        self.source = normalized_source
+
+        self.title = self._normalize_optional_text(self.title)
+        self.source_filename = self._normalize_optional_text(self.source_filename)
+        self.uploaded_at = self._normalize_optional_text(self.uploaded_at)
+        self.updated_at = self._normalize_optional_text(self.updated_at)
+        self.last_error = self._normalize_optional_text(self.last_error)
+
+        normalized_source_type = self.source_type.strip().lower()
+        if normalized_source_type not in self._ALLOWED_SOURCE_TYPES:
+            raise ValueError(
+                "source_type must be one of: "
+                + ", ".join(sorted(self._ALLOWED_SOURCE_TYPES))
+            )
+        self.source_type = normalized_source_type
+
+        normalized_source_status = self.source_status.strip().lower()
+        if normalized_source_status not in self._ALLOWED_SOURCE_STATUSES:
+            raise ValueError(
+                "source_status must be one of: "
+                + ", ".join(sorted(self._ALLOWED_SOURCE_STATUSES))
+            )
+        self.source_status = normalized_source_status
+
+        normalized_preparation_status = self.preparation_status.strip().lower()
+        if normalized_preparation_status not in self._ALLOWED_PREPARATION_STATUSES:
+            raise ValueError(
+                "preparation_status must be one of: "
+                + ", ".join(sorted(self._ALLOWED_PREPARATION_STATUSES))
+            )
+        self.preparation_status = normalized_preparation_status
+        return self
+
+
+class DocumentManagementListResponse(BaseModel):
+    """Response payload for document-management list/status API."""
+
+    items: list[DocumentManagementItemResponse]
+    query: str | None = None
+    total: int
+
+
+class DocumentUploadMetadataRequest(BaseModel):
+    """Optional metadata fields paired with a future multipart document upload."""
+
+    _ALLOWED_CONFLICT_POLICIES: ClassVar[frozenset[str]] = (
+        DOCUMENT_UPLOAD_CONFLICT_POLICIES
+    )
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(
+        None,
+        description="Optional display title for the uploaded document candidate.",
+    )
+    conflict_policy: str = Field(
+        "reject",
+        description="Conflict policy: reject | replace | create_distinct.",
+    )
+
+    @model_validator(mode="after")
+    def _normalize_metadata(self) -> "DocumentUploadMetadataRequest":
+        if self.title is not None:
+            normalized_title = self.title.strip()
+            self.title = normalized_title or None
+
+        normalized_policy = self.conflict_policy.strip().lower().replace("-", "_")
+        if normalized_policy not in self._ALLOWED_CONFLICT_POLICIES:
+            raise ValueError(
+                "conflict_policy must be one of: "
+                + ", ".join(sorted(self._ALLOWED_CONFLICT_POLICIES))
+            )
+        self.conflict_policy = normalized_policy
+        return self
+
+
+class DocumentUploadResponse(BaseModel):
+    """Lightweight response for a future explicit document upload route."""
+
+    _ALLOWED_SOURCE_TYPES: ClassVar[frozenset[str]] = DOCUMENT_SOURCE_TYPES
+    _ALLOWED_SOURCE_STATUSES: ClassVar[frozenset[str]] = DOCUMENT_SOURCE_STATUSES
+    _ALLOWED_PREPARATION_STATUSES: ClassVar[frozenset[str]] = (
+        DOCUMENT_PREPARATION_STATUSES
+    )
+    _ALLOWED_CONFLICT_POLICIES: ClassVar[frozenset[str]] = (
+        DOCUMENT_UPLOAD_CONFLICT_POLICIES
+    )
+    _ALLOWED_FAILURE_REASONS: ClassVar[frozenset[str]] = (
+        DOCUMENT_UPLOAD_FAILURE_REASONS
+    )
+    model_config = ConfigDict(extra="forbid")
+
+    doc_name: str
+    title: str | None = None
+    source_filename: str
+    source_type: str
+    source_size_bytes: int = Field(..., ge=0)
+    source_hash: str | None = None
+    uploaded_at: str | None = None
+    source_status: str
+    preparation_status: str = "not_prepared"
+    conflict_policy: str | None = None
+    reason: str | None = None
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_upload_response(self) -> "DocumentUploadResponse":
+        normalized_doc_name = self.doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+        self.doc_name = normalized_doc_name
+
+        normalized_filename = self.source_filename.strip()
+        if not normalized_filename:
+            raise ValueError("source_filename cannot be empty")
+        self.source_filename = normalized_filename
+
+        self.title = self._normalize_optional_text(self.title)
+        self.source_hash = self._normalize_optional_text(self.source_hash)
+        self.uploaded_at = self._normalize_optional_text(self.uploaded_at)
+        self.reason = self._normalize_optional_text(self.reason)
+
+        normalized_source_type = self.source_type.strip().lower()
+        if normalized_source_type not in self._ALLOWED_SOURCE_TYPES:
+            raise ValueError(
+                "source_type must be one of: "
+                + ", ".join(sorted(self._ALLOWED_SOURCE_TYPES))
+            )
+        self.source_type = normalized_source_type
+
+        normalized_source_status = self.source_status.strip().lower()
+        if normalized_source_status not in self._ALLOWED_SOURCE_STATUSES:
+            raise ValueError(
+                "source_status must be one of: "
+                + ", ".join(sorted(self._ALLOWED_SOURCE_STATUSES))
+            )
+        self.source_status = normalized_source_status
+
+        normalized_preparation_status = self.preparation_status.strip().lower()
+        if normalized_preparation_status not in self._ALLOWED_PREPARATION_STATUSES:
+            raise ValueError(
+                "preparation_status must be one of: "
+                + ", ".join(sorted(self._ALLOWED_PREPARATION_STATUSES))
+            )
+        self.preparation_status = normalized_preparation_status
+
+        if self.conflict_policy is not None:
+            normalized_conflict_policy = (
+                self.conflict_policy.strip().lower().replace("-", "_")
+            )
+            if normalized_conflict_policy not in self._ALLOWED_CONFLICT_POLICIES:
+                raise ValueError(
+                    "conflict_policy must be one of: "
+                    + ", ".join(sorted(self._ALLOWED_CONFLICT_POLICIES))
+                )
+            self.conflict_policy = normalized_conflict_policy
+
+        if self.source_status == "failed":
+            if self.reason is None:
+                raise ValueError("failed upload response requires reason")
+            if self.reason not in self._ALLOWED_FAILURE_REASONS:
+                raise ValueError(
+                    "reason must be one of: "
+                    + ", ".join(sorted(self._ALLOWED_FAILURE_REASONS))
+                )
+            return self
+
+        if self.reason is not None:
+            raise ValueError("successful upload response must not include reason")
+
+        return self
+
+
+class DocumentLifecycleActionRequest(BaseModel):
+    """Explicit request DTO for future document lifecycle mutation routes."""
+
+    _ALLOWED_ACTIONS: ClassVar[frozenset[str]] = DOCUMENT_LIFECYCLE_ACTIONS
+    model_config = ConfigDict(extra="forbid")
+
+    doc_name: str
+    action: str
+    new_doc_name: str | None = None
+    expected_source_hash: str | None = None
+    expected_structure_version: str | None = None
+    confirm: bool = False
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_lifecycle_request(self) -> "DocumentLifecycleActionRequest":
+        normalized_doc_name = self.doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+        self.doc_name = normalized_doc_name
+
+        normalized_action = self.action.strip().lower().replace("-", "_")
+        if normalized_action not in self._ALLOWED_ACTIONS:
+            raise ValueError(
+                "action must be one of: "
+                + ", ".join(sorted(self._ALLOWED_ACTIONS))
+            )
+        self.action = normalized_action
+
+        self.new_doc_name = self._normalize_optional_text(self.new_doc_name)
+        self.expected_source_hash = self._normalize_optional_text(
+            self.expected_source_hash
+        )
+        self.expected_structure_version = self._normalize_optional_text(
+            self.expected_structure_version
+        )
+
+        if self.action == "rename":
+            if self.new_doc_name is None:
+                raise ValueError("rename action requires new_doc_name")
+            if self.new_doc_name == self.doc_name:
+                raise ValueError("rename action requires a different new_doc_name")
+            return self
+
+        if self.new_doc_name is not None:
+            raise ValueError("new_doc_name is only valid for rename action")
+        return self
+
+
+class DocumentLifecycleActionResponse(BaseModel):
+    """Lightweight response DTO for explicit document lifecycle mutations."""
+
+    _ALLOWED_ACTIONS: ClassVar[frozenset[str]] = DOCUMENT_LIFECYCLE_ACTIONS
+    _ALLOWED_STATUSES: ClassVar[frozenset[str]] = DOCUMENT_LIFECYCLE_STATUSES
+    _ALLOWED_REASONS: ClassVar[frozenset[str]] = (
+        DOCUMENT_LIFECYCLE_FAILURE_REASONS
+    )
+    _REASON_REQUIRED_STATUSES: ClassVar[frozenset[str]] = (
+        DOCUMENT_LIFECYCLE_REASON_REQUIRED_STATUSES
+    )
+    model_config = ConfigDict(extra="forbid")
+
+    doc_name: str
+    action: str
+    status: str
+    new_doc_name: str | None = None
+    reason: str | None = None
+    source_affected: bool = False
+    structured_artifacts_affected: bool = False
+    derived_resources_affected: bool = False
+    archived: bool | None = None
+    deleted: bool | None = None
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_lifecycle_response(self) -> "DocumentLifecycleActionResponse":
+        normalized_doc_name = self.doc_name.strip()
+        if not normalized_doc_name:
+            raise ValueError("doc_name cannot be empty")
+        self.doc_name = normalized_doc_name
+
+        normalized_action = self.action.strip().lower().replace("-", "_")
+        if normalized_action not in self._ALLOWED_ACTIONS:
+            raise ValueError(
+                "action must be one of: "
+                + ", ".join(sorted(self._ALLOWED_ACTIONS))
+            )
+        self.action = normalized_action
+
+        normalized_status = self.status.strip().lower().replace("-", "_")
+        if normalized_status not in self._ALLOWED_STATUSES:
+            raise ValueError(
+                "status must be one of: "
+                + ", ".join(sorted(self._ALLOWED_STATUSES))
+            )
+        self.status = normalized_status
+
+        self.new_doc_name = self._normalize_optional_text(self.new_doc_name)
+        self.reason = self._normalize_optional_text(self.reason)
+
+        if self.action == "rename":
+            if self.status == "accepted" and self.new_doc_name is None:
+                raise ValueError("accepted rename response requires new_doc_name")
+        elif self.new_doc_name is not None:
+            raise ValueError("new_doc_name is only valid for rename action")
+
+        if self.status in self._REASON_REQUIRED_STATUSES:
+            if self.reason is None:
+                raise ValueError(f"{self.status} lifecycle response requires reason")
+            if self.reason not in self._ALLOWED_REASONS:
+                raise ValueError(
+                    "reason must be one of: "
+                    + ", ".join(sorted(self._ALLOWED_REASONS))
+                )
+            return self
+
+        if self.reason is not None:
+            raise ValueError("accepted lifecycle response must not include reason")
+
+        return self
 
 
 class SectionTaskRequest(BaseModel):
@@ -382,6 +793,93 @@ class ArtifactAvailabilityResponse(BaseModel):
     quiz_invalid_reason: str | None = None
     summary_generated_at: str | None = None
     quiz_generated_at: str | None = None
+
+
+class ReadingInteractionAvailabilitySlotResponse(BaseModel):
+    """Lightweight interaction state for a block menu without artifact payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    interaction_type: str
+    status: str = "not_generated"
+    artifact_id: str | None = None
+    session_id: str | None = None
+    reason: str | None = None
+    generated_at: str | None = None
+    updated_at: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_slot(self) -> "ReadingInteractionAvailabilitySlotResponse":
+        interaction_type = self.interaction_type.strip()
+        status = self.status.strip()
+        if interaction_type not in READING_INTERACTION_TYPES:
+            raise ValueError(
+                "interaction_type must be one of: "
+                + ", ".join(sorted(READING_INTERACTION_TYPES))
+            )
+        if status not in READING_INTERACTION_STATUSES:
+            raise ValueError(
+                "status must be one of: "
+                + ", ".join(sorted(READING_INTERACTION_STATUSES))
+            )
+        if (
+            status in CRITICAL_THINKING_ONLY_STATUSES
+            and interaction_type != "critical_thinking_session"
+        ):
+            raise ValueError(
+                f"status '{status}' is only valid for critical_thinking_session"
+            )
+        if status in READING_INTERACTION_REASON_REQUIRED_STATUSES and not (
+            self.reason or ""
+        ).strip():
+            raise ValueError(f"status '{status}' requires reason")
+        if status == "not_generated" and (self.artifact_id or self.session_id):
+            raise ValueError(
+                "not_generated availability must not include artifact_id or session_id"
+            )
+
+        self.interaction_type = interaction_type
+        self.status = status
+        self.artifact_id = self._normalize_optional_string(self.artifact_id)
+        self.session_id = self._normalize_optional_string(self.session_id)
+        self.reason = self._normalize_optional_string(self.reason)
+        self.generated_at = self._normalize_optional_string(self.generated_at)
+        self.updated_at = self._normalize_optional_string(self.updated_at)
+        return self
+
+    @staticmethod
+    def _normalize_optional_string(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class ContentBlockInteractionAvailabilityResponse(BaseModel):
+    """Menu-ready block interaction availability without block text or payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    insight: ReadingInteractionAvailabilitySlotResponse | None = None
+    quiz: ReadingInteractionAvailabilitySlotResponse | None = None
+    critical_thinking: ReadingInteractionAvailabilitySlotResponse | None = None
+
+    @model_validator(mode="after")
+    def _validate_slot_types(self) -> "ContentBlockInteractionAvailabilityResponse":
+        expected_types = {
+            "insight": "analysis",
+            "quiz": "quiz",
+            "critical_thinking": "critical_thinking_session",
+        }
+        for field_name, expected_type in expected_types.items():
+            slot = getattr(self, field_name)
+            if slot is None:
+                continue
+            if slot.interaction_type != expected_type:
+                raise ValueError(
+                    f"{field_name} availability requires interaction_type='{expected_type}'"
+                )
+        return self
 
 
 class GetDocumentTaskLayoutRequest(BaseModel):
@@ -632,7 +1130,10 @@ class ReadingInteractionTargetRequest(BaseModel):
     doc_name: str = Field(..., description="Document name.")
     target_type: str = Field(
         ...,
-        description="Reading target type: document | book | chapter | section | task_unit.",
+        description=(
+            "Reading target type: document | book | chapter | section | "
+            "task_unit | content_block."
+        ),
     )
     chapter_id: str | None = Field(
         None,
@@ -644,7 +1145,11 @@ class ReadingInteractionTargetRequest(BaseModel):
     )
     task_unit_id: str | None = Field(
         None,
-        description="Required for task_unit targets.",
+        description="Required for task_unit and content_block targets.",
+    )
+    content_block_id: str | None = Field(
+        None,
+        description="Required for content_block targets.",
     )
     source_structure_version: int | None = Field(
         None,
@@ -683,29 +1188,49 @@ class ReadingInteractionTargetRequest(BaseModel):
         self.chapter_id = self._normalize_optional_id(self.chapter_id)
         self.section_id = self._normalize_optional_id(self.section_id)
         self.task_unit_id = self._normalize_optional_id(self.task_unit_id)
+        self.content_block_id = self._normalize_optional_id(self.content_block_id)
         self.source_hash = self._normalize_optional_id(self.source_hash)
 
         if normalized_target_type == "document":
-            if self.chapter_id or self.section_id or self.task_unit_id:
+            if (
+                self.chapter_id
+                or self.section_id
+                or self.task_unit_id
+                or self.content_block_id
+            ):
                 raise ValueError("document target must not include child target ids")
             return self
 
         if normalized_target_type == "chapter":
             if self.chapter_id is None:
                 raise ValueError("chapter target requires chapter_id")
-            if self.section_id or self.task_unit_id:
-                raise ValueError("chapter target must not include section_id or task_unit_id")
+            if self.section_id or self.task_unit_id or self.content_block_id:
+                raise ValueError(
+                    "chapter target must not include section_id, "
+                    "task_unit_id, or content_block_id"
+                )
             return self
 
         if normalized_target_type == "section":
             if self.section_id is None:
                 raise ValueError("section target requires section_id")
-            if self.task_unit_id:
-                raise ValueError("section target must not include task_unit_id")
+            if self.task_unit_id or self.content_block_id:
+                raise ValueError(
+                    "section target must not include task_unit_id or content_block_id"
+                )
+            return self
+
+        if normalized_target_type == "task_unit":
+            if self.task_unit_id is None:
+                raise ValueError("task_unit target requires task_unit_id")
+            if self.content_block_id:
+                raise ValueError("task_unit target must not include content_block_id")
             return self
 
         if self.task_unit_id is None:
-            raise ValueError("task_unit target requires task_unit_id")
+            raise ValueError("content_block target requires task_unit_id")
+        if self.content_block_id is None:
+            raise ValueError("content_block target requires content_block_id")
         return self
 
 
@@ -723,6 +1248,7 @@ class ReadingInteractionTargetResponse(BaseModel):
     chapter_id: str | None = None
     section_id: str | None = None
     task_unit_id: str | None = None
+    content_block_id: str | None = None
     title: str | None = None
 
     @staticmethod
@@ -758,6 +1284,7 @@ class ReadingInteractionTargetResponse(BaseModel):
         self.chapter_id = self._normalize_optional_string(self.chapter_id)
         self.section_id = self._normalize_optional_string(self.section_id)
         self.task_unit_id = self._normalize_optional_string(self.task_unit_id)
+        self.content_block_id = self._normalize_optional_string(self.content_block_id)
         self.title = self._normalize_optional_string(self.title)
         return self
 
@@ -1380,6 +1907,7 @@ class TaskUnitContentBlockResponse(BaseModel):
     block_type: str | None = None
     artifact_ids: list[str] | None = None
     artifact_target_refs: list[ArtifactTargetRefResponse] | None = None
+    interaction_availability: ContentBlockInteractionAvailabilityResponse | None = None
     metadata: dict[str, Any] | None = None
 
 

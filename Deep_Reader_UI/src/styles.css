@@ -48,8 +48,152 @@ body {
 .repair-controls {
   display: flex;
   justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: max-content;
+}
+
+.file-management-dialog-content {
+  min-height: min(52vh, 520px);
+}
+
+.file-management-upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 14px;
+}
+
+.file-management-upload-header {
+  min-width: 0;
+}
+
+.file-management-upload-title {
+  font-weight: 700;
+}
+
+.file-management-upload-meta,
+.file-management-upload-error {
+  display: block;
+}
+
+.file-management-upload-actions {
+  flex-wrap: wrap;
+}
+
+.file-management-post-upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-left: 3px solid #2f6f4e;
+  background: #f3fbf6;
+}
+
+.file-management-post-upload-title {
+  font-weight: 700;
+}
+
+.file-management-post-upload-message {
+  display: block;
+}
+
+.file-management-post-upload-actions {
+  flex-wrap: wrap;
+}
+
+.file-management-section-divider {
+  margin-bottom: 14px;
+}
+
+.file-management-filter-panel {
+  margin-bottom: 14px;
+  border: 1px solid #d8dde6;
+  box-shadow: none;
+}
+
+.file-management-filter-panel::before {
+  display: none;
+}
+
+.file-management-filter-summary {
+  min-height: 44px;
+}
+
+.file-management-filter-details {
+  padding-top: 0;
+}
+
+.file-management-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(150px, 1fr));
+  align-items: start;
+}
+
+.file-management-reset-filters-action {
+  justify-self: start;
+}
+
+.file-management-state {
+  min-height: min(44vh, 420px);
+}
+
+.file-management-table-container {
+  max-height: min(54vh, 520px);
+}
+
+.file-management-recent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #d8dde6;
+}
+
+.file-management-recent-title {
+  font-weight: 700;
+}
+
+.file-management-recent-list {
+  flex-wrap: wrap;
+}
+
+.file-management-recent-action {
+  max-width: 220px;
+}
+
+.file-management-recent-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-management-document-cell,
+.file-management-details-cell {
+  overflow-wrap: anywhere;
+}
+
+.file-management-document-title {
+  font-weight: 700;
+}
+
+.file-management-document-name {
+  display: block;
+}
+
+.file-management-actions-cell {
+  min-width: 304px;
+}
+
+.file-management-row-actions {
+  flex-wrap: wrap;
+}
+
+.file-management-delete-message,
+.file-management-rename-message {
+  overflow-wrap: anywhere;
 }
 
 .reader-layout {
@@ -193,12 +337,20 @@ body {
   background: #f3fbf6;
 }
 
+.inline-insight-content {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .inline-insight-actions {
   padding-top: 4px;
 }
 
 .hierarchy-document-inline-insight {
   margin: 0 0 14px 16px;
+  max-height: min(42vh, 420px);
+  overflow: auto;
+  padding-right: 14px;
 }
 
 .hierarchy-chapter-inline-insight {
@@ -353,8 +505,23 @@ body {
   flex: 0 0 auto;
 }
 
+.reader-content-block-interaction-trigger {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .reader-task-unit-inline-insight {
   margin-left: 18px;
+}
+
+.reader-content-block-inline-insight {
+  margin-top: 12px;
+  margin-left: 18px;
+}
+
+.reader-content-task-unit-empty {
+  margin: 0;
+  padding: 10px 0;
 }
 
 .reading-interaction-drawer-paper {
