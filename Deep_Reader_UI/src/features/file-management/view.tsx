@@ -1,10 +1,13 @@
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import { TocHintControl } from "../../shared/TocHintControl";
+import type { TocHint } from "../../types/api";
 import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FilterAltOutlinedIcon from "@mui/icons-material/FilterAltOutlined";
 import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import RefreshOutlinedIcon from "@mui/icons-material/RefreshOutlined";
 import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
+import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
 import UploadFileOutlinedIcon from "@mui/icons-material/UploadFileOutlined";
 import {
   Accordion,
@@ -29,9 +32,12 @@ import {
   TableRow,
   TextField,
   Typography,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
+import { PdfModeControl } from "./PdfModeControl";
 import { StateView } from "../../shared/components/StateView";
-import type { DocumentManagementItem, RequestStatus } from "../../types/api";
+import type { DocumentManagementItem, PdfExtractionMode, RequestStatus } from "../../types/api";
 import {
   formatUploadFileSize,
   getDocumentPreparationStatusLabel,
@@ -49,9 +55,21 @@ import {
   type FileUploadResult,
   type FileUploadStatus,
   type RecentDocumentShortcut,
+  type DocumentPrepareState,
 } from "./model";
 
 interface FileManagementViewProps {
+  canOpenDocument: (docName: string) => boolean;
+  openingDocName: string | null;
+  openError: string;
+  prepareState: DocumentPrepareState | null;
+  onChangeUploadTocHint: (hint: TocHint) => void;
+  onChangePrepareTocHint: (hint: TocHint) => void;
+  onChangeUploadPdfMode: (mode: PdfExtractionMode) => void;
+  onChangePreparePdfMode: (mode: PdfExtractionMode) => void;
+  onRequestPrepare: (item: DocumentManagementItem) => void;
+  onClosePrepare: () => void;
+  onPrepareExisting: () => void;
   activeFilterCount: number;
   deleteState: DocumentDeleteState;
   error: string;
@@ -64,23 +82,24 @@ interface FileManagementViewProps {
   status: RequestStatus;
   total: number;
   visibleTotal: number;
-  uploadConflict: FileUploadConflictState;
+  uploadConflict?: FileUploadConflictState;
   uploadDraft: FileUploadDraft | null;
   uploadError: string;
   uploadResult: FileUploadResult | null;
   uploadStatus: FileUploadStatus;
   onCancelDelete: () => void;
-  onCancelDuplicateUpload: () => void;
+  onCancelDuplicateUpload?: () => void;
   onCancelRename: () => void;
   onCancelUpload: () => void;
   onChangeFilter: (name: keyof DocumentManagementFilters, value: string) => void;
   onChangeRenameDraft: (nextName: string) => void;
   onConfirmDelete: () => void;
-  onConfirmDuplicateUpload: () => void;
+  onConfirmDuplicateUpload?: () => void;
   onConfirmRename: () => void;
   onClose: () => void;
   onOpenDocument: (docName: string) => void;
   onPrepareUploadedDocument: () => void;
+  onCancelUploadedPreparation: () => void;
   onRefresh: () => void;
   onRequestDelete: (item: DocumentManagementItem) => void;
   onRequestRename: (item: DocumentManagementItem) => void;
@@ -91,6 +110,17 @@ interface FileManagementViewProps {
 }
 
 export function FileManagementView({
+  canOpenDocument,
+  openingDocName,
+  openError,
+  prepareState,
+  onChangeUploadTocHint,
+  onChangePrepareTocHint,
+  onChangeUploadPdfMode,
+  onChangePreparePdfMode,
+  onRequestPrepare,
+  onClosePrepare,
+  onPrepareExisting,
   activeFilterCount,
   deleteState,
   error,
@@ -120,6 +150,7 @@ export function FileManagementView({
   onClose,
   onOpenDocument,
   onPrepareUploadedDocument,
+  onCancelUploadedPreparation,
   onRefresh,
   onRequestDelete,
   onRequestRename,
@@ -132,7 +163,14 @@ export function FileManagementView({
   const deleting = deleteState.status === "deleting";
   const renaming = renameState.status === "renaming";
   const uploading = uploadStatus === "uploading";
-  const preparingUploadedDocument = uploadResult?.prepareStatus === "loading";
+  const safeUploadConflict = uploadConflict ?? {
+    open: false,
+    fileName: "",
+    message: "",
+  };
+  const preparingUploadedDocument = uploadResult?.prepareStatus === "loading" || uploadResult?.prepareStatus === "queued";
+  const preparingExisting = prepareState?.status === "loading";
+  const operationPending = uploading || preparingUploadedDocument || preparingExisting;
   const deleteDialogOpen =
     deleteState.status === "confirming" ||
     deleteState.status === "deleting" ||
@@ -141,7 +179,8 @@ export function FileManagementView({
     renameState.status === "editing" ||
     renameState.status === "renaming" ||
     renameState.status === "error";
-  const duplicateUploadDialogOpen = uploadConflict.open || uploadStatus === "conflict";
+  const duplicateUploadDialogOpen =
+    safeUploadConflict.open || uploadStatus === "conflict";
   const deleteItemTitle = deleteState.item
     ? getDocumentManagementTitle(deleteState.item)
     : "this document";
@@ -180,6 +219,8 @@ export function FileManagementView({
         </Stack>
       </DialogTitle>
       <DialogContent className="file-management-dialog-content" dividers>
+        {openError && <Alert severity="warning" sx={{ mb: 1 }}>{openError}</Alert>}
+        {openingDocName && <Typography role="status" variant="body2">Checking reader readiness.</Typography>}
         <Box className="file-management-upload-panel">
           <Stack
             className="file-management-upload-header"
@@ -216,9 +257,18 @@ export function FileManagementView({
               {uploadError}
             </Typography>
           ) : null}
+          {(uploadResult?.pdfMode || uploadDraft?.pdfMode) && (
+            <PdfModeControl value={uploadResult?.pdfMode || uploadDraft?.pdfMode || "fast"}
+              disabled={Boolean(operationPending || uploadStatus === "conflict" || uploadResult?.needsReconciliation)}
+              onChange={onChangeUploadPdfMode} />
+          )}
+          {(uploadDraft || uploadResult) && <TocHintControl value={uploadResult?.tocHint || uploadDraft?.tocHint || "auto"}
+            disabled={Boolean(operationPending) || uploadStatus === "conflict" || Boolean(uploadResult?.needsReconciliation)}
+            onChange={onChangeUploadTocHint} />}
           <Stack className="file-management-upload-actions" direction="row" gap={1}>
             <Button
               className="file-management-select-upload-action"
+              disabled={operationPending}
               component="label"
               size="small"
               startIcon={<UploadFileOutlinedIcon />}
@@ -226,6 +276,7 @@ export function FileManagementView({
             >
               Select file
               <input
+                disabled={operationPending}
                 accept=".pdf,.txt,application/pdf,text/plain"
                 hidden
                 type="file"
@@ -242,7 +293,7 @@ export function FileManagementView({
                 uploadStatus === "failed" ||
                 uploadStatus === "uploaded" ||
                 uploadStatus === "conflict" ||
-                uploading
+                operationPending
               }
               size="small"
               variant="contained"
@@ -250,14 +301,14 @@ export function FileManagementView({
             >
               {uploading ? "Uploading" : "Upload"}
             </Button>
-            <Button
+            {uploadStatus !== "uploaded" && <Button
               className="file-management-cancel-upload-action"
-              disabled={uploading || (!uploadDraft && uploadStatus !== "failed")}
+              disabled={operationPending || (!uploadDraft && uploadStatus !== "failed")}
               size="small"
               onClick={onCancelUpload}
             >
               Cancel
-            </Button>
+            </Button>}
             {uploadStatus === "failed" ? (
               <Button
                 className="file-management-retry-upload-action"
@@ -285,7 +336,8 @@ export function FileManagementView({
                 <Typography
                   className="file-management-post-upload-message"
                   variant="caption"
-                  color={uploadResult.prepareStatus === "error" ? "error" : "success.main"}
+                  color={uploadResult.prepareStatus === "error" ? "error" :
+                    uploadResult.prepareStatus === "success" ? "success.main" : "text.secondary"}
                 >
                   {uploadResult.prepareMessage}
                 </Typography>
@@ -293,16 +345,21 @@ export function FileManagementView({
               <Stack className="file-management-post-upload-actions" direction="row" gap={1}>
                 <Button
                   className="file-management-prepare-uploaded-action"
-                  disabled={preparingUploadedDocument}
+                  disabled={operationPending}
                   size="small"
                   startIcon={<BuildOutlinedIcon />}
                   variant="outlined"
                   onClick={onPrepareUploadedDocument}
                 >
-                  {preparingUploadedDocument ? "Preparing" : "Prepare"}
+                  {uploadResult.prepareStatus === "queued" ? "Queued" : preparingUploadedDocument ? "Preparing" : uploadResult.needsReconciliation ? "Check readiness" : "Prepare"}
                 </Button>
+                {preparingUploadedDocument && <Button
+                  className="file-management-cancel-preparation-action"
+                  size="small" startIcon={<CloseOutlinedIcon />}
+                  onClick={onCancelUploadedPreparation}>Cancel</Button>}
                 <Button
                   className="file-management-open-uploaded-action"
+                  disabled={Boolean(openingDocName) || !canOpenDocument(uploadResult.docName)}
                   size="small"
                   startIcon={<FolderOpenOutlinedIcon />}
                   variant="contained"
@@ -516,6 +573,7 @@ export function FileManagementView({
                         </Typography>
                       </TableCell>
                       <TableCell className="file-management-details-cell">
+                        {item.reviewRequired && <Typography color="warning.main" variant="body2">OCR needs review</Typography>}
                         <Typography variant="caption" color="text.secondary">
                           {getDocumentManagementDetailLabel(item)}
                         </Typography>
@@ -527,8 +585,16 @@ export function FileManagementView({
                           justifyContent="flex-end"
                           gap={1}
                         >
+                          {item.sourceStatus === "available" && (
+                            <Tooltip title={item.sourceType === "pdf" ? "Prepare PDF" : "Prepare document"}>
+                              <span><IconButton aria-label={`Prepare ${item.sourceType === "pdf" ? "PDF" : "document"} ${item.docName}`} size="small"
+                                disabled={operationPending || renaming || deleting}
+                                onClick={() => onRequestPrepare(item)}><BuildOutlinedIcon fontSize="small" /></IconButton></span>
+                            </Tooltip>
+                          )}
                           <Button
                             className="file-management-open-action"
+                            disabled={Boolean(openingDocName) || !canOpenDocument(item.docName)}
                             size="small"
                             startIcon={<FolderOpenOutlinedIcon />}
                             variant="contained"
@@ -538,7 +604,7 @@ export function FileManagementView({
                           </Button>
                           <Button
                             className="file-management-rename-action"
-                            disabled={renaming}
+                            disabled={renaming || operationPending}
                             size="small"
                             startIcon={<DriveFileRenameOutlineIcon />}
                             variant="outlined"
@@ -549,7 +615,7 @@ export function FileManagementView({
                           <Button
                             className="file-management-delete-action"
                             color="error"
-                            disabled={deleting || renaming}
+                            disabled={deleting || renaming || operationPending}
                             size="small"
                             startIcon={<DeleteOutlineIcon />}
                             variant="outlined"
@@ -573,6 +639,7 @@ export function FileManagementView({
                   {recentItems.map((item) => (
                     <Button
                       className="file-management-recent-action"
+                      disabled={Boolean(openingDocName) || !canOpenDocument(item.docName)}
                       key={item.docName}
                       size="small"
                       startIcon={<FolderOpenOutlinedIcon />}
@@ -603,12 +670,12 @@ export function FileManagementView({
           <Stack gap={1.5}>
             <Typography variant="body2">
               A source named "
-              {uploadConflict.fileName || uploadDraft?.fileName || "this file"}"
+              {safeUploadConflict.fileName || uploadDraft?.fileName || "this file"}"
               already exists. Uploading as a copy will keep the existing file and save
               this one with a unique name.
             </Typography>
-            {uploadConflict.message ? (
-              <Alert severity="info">{uploadConflict.message}</Alert>
+            {safeUploadConflict.message ? (
+              <Alert severity="info">{safeUploadConflict.message}</Alert>
             ) : null}
           </Stack>
         </DialogContent>
@@ -723,6 +790,27 @@ export function FileManagementView({
           >
             {renaming ? "Renaming" : "Rename"}
           </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={open && prepareState !== null} onClose={onClosePrepare} maxWidth="xs" fullWidth>
+        <DialogTitle>{prepareState?.item.sourceType === "pdf" ? "Prepare PDF" : "Prepare document"}</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ overflowWrap: "anywhere" }}>{prepareState?.item.docName}</Typography>
+          <TocHintControl value={prepareState?.tocHint || "auto"} disabled={Boolean(operationPending)} onChange={onChangePrepareTocHint} />
+          {prepareState?.pdfMode && <PdfModeControl value={prepareState.pdfMode} disabled={Boolean(operationPending)}
+            onChange={onChangePreparePdfMode} />}
+          {openError && <Alert severity="warning">{openError}</Alert>}
+          {prepareState?.message && <Alert severity={prepareState.status === "error" ? "error" : "success"}>
+            {prepareState.message}
+          </Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={preparingExisting} onClick={onClosePrepare}>Close</Button>
+          {prepareState?.readerReady && !preparingExisting && <Button startIcon={<FolderOpenOutlinedIcon />}
+            disabled={Boolean(openingDocName) || !canOpenDocument(prepareState.item.docName)}
+            onClick={() => onOpenDocument(prepareState.item.docName)}>Open</Button>}
+          <Button disabled={operationPending} startIcon={<BuildOutlinedIcon />} variant="contained"
+            onClick={onPrepareExisting}>{preparingExisting ? "Preparing" : "Prepare"}</Button>
         </DialogActions>
       </Dialog>
     </>

@@ -5,6 +5,7 @@ import type {
   ReadingInteractionTargetRequest,
 } from "../types/api";
 import { RestClient } from "./RestClient";
+import { assertInteractionIdentity } from "../shared/readerIdentity";
 
 interface AnalysisGenerationOptions {
   promptInstructionVersion?: string;
@@ -32,8 +33,21 @@ interface CriticalThinkingRetryOptions {
 export class ReadingInteractionService {
   constructor(private readonly restClient: RestClient) {}
 
+  private async requestInteraction<T>(path: string, options: RequestInit): Promise<T> {
+    const { ok, status, payload } = await this.restClient.requestJsonWithStatus<T>(path, options);
+    if (ok) return payload;
+    // Recoverable interaction envelopes carry state even when HTTP is non-2xx.
+    const body = payload as { envelope?: { status?: string }; detail?: unknown } | null;
+    const recoverable = ["stale_target", "insufficient_content", "generation_failed", "evaluation_failed", "validation_failed"];
+    if ([409, 422, 502, 503].includes(status) && recoverable.includes(body?.envelope?.status || "")) {
+      return payload;
+    }
+    throw new Error(typeof body?.detail === "string" ? body.detail : `HTTP ${status}`);
+  }
+
   readInsight(target: ReadingInteractionTargetRequest): Promise<AnalysisInteractionResponse> {
-    return this.restClient.requestJson<AnalysisInteractionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<AnalysisInteractionResponse>(
       "/documents/reading-interactions/insight/read",
       {
         method: "POST",
@@ -46,7 +60,8 @@ export class ReadingInteractionService {
     target: ReadingInteractionTargetRequest,
     options: AnalysisGenerationOptions = {},
   ): Promise<AnalysisInteractionResponse> {
-    return this.restClient.requestJson<AnalysisInteractionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<AnalysisInteractionResponse>(
       "/documents/reading-interactions/insight/generate",
       {
         method: "POST",
@@ -62,7 +77,8 @@ export class ReadingInteractionService {
     target: ReadingInteractionTargetRequest,
     options: AnalysisGenerationOptions = {},
   ): Promise<AnalysisInteractionResponse> {
-    return this.restClient.requestJson<AnalysisInteractionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<AnalysisInteractionResponse>(
       "/documents/reading-interactions/insight/refresh",
       {
         method: "POST",
@@ -75,7 +91,8 @@ export class ReadingInteractionService {
   }
 
   readQuiz(target: ReadingInteractionTargetRequest): Promise<QuizInteractionResponse> {
-    return this.restClient.requestJson<QuizInteractionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<QuizInteractionResponse>(
       "/documents/reading-interactions/quiz/read",
       {
         method: "POST",
@@ -88,7 +105,8 @@ export class ReadingInteractionService {
     target: ReadingInteractionTargetRequest,
     options: QuizGenerationOptions = {},
   ): Promise<QuizInteractionResponse> {
-    return this.restClient.requestJson<QuizInteractionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<QuizInteractionResponse>(
       "/documents/reading-interactions/quiz/generate",
       {
         method: "POST",
@@ -105,7 +123,8 @@ export class ReadingInteractionService {
     target: ReadingInteractionTargetRequest,
     options: QuizGenerationOptions = {},
   ): Promise<QuizInteractionResponse> {
-    return this.restClient.requestJson<QuizInteractionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<QuizInteractionResponse>(
       "/documents/reading-interactions/quiz/refresh",
       {
         method: "POST",
@@ -122,7 +141,8 @@ export class ReadingInteractionService {
     target: ReadingInteractionTargetRequest,
     options: CriticalThinkingReadOptions = {},
   ): Promise<CriticalThinkingSessionResponse> {
-    return this.restClient.requestJson<CriticalThinkingSessionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<CriticalThinkingSessionResponse>(
       "/documents/reading-interactions/critical-thinking/read",
       {
         method: "POST",
@@ -138,7 +158,8 @@ export class ReadingInteractionService {
     target: ReadingInteractionTargetRequest,
     options: CriticalThinkingGenerationOptions = {},
   ): Promise<CriticalThinkingSessionResponse> {
-    return this.restClient.requestJson<CriticalThinkingSessionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<CriticalThinkingSessionResponse>(
       "/documents/reading-interactions/critical-thinking/generate-question",
       {
         method: "POST",
@@ -154,7 +175,8 @@ export class ReadingInteractionService {
     target: ReadingInteractionTargetRequest,
     options: CriticalThinkingSubmitOptions,
   ): Promise<CriticalThinkingSessionResponse> {
-    return this.restClient.requestJson<CriticalThinkingSessionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<CriticalThinkingSessionResponse>(
       "/documents/reading-interactions/critical-thinking/submit-answer",
       {
         method: "POST",
@@ -171,7 +193,8 @@ export class ReadingInteractionService {
     target: ReadingInteractionTargetRequest,
     options: CriticalThinkingRetryOptions,
   ): Promise<CriticalThinkingSessionResponse> {
-    return this.restClient.requestJson<CriticalThinkingSessionResponse>(
+    assertInteractionIdentity(target);
+    return this.requestInteraction<CriticalThinkingSessionResponse>(
       "/documents/reading-interactions/critical-thinking/retry-evaluation",
       {
         method: "POST",

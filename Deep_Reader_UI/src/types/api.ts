@@ -1,4 +1,6 @@
 export type RequestStatus = "initial" | "loading" | "success" | "error" | "empty";
+export type TocHint = "auto" | "present" | "absent";
+export type EnhancementIntent = "restore_source" | "generate_reading_outline";
 
 export interface TaskUnitMetadata {
   unit_id: string;
@@ -14,6 +16,8 @@ export interface SectionLayout {
   container_title?: string | null;
   task_units?: TaskUnitMetadata[];
   anchor_evidence?: AnchorEvidence | null;
+  is_implicit_section?: boolean;
+  title_origin?: "source" | "implicit" | "generated" | null;
 }
 
 export interface ChapterLayout {
@@ -21,6 +25,7 @@ export interface ChapterLayout {
   title?: string | null;
   sections?: SectionLayout[];
   anchor_evidence?: AnchorEvidence | null;
+  metadata?: { title_origin?: "source" | "implicit" | "generated"; [key: string]: unknown };
 }
 
 export interface DocumentTaskLayout {
@@ -33,10 +38,22 @@ export interface DocumentTaskLayout {
     fallback_used?: boolean;
     fallback_reason?: string | null;
     source?: string | null;
+    toc_hint?: TocHint | null;
+    toc_observation?: string | null;
+    enhancement_intent?: EnhancementIntent | null;
+    implicit_single_body?: boolean | null;
+    declaration_unconfirmed?: boolean | null;
   } | null;
 }
 
 export type StructureParserMode = "common" | "llm_enhanced";
+export type PdfExtractionMode = "fast" | "ocr" | "auto";
+export interface PdfExtractionMetadata {
+  requested_mode: PdfExtractionMode;
+  effective_mode: PdfExtractionMode | null;
+  provenance: "unknown" | "not_applicable" | "applied" | "reused";
+}
+export type PreparedTaskLayout = DocumentTaskLayout & { pdf_extraction?: PdfExtractionMetadata };
 export type ManualStructureAnchorType = "char_range" | "page_range";
 
 export interface AnchorEvidence {
@@ -126,6 +143,46 @@ export interface ReparseDocumentStructureResponse {
   structured_document_path?: string | null;
   error?: string | null;
   section_count?: number | null;
+  structure_version?: number | null;
+  change_kind?: "unchanged" | "titles_only" | "structure_changed" | null;
+  committed?: boolean | null;
+  interactions_cleared?: boolean | null;
+  reading_layout_required?: boolean | null;
+  retryable?: boolean;
+}
+
+export interface EnhancementOperationResponse {
+  status: "not_started" | "running" | "completed" | "failed" | "unknown";
+  result: ReparseDocumentStructureResponse | null;
+  reason: string | null;
+  retryable: boolean;
+  durability: "process_local";
+}
+
+export interface EnhancementCapacity {
+  status: "fits" | "exceeded" | "unavailable" | "resource_limited";
+  reason_code?: string | null;
+  model?: string | null;
+  required_input_tokens?: number | null;
+  available_input_tokens?: number | null;
+  output_reserve_tokens?: number | null;
+  max_output_tokens?: number | null;
+  count_method?: "tokenizer" | "conservative_estimate" | "unavailable";
+  full_source?: boolean | null;
+}
+
+export interface EnhancementPreflightResponse {
+  capacity?: EnhancementCapacity | null;
+  ready: boolean;
+  execution_available: boolean;
+  reason: string | null;
+  structure_version: number | null;
+  interaction_count: number | null;
+  includes_user_notes: boolean | null;
+  cleanup_scope: string;
+  cleanup_condition?: "structure_changed_only";
+  confirmation_token: string | null;
+  expires_at: number | null;
 }
 
 export interface PrepareDocumentResponse {
@@ -155,6 +212,7 @@ export interface DocumentListResponse {
 
 export type DocumentManagementSourceType = "txt" | "pdf" | "unknown";
 export type DocumentManagementSourceStatus =
+  | "unknown"
   | "available"
   | "missing"
   | "unsupported"
@@ -167,6 +225,7 @@ export type DocumentManagementPreparationStatus =
   | "unknown";
 
 export interface DocumentManagementItem {
+  reviewRequired?: boolean;
   docName: string;
   title?: string | null;
   author?: string | null;

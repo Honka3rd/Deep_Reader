@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { DocumentListItem } from "../../types/api";
 import type { DocumentCatalogService } from "../../services";
 import { documentCatalogService } from "../../services";
-import { isSelectedDocumentOption, toDocumentOptions } from "./model";
+import { toDocumentOptions } from "./model";
 
 interface UseBookSearchControllerOptions {
   service?: DocumentCatalogService;
@@ -11,9 +11,10 @@ interface UseBookSearchControllerOptions {
 export function useBookSearchController({
   service = documentCatalogService,
 }: UseBookSearchControllerOptions = {}) {
-  const [docName, setDocName] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [backendDocuments, setBackendDocuments] = useState<DocumentListItem[]>([]);
   const [searching, setSearching] = useState(false);
+  const requestIdRef = useRef(0);
 
   const documentOptions = useMemo(
     () => toDocumentOptions(backendDocuments),
@@ -25,22 +26,30 @@ export function useBookSearchController({
       return;
     }
     setSearching(true);
+    const requestId = ++requestIdRef.current;
     try {
       const response = await service.listDocuments("", 200);
-      setBackendDocuments(response.items);
+      if (requestId === requestIdRef.current) setBackendDocuments(response.items);
     } catch {
-      setBackendDocuments([]);
+      if (requestId === requestIdRef.current) setBackendDocuments([]);
     } finally {
-      setSearching(false);
+      if (requestId === requestIdRef.current) setSearching(false);
     }
   }
 
+  function removeDocumentOption(deletedDocName: string) {
+    requestIdRef.current += 1;
+    setSearching(false);
+    setBackendDocuments((items) => items.filter((item) => item.doc_name !== deletedDocName));
+    setSearchInput((current) => current === deletedDocName ? "" : current);
+  }
+
   return {
-    docName,
-    setDocName,
+    searchInput,
+    setSearchInput,
     documentOptions,
     searching,
     loadDocumentOptions,
-    isSelectedDocument: isSelectedDocumentOption(docName, documentOptions),
+    removeDocumentOption,
   };
 }

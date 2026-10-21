@@ -7,7 +7,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "check": "tsc -b && vite build"
+    "check": "tsc -b && vite build",
+    "test:library": "node scripts/test-library-suite.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.13.5",

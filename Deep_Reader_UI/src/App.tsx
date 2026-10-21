@@ -1,4 +1,6 @@
 import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
+import { ReadingContentActions, confirmReadingNavigation, type ContentEditSelection } from "./features/reader-content/ReadingContentActions";
+import { SummaryNoteDrawer, type SummaryNoteSelection } from "./features/reading-interactions/SummaryNoteDrawer";
 import CheckIcon from "@mui/icons-material/Check";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import LibraryBooksOutlinedIcon from "@mui/icons-material/LibraryBooksOutlined";
@@ -13,11 +15,16 @@ import {
   Paper,
 } from "@mui/material";
 import type { MouseEvent } from "react";
+import { assertTargetInLayout } from "./shared/readerIdentity";
+import { TocHintControl } from "./shared/TocHintControl";
+import { EnhancementDialog } from "./features/structure-enhancement/view";
+import type { TocHint } from "./types/api";
 import { useEffect, useRef, useState } from "react";
 import {
   Navigate,
   Route,
   Routes,
+  useMatch,
   useNavigate,
   useParams,
 } from "react-router-dom";
@@ -68,7 +75,7 @@ import {
   QuizDrawerCommands,
   QuizDrawerContent,
   ReadingInteractionsView,
-  toReadingInteractionTargetRequest,
+  toReadingInteractionTargetRequest as mapInteractionTargetRequest,
   type ReadingInteractionKind,
   type ReadingInteractionMenuSelection,
   type ReadingInteractionTarget,
@@ -77,7 +84,22 @@ import {
 
 export default function App() {
   const navigate = useNavigate();
+  const routeMatch = useMatch("/documents/:routeDocName/*");
+  const routeDocName = routeMatch?.params.routeDocName || "";
+  const [docName, setDocName] = useState("");
+  const activeDocumentRef = useRef("");
+  const [summaryNoteSelection, setSummaryNoteSelection] = useState<SummaryNoteSelection | null>(null);
+  const [sourceNeedsReview, setSourceNeedsReview] = useState(false);
+  const [contentEditSelection,setContentEditSelection] = useState<ContentEditSelection>(null);
+  const noteDirtyRef = useRef(false);
+  function closeSummaryNote() {
+    if (noteDirtyRef.current && !window.confirm("Discard unsaved note changes?")) return false;
+    noteDirtyRef.current = false;
+    setSummaryNoteSelection(null);
+    return true;
+  }
   const [layout, setLayout] = useState<DocumentTaskLayout | null>(null);
+  const layoutScopeRef = useRef<{ docName: string; layout: DocumentTaskLayout } | null>(null);
   const [layoutStatus, setLayoutStatus] = useState<RequestStatus>("initial");
   const [repairStatus, setRepairStatus] = useState<RequestStatus>("initial");
   const [layoutError, setLayoutError] = useState("");
@@ -89,18 +111,32 @@ export default function App() {
   const [currentRepairMode, setCurrentRepairMode] = useState<StructureParserMode | null>(null);
   const [activeRepairMode, setActiveRepairMode] = useState<StructureParserMode | null>(null);
   const [repairMenuAnchor, setRepairMenuAnchor] = useState<HTMLElement | null>(null);
+  const [repairTocHint, setRepairTocHint] = useState<TocHint>("auto");
+  const [enhancementOpen, setEnhancementOpen] = useState(false);
   const [criticalThinkingDraftDirty, setCriticalThinkingDraftDirty] = useState(false);
   const [criticalThinkingDraftAnswersByTarget, setCriticalThinkingDraftAnswersByTarget] =
     useState<Record<string, string>>({});
   const layoutRequestIdRef = useRef(0);
   const {
-    docName,
-    setDocName,
+    searchInput,
+    setSearchInput,
     documentOptions,
     searching: documentSearchLoading,
     loadDocumentOptions,
+    removeDocumentOption,
   } = useBookSearchController();
-  const fileManagement = useFileManagementController();
+  const fileManagement = useFileManagementController({
+    onDocumentPreparationSettled: (preparedDocName) => {
+      if (activeDocumentRef.current === preparedDocName) void loadLayoutForDocument(preparedDocName);
+    },
+    onDocumentDeleted: (deletedDocName) => {
+      removeDocumentOption(deletedDocName);
+      if (activeDocumentRef.current === deletedDocName) {
+        clearActiveDocument();
+        navigate("/");
+      }
+    },
+  });
   const {
     selectedSection,
     contentBlocks,
@@ -108,8 +144,13 @@ export default function App() {
     contentStatus,
     contentError,
     selectSection,
+    retryContent,
     resetContent,
-  } = useReaderContentController({ docName });
+    refreshSelectionLabels,
+  } = useReaderContentController({
+    docName: layoutScopeRef.current?.docName || "",
+    layout: layoutStatus === "success" ? layout : null,
+  });
   const {
     openInlineInsightsByTarget,
     quizStateByTarget,
@@ -126,6 +167,8 @@ export default function App() {
     applyCriticalThinkingState,
     failCriticalThinkingRequest,
     clearSelectedInteraction,
+    resetInteractions,
+    isLatestInteractionRequest,
     closeInlineInsight,
   } = useReadingInteractionMenuController();
 
@@ -151,50 +194,65 @@ export default function App() {
   }, [contentStatus, contentError]);
 
   async function reloadLayout(trimmedDocName: string) {
-    const nextLayout = await taskLayoutService.fetchTaskLayout(trimmedDocName);
+    const requestId = layoutRequestIdRef.current;
+    const nextLayout = await taskLayoutService.prepareTaskLayout(trimmedDocName, { layoutOnly: true });
+    if (requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== trimmedDocName) return false;
     setLayout(nextLayout);
+    layoutScopeRef.current = { docName: trimmedDocName, layout: nextLayout };
     setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
     setLayoutStatus("success");
-  }
-
-  async function loadExistingOrPrepareTaskLayout(
-    trimmedDocName: string,
-  ): Promise<DocumentTaskLayout> {
-    try {
-      return await taskLayoutService.fetchTaskLayout(trimmedDocName);
-    } catch {
-      return taskLayoutService.prepareTaskLayout(trimmedDocName);
-    }
+    return nextLayout;
   }
 
   async function loadLayoutForDocument(nextDocName: string) {
+    if (!confirmReadingNavigation()) {
+      navigate(`/documents/${encodeURIComponent(activeDocumentRef.current)}`, { replace: true });
+      return;
+    }
+    setContentEditSelection(null);
+    if (nextDocName.trim() !== activeDocumentRef.current && !closeSummaryNote()) {
+      navigate(`/documents/${encodeURIComponent(activeDocumentRef.current)}`, { replace: true });
+      return;
+    }
+    setSummaryNoteSelection(null);
+    setEnhancementOpen(false);
     const trimmedDocName = nextDocName.trim();
     const requestId = layoutRequestIdRef.current + 1;
     layoutRequestIdRef.current = requestId;
 
-    if (!trimmedDocName || !documentOptions.includes(trimmedDocName)) {
-      const message = "Select a document returned by the document list API";
+    if (!trimmedDocName) {
+      const message = "Document name is required.";
       setLayoutStatus("error");
       setLayoutError(message);
       showNotification(message, "error");
       return;
     }
 
+    activeDocumentRef.current = trimmedDocName;
+    setSourceNeedsReview(false);
+    setDocName(trimmedDocName);
+    setSearchInput(trimmedDocName);
+    setRepairStatus("initial");
+    setActiveRepairMode(null);
+    resetInteractions();
+    setRepairTocHint("auto");
+    setCriticalThinkingDraftAnswersByTarget({});
     setLayout(null);
+    layoutScopeRef.current = null;
     resetContent();
     setLayoutError("");
     setLayoutStatus("loading");
 
     try {
-      const nextLayout = await loadExistingOrPrepareTaskLayout(trimmedDocName);
+      const nextLayout = await taskLayoutService.fetchTaskLayout(trimmedDocName);
       if (layoutRequestIdRef.current !== requestId) {
         return;
       }
       setLayout(nextLayout);
+      layoutScopeRef.current = { docName: trimmedDocName, layout: nextLayout };
       setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
       setLayoutStatus("success");
       fileManagement.recordRecentDocument(trimmedDocName);
-      navigate(`/documents/${encodeURIComponent(trimmedDocName)}`);
     } catch (error) {
       if (layoutRequestIdRef.current !== requestId) {
         return;
@@ -207,46 +265,50 @@ export default function App() {
   }
 
   function selectDocument(nextDocName: string) {
-    setDocName(nextDocName);
+    if (!nextDocName.trim()) return;
+    if (!closeSummaryNote()) return;
+    navigate(`/documents/${encodeURIComponent(nextDocName.trim())}`);
     void loadLayoutForDocument(nextDocName);
   }
 
-  async function openManagedDocument(nextDocName: string) {
-    const trimmedDocName = nextDocName.trim();
-    const requestId = layoutRequestIdRef.current + 1;
-    layoutRequestIdRef.current = requestId;
-
-    if (!trimmedDocName) {
-      showNotification("Document name is required.", "error");
+  function clearActiveDocument() {
+    if (!confirmReadingNavigation()) {
+      navigate(`/documents/${encodeURIComponent(activeDocumentRef.current)}`, { replace: true });
       return;
     }
-
-    setDocName(trimmedDocName);
+    setSourceNeedsReview(false);
+    setContentEditSelection(null);
+    setSummaryNoteSelection(null);
+    setEnhancementOpen(false);
+    ++layoutRequestIdRef.current;
+    activeDocumentRef.current = "";
+    setDocName("");
+    setSearchInput("");
+    setRepairStatus("initial");
+    setActiveRepairMode(null);
     setLayout(null);
+    layoutScopeRef.current = null;
     resetContent();
+    resetInteractions();
+    setCriticalThinkingDraftAnswersByTarget({});
     setLayoutError("");
-    setLayoutStatus("loading");
-    fileManagement.closeLibrary();
-
-    try {
-      const nextLayout = await taskLayoutService.fetchTaskLayout(trimmedDocName);
-      if (layoutRequestIdRef.current !== requestId) {
-        return;
-      }
-      setLayout(nextLayout);
-      setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
-      setLayoutStatus("success");
-      navigate(`/documents/${encodeURIComponent(trimmedDocName)}`);
-    } catch (error) {
-      if (layoutRequestIdRef.current !== requestId) {
-        return;
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      setLayoutStatus("error");
-      setLayoutError(message);
-      showNotification(message, "error");
-    }
+    setLayoutStatus("initial");
   }
+
+  async function openManagedDocument(nextDocName: string) {
+    const navigation = layoutRequestIdRef.current;
+    if (!await fileManagement.validateDocumentOpen(nextDocName) || navigation !== layoutRequestIdRef.current) return;
+    fileManagement.closeLibrary();
+    selectDocument(nextDocName);
+  }
+
+  useEffect(() => {
+    if (routeDocName && routeDocName !== activeDocumentRef.current) {
+      void loadLayoutForDocument(routeDocName);
+    } else if (!routeDocName && activeDocumentRef.current) {
+      clearActiveDocument();
+    }
+  }, [routeDocName]);
 
   async function repairStructure(parserMode: StructureParserMode) {
     const trimmedDocName = docName.trim();
@@ -255,29 +317,42 @@ export default function App() {
     }
 
     setRepairStatus("loading");
+    const requestId = layoutRequestIdRef.current;
     setActiveRepairMode(parserMode);
     setLayoutError("");
-    resetContent();
+    let applied = false;
 
     try {
       const result = await structureRepairService.reparseDocumentStructure(
         trimmedDocName,
         parserMode,
+        { tocHint: repairTocHint },
       );
+      if (requestId !== layoutRequestIdRef.current) return;
       if (!result.success) {
         throw new Error(result.error || "Structure repair failed");
       }
+      applied = true;
+      resetInteractions();
+      resetContent();
+      setCriticalThinkingDraftAnswersByTarget({});
+      layoutScopeRef.current = null;
       setLayoutStatus("loading");
-      await reloadLayout(trimmedDocName);
+      const updatedLayout = await reloadLayout(trimmedDocName);
+      if (!updatedLayout) return;
       setRepairStatus("success");
-      showNotification("Structure repair completed. Layout reloaded.", "success");
+      showNotification(updatedLayout.parse_provenance?.fallback_used
+        ? "Requested parser was not applied. The fallback structure is loaded."
+        : "Structure updated. Layout reloaded.", updatedLayout.parse_provenance?.fallback_used ? "warning" : "success");
     } catch (error) {
+      if (requestId !== layoutRequestIdRef.current) return;
       setRepairStatus("error");
-      setLayoutStatus(layout ? "success" : "error");
+      if (applied) setLayout(null);
+      setLayoutStatus(!applied && layout ? "success" : "error");
       const message = error instanceof Error ? error.message : String(error);
       showNotification(message, "error");
     } finally {
-      setActiveRepairMode(null);
+      if (requestId === layoutRequestIdRef.current) setActiveRepairMode(null);
     }
   }
 
@@ -294,7 +369,48 @@ export default function App() {
 
   function selectRepairMode(parserMode: StructureParserMode) {
     closeRepairMenu();
-    void repairStructure(parserMode);
+    if (parserMode === "llm_enhanced") setEnhancementOpen(true);
+    else void repairStructure(parserMode);
+  }
+
+  function clearEnhancedDocument(name: string) {
+    if (activeDocumentRef.current !== name) throw new Error("Return to this document to reload it.");
+    ++layoutRequestIdRef.current;
+    setSummaryNoteSelection(null);
+    noteDirtyRef.current = false;
+    resetInteractions();
+    resetContent();
+    setCriticalThinkingDraftAnswersByTarget({});
+    setCriticalThinkingDraftDirty(false);
+    layoutScopeRef.current = null;
+    setLayout(null);
+    setLayoutStatus("loading");
+  }
+
+  async function reloadEnhancedDocument(name: string) {
+    if (activeDocumentRef.current !== name) throw new Error("Return to this document to reload it.");
+    const requestId = ++layoutRequestIdRef.current;
+    try {
+      const next = await taskLayoutService.fetchTaskLayout(name);
+      if (requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== name) throw new Error("Document changed.");
+      setLayout(next);
+      layoutScopeRef.current = { docName: name, layout: next };
+      setCurrentRepairMode(resolveLayoutParserMode(next));
+      setLayoutStatus("success");
+    } catch (error) {
+      if (requestId === layoutRequestIdRef.current) setLayoutStatus("error");
+      throw error;
+    }
+  }
+
+  async function refreshEnhancedTitles(name: string) {
+    const requestId = ++layoutRequestIdRef.current;
+    const next = await taskLayoutService.fetchTaskLayout(name);
+    if (requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== name) throw new Error("Document changed.");
+    setLayout(next);
+    layoutScopeRef.current = { docName: name, layout: next };
+    refreshSelectionLabels(next);
+    setCurrentRepairMode(resolveLayoutParserMode(next));
   }
 
   function interactionLabel(kind: ReadingInteractionKind) {
@@ -407,8 +523,19 @@ export default function App() {
     if (!target) {
       return;
     }
+    if (sourceNeedsReview && kind !== "note") {
+      showNotification("Review the unresolved OCR regions before generating interactions.", "warning");
+      return;
+    }
 
     try {
+      const request = toReadingInteractionTargetRequest(target);
+      if (!closeSummaryNote()) return;
+      if (kind === "summary" || kind === "note") {
+        closeReadingInteractionDrawer();
+        setSummaryNoteSelection({ kind, target: request, breadcrumb: target.breadcrumb });
+        return;
+      }
       const selection = selectInteractionAction(kind, target);
       if (selection) {
         if (selection.kind === "insight") {
@@ -425,6 +552,22 @@ export default function App() {
       const message = error instanceof Error ? error.message : String(error);
       showNotification(message, "error");
     }
+  }
+
+  function toReadingInteractionTargetRequest(target: ReadingInteractionTarget) {
+    const request = mapInteractionTargetRequest(target);
+    const scope = layoutScopeRef.current;
+    if (layoutStatus !== "success" || scope?.layout !== layout
+      || scope.docName !== activeDocumentRef.current) {
+      throw new Error("Document layout is not ready. Select the document again.");
+    }
+    assertTargetInLayout(request, scope.docName, scope.layout);
+    if (target.targetLevel === "content_block" && !contentBlocks.some((block) =>
+      block.block_id === target.contentBlockId
+      && block.ownerContext.taskUnitId === target.taskUnitId)) {
+      throw new Error("Content block is no longer available. Select the section again.");
+    }
+    return request;
   }
 
   function documentInteractionTarget(): ReadingInteractionTarget | null {
@@ -619,6 +762,18 @@ export default function App() {
     return inlineInsightForTarget(contentBlockInteractionTarget(selection, block));
   }
 
+  function notifyInteractionResult(
+    response: { envelope: { status: string; reason?: string | null } },
+    requestId: number,
+    successMessage: string,
+  ) {
+    if (!isLatestInteractionRequest(requestId)) return false;
+    const successful = ["completed", "question_generated", "answer_submitted"].includes(response.envelope.status);
+    showNotification(successful ? successMessage : response.envelope.reason || response.envelope.status,
+      successful ? "success" : "warning");
+    return successful;
+  }
+
   async function generateInlineInsight(targetKey: string) {
     const insight = openInlineInsightsByTarget[targetKey];
     if (!insight) {
@@ -635,7 +790,7 @@ export default function App() {
         mapAnalysisInteractionResponseToInsightViewState(insight.target, response),
         requestId,
       );
-      showNotification("Insight generated.", "success");
+      notifyInteractionResult(response, requestId, "Insight generated.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failInlineInsightRequest(targetKey, requestId, message);
@@ -659,7 +814,7 @@ export default function App() {
         mapAnalysisInteractionResponseToInsightViewState(insight.target, response),
         requestId,
       );
-      showNotification("Insight refreshed.", "success");
+      notifyInteractionResult(response, requestId, "Insight refreshed.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failInlineInsightRequest(targetKey, requestId, message);
@@ -703,7 +858,7 @@ export default function App() {
         mapQuizInteractionResponseToQuizViewState(quiz.target, response),
         requestId,
       );
-      showNotification("Quiz generated.", "success");
+      notifyInteractionResult(response, requestId, "Quiz generated.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failQuizRequest(targetKey, requestId, message);
@@ -727,7 +882,7 @@ export default function App() {
         mapQuizInteractionResponseToQuizViewState(quiz.target, response),
         requestId,
       );
-      showNotification("Quiz refreshed.", "success");
+      notifyInteractionResult(response, requestId, "Quiz refreshed.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failQuizRequest(targetKey, requestId, message);
@@ -751,12 +906,12 @@ export default function App() {
         mapCriticalThinkingSessionResponseToViewState(session.target, response),
         requestId,
       );
+      if (!notifyInteractionResult(response, requestId, "Critical-thinking question generated.")) return;
       setCriticalThinkingDraftAnswersByTarget((current) => ({
         ...current,
         [targetKey]: "",
       }));
       setCriticalThinkingDraftDirty(false);
-      showNotification("Critical-thinking question generated.", "success");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failCriticalThinkingRequest(targetKey, requestId, message);
@@ -791,12 +946,12 @@ export default function App() {
         mapCriticalThinkingSessionResponseToViewState(session.target, response),
         requestId,
       );
+      if (!notifyInteractionResult(response, requestId, "Critical-thinking answer submitted.")) return;
       setCriticalThinkingDraftAnswersByTarget((current) => ({
         ...current,
         [targetKey]: "",
       }));
       setCriticalThinkingDraftDirty(false);
-      showNotification("Critical-thinking answer submitted.", "success");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failCriticalThinkingRequest(targetKey, requestId, message);
@@ -825,7 +980,7 @@ export default function App() {
         mapCriticalThinkingSessionResponseToViewState(session.target, response),
         requestId,
       );
-      showNotification("Critical-thinking evaluation retried.", "success");
+      notifyInteractionResult(response, requestId, "Critical-thinking evaluation retried.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failCriticalThinkingRequest(targetKey, requestId, message);
@@ -834,16 +989,8 @@ export default function App() {
   }
 
   function closeReadingInteractionDrawer() {
-    if (selectedCriticalThinking && criticalThinkingDraftDirty) {
-      showNotification("Unsent critical-thinking draft was discarded.", "warning");
-    }
+    // Closing the drawer must not discard a draft before non-destructive enhancement.
     setCriticalThinkingDraftDirty(false);
-    if (selectedCriticalThinking) {
-      setCriticalThinkingDraftAnswersByTarget((current) => ({
-        ...current,
-        [selectedCriticalThinking.targetKey]: "",
-      }));
-    }
     clearSelectedInteraction();
   }
 
@@ -853,15 +1000,19 @@ export default function App() {
       return;
     }
     setLayoutStatus("loading");
+    const requestId = ++layoutRequestIdRef.current;
     try {
       const nextLayout = await taskLayoutService.fetchTaskLayout(trimmedDocName, {
         includeAnchorPageEvidence: true,
       });
+      if (requestId !== layoutRequestIdRef.current) return;
       setLayout(nextLayout);
+      layoutScopeRef.current = { docName: trimmedDocName, layout: nextLayout };
       setCurrentRepairMode(resolveLayoutParserMode(nextLayout));
       setLayoutStatus("success");
       navigate(`/documents/${encodeURIComponent(trimmedDocName)}/toc-edit`);
     } catch (error) {
+      if (requestId !== layoutRequestIdRef.current) return;
       setLayoutStatus("success");
       const message = error instanceof Error ? error.message : String(error);
       showNotification(message, "error");
@@ -873,20 +1024,33 @@ export default function App() {
   }
 
   async function commitTocSuccess(routeDocName: string) {
-    await reloadLayout(routeDocName);
+    if (activeDocumentRef.current !== routeDocName) return;
+    resetInteractions();
+    setCriticalThinkingDraftAnswersByTarget({});
     resetContent();
+    layoutScopeRef.current = null;
+    if (!await reloadLayout(routeDocName)) return;
     navigate(`/documents/${encodeURIComponent(routeDocName)}`);
   }
 
   return (
     <Box className="app-shell reader-app-shell">
+      <EnhancementDialog open={enhancementOpen} docName={docName} tocHint={repairTocHint}
+        onStructureChanged={clearEnhancedDocument} onTitlesChanged={refreshEnhancedTitles}
+        onClose={() => setEnhancementOpen(false)} onCommitted={reloadEnhancedDocument}
+        onPrepare={fileManagement.openLibrary}
+        onPrepareLayout={async (name) => {
+          if (activeDocumentRef.current !== name) throw new Error("Document changed.");
+          await taskLayoutService.prepareTaskLayout(name, { layoutOnly: true });
+        }} />
       <Paper component="header" elevation={0} className="topbar reader-topbar">
         <BookSearchView
           value={docName}
+          inputValue={searchInput}
           options={documentOptions}
           loading={layoutStatus === "loading"}
           searching={documentSearchLoading}
-          onChange={setDocName}
+          onChange={setSearchInput}
           onOpen={loadDocumentOptions}
           onSelect={selectDocument}
         />
@@ -922,11 +1086,13 @@ export default function App() {
           <Menu
             className="structure-repair-menu"
             id="repair-menu"
+            disableRestoreFocus
             anchorEl={repairMenuAnchor}
             open={repairMenuOpen}
             onClose={closeRepairMenu}
             MenuListProps={{ "aria-labelledby": "repair-menu-button" }}
           >
+            <Box sx={{ px: 2, width: 280 }}><TocHintControl value={repairTocHint} disabled={!canRepair} onChange={setRepairTocHint} /></Box>
             <MenuItem
               className="structure-repair-option structure-repair-option-common"
               selected={currentRepairMode === "common"}
@@ -945,12 +1111,23 @@ export default function App() {
               <ListItemIcon className="structure-repair-option-icon">
                 {currentRepairMode === "llm_enhanced" ? <CheckIcon fontSize="small" /> : null}
               </ListItemIcon>
-              <ListItemText className="structure-repair-option-label">LLM</ListItemText>
+              <ListItemText className="structure-repair-option-label">LLM enhance</ListItemText>
             </MenuItem>
           </Menu>
         </Box>
       </Paper>
       <FileManagementView
+        canOpenDocument={fileManagement.canOpenDocument}
+        openingDocName={fileManagement.openingDocName}
+        openError={fileManagement.openError}
+        prepareState={fileManagement.prepareState}
+        onChangeUploadPdfMode={fileManagement.changeUploadPdfMode}
+        onChangeUploadTocHint={fileManagement.changeUploadTocHint}
+        onChangePrepareTocHint={fileManagement.changePrepareTocHint}
+        onChangePreparePdfMode={fileManagement.changePreparePdfMode}
+        onRequestPrepare={fileManagement.requestPrepareDocument}
+        onClosePrepare={fileManagement.closePrepareDocument}
+        onPrepareExisting={() => { void fileManagement.prepareExistingDocument(); }}
         activeFilterCount={fileManagement.activeFilterCount}
         deleteState={fileManagement.deleteState}
         error={fileManagement.error}
@@ -988,6 +1165,7 @@ export default function App() {
         onPrepareUploadedDocument={() => {
           void fileManagement.prepareUploadedDocument();
         }}
+        onCancelUploadedPreparation={fileManagement.cancelUploadedPreparation}
         onRefresh={() => {
           void fileManagement.loadDocuments();
         }}
@@ -1035,17 +1213,23 @@ export default function App() {
           aria-label="Reading content"
           aria-busy={contentStatus === "loading"}
         >
+          {layoutStatus === "success" && <ReadingContentActions key={docName} docName={docName} selection={contentEditSelection} onReviewState={setSourceNeedsReview}
+            onCloseSelection={() => setContentEditSelection(null)} onChanged={() => {
+              resetInteractions(); setSummaryNoteSelection(null); void retryContent();
+            }} />}
           <Routes>
             <Route
               path="/"
               element={
                 <ReaderContentView
+                  onEditContentBlock={(block,action) => setContentEditSelection({blockId: block.block_id,action})}
                   layoutStatus={layoutStatus}
                   contentStatus={contentStatus}
                   selectedSection={selectedSection}
                   contentBlocks={contentBlocks}
                   contentGroups={contentGroups}
                   error={contentError}
+                  onRetryContent={() => { void retryContent(); }}
                   getContentBlockInlineInsight={getContentBlockInlineInsight}
                   getTaskUnitInlineInsight={getTaskUnitInlineInsight}
                   onDismissInlineInsight={closeInlineInsight}
@@ -1060,12 +1244,14 @@ export default function App() {
               path="/documents/:routeDocName"
               element={
                 <ReaderContentView
+                  onEditContentBlock={(block,action) => setContentEditSelection({blockId: block.block_id,action})}
                   layoutStatus={layoutStatus}
                   contentStatus={contentStatus}
                   selectedSection={selectedSection}
                   contentBlocks={contentBlocks}
                   contentGroups={contentGroups}
                   error={contentError}
+                  onRetryContent={() => { void retryContent(); }}
                   getContentBlockInlineInsight={getContentBlockInlineInsight}
                   getTaskUnitInlineInsight={getTaskUnitInlineInsight}
                   onDismissInlineInsight={closeInlineInsight}
@@ -1118,6 +1304,7 @@ export default function App() {
             <QuizDrawerContent quiz={selectedQuiz} />
           ) : selectedCriticalThinking ? (
             <CriticalThinkingDrawerContent
+              draftAnswer={criticalThinkingDraftAnswersByTarget[selectedCriticalThinking.targetKey] || ""}
               session={selectedCriticalThinking}
               onDraftAnswerChange={updateCriticalThinkingDraftAnswer}
               onDraftDirtyChange={setCriticalThinkingDraftDirty}
@@ -1126,6 +1313,9 @@ export default function App() {
         }
         onCloseDrawer={closeReadingInteractionDrawer}
       />
+      {summaryNoteSelection && <SummaryNoteDrawer
+        key={`${summaryNoteSelection.kind}:${JSON.stringify(summaryNoteSelection.target)}`}
+        selection={summaryNoteSelection} dirtyRef={noteDirtyRef} onClose={() => { closeSummaryNote(); }} />}
       <AppNotification notification={notification} onClose={closeNotification} />
     </Box>
   );

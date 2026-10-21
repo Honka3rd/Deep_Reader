@@ -796,6 +796,36 @@ body {
 }
 
 @media (max-width: 840px) {
+  .file-management-table,
+  .file-management-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .file-management-table thead {
+    display: none;
+  }
+
+  .file-management-table .file-management-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    border-bottom: 1px solid #d8dde6;
+  }
+
+  .file-management-row td {
+    min-width: 0;
+    padding: 8px;
+    border: 0;
+  }
+
+  .file-management-row .file-management-actions-cell {
+    grid-column: 1 / -1;
+  }
+
+  .file-management-row .file-management-row-actions {
+    justify-content: flex-start;
+  }
+
   .topbar {
     grid-template-columns: 1fr;
     gap: 8px;

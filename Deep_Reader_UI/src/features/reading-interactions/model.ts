@@ -17,7 +17,9 @@ export type ReadingInteractionTargetLevel =
 export type ReadingInteractionKind =
   | "insight"
   | "quiz"
-  | "critical_thinking";
+  | "critical_thinking"
+  | "summary"
+  | "note";
 
 export interface ReadingInteractionTarget {
   targetLevel: ReadingInteractionTargetLevel;

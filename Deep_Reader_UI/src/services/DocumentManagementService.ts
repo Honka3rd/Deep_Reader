@@ -5,6 +5,14 @@ import type {
 } from "../types/api";
 import { RestClient } from "./RestClient";
 
+interface ManagementRow extends DocumentListItem {
+  review_required?: boolean;
+  source_type?: DocumentManagementItem["sourceType"];
+  source_filename?: string | null;
+  source_status?: DocumentManagementItem["sourceStatus"];
+  preparation_status?: DocumentManagementItem["preparationStatus"];
+}
+
 export class DocumentManagementService {
   constructor(private readonly restClient: RestClient) {}
 
@@ -17,10 +25,10 @@ export class DocumentManagementService {
     params.set("limit", String(limit));
 
     const response = await this.restClient.requestJson<{
-      items: DocumentListItem[];
+      items: ManagementRow[];
       query?: string | null;
       total: number;
-    }>(`/documents?${params.toString()}`, { method: "GET" });
+    }>(`/documents/management?${params.toString()}`, { method: "GET" });
 
     return {
       items: response.items.map(toDocumentManagementItem),
@@ -30,10 +38,15 @@ export class DocumentManagementService {
   }
 }
 
-function toDocumentManagementItem(item: DocumentListItem): DocumentManagementItem {
+function toDocumentManagementItem(item: ManagementRow): DocumentManagementItem {
   return {
     docName: item.doc_name,
     title: item.title,
     source: item.source,
+    sourceType: item.source_type,
+    sourceFilename: item.source_filename,
+    sourceStatus: item.source_status,
+    preparationStatus: item.preparation_status,
+    reviewRequired: item.review_required === true,
   };
 }

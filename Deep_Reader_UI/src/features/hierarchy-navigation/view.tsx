@@ -2,8 +2,10 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import PsychologyAltOutlinedIcon from "@mui/icons-material/PsychologyAltOutlined";
 import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
 import TipsAndUpdatesOutlinedIcon from "@mui/icons-material/TipsAndUpdatesOutlined";
+import { summaryNoteMenuItems } from "../reading-interactions/SummaryNoteMenuItems";
 import {
   Box,
+  Alert,
   Button,
   ButtonBase,
   Chip,
@@ -125,6 +127,9 @@ function SectionButton({
         <Typography className="hierarchy-section-title" component="span" variant="body1">
           {resolvedTitle}
         </Typography>
+        {section.title_origin === "generated" && <Typography component="span" variant="caption" color="text.secondary">
+          Generated heading
+        </Typography>}
         {displaySubtitle || section.container_title ? (
           <Typography
             className="hierarchy-section-subtitle"
@@ -333,6 +338,7 @@ export function HierarchyNavigationView({
           onClose={closeDocumentInteractionMenu}
           MenuListProps={{ "aria-labelledby": "document-interaction-menu-button" }}
         >
+          {summaryNoteMenuItems(selectDocumentInteraction)}
           <MenuItem
             className="hierarchy-document-interaction-option hierarchy-document-interaction-option-insight"
             onClick={() => selectDocumentInteraction("insight")}
@@ -368,6 +374,20 @@ export function HierarchyNavigationView({
           </MenuItem>
         </Menu>
       </Stack>
+      {layout.parse_provenance?.fallback_used && <Alert severity="warning">
+        Requested {layout.parse_provenance.requested_parser_mode}; using {layout.parse_provenance.effective_parser_mode}.
+        {layout.parse_provenance.fallback_reason ? ` ${layout.parse_provenance.fallback_reason}` : ""}
+      </Alert>}
+      {layout.parse_provenance?.declaration_unconfirmed && <Alert severity="warning">
+        The declared printed table of contents could not be confirmed. The accepted structure remains readable.
+      </Alert>}
+      {layout.chapters.some(chapter => chapter.metadata?.title_origin === "generated" ||
+        chapter.sections?.some(section => section.title_origin === "generated")) && <Typography variant="caption">
+        Generated reading outline, not an original table of contents.
+      </Typography>}
+      {layout.parse_provenance?.implicit_single_body && <Typography variant="caption">
+        Main Body · No validated heading boundaries
+      </Typography>}
       {documentInlineInsight ? (
         <InlineInsightRegion
           className="hierarchy-document-inline-insight"
@@ -412,6 +432,9 @@ export function HierarchyNavigationView({
                     chapterTitle={chapterTitle}
                     onOpen={openChapterInteractionMenu}
                   />
+                  <SectionInteractionButton chapter={chapter} section={singleSection}
+                    sectionTitle={labelOrId(singleSection.title, singleSection.section_id)}
+                    onOpen={openSectionInteractionMenu} />
                 </Box>
               ) : (
                 <>
@@ -500,6 +523,7 @@ export function HierarchyNavigationView({
         open={chapterInteractionMenuOpen}
         onClose={closeChapterInteractionMenu}
       >
+        {summaryNoteMenuItems(selectChapterInteraction)}
         <MenuItem
           className="hierarchy-chapter-interaction-option hierarchy-chapter-interaction-option-insight"
           onClick={() => selectChapterInteraction("insight")}
@@ -541,6 +565,7 @@ export function HierarchyNavigationView({
         open={sectionInteractionMenuOpen}
         onClose={closeSectionInteractionMenu}
       >
+        {summaryNoteMenuItems(selectSectionInteraction)}
         <MenuItem
           className="hierarchy-section-interaction-option hierarchy-section-interaction-option-insight"
           onClick={() => selectSectionInteraction("insight")}

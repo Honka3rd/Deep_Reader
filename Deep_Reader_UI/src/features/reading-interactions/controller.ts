@@ -317,6 +317,15 @@ export function useReadingInteractionMenuController() {
     setSelectedInteraction(null);
   }
 
+  function resetInteractions() {
+    requestIdRef.current += 1;
+    setInteractionMenuTarget(null);
+    setSelectedInteraction(null);
+    setOpenInlineInsightsByTarget({});
+    setQuizStateByTarget({});
+    setCriticalThinkingStateByTarget({});
+  }
+
   function closeInlineInsight(targetKey: ReadingInteractionTargetKey) {
     setOpenInlineInsightsByTarget((current) => {
       const { [targetKey]: _removed, ...next } = current;
@@ -341,6 +350,7 @@ export function useReadingInteractionMenuController() {
   }
 
   return {
+    resetInteractions,
     interactionMenuTarget,
     selectedInteraction,
     openInlineInsightsByTarget,

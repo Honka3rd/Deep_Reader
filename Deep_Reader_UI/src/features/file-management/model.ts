@@ -3,6 +3,8 @@ import type {
   DocumentManagementItem,
   DocumentUploadResponse,
   RequestStatus,
+  PdfExtractionMode,
+  TocHint,
 } from "../../types/api";
 
 export type FileUploadStatus =
@@ -16,6 +18,8 @@ export type FileUploadStatus =
   | "cancelled";
 
 export interface FileUploadDraft {
+  tocHint?: TocHint;
+  pdfMode?: PdfExtractionMode;
   file: File;
   fileName: string;
   fileSizeBytes: number;
@@ -23,11 +27,23 @@ export interface FileUploadDraft {
 }
 
 export interface FileUploadResult {
+  tocHint?: TocHint;
+  pdfMode?: PdfExtractionMode;
   docName: string;
   sourceFilename: string;
   message: string;
-  prepareStatus: RequestStatus;
+  prepareStatus: RequestStatus | "queued" | "cancelled";
   prepareMessage: string;
+  needsReconciliation?: boolean;
+}
+
+export interface DocumentPrepareState {
+  tocHint?: TocHint;
+  item: DocumentManagementItem;
+  pdfMode?: PdfExtractionMode;
+  status: RequestStatus;
+  message: string;
+  readerReady: boolean;
 }
 
 export interface FileUploadConflictState {
@@ -120,7 +136,7 @@ export function getDocumentPreparationStatusLabel(
 ): string {
   switch (status) {
     case "ready":
-      return "Ready to read";
+      return "Structure prepared";
     case "not_prepared":
       return "Not prepared";
     case "failed":

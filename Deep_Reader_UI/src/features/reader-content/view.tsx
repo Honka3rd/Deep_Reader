@@ -1,7 +1,11 @@
 import MoreVertIcon from "@mui/icons-material/MoreVert";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import PsychologyAltOutlinedIcon from "@mui/icons-material/PsychologyAltOutlined";
 import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
 import TipsAndUpdatesOutlinedIcon from "@mui/icons-material/TipsAndUpdatesOutlined";
+import { summaryNoteMenuItems } from "../reading-interactions/SummaryNoteMenuItems";
 import {
   Box,
   Button,
@@ -13,6 +17,7 @@ import {
   MenuItem,
   Stack,
   Typography,
+  Tooltip,
 } from "@mui/material";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { RequestStatus, SectionSelection } from "../../types/api";
@@ -34,12 +39,14 @@ import {
 } from "./model";
 
 interface ReaderContentViewProps {
+  onEditContentBlock?: (block: ReaderContentBlock, action: "edit" | "delete") => void;
   layoutStatus: RequestStatus;
   contentStatus: RequestStatus;
   selectedSection: SectionSelection | null;
   contentBlocks: ReaderContentBlock[];
   contentGroups: ReaderContentGroup[];
   error: string;
+  onRetryContent?: () => void;
   onSelectTaskUnitInteraction?: (
     selection: SectionSelection,
     group: ReaderContentGroup,
@@ -64,12 +71,14 @@ interface ReaderContentViewProps {
 }
 
 export function ReaderContentView({
+  onEditContentBlock,
   layoutStatus,
   contentStatus,
   selectedSection,
   contentBlocks,
   contentGroups,
   error,
+  onRetryContent,
   onSelectTaskUnitInteraction,
   onSelectContentBlockInteraction,
   getTaskUnitInlineInsight,
@@ -257,12 +266,19 @@ export function ReaderContentView({
         />
       ) : null}
       {contentStatus === "error" ? (
-        <StateView
-          className="reader-content-blocks-error-state"
-          title="Section content request failed"
-          detail={error}
-          severity="error"
-        />
+        <Box>
+          <StateView
+            className="reader-content-blocks-error-state"
+            title="Section content request failed"
+            detail={error}
+            severity="error"
+          />
+          <Tooltip title="Retry content">
+            <IconButton aria-label="Retry content" onClick={onRetryContent} disabled={!onRetryContent}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
       ) : null}
       {contentStatus === "empty" ? (
         <StateView className="reader-content-blocks-empty-state" title="No content blocks" />
@@ -352,6 +368,7 @@ export function ReaderContentView({
             open={taskUnitInteractionMenuOpen}
             onClose={closeTaskUnitInteractionMenu}
           >
+            {summaryNoteMenuItems(selectTaskUnitInteraction)}
             <MenuItem
               className="reader-task-unit-interaction-option reader-task-unit-interaction-option-insight"
               onClick={() => selectTaskUnitInteraction("insight")}
@@ -393,6 +410,13 @@ export function ReaderContentView({
             open={contentBlockInteractionMenuOpen}
             onClose={closeContentBlockInteractionMenu}
           >
+            {summaryNoteMenuItems(selectContentBlockInteraction)}
+            {onEditContentBlock && ["edit", "delete"].map(action => <MenuItem key={action} onClick={() => {
+              const block = contentBlockInteractionMenu?.block;
+              closeContentBlockInteractionMenu();
+              if (block) onEditContentBlock(block, action as "edit" | "delete");
+            }}><ListItemIcon>{action === "edit" ? <EditOutlinedIcon fontSize="small" /> : <DeleteOutlineIcon fontSize="small" />}</ListItemIcon>
+              <ListItemText primary={action === "edit" ? "Edit" : "Delete"} /></MenuItem>)}
             <MenuItem
               className="reader-content-block-interaction-option reader-content-block-interaction-option-insight"
               onClick={() => selectContentBlockInteraction("insight")}

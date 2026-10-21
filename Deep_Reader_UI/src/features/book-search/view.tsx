@@ -1,9 +1,9 @@
 import { Autocomplete, Box, CircularProgress, TextField } from "@mui/material";
 import { createFilterOptions } from "@mui/material/Autocomplete";
-import { isSelectedDocumentOption } from "./model";
 
 interface BookSearchViewProps {
   value: string;
+  inputValue: string;
   options: string[];
   loading: boolean;
   searching: boolean;
@@ -22,6 +22,7 @@ const filterOptions = createFilterOptions<string>({
 
 export function BookSearchView({
   value,
+  inputValue,
   options,
   loading,
   searching,
@@ -35,11 +36,13 @@ export function BookSearchView({
         className="document-search-combobox"
         autoHighlight
         clearOnEscape
-        options={options}
+        options={value && !options.includes(value) ? [value, ...options] : options}
         filterOptions={filterOptions}
-        value={isSelectedDocumentOption(value, options) ? value : null}
-        inputValue={value}
-        onInputChange={(_, newValue) => onChange(newValue)}
+        value={value || null}
+        inputValue={inputValue}
+        onInputChange={(_, newValue, reason) => {
+          if (reason === "input" || reason === "clear") onChange(newValue);
+        }}
         onChange={(_, newValue) => {
           const nextValue = newValue || "";
           onChange(nextValue);

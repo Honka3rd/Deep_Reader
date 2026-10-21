@@ -179,36 +179,24 @@ export function CriticalThinkingDrawerCommands({
 }
 
 export function CriticalThinkingDrawerContent({
+  draftAnswer,
   onDraftAnswerChange,
   onDraftDirtyChange,
   session,
 }: {
+  draftAnswer: string;
   onDraftAnswerChange?: (targetKey: string, draftAnswer: string) => void;
   onDraftDirtyChange?: (dirty: boolean) => void;
   session: CriticalThinkingViewState;
 }) {
   const statusView = getCriticalThinkingStatusView(session);
-  const [draftAnswer, setDraftAnswer] = useState("");
   const hasQuestion = Boolean(session.question?.trim());
   const hasEvaluation =
     Boolean(session.evaluation?.feedback?.trim()) ||
     typeof session.evaluation?.score === "number" ||
     Boolean(session.evaluation?.suggestedRefinement?.trim());
 
-  useEffect(() => {
-    setDraftAnswer("");
-    onDraftAnswerChange?.(session.targetKey, "");
-    onDraftDirtyChange?.(false);
-  }, [
-    onDraftAnswerChange,
-    onDraftDirtyChange,
-    session.targetKey,
-    session.question,
-    session.submittedAnswer,
-  ]);
-
   function updateDraftAnswer(nextDraftAnswer: string) {
-    setDraftAnswer(nextDraftAnswer);
     onDraftAnswerChange?.(session.targetKey, nextDraftAnswer);
     onDraftDirtyChange?.(nextDraftAnswer.trim().length > 0);
   }
@@ -245,7 +233,7 @@ export function CriticalThinkingDrawerContent({
           </Typography>
         </Box>
       ) : null}
-      {session.status === "question_generated" || session.submittedAnswer ? (
+      {session.status === "question_generated" || session.submittedAnswer || draftAnswer ? (
         <Box className="critical-thinking-answer-panel">
           <Typography className="critical-thinking-section-title" variant="subtitle2">
             Answer
@@ -815,7 +803,7 @@ function getCriticalThinkingStatusView(session: CriticalThinkingViewState): {
     },
     insufficient_content: {
       label: "Insufficient content",
-      message: "This target does not currently have enough content for critical thinking.",
+      message: session.errorMessage || "The content did not pass the readability check.",
     },
     stale_target: {
       label: "Stale target",
@@ -831,7 +819,7 @@ function getCriticalThinkingStatusView(session: CriticalThinkingViewState): {
     },
     evaluation_failed: {
       label: "Evaluation failed",
-      message: "Evaluation failed. Retry behavior will be wired in the next task.",
+      message: "Evaluation failed. Retry evaluation without generating a new question.",
     },
   };
   const canGenerateQuestion = [
@@ -839,13 +827,18 @@ function getCriticalThinkingStatusView(session: CriticalThinkingViewState): {
     "not_generated",
     "generation_failed",
     "validation_failed",
-  ].includes(session.status);
+    "insufficient_content",
+  ].includes(session.status) || (session.status === "stale_target" && session.errorMessage === "interaction_policy_stale");
   const canSubmitAnswer = session.status === "question_generated";
   const canRetryEvaluation =
     session.status === "evaluation_failed" && session.retryEligible !== false;
 
   return {
     ...statusMessages[session.status],
+    ...(session.status === "stale_target" && session.errorMessage === "interaction_policy_stale" ? {
+      label: "Outdated session",
+      message: "The generation policy has changed. Generate a new question explicitly; the previous session remains saved.",
+    } : {}),
     canGenerateQuestion,
     canRetryEvaluation,
     canSubmitAnswer,
@@ -895,7 +888,7 @@ function getQuizStatusView(quiz: QuizViewState): {
     },
     insufficient_content: {
       label: "Insufficient content",
-      message: "This target does not currently have enough content for a quiz.",
+      message: quiz.errorMessage || "The content did not pass the readability check.",
     },
     stale_target: {
       label: "Stale target",
@@ -915,7 +908,7 @@ function getQuizStatusView(quiz: QuizViewState): {
     },
   };
 
-  const canGenerate = ["idle", "not_generated", "generation_failed", "validation_failed"].includes(
+  const canGenerate = ["idle", "not_generated", "generation_failed", "validation_failed", "insufficient_content"].includes(
     quiz.status,
   );
   const canRefresh = ["completed", "stale_target", "generation_failed", "validation_failed"].includes(
@@ -924,6 +917,9 @@ function getQuizStatusView(quiz: QuizViewState): {
 
   return {
     ...statusMessages[quiz.status],
+    ...(quiz.status === "stale_target" && quiz.errorMessage === "interaction_policy_stale" ? {
+      label: "Outdated quiz", message: "The generation policy has changed. Refresh explicitly to replace this quiz.",
+    } : {}),
     canGenerate,
     canRefresh,
     showCommands: canGenerate || canRefresh,
@@ -972,7 +968,7 @@ function getInsightStatusView(insight: InsightViewState): {
     },
     insufficient_content: {
       label: "Insufficient content",
-      message: "This target does not currently have enough content for an insight.",
+      message: insight.errorMessage || "The content did not pass the readability check.",
     },
     stale_target: {
       label: "Stale target",
@@ -992,7 +988,7 @@ function getInsightStatusView(insight: InsightViewState): {
     },
   };
 
-  const canGenerate = ["idle", "not_generated", "generation_failed", "validation_failed"].includes(
+  const canGenerate = ["idle", "not_generated", "generation_failed", "validation_failed", "insufficient_content"].includes(
     insight.status,
   );
   const canRefresh = ["completed", "stale_target", "generation_failed", "validation_failed"].includes(
@@ -1001,6 +997,9 @@ function getInsightStatusView(insight: InsightViewState): {
 
   return {
     ...statusMessages[insight.status],
+    ...(insight.status === "stale_target" && insight.errorMessage === "interaction_policy_stale" ? {
+      label: "Outdated insight", message: "The generation policy has changed. Refresh explicitly to replace this insight.",
+    } : {}),
     canGenerate,
     canRefresh,
     showCommands: canGenerate || canRefresh,

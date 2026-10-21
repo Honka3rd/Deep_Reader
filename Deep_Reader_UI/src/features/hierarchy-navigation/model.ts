@@ -63,6 +63,9 @@ export function buildSectionDisplay(
   chapter: ChapterLayout,
   section: SectionLayout,
 ) {
+  if (section.is_implicit_section && !section.title?.trim()) {
+    return { title: chapter.title?.trim() || "Main Body", subtitle: "Reading container" };
+  }
   const chapterTitle = labelOrId(chapter.title, chapter.chapter_id);
   const sectionTitle = labelOrId(section.title, section.section_id);
   const useSectionTitle =
@@ -75,5 +78,5 @@ export function buildSectionDisplay(
       ? sectionTitle
       : section.container_title || null;
 
-  return { title, subtitle };
+  return { title, subtitle: chapter.metadata?.title_origin === "generated" ? "Generated reading outline" : subtitle };
 }
