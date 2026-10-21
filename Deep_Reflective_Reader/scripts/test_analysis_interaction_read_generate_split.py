@@ -12,6 +12,7 @@ from section_tasks.analysis_interaction_orchestrator import (  # noqa: E402
     AnalysisInteractionOrchestrator,
 )
 from section_tasks.analysis_interaction_service import AnalysisInteractionService  # noqa: E402
+from section_tasks.interaction_policy_identity import policy_metadata
 from section_tasks.reading_interaction_service_contracts import (  # noqa: E402
     ReadingInteractionArtifact,
     ReadingInteractionRequest,
@@ -90,6 +91,7 @@ def _completed_artifact() -> ReadingInteractionArtifact:
         target=_target(),
         interaction_type="analysis",
         status="completed",
+        metadata=policy_metadata(_request()),
         payload={
             "summary": "Cached summary",
             "reasoning": "Cached reasoning",
@@ -162,8 +164,8 @@ def test_read_existing_insufficient_content_rechecks_current_target() -> None:
         "readable targets should not stay masked by stale insufficient artifacts",
     )
     _assert(
-        still_insufficient is existing,
-        "still-insufficient targets should keep the persisted insufficient artifact",
+        still_insufficient.status == "insufficient_content",
+        "still-insufficient targets should expose the current preflight result",
     )
 
 

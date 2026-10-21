@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from section_tasks.interaction_policy_identity import policy_metadata
 
 from app.section_task_coordinator import (  # noqa: E402
     CriticalThinkingSessionStoreResult,
@@ -148,6 +149,7 @@ class FakeCriticalThinkingService:
             target=request.target,
             interaction_type="critical_thinking_session",
             status="question_generated",
+            metadata=policy_metadata(request),
             payload={"question": "Which assumption matters most?"},
         )
 
@@ -352,7 +354,7 @@ def test_quiz_methods_resolve_once_and_delegate() -> None:
     _assert(quiz.generate_requests[1].refresh is True, "quiz refresh should set refresh")
     _assert(read_response.status == "not_generated", "quiz read response should map")
     _assert(generate_response.interaction_type == "quiz", "quiz response should map type")
-    _assert(refresh_response.metadata["prompt_instruction_version"] == "quiz_prompt_v1", "metadata should pass through")
+    _assert(refresh_response.metadata["prompt_instruction_version"] == "quiz_interaction_prompt_v2", "server prompt version overrides client metadata")
 
 
 def test_critical_thinking_methods_resolve_once_and_delegate() -> None:

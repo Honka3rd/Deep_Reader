@@ -134,7 +134,7 @@ def test_generates_question_with_fixed_instruction_metadata() -> None:
     )
     _assert(
         artifact.metadata["prompt_instruction_version"]
-        == "critical_thinking_prompt_v1",
+        == "critical_thinking_prompt_v3",
         "prompt version should be recorded",
     )
     _assert(

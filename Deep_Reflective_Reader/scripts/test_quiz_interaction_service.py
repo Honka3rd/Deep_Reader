@@ -130,7 +130,7 @@ def test_generates_completed_quiz_from_valid_json() -> None:
         "schema version should be recorded",
     )
     _assert(
-        artifact.metadata["prompt_instruction_version"] == "quiz_prompt_v1",
+        artifact.metadata["prompt_instruction_version"] == "quiz_interaction_prompt_v3",
         "prompt version should be recorded",
     )
     _assert(

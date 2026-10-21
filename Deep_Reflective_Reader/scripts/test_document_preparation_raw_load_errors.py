@@ -66,12 +66,13 @@ def test_requires_ocr_error_maps_to_specific_prepare_reason() -> None:
         errors=[],
     )
 
-    raw_text = pipeline._load_raw_text(
+    raw_text, boundaries = pipeline._load_raw_source(
         doc_name="Scanned PDF",
         assets=assets,
     )
 
     _assert(raw_text is None, "requires-OCR load should not return raw text")
+    _assert(boundaries is None, "failed load must not publish page evidence")
     _assert(
         assets.errors == ["load_raw_text_requires_ocr:Scanned PDF"],
         f"unexpected raw-load errors: {assets.errors}",
@@ -94,12 +95,13 @@ def test_ocr_failed_error_maps_to_specific_prepare_reason() -> None:
         errors=[],
     )
 
-    raw_text = pipeline._load_raw_text(
+    raw_text, boundaries = pipeline._load_raw_source(
         doc_name="Scanned PDF",
         assets=assets,
     )
 
     _assert(raw_text is None, "failed OCR should not return raw text")
+    _assert(boundaries is None, "failed load must not publish page evidence")
     _assert(
         assets.errors == [
             "load_raw_text_ocr_failed:Scanned PDF:tesseract_not_found:tesseract"
@@ -124,12 +126,13 @@ def test_ocr_low_quality_error_maps_to_specific_prepare_reason() -> None:
         errors=[],
     )
 
-    raw_text = pipeline._load_raw_text(
+    raw_text, boundaries = pipeline._load_raw_source(
         doc_name="Scanned PDF",
         assets=assets,
     )
 
     _assert(raw_text is None, "low-quality OCR should not return raw text")
+    _assert(boundaries is None, "failed load must not publish page evidence")
     _assert(
         assets.errors == [
             "load_raw_text_ocr_low_quality:Scanned PDF:"

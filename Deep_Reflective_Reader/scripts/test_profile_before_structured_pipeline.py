@@ -48,6 +48,10 @@ class _NoopStructuredBuilder:
 
 class _NoopStructuredStore:
     @staticmethod
+    def exists(target):
+        return False
+
+    @staticmethod
     def save(document, target):
         _ = (document, target)
 
@@ -185,10 +189,10 @@ class _OrderTrackingPipeline(DocumentPreparationPipeline):
             bundle_provider=_NoopBundleProvider(),
         )
 
-    def _load_raw_text(self, doc_name: str, assets: PreparedDocumentAssets) -> str | None:
+    def _load_raw_source(self, doc_name: str, assets: PreparedDocumentAssets):
         _ = doc_name
         self.order.append("raw")
-        return "raw-text"
+        return "raw-text", None
 
     def _detect_language(self, doc_name: str, raw_text: str | None, assets: PreparedDocumentAssets) -> str | None:
         _ = (doc_name, raw_text, assets)
@@ -224,6 +228,8 @@ class _OrderTrackingPipeline(DocumentPreparationPipeline):
         assets: PreparedDocumentAssets,
         force_rebuild: bool,
         parser_mode,
+        page_boundaries=None,
+        extraction=None,
     ) -> tuple[bool, str | None]:
         _ = (doc_name, raw_text, language, assets, force_rebuild, parser_mode)
         self.order.append("structured")
@@ -364,7 +370,7 @@ def test_force_rebuild_clears_and_rebuilds_profile() -> None:
         force_rebuild=True,
     )
     _assert(ready is True and profile is not None, "force_rebuild should rebuild profile")
-    _assert(profile_store.clear_calls == 1, "force_rebuild should clear profile artifact before rebuild")
+    _assert(profile_store.clear_calls == 0, "rebuild must retain old profile until replacement succeeds")
     _assert(profile_builder.build_calls == 1, "force_rebuild should invoke profile builder")
     _assert(profile_store.save_calls == 1, "force_rebuild should save rebuilt profile")
 

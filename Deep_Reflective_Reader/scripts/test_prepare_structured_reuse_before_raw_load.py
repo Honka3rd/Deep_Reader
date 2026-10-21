@@ -260,8 +260,8 @@ def test_base_prepare_reuses_existing_structured_before_raw_load() -> None:
 
     loader_factory = pipeline.loader_factory
     _assert(
-        getattr(loader_factory, "get_calls") == 0,
-        "raw loader factory should not be used",
+        getattr(loader_factory, "get_calls") == 1,
+        "resolve source capability once without extracting text",
     )
     _assert(store.exists_calls == 1, "structured store should be checked once")
     _assert(store.load_calls == 1, "existing structured document should be validated")
@@ -293,8 +293,8 @@ def test_base_prepare_and_load_reuses_existing_structured_before_raw_load() -> N
 
     loader_factory = pipeline.loader_factory
     _assert(
-        getattr(loader_factory, "get_calls") == 0,
-        "prepare_and_load(base) should not use raw loader factory on structured reuse",
+        getattr(loader_factory, "get_calls") == 1,
+        "prepare_and_load(base) resolves identity capability without extraction",
     )
     _assert(
         getattr(language_detector, "detect_calls") == 0,

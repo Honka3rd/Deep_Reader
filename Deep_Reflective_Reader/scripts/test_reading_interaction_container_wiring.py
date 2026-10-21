@@ -52,7 +52,7 @@ class FakeLLMProvider:
         return LLMModelCapabilities(
             model_name="fake",
             endpoint_kind=ENDPOINT_KIND_CHAT_COMPLETIONS,
-            max_input_tokens=4096,
+            context_window_tokens=4096,
             max_output_tokens=512,
         )
 

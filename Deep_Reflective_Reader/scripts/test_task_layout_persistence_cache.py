@@ -38,6 +38,11 @@ def _assert(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def _prepare_layout(coordinator, **options):
+    coordinator.ensure_document_task_layout(**options)
+    return coordinator.get_document_task_layout(**{**options, "refresh_task_units": False})
+
+
 @dataclass(frozen=True)
 class _FakeAssets:
     errors: list[str]
@@ -59,6 +64,11 @@ class _FakePreparationPipeline:
         self.repository = repository
         self.page_boundaries = list(page_boundaries or [])
         self.source_evidence_calls = 0
+        self.page_evidence_calls = 0
+
+    def load_task_layout_page_boundaries(self, doc_name, *, document):
+        self.page_evidence_calls += 1
+        return list(self.page_boundaries)
 
     def prepare_and_load(
         self,
@@ -278,7 +288,7 @@ def test_task_layout_cache_flow() -> None:
         )
 
         # A. first call writes task_units
-        first_layout = coordinator.get_document_task_layout(
+        first_layout = _prepare_layout(coordinator,
             doc_name="cache-doc",
             refresh_task_units=False,
             task_unit_split_mode="semantic_safe",
@@ -329,7 +339,7 @@ def test_task_layout_cache_flow() -> None:
         )
 
         # C. refresh=true forces recompute
-        refreshed_layout = coordinator.get_document_task_layout(
+        refreshed_layout = _prepare_layout(coordinator,
             doc_name="cache-doc",
             refresh_task_units=True,
             task_unit_split_mode="semantic_safe",
@@ -341,7 +351,7 @@ def test_task_layout_cache_flow() -> None:
         )
 
         # D. mode/top_k mismatch invalidates cache
-        coordinator.get_document_task_layout(
+        _prepare_layout(coordinator,
             doc_name="cache-doc",
             refresh_task_units=False,
             task_unit_split_mode="progressive",
@@ -351,7 +361,7 @@ def test_task_layout_cache_flow() -> None:
             fake_resolver.calls == 3,
             "split mode change should invalidate cache and recompute",
         )
-        coordinator.get_document_task_layout(
+        _prepare_layout(coordinator,
             doc_name="cache-doc",
             refresh_task_units=False,
             task_unit_split_mode="semantic_safe",
@@ -408,7 +418,7 @@ def test_task_layout_cache_hit_does_not_load_manual_source_evidence() -> None:
             semantic_top_k_candidates_max=20,
         )
 
-        coordinator.get_document_task_layout(
+        _prepare_layout(coordinator,
             doc_name="cache-doc",
             refresh_task_units=False,
             task_unit_split_mode="semantic_safe",
@@ -468,7 +478,7 @@ def test_task_layout_cache_hit_can_explicitly_load_anchor_page_evidence() -> Non
             semantic_top_k_candidates_max=20,
         )
 
-        coordinator.get_document_task_layout(
+        _prepare_layout(coordinator,
             doc_name="cache-doc",
             refresh_task_units=False,
             task_unit_split_mode="semantic_safe",
@@ -490,8 +500,8 @@ def test_task_layout_cache_hit_can_explicitly_load_anchor_page_evidence() -> Non
             "explicit page-evidence read should still reuse valid task-unit cache",
         )
         _assert(
-            fake_pipeline.source_evidence_calls == 1,
-            "explicit page-evidence read should load manual source evidence once",
+            fake_pipeline.page_evidence_calls == 1 and fake_pipeline.source_evidence_calls == 0,
+            "explicit page-evidence read should use boundary-only evidence, never manual source",
         )
         _assert(
             layout.chapters[0].anchor_evidence is not None
@@ -609,7 +619,7 @@ def test_task_layout_cache_duplicate_id_repair() -> None:
             semantic_top_k_candidates_max=20,
         )
 
-        layout = coordinator.get_document_task_layout(
+        layout = _prepare_layout(coordinator,
             doc_name="cache-doc",
             refresh_task_units=False,
             task_unit_split_mode="semantic_safe",

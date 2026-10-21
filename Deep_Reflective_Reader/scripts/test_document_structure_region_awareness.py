@@ -59,8 +59,13 @@ def test_preface_plus_chapter_one(splitter: CommonSectionSplitter) -> None:
     )
     sections = splitter.split(raw_text=raw_text, language=LanguageCode.EN)
     _assert(bool(sections), "preface+chapter case should produce sections")
+    _assert("".join(section.content for section in sections) == raw_text,
+            "front matter must remain in the source-preserving projection")
+    body_sections = [section for section in sections if section.title is not None
+                     and section.section_role == "main_body"]
+    _assert(bool(body_sections), "chapter main body must remain identifiable")
     _assert(
-        (sections[0].title or "").lower().startswith("chapter"),
+        (body_sections[0].title or "").lower().startswith("chapter"),
         "front matter should not be treated as first body chapter",
     )
 

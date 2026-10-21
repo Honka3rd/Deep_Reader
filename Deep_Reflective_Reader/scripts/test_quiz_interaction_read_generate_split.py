@@ -12,6 +12,7 @@ from section_tasks.quiz_interaction_orchestrator import (  # noqa: E402
     QuizInteractionOrchestrator,
 )
 from section_tasks.quiz_interaction_service import QuizInteractionService  # noqa: E402
+from section_tasks.interaction_policy_identity import policy_metadata
 from section_tasks.reading_interaction_service_contracts import (  # noqa: E402
     ReadingInteractionArtifact,
     ReadingInteractionRequest,
@@ -102,6 +103,7 @@ def _completed_artifact() -> ReadingInteractionArtifact:
         target=_target(),
         interaction_type="quiz",
         status="completed",
+        metadata=policy_metadata(_request()),
         payload=_generated_payload("Cached question?"),
     )
 
@@ -170,8 +172,8 @@ def test_read_existing_insufficient_content_rechecks_current_target() -> None:
         "readable targets should not stay masked by stale insufficient artifacts",
     )
     _assert(
-        still_insufficient is existing,
-        "still-insufficient targets should keep the persisted insufficient artifact",
+        still_insufficient.status == "insufficient_content",
+        "still-insufficient targets should expose the current preflight result",
     )
 
 

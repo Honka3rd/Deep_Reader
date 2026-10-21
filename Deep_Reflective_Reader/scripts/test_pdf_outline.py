@@ -3,6 +3,8 @@ from doc_loaders.pdf_outline import PdfOutlineEntry, PdfOutlineResult
 from doc_loaders.pdf_page_evidence import PdfPageTextBoundary
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from language.language_code import LanguageCode
+from unittest.mock import patch
+from doc_loaders.document_load_errors import RawTextRequiresOcrError
 
 
 def main() -> None:
@@ -15,8 +17,27 @@ def main() -> None:
     assert any(entry.title == "第一章" and entry.page_index == 4 for entry in result.entries)
     assert any(entry.level > 0 for entry in result.entries)
     assert "outline_validated" in result.reasons
-    raw_text = loader.load("许三观卖血记")
-    boundaries = loader.load_page_text_boundaries("许三观卖血记")
+    # This fixture has a raster cover and an unresolved final page. Outline
+    # projection must not rely on the old behavior that silently omitted them.
+    loader.ocr_enabled = False
+    try:
+        loader.load("许三观卖血记")
+    except RawTextRequiresOcrError:
+        pass
+    else:
+        raise AssertionError("mixed fixture requires explicit recovery")
+    loader.ocr_enabled = True
+
+    def recover_fixture_pages(**kwargs):
+        assert kwargs["page_indexes"] == [0, 123]
+        return [
+            "Recovered cover fixture" if index == 0 else ""
+            for index in range(len(kwargs["reader"].pages))
+        ]
+
+    with patch.object(loader, "_load_pages_with_ocr", side_effect=recover_fixture_pages):
+        raw_text = loader.load("许三观卖血记")
+        boundaries = loader.load_page_text_boundaries("许三观卖血记")
     document = StructuredDocumentBuilder().build(
         document_id="许三观卖血记",
         title="许三观卖血记",
@@ -29,7 +50,9 @@ def main() -> None:
     assert document.parse_provenance["outline_projection"]["normalized_chapter_level"] == 1
     assert document.parse_provenance["outline_projection"]["root_wrapper_skipped"]
     assert len(document.chapters) >= 29
-    assert document.chapters[0].title == "第一章"
+    # Recovering the cover preserves the preceding front-matter anchor instead
+    # of relying on its old empty-page offset collision with the following page.
+    assert [chapter.title for chapter in document.chapters[:3]] == ["各版本前自序", "第一章", "第二章"]
     assert document.chapters[0].sections
     test_outline_level_zero_is_normalized_to_chapters()
     print("pdf outline checks passed")

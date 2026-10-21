@@ -71,6 +71,9 @@ class _FakePipeline:
         self.page_boundaries = list(page_boundaries or [])
         self.prepare_calls = 0
 
+    def load_task_layout_page_boundaries(self, doc_name, document=None):
+        return list(self.page_boundaries)
+
     def prepare_and_load(
         self,
         doc_name: str,
@@ -116,8 +119,14 @@ class _FakePipeline:
 
 
 class _SpyRepository:
-    def __init__(self) -> None:
+    def __init__(self, document=None) -> None:
         self.write_calls = 0
+        self.document = document
+        self.read_calls = 0
+
+    def load_document(self, doc_name):
+        self.read_calls += 1
+        return self.document
 
     def save_document(self, document, doc_name):  # noqa: ANN001
         _ = (document, doc_name)
@@ -177,6 +186,7 @@ class _FakeReadingInteractionOrchestrator:
     def read(
         self,
         request: ReadingInteractionRequest,
+        *, artifact_store=None,
     ) -> ReadingInteractionArtifact:
         self.read_calls.append(request)
         payload: dict[str, object] = {}
@@ -496,7 +506,7 @@ def _build_coordinator(
     quiz_interaction_orchestrator=None,  # noqa: ANN001
     critical_thinking_session_store=None,  # noqa: ANN001
 ) -> tuple[SectionTaskCoordinator, _SpyRepository]:
-    repository = _SpyRepository()
+    repository = _SpyRepository(document)
     coordinator = SectionTaskCoordinator(
         document_preparation_pipeline=_FakePipeline(
             document,
@@ -628,7 +638,8 @@ def test_task_layout_id_then_content_lookup_success() -> None:
         _assert(layout_response.status_code == 200, "task-layout should succeed")
         layout_payload = layout_response.json()
         _assert(
-            layout_payload["parse_provenance"]
+            {key: layout_payload["parse_provenance"][key] for key in (
+                "requested_parser_mode", "effective_parser_mode", "fallback_used", "fallback_reason", "source")}
             == {
                 "requested_parser_mode": "llm_enhanced",
                 "effective_parser_mode": "common",
@@ -853,8 +864,8 @@ def test_batch_task_unit_content_lookup_preserves_order_and_read_only() -> None:
             "batch payload should validate against official schema",
         )
         _assert(
-            getattr(pipeline, "prepare_calls") == 1,
-            "batch content lookup should prepare/load the document once",
+            getattr(pipeline, "prepare_calls") == 0 and repository.read_calls == 1,
+            "batch content lookup loads one snapshot without preparation",
         )
         _assert(repository.write_calls == 0, "batch content lookup must not write persistence")
     finally:
@@ -919,20 +930,16 @@ def test_task_unit_content_auto_projects_block_interaction_availability() -> Non
         _assert(
             availability["critical_thinking"]["interaction_type"]
             == "critical_thinking_session"
-            and availability["critical_thinking"]["status"] == "question_generated"
-            and availability["critical_thinking"]["session_id"]
-            == "critical-thinking-session-1"
-            and availability["critical_thinking"]["updated_at"]
-            == "2026-10-11T12:02:00Z",
-            "critical-thinking availability should be projected from the current session",
+            and availability["critical_thinking"]["status"] == "not_generated"
+            and availability["critical_thinking"]["session_id"] is None,
+            "critical-thinking availability reads the authoritative snapshot, not another store load",
         )
         _assert(
             analysis_orchestrator.read_calls[0].target.content_block_id
             == "task-unit-1:content:0"
             and quiz_orchestrator.read_calls[0].target.content_block_id
             == "task-unit-1:content:0"
-            and critical_thinking_store.current_calls[0].target.content_block_id
-            == "task-unit-1:content:0",
+            and not critical_thinking_store.current_calls,
             "availability projection should read the block target, not the parent task unit",
         )
         _assert(

@@ -52,7 +52,7 @@ class _FakeLLMProvider(LLMProvider):
         return LLMModelCapabilities(
             model_name="fake-model",
             endpoint_kind=ENDPOINT_KIND_RESPONSES,
-            max_input_tokens=64_000,
+            context_window_tokens=64_000,
             max_output_tokens=2_000,
         )
 

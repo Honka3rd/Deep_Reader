@@ -17,7 +17,7 @@ def _capabilities(max_input_tokens: int) -> LLMModelCapabilities:
     return LLMModelCapabilities(
         model_name="test-model",
         endpoint_kind=ENDPOINT_KIND_RESPONSES,
-        max_input_tokens=max_input_tokens,
+        context_window_tokens=max_input_tokens,
         max_output_tokens=256,
     )
 

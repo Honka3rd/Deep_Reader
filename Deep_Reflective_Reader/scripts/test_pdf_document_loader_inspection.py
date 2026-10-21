@@ -142,20 +142,30 @@ def test_native_pdf_text_is_preserved_while_collecting_metrics() -> None:
 
 def test_pdf_page_boundary_evidence_preserves_native_load_contract() -> None:
     extract_calls = 0
+    from pypdf.generic import DictionaryObject, NameObject, RectangleObject
 
     class _Page:
+        cropbox = RectangleObject((0, 0, 100, 100))
+
         def __init__(self, text: str) -> None:
             self._text = text
 
-        def extract_text(self) -> str:
+        def extract_text(self, visitor_text=None) -> str:
             nonlocal extract_calls
             extract_calls += 1
+            if visitor_text:
+                visitor_text(self._text, [1, 0, 0, 1, 0, 0], [1, 0, 0, 1, 10, 50], {}, 12)
             return self._text
 
-        def get(self, key: str) -> dict[str, object]:
+        def get_contents(self):
+            return None
+
+        def get(self, key: str, default=None):
             if key == "/Resources" and self._text:
-                return {"/Font": {"F1": object()}}
-            return {}
+                return DictionaryObject({NameObject("/Font"): DictionaryObject({
+                    NameObject("/F1"): DictionaryObject(),
+                })})
+            return default
 
     class _Reader:
         page_labels = ["i", "1", "2"]
@@ -236,7 +246,7 @@ def test_pdf_page_layout_evidence_includes_source_metadata() -> None:
         def __init__(self, text: str) -> None:
             self._text = text
 
-        def extract_text(self) -> str:
+        def extract_text(self, **kwargs) -> str:
             return self._text
 
     class _Reader:
@@ -324,7 +334,7 @@ def test_real_scanned_pdf_load_requires_ocr() -> None:
     raise AssertionError("scanned PDF load should raise RawTextRequiresOcrError")
 
 
-def test_real_scanned_pdf_can_use_explicit_ocr_fallback() -> None:
+def test_real_scanned_pdf_limit_cannot_publish_partial_text() -> None:
     raw_dir = Path(__file__).resolve().parents[1] / "data" / "raw"
     fixture = raw_dir / "暗水幽灵.pdf"
     if not fixture.exists():
@@ -344,13 +354,17 @@ def test_real_scanned_pdf_can_use_explicit_ocr_fallback() -> None:
         )
         loader._render_page_images = lambda **kwargs: [Path(temp_dir) / "page.png"]
 
-        text = loader.load("暗水幽灵")
-        _assert(text == "OCR fallback text", f"unexpected OCR text: {text!r}")
+        try:
+            loader.load("暗水幽灵")
+        except pdf_loader_module.RawTextOcrFailedError as error:
+            _assert(error.detail == "ocr_page_limit_excludes_required_page", "partial document must fail")
+        else:
+            raise AssertionError("one-page budget cannot publish a 261-page document")
 
 
 def test_ocr_uses_memory_pages_without_file_cache() -> None:
     class _Reader:
-        pages = [object()]
+        pages = [{}]
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -380,19 +394,17 @@ def test_ocr_uses_memory_pages_without_file_cache() -> None:
                 tesseract_cmd=str(fake_tesseract),
                 ocr_language="eng",
                 ocr_page_limit=1,
+                pdf_renderer_cmd=str(fake_tesseract),
             )
             loader._render_page_images = lambda **kwargs: [temp_path / "page.png"]
 
-            first_pages = loader._load_pages_with_ocr(
-                doc_name="sample",
-                file_path=pdf_path,
-                reader=_Reader(),
-            )
-            second_pages = loader._load_pages_with_ocr(
-                doc_name="sample",
-                file_path=pdf_path,
-                reader=_Reader(),
-            )
+            with loader.preparation_scope():
+                first_pages = loader._load_pages_with_ocr(
+                    doc_name="sample", file_path=pdf_path, reader=_Reader(),
+                )
+                second_pages = loader._load_pages_with_ocr(
+                    doc_name="sample", file_path=pdf_path, reader=_Reader(),
+                )
 
             _assert(first_pages == ["Memory OCR text"], "first OCR pass should return recognized text")
             _assert(second_pages == first_pages, "second OCR pass should reuse in-memory OCR pages")
@@ -473,7 +485,7 @@ def test_ocr_candidate_selection_suppresses_rejected_text() -> None:
 
 def test_ocr_quality_gate_rejects_non_empty_garbage_pages() -> None:
     class _Reader:
-        pages = [object(), object(), object()]
+        pages = [{}, {}, {}]
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -506,7 +518,7 @@ def test_ocr_quality_gate_rejects_non_empty_garbage_pages() -> None:
         except RawTextOcrLowQualityError as error:
             _assert(error.doc_name == "國富論lite", "low-quality OCR error should preserve doc_name")
             _assert(
-                (error.detail or "").startswith("document_quality_gate_failed:"),
+                (error.detail or "").startswith("page_quality_gate_failed:"),
                 f"unexpected low-quality detail: {error.detail}",
             )
             return
@@ -549,7 +561,7 @@ if __name__ == "__main__":
     test_pdf_page_layout_evidence_includes_source_metadata()
     test_real_scanned_pdf_inspection_for_dark_water_fixture()
     test_real_scanned_pdf_load_requires_ocr()
-    test_real_scanned_pdf_can_use_explicit_ocr_fallback()
+    test_real_scanned_pdf_limit_cannot_publish_partial_text()
     test_ocr_uses_memory_pages_without_file_cache()
     test_ocr_candidate_selection_does_not_accept_first_non_empty_output()
     test_ocr_candidate_selection_suppresses_rejected_text()

@@ -91,7 +91,7 @@ def test_generates_completed_analysis_from_valid_json() -> None:
         "schema version should be recorded",
     )
     _assert(
-        artifact.metadata["prompt_instruction_version"] == "analysis_prompt_v1",
+        artifact.metadata["prompt_instruction_version"] == "analysis_interaction_prompt_v7",
         "prompt version should be recorded",
     )
     _assert(

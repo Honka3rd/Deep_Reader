@@ -32,7 +32,7 @@ class _FakeLLMProvider(LLMProvider):
         return LLMModelCapabilities(
             model_name="fake-llm",
             endpoint_kind=ENDPOINT_KIND_RESPONSES,
-            max_input_tokens=self._max_input_tokens,
+            context_window_tokens=self._max_input_tokens,
             max_output_tokens=2_000,
         )
 
@@ -164,7 +164,7 @@ def main() -> None:
         llm_provider=_FakeLLMProvider(plan_payload),
         common_splitter=CommonSectionSplitter(),
     )
-    sections = splitter.split(raw_text=raw_text, language=LanguageCode.EN)
+    sections, _ = splitter.split_legacy_with_provenance(raw_text=raw_text, language=LanguageCode.EN)
     _assert(len(sections) >= 6, "expected at least 6 sections from region-aware plan")
 
     role_by_title = {
@@ -209,7 +209,7 @@ def main() -> None:
         llm_provider=_FakeLLMProvider(partial_plan_payload),
         common_splitter=CommonSectionSplitter(),
     )
-    partial_sections = partial_splitter.split(raw_text=raw_text, language=LanguageCode.EN)
+    partial_sections, _ = partial_splitter.split_legacy_with_provenance(raw_text=raw_text, language=LanguageCode.EN)
     _assert(
         len(partial_sections) >= 2,
         "partial plan should still produce usable sections via local augmentation",
@@ -265,7 +265,7 @@ def main() -> None:
         llm_provider=_FakeLLMProvider(bad_toc_plan_payload),
         common_splitter=CommonSectionSplitter(),
     )
-    bad_toc_sections, bad_toc_provenance = bad_toc_splitter.split_with_provenance(
+    bad_toc_sections, bad_toc_provenance = bad_toc_splitter.split_legacy_with_provenance(
         raw_text=bad_toc_raw_text,
         language=LanguageCode.EN,
     )

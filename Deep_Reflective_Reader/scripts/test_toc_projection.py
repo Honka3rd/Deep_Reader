@@ -39,7 +39,8 @@ def main() -> None:
     )
     assert document.parse_provenance["toc_detection"]["usable"]
     assert document.parse_provenance["effective_parser"] == "validated_toc_projection"
-    assert len(document.chapters) == 3
+    assert len(document.chapters) == 4  # Source TOC/prefix is retained separately.
+    assert "".join(s.content for c in document.chapters for s in c.sections) == raw_text
     assert all(chapter.sections for chapter in document.chapters)
 
     untrusted = StructuredDocumentBuilder().build(
@@ -104,8 +105,9 @@ def test_deep_toc_levels_collapse_to_two_layer_hierarchy() -> None:
         for entry in projection_entries
     )
 
-    assert [chapter.title for chapter in document.chapters] == ["1. Intro", "2. End"]
-    intro_sections = document.chapters[0].sections
+    assert [chapter.title for chapter in document.chapters[1:]] == ["1. Intro", "2. End"]
+    assert "".join(s.content for c in document.chapters for s in c.sections) == raw_text
+    intro_sections = document.chapters[1].sections
     assert [section.title for section in intro_sections] == [
         "1. Intro",
         "1.1 Scope",

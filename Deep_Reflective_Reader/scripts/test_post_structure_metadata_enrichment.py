@@ -223,6 +223,7 @@ class _PipelineForEnrichment(DocumentPreparationPipeline):
         force_rebuild: bool,
     ) -> tuple[bool, DocumentProfile | None]:
         _ = (doc_name, raw_text, language, assets, force_rebuild)
+        assets.profile_generated = True
         return True, _profile()
 
     def _prepare_structured_document(
@@ -234,6 +235,8 @@ class _PipelineForEnrichment(DocumentPreparationPipeline):
         assets: PreparedDocumentAssets,
         force_rebuild: bool,
         parser_mode,
+        page_boundaries=None,
+        extraction=None,
     ) -> tuple[bool, str | None]:
         _ = (doc_name, raw_text, language, document_profile, assets, force_rebuild, parser_mode)
         self._structured_path.parent.mkdir(parents=True, exist_ok=True)
