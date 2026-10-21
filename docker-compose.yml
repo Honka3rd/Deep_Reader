@@ -42,6 +42,7 @@ services:
       - deep_reader_postgres_data:/var/lib/postgresql/data
       - ./Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql:/docker-entrypoint-initdb.d/001_phase_1_core_hierarchy.sql:ro
       - ./Deep_Reflective_Reader/db/migrations/002_ocr_runs.sql:/docker-entrypoint-initdb.d/002_ocr_runs.sql:ro
+      - ./Deep_Reflective_Reader/db/migrations/003_interaction_version_guards.sql:/docker-entrypoint-initdb.d/003_interaction_version_guards.sql:ro
     healthcheck:
       test:
         [

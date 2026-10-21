@@ -30,7 +30,12 @@ if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"${DEEP_READER_UI_PORT}" -s
 fi
 
 printf 'Starting PostgreSQL and API with %s...\n' "${ENV_FILE}"
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --build postgres api
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --wait postgres
+printf 'Applying interaction version guards before API startup...\n'
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T postgres \
+  sh -c 'exec psql -v ON_ERROR_STOP=1 --single-transaction -f - -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  < "${ROOT_DIR}/Deep_Reflective_Reader/db/migrations/003_interaction_version_guards.sql"
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --build api
 
 printf '\nBackend services:\n'
 printf '  API:      http://127.0.0.1:%s\n' "${DEEP_READER_API_PORT}"

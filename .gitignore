@@ -19,6 +19,7 @@ venv/
 # Secrets
 .env
 .env.local
+.private-test-books/
 
 # Data / Index / Cache
 data/

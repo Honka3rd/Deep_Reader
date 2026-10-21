@@ -1,5 +1,7 @@
 .git
 .codex
+.private-test-books
+.env.local
 .DS_Store
 **/.DS_Store
 **/__pycache__
