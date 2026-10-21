@@ -155,6 +155,7 @@ class DocumentTaskLayoutSectionDTO:
     task_units: list[TaskUnitDTO]
     artifacts: ArtifactAvailabilityDTO | None = None
     anchor_evidence: AnchorEvidenceDTO | None = None
+    title_origin: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize section layout node into JSON-friendly dictionary."""
@@ -166,6 +167,7 @@ class DocumentTaskLayoutSectionDTO:
             "parent_chapter_id": self.parent_chapter_id,
             "section_kind": self.section_kind,
             "is_implicit_section": self.is_implicit_section,
+            "title_origin": self.title_origin,
             "task_mode": self.task_mode.value,
             "task_units": [task_unit.to_dict() for task_unit in self.task_units],
             "artifacts": (
@@ -275,6 +277,11 @@ class ParseProvenanceDTO:
     fallback_used: bool = False
     fallback_reason: str | None = None
     source: str | None = None
+    toc_hint: str | None = None
+    toc_observation: str | None = None
+    enhancement_intent: str | None = None
+    implicit_single_body: bool | None = None
+    declaration_unconfirmed: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize parser provenance into JSON-friendly dictionary."""
@@ -284,6 +291,11 @@ class ParseProvenanceDTO:
             "fallback_used": self.fallback_used,
             "fallback_reason": self.fallback_reason,
             "source": self.source,
+            "toc_hint": self.toc_hint,
+            "toc_observation": self.toc_observation,
+            "enhancement_intent": self.enhancement_intent,
+            "implicit_single_body": self.implicit_single_body,
+            "declaration_unconfirmed": self.declaration_unconfirmed,
         }
 
 

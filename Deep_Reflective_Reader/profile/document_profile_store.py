@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 
 from profile.document_profile import DocumentProfile
 from config.faiss_storage_config import FaissStorageConfig
@@ -17,8 +18,17 @@ Args:
     config: FaissStorageConfig describing filesystem artifact paths."""
         payload = profile.to_dict()
 
-        with open(config.get_raw_profile_path(), "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+        path = config.get_raw_profile_path()
+        fd, temporary = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".profile-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.remove(temporary)
 
     @staticmethod
     def load(config: FaissStorageConfig) -> DocumentProfile:

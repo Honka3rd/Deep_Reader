@@ -155,7 +155,7 @@ class ReadingInteractionContextBuilder:
             fixed_prompt_instruction
         )
         capability_budget = (
-            model_capabilities.max_input_tokens - instruction_tokens - output_reserve
+            model_capabilities.input_token_limit(output_reserve) - instruction_tokens
         )
         return max(0, min(configured_context_budget, capability_budget))
 

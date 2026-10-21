@@ -1,11 +1,29 @@
 import json
+import logging
 import re
+from time import perf_counter
+from document_structure.plan_prompt_metrics import log_prompt_metrics
+from document_structure.plan_prompt_budget import enforce_prompt_budget, EnhancementPromptBudgetError
+from document_structure.plan_rejection import rejection_diagnostic, EnhancementPlanRejected
+from document_structure.enhancement_resources import EnhancementResourceLimits
+from document_structure.enhancement_capacity import capacity_identity, validate_dispatch_identity
+from document_structure.semantic_plan_provider import SemanticPlanProvider
+from document_structure.semantic_quote_evidence import quote_repair_evidence, semantic_repair_prompt
 
 from config.app_DI_config import (
     LLMSectionPreviewPolicyConfig,
     PromptTextNormalizationConfig,
 )
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
+from document_structure.common_parse_policy import TocHint
+from document_structure.structure_plan_application import apply_candidate
+from document_structure.structure_plan_contract import (
+    EnhancementIntent, TocObservation, StructurePlanCandidate, PROMPT_VERSION,
+)
+from document_structure.semantic_structure_plan import (
+    semantic_source_preview as source_preview, semantic_plan_prompt as plan_prompt,
+    validate_semantic_candidate as validate_candidate,
+)
 from document_structure.section_split_plan import (
     AnchorMatchMode,
     SectionParserMode,
@@ -21,6 +39,7 @@ from language.language_code import LanguageCode
 from llm.llm_provider import LLMProvider
 
 _JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+_LOGGER = logging.getLogger(__name__)
 
 
 class LLMSectionSplitter(AbstractSectionSplitter):
@@ -32,8 +51,10 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         common_splitter: CommonSectionSplitter | None = None,
         prompt_text_normalization: PromptTextNormalizationConfig | None = None,
         preview_policy: LLMSectionPreviewPolicyConfig | None = None,
+        resource_limits: EnhancementResourceLimits | None = None,
     ):
         self.llm_provider = llm_provider
+        self.resource_limits = resource_limits or EnhancementResourceLimits()
         self.common_splitter = common_splitter or CommonSectionSplitter()
         self.prompt_text_normalization = (
             prompt_text_normalization
@@ -69,11 +90,17 @@ class LLMSectionSplitter(AbstractSectionSplitter):
         return sections
 
     def split_with_provenance(
+        self, raw_text: str, language: LanguageCode = LanguageCode.UNKNOWN,
+        **options,
+    ) -> tuple[list[StructuredSection], dict[str, object]]:
+        return self.split_candidate_with_provenance(raw_text=raw_text, language=language, **options)
+
+    def split_legacy_with_provenance(
         self,
         raw_text: str,
         language: LanguageCode = LanguageCode.UNKNOWN,
     ) -> tuple[list[StructuredSection], dict[str, object]]:
-        """Split by LLM plan and return advisory parser provenance."""
+        """Compatibility-only v1 entry, never used by production selection."""
         try:
             plan = self.build_split_plan(raw_text=raw_text, language=language)
             return self.apply_split_plan_with_provenance(
@@ -91,6 +118,138 @@ class LLMSectionSplitter(AbstractSectionSplitter):
                 language=language,
                 reason=f"exception:{type(error).__name__}",
             )
+
+    def build_candidate_plan(
+        self, *, raw_text: str, language: LanguageCode,
+        enhancement_intent: EnhancementIntent | str = EnhancementIntent.RESTORE_SOURCE,
+        toc_hint: TocHint | str = TocHint.AUTO,
+        observed_toc: TocObservation | str = TocObservation.NOT_CHECKED,
+    ) -> StructurePlanCandidate:
+        """NATIVE-04 planning entry; never pass v2 candidates to the legacy applier."""
+        intent, hint = EnhancementIntent(enhancement_intent), TocHint(toc_hint)
+        observation = TocObservation(observed_toc)
+        if language == LanguageCode.UNKNOWN:
+            raise ValueError("unsupported_plan_language")
+        if not raw_text.strip():
+            raise ValueError("empty_plan_source")
+        if self.llm_provider is None:
+            raise ValueError("plan_provider_unavailable")
+        preview, prompt, _budget = self.assemble_candidate_request(
+            raw_text, language, intent, hint, observation)
+        candidate, _ = self._request_validated_candidate(prompt, preview, intent)
+        return candidate
+
+    def _complete_candidate_prompt(self, prompt, correction=None):
+        # Consent binds the original source/configuration; repair adds only the
+        # rejected proposal and validator feedback, with its own capacity gate.
+        provider = SemanticPlanProvider(self.llm_provider)
+        self.resource_limits.check_prompt(prompt + provider.request_schema_text)
+        budget = enforce_prompt_budget(prompt, provider)
+        validate_dispatch_identity(capacity_identity(prompt, budget, self.resource_limits))
+        if correction is not None:
+            prompt = semantic_repair_prompt(correction)
+            self.resource_limits.check_prompt(prompt + provider.request_schema_text)
+            enforce_prompt_budget(prompt, provider)
+            _LOGGER.info("enhancement_repair_prompt_metrics prompt_chars=%d full_source=false evidence_count=%d",
+                len(prompt), len(correction.get("source_evidence_for_correction", [])))
+        else:
+            log_prompt_metrics(prompt, provider)
+        started = perf_counter()
+        try:
+            response = provider.complete_text(prompt)
+        except Exception:
+            _LOGGER.warning("enhancement_model_result outcome=provider_failed duration_ms=%.1f",
+                            (perf_counter() - started) * 1000)
+            raise
+        _LOGGER.info("enhancement_model_result outcome=response_received response_chars=%d duration_ms=%.1f",
+                     len(response), (perf_counter() - started) * 1000)
+        return response
+
+    def _request_validated_candidate(self, prompt, preview, intent, raw_text=None):
+        correction = None
+        for attempt in range(1, 4):
+            response = self._complete_candidate_prompt(prompt, correction)
+            try:
+                candidate = validate_candidate(response, preview=preview, intent=intent)
+                applied = apply_candidate(raw_text, candidate, preview) if raw_text is not None else None
+                _LOGGER.info("enhancement_validation_result attempt=%d outcome=accepted", attempt)
+                return candidate, applied
+            except Exception as error:
+                diagnostic = rejection_diagnostic(error, response)
+                _LOGGER.warning("enhancement_plan_diagnostic attempt=%d %s", attempt, json.dumps(diagnostic))
+                reason = diagnostic["reason"]
+                repairable = (diagnostic["stage"] in {"json", "schema", "quote"}
+                              or reason in {"source_title_not_at_boundary", "generated_boundary_inside_prose"})
+                if not repairable or attempt == 3:
+                    _LOGGER.warning("enhancement_candidate_rejected reason=%s attempts=%d", reason, attempt)
+                    raise EnhancementPlanRejected("enhancement_candidate_rejected:" + reason) from None
+                correction = {"validation": diagnostic, "rejected_proposal": response}
+                evidence = quote_repair_evidence(response, preview, diagnostic)
+                if evidence:
+                    correction["source_evidence_for_correction"] = evidence
+                _LOGGER.info("enhancement_plan_repair next_attempt=%d reason=%s", attempt + 1, reason)
+
+    def assemble_candidate_request(self, raw_text, language, intent, hint, observation):
+        """Read-only full assembly shared by execution and future preflight."""
+        source_bytes = self.resource_limits.check_source(raw_text)
+        preview = source_preview(raw_text, None)
+        cursor = 0
+        for segment in preview["segments"]:
+            if segment["source_start"] != cursor:
+                raise EnhancementPromptBudgetError("incomplete_enhancement_source")
+            cursor = segment["source_end"]
+        if cursor != len(raw_text) or preview["omitted_ranges"] or not preview["full_source"]:
+            raise EnhancementPromptBudgetError("incomplete_enhancement_source")
+        prompt = plan_prompt(
+            preview=preview, language=language.value, intent=intent, toc_hint=hint,
+            observed_toc=observation)
+        prompt_bytes = self.resource_limits.check_prompt(prompt + SemanticPlanProvider(self.llm_provider).request_schema_text)
+        _LOGGER.info("enhancement_full_source source_chars=%d visible_source_chars=%d source_bytes=%d prompt_bytes=%d full_source=true omitted_ranges=0",
+                     len(raw_text), cursor, source_bytes, prompt_bytes)
+        try:
+            budget = enforce_prompt_budget(prompt, SemanticPlanProvider(self.llm_provider))
+        except EnhancementPromptBudgetError as error:
+            error.decision.update(full_source=True, visible_source_chars=cursor)
+            raise
+        return preview, prompt, budget
+
+    def _common_plan_context(self, raw_text, language, hint):
+        sections = self.common_splitter.split(raw_text, language, toc_hint=hint)
+        return [{"char_start": section.char_start, "char_end": section.char_end,
+                 "title": section.title, "level": section.level,
+                 "is_implicit": section.is_implicit_section} for section in sections[:128]]
+
+    def split_candidate_with_provenance(
+        self, *, raw_text: str, language: LanguageCode,
+        enhancement_intent="restore_source", toc_hint="auto", observed_toc="not_checked",
+    ):
+        """Plan and validate against the same request-local preview; fail without fallback."""
+        if language == LanguageCode.UNKNOWN or not raw_text.strip():
+            raise ValueError("invalid_enhancement_source")
+        if self.llm_provider is None:
+            raise ValueError("enhancement_provider_unavailable")
+        intent, hint = EnhancementIntent(enhancement_intent), TocHint(toc_hint)
+        preview, prompt, _budget = self.assemble_candidate_request(
+            raw_text, language, intent, hint, TocObservation(observed_toc))
+        try:
+            candidate, (sections, provenance) = self._request_validated_candidate(prompt, preview, intent, raw_text)
+        except EnhancementPromptBudgetError:
+            raise
+        except EnhancementPlanRejected:
+            raise
+        except Exception as error:
+            from llm.llm_provider import is_transient_provider_error
+            if is_transient_provider_error(error):
+                raise ValueError("enhancement_provider_transient") from None
+            raise ValueError("enhancement_provider_failed") from None
+        provenance["toc_hint"] = hint.value
+        provenance["toc_observation"] = str(observed_toc)
+        _LOGGER.info("enhancement_plan_result outcome=%s proposed_boundaries=%d accepted_sections=%d "
+                     "level1_boundaries=%d generated_titles=%d prompt_version=%s",
+                     candidate.outcome, len(candidate.boundaries), len(sections),
+                     sum(boundary.level == 1 for boundary in candidate.boundaries),
+                     sum(boundary.origin == "generated" for boundary in candidate.boundaries), PROMPT_VERSION)
+        return sections, provenance
 
     def build_split_plan(
         self,
@@ -325,6 +484,9 @@ class LLMSectionSplitter(AbstractSectionSplitter):
             "4) TOC headings must not be misclassified as main_body.\n"
             "5) front_matter/back_matter/appendix must stay out of main_body role.\n"
             "6) Keep section count conservative; avoid over-segmentation.\n"
+            "A newline, short line or keyword alone is not heading evidence. Check context "
+            "and source corroboration; never split word continuations or quoted headings. "
+            "When uncertain, omit the boundary. Regions are optional, not required slots.\n"
             "7) Use stable anchors likely to appear verbatim in raw text.\n"
             "8) If heading text appears in both TOC and body, use anchor_occurrence to target the intended one.\n"
             "9) Output valid JSON only, no markdown or extra commentary.\n\n"

@@ -14,6 +14,10 @@ class DocumentLoaderFactory:
         self.txt_loader = TextDocumentLoader(base_dir=self.base_dir)
         self.pdf_loader = PdfDocumentLoader(base_dir=self.base_dir)
 
+    def preparation_scope(self):
+        """Share PDF evidence only during the caller's preparation lifecycle."""
+        return self.pdf_loader.preparation_scope()
+
     def get(self, doc_name: str):
         # 👉 最簡單判斷（可以之後優化）
         """Return configured value from provider.
@@ -37,5 +41,7 @@ Returns:
         if txt_path.exists() and not pdf_path.exists():
             return self.txt_loader
 
-        # Keep historical default when no explicit extension / both-missing / both-exist.
+        if pdf_path.exists() and txt_path.exists():
+            raise ValueError("source_ambiguous")
+        # Preserve the legacy missing-source error from the TXT loader.
         return self.txt_loader

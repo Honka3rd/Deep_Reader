@@ -43,6 +43,7 @@ class DocumentStructureLanguageRules:
     strong_heading_patterns: tuple[Pattern[str], ...]
     weak_heading_aliases: tuple[str, ...]
     weak_heading_signals: tuple[str, ...]
+    unnumbered_heading_aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,7 @@ def _build_language_rules(
         strong_heading_patterns=tuple(strong_patterns),
         weak_heading_aliases=weak_aliases,
         weak_heading_signals=weak_aliases,
+        unnumbered_heading_aliases=single_aliases,
     )
 
 
@@ -316,6 +318,7 @@ class DocumentStructureLanguageRegistry:
     _ZH_NUMERIC_SECTION_ALIASES = ("章", "节", "節")
     _ZH_STRONG_SINGLE_ALIASES = ("序章", "终章", "終章", "附录", "附錄")
     _ZH_RULES = DocumentStructureLanguageRules(
+        unnumbered_heading_aliases=_ZH_STRONG_SINGLE_ALIASES,
         strong_heading_patterns=(
             re.compile(
                 rf"^\s*第\s*(?:{_CJK_NUMBER})\s*(?:章)(?:[\s:：.\-–—].*)?\s*$"
@@ -353,6 +356,7 @@ class DocumentStructureLanguageRegistry:
     )
 
     _JA_RULES = DocumentStructureLanguageRules(
+        unnumbered_heading_aliases=("序章", "終章", "付録", "附録", "はじめに", "あとがき"),
         strong_heading_patterns=(
             re.compile(
                 rf"^\s*第\s*(?:{_CJK_NUMBER})\s*(?:章|節)(?:[\s:：.\-–—].*)?\s*$"
@@ -364,6 +368,7 @@ class DocumentStructureLanguageRegistry:
     )
 
     _KO_RULES = DocumentStructureLanguageRules(
+        unnumbered_heading_aliases=("프롤로그", "에필로그", "서문", "부록"),
         strong_heading_patterns=(
             re.compile(r"^\s*제\s*(?:\d+)\s*(?:장|절)(?:[\s:：.\-–—].*)?\s*$"),
             _compile_single_heading_pattern(("프롤로그", "에필로그", "서문", "부록")),
@@ -373,6 +378,7 @@ class DocumentStructureLanguageRegistry:
     )
 
     _RU_RULES = DocumentStructureLanguageRules(
+        unnumbered_heading_aliases=("пролог", "эпилог", "введение", "приложение"),
         strong_heading_patterns=(
             _compile_numeric_heading_pattern(("глава", "раздел", "книга"), _ROMAN_OR_DIGIT_NUMBER),
             _compile_single_heading_pattern(("пролог", "эпилог", "введение", "приложение")),
@@ -382,6 +388,7 @@ class DocumentStructureLanguageRegistry:
     )
 
     _UK_RULES = DocumentStructureLanguageRules(
+        unnumbered_heading_aliases=("пролог", "епілог", "вступ", "додаток"),
         strong_heading_patterns=(
             _compile_numeric_heading_pattern(("глава", "розділ", "книга"), _ROMAN_OR_DIGIT_NUMBER),
             _compile_single_heading_pattern(("пролог", "епілог", "вступ", "додаток")),
@@ -391,6 +398,7 @@ class DocumentStructureLanguageRegistry:
     )
 
     _AR_RULES = DocumentStructureLanguageRules(
+        unnumbered_heading_aliases=("مقدمة", "خاتمة", "ملحق"),
         strong_heading_patterns=(
             _compile_numeric_heading_pattern(("الفصل", "القسم", "الكتاب"), _ARABIC_NUMBER),
             _compile_single_heading_pattern(("مقدمة", "خاتمة", "ملحق")),
@@ -400,6 +408,7 @@ class DocumentStructureLanguageRegistry:
     )
 
     _HI_RULES = DocumentStructureLanguageRules(
+        unnumbered_heading_aliases=("प्रस्तावना", "उपसंहार", "परिशिष्ट"),
         strong_heading_patterns=(
             _compile_numeric_heading_pattern(("अध्याय", "भाग", "खंड"), _DEVANAGARI_NUMBER),
             _compile_single_heading_pattern(("प्रस्तावना", "उपसंहार", "परिशिष्ट")),
@@ -409,6 +418,7 @@ class DocumentStructureLanguageRegistry:
     )
 
     _TH_RULES = DocumentStructureLanguageRules(
+        unnumbered_heading_aliases=("บทนำ", "บทส่งท้าย", "ภาคผนวก"),
         strong_heading_patterns=(
             _compile_numeric_heading_pattern(("บทที่", "ภาค", "ตอน"), r"\d+"),
             _compile_single_heading_pattern(("บทนำ", "บทส่งท้าย", "ภาคผนวก")),

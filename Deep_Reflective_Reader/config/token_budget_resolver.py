@@ -20,6 +20,7 @@ class EffectiveTokenBudgets:
     capability_endpoint_kind: str | None
     capability_max_input_tokens: int | None
     capability_max_output_tokens: int | None
+    capability_context_window_tokens: int | None = None
 
 
 def resolve_effective_token_budgets(
@@ -56,7 +57,9 @@ def resolve_effective_token_budgets(
     else:
         model_based_input_budget = max(
             1,
-            math.floor(capabilities.max_input_tokens * input_budget_utilization_ratio),
+            math.floor(capabilities.combined_token_limit(
+                min(target_max_output_tokens, capabilities.max_output_tokens)
+            ) * input_budget_utilization_ratio),
         )
         effective_input_budget = min(target_max_input_tokens, model_based_input_budget)
         effective_output_budget = min(target_max_output_tokens, capabilities.max_output_tokens)
@@ -85,4 +88,5 @@ def resolve_effective_token_budgets(
         capability_endpoint_kind=capability_endpoint_kind,
         capability_max_input_tokens=capability_max_input_tokens,
         capability_max_output_tokens=capability_max_output_tokens,
+        capability_context_window_tokens=(capabilities.context_window_tokens if capabilities else None),
     )

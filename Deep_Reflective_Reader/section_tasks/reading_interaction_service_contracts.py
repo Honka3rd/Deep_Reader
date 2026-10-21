@@ -11,7 +11,7 @@ from section_tasks.reading_target_resolver import ResolvedReadingTarget
 
 
 READING_INTERACTION_TYPES = frozenset(
-    {"analysis", "quiz", "critical_thinking_session"}
+    {"analysis", "quiz", "critical_thinking_session", "summary", "note"}
 )
 READING_INTERACTION_STATUSES = frozenset(
     {

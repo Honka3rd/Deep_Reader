@@ -1,4 +1,7 @@
 import re
+from dataclasses import replace
+from document_structure.common_parse_policy import TocHint, common_analysis_view
+from document_structure.heading_acceptance import filter_common_sections
 
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
 from document_structure.document_structure_language_registry import (
@@ -80,6 +83,46 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         self,
         raw_text: str,
         language: LanguageCode = LanguageCode.UNKNOWN,
+        *, toc_hint: TocHint | str = TocHint.AUTO,
+    ) -> list[StructuredSection]:
+        """Parse an analysis view, but publish only complete canonical source slices."""
+        hint = TocHint(toc_hint)
+        self._validate_language(language)
+        try:
+            view = common_analysis_view(raw_text)
+        except ValueError:
+            return [self._single_fallback_section(raw_text)]
+        parsed = self._split_analysis(view.text, language, toc_hint=hint)
+        parsed = filter_common_sections(view.text, parsed, normalize_line=lambda line:
+            self.heading_normalizer.normalize(heading=line, language=language),
+            heading_kind=lambda title: self._heading_kind(title, language))
+        result = []
+        cursor = 0
+        for section in parsed:
+            if section.char_start == section.char_end:
+                continue
+            span = view.source_range(section.char_start, section.char_end)
+            if span.start < cursor:
+                return [self._single_fallback_section(raw_text)]
+            if raw_text[cursor:span.start].strip():
+                result.append(self._build_section(
+                    section_index=len(result), title=None, raw_text=raw_text,
+                    char_start=cursor, char_end=span.start, level=1,
+                    section_role=self._SECTION_ROLE_MAIN_BODY))
+                cursor = span.start
+            result.append(replace(section, char_start=cursor, char_end=span.end,
+                                  content=raw_text[cursor:span.end]))
+            cursor = span.end
+        if not result:
+            return [self._single_fallback_section(raw_text)]
+        result[-1] = replace(result[-1], char_end=len(raw_text),
+                             content=raw_text[result[-1].char_start:])
+        return [replace(section, section_id=f"section-{index}", section_index=index)
+                for index, section in enumerate(result)]
+
+    def _split_analysis(
+        self, raw_text: str, language: LanguageCode,
+        *, toc_hint: TocHint = TocHint.AUTO,
     ) -> list[StructuredSection]:
         """Split raw text into flat structured sections with char ranges.
 
@@ -100,6 +143,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             raw_text=raw_text,
             line_infos=lines,
             language=language,
+            search_toc=toc_hint != TocHint.ABSENT,
         )
         body_lines = [info for info in lines if info.char_start >= main_body_start]
         if not body_lines:
@@ -173,6 +217,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         raw_text: str,
         line_infos: list[LineInfo],
         language: LanguageCode,
+        search_toc: bool = True,
     ) -> int:
         """Find conservative main-body start offset to avoid TOC/front-matter pollution."""
         if not raw_text:
@@ -194,8 +239,8 @@ class CommonSectionSplitter(AbstractSectionSplitter):
             line_infos=line_infos,
             early_char_limit=early_char_limit,
             markers=toc_markers,
-        )
-        if toc_marker_index is not None:
+        ) if search_toc else None
+        if search_toc and toc_marker_index is not None:
             toc_body_start = self._find_body_start_after_toc(
                 line_infos=line_infos,
                 toc_marker_index=toc_marker_index,
@@ -941,7 +986,6 @@ class CommonSectionSplitter(AbstractSectionSplitter):
         language: LanguageCode,
     ) -> list[HeadingCandidate]:
         """Detect strong headings from language-registry regex patterns."""
-        patterns = self.language_registry.get_strong_heading_patterns(language)
         part_hints = self.language_registry.get_part_heading_hints(language)
         chapter_hints = self.language_registry.get_chapter_heading_hints(language)
         candidates: list[HeadingCandidate] = []
@@ -952,14 +996,7 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                 info.stripped,
                 language,
             )
-            if (
-                any(
-                    pattern.match(info.stripped) or pattern.match(normalized_heading)
-                    for pattern in patterns
-                )
-                or self._is_region_marker_heading(info.stripped, language)
-                or self._is_region_marker_heading(normalized_heading, language)
-            ):
+            if self._heading_kind(info.stripped, language) is not None:
                 candidates.append(
                     HeadingCandidate(
                         title=normalized_heading.strip() or info.stripped,
@@ -972,6 +1009,24 @@ class CommonSectionSplitter(AbstractSectionSplitter):
                     )
                 )
         return candidates
+
+    def _heading_kind(self, title: str, language: LanguageCode) -> str | None:
+        """Share registry evidence between candidate detection and final validation."""
+        normalized = self._normalize_heading_with_plugins(title, language)
+        if (self._is_region_marker_heading(title, language)
+                or self._is_region_marker_heading(normalized, language)):
+            return "region"
+        patterns = self.language_registry.get_strong_heading_patterns(language)
+        if self._is_strong_heading(title, patterns, language):
+            aliases = self.language_registry.get_rules(language).unnumbered_heading_aliases
+            for alias in aliases:
+                alias = self._normalize_heading_with_plugins(alias, language).casefold()
+                if normalized.casefold() == alias:
+                    return "region"
+                if normalized.casefold().startswith(alias):
+                    return "weak"
+            return "strong"
+        return None
 
     def _infer_heading_level(
         self,

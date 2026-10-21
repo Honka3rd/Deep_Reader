@@ -13,6 +13,11 @@ def reading_interaction_artifact_to_common_artifact(
     source_hash: str | None = None,
 ) -> CommonArtifact:
     """Map a reading interaction result onto the single common artifact entity."""
+    if source_structure_version is None:
+        policy = artifact.metadata.get("interaction_policy")
+        value = policy.get("source_structure_version") if isinstance(policy, dict) else None
+        if type(value) is int and value > 0:
+            source_structure_version = value
     return CommonArtifact(
         artifact_id=artifact_id,
         artifact_type=artifact.interaction_type,

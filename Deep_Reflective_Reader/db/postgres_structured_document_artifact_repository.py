@@ -16,9 +16,43 @@ class PostgresStructuredDocumentArtifactRepository(StructuredDocumentArtifactRep
         super().__init__(store=store)
         self.store = store
 
+    def delete_document(self, doc_name: str) -> bool:
+        """Delete current structured data using the store's namespace policy."""
+        return self.store.delete(self.store.target_for_doc_name(doc_name))
+
+    def mutate_document_artifacts(self, doc_name, mutation):
+        return self.store.mutate_document_artifacts(
+            self.store.target_for_doc_name(doc_name), mutation)
+
+    def mutate_reading_content(self, doc_name, mutation):
+        return self.store.mutate_reading_content(self.store.target_for_doc_name(doc_name),mutation)
+
+    def rename_document(self, doc_name, new_name, transform):
+        return self.store.rename_document(self.store.target_for_doc_name(doc_name), new_name, transform)
+
     def load_document(self, doc_name: str) -> StructuredDocument:
         """Load structured document by logical doc name from PostgreSQL."""
         return self.store.load(self.store.target_for_doc_name(doc_name))
+
+    def load_enhancement_snapshot(self, doc_name: str):
+        return self.store.load_enhancement_snapshot(self.store.target_for_doc_name(doc_name))
+
+    def enhancement_lease(self, doc_name: str):
+        return self.store.enhancement_lease(self.store.target_for_doc_name(doc_name))
+
+    def enhancement_guards_available(self):
+        return self.store.enhancement_guards_available()
+
+    def profile_structure_invalidated(self, doc_name):
+        return self.store.profile_structure_invalidated(self.store.target_for_doc_name(doc_name))
+
+    def commit_enhancement(self, doc_name: str, *, candidate, interaction_revision, source_path):
+        return self.store.commit_enhancement(self.store.target_for_doc_name(doc_name),
+            candidate=candidate, interaction_revision=interaction_revision, source_path=source_path)
+
+    def backfill_txt_extraction(self, doc_name, *, result, source_path):
+        return self.store.backfill_txt_extraction(self.store.target_for_doc_name(doc_name),
+            result=result, source_path=source_path)
 
     def list_documents(
         self,

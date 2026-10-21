@@ -3,8 +3,20 @@ from abc import ABC, abstractmethod
 from llm.llm_model_capabilities import LLMModelCapabilities
 
 
+def is_transient_provider_error(error: Exception) -> bool:
+    """Classify transport/status evidence without exposing provider messages."""
+    from httpx import TransportError
+    from openai import APIConnectionError
+    return (isinstance(error, (TimeoutError, ConnectionError, TransportError, APIConnectionError))
+            or getattr(error, "status_code", None) in {408, 429, 500, 502, 503, 504})
+
+
 class LLMProvider(ABC):
     """Abstract interface for text completion backends."""
+
+    def count_input_tokens(self, text: str) -> int | None:
+        """Optional local count; None requests conservative budgeting fallback."""
+        return None
 
     @abstractmethod
     def complete_text(self, prompt: str) -> str:
@@ -59,7 +71,8 @@ Returns:
             )
             return text[:fallback_chars]
 
-        available_prompt_tokens = int(capability.max_input_tokens) - int(prompt_overhead_tokens)
+        output_reserve = getattr(self, "effective_output_budget", capability.max_output_tokens)
+        available_prompt_tokens = capability.input_token_limit(output_reserve) - prompt_overhead_tokens
         if available_prompt_tokens <= 0:
             return text[:fallback_chars]
 

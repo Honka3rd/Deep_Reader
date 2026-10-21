@@ -168,7 +168,7 @@ class ContextOrchestrator:
                 effective_input_budget = max(
                     1,
                     math.floor(
-                        capabilities.max_input_tokens
+                        capabilities.combined_token_limit(capabilities.max_output_tokens)
                         * self.full_text_input_budget_utilization_ratio
                     ),
                 )

@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from section_tasks.interaction_source_sufficiency import InsufficientPrimarySource, check_source_abstention
+
 from collections.abc import Callable
 import json
 from typing import Any
+from section_tasks.interaction_policy_identity import policy_metadata
 
+from section_tasks.interaction_output_language import (
+    request_language, session_language, validate_output_language,
+)
 from section_tasks.artifact_validity import (
     ReadingInteractionTargetValidity,
     ReadingInteractionValidityPolicy,
@@ -122,6 +128,13 @@ class CriticalThinkingSessionService:
                 CRITICAL_THINKING_QUESTION_INSTRUCTION,
             )
             payload = self._parse_and_validate_question(raw_output)
+            validate_output_language(payload, request_language(generation_request))
+        except InsufficientPrimarySource as error:
+            return self._artifact_from_request(
+                request=generation_request,
+                status="insufficient_content",
+                reason=str(error),
+            )
         except ValueError as error:
             return self._artifact_from_request(
                 request=generation_request,
@@ -211,6 +224,7 @@ class CriticalThinkingSessionService:
                 CRITICAL_THINKING_EVALUATION_INSTRUCTION,
             )
             evaluation = self._parse_and_validate_evaluation(raw_output)
+            validate_output_language(evaluation, session_language(session))
         except ValueError as error:
             return self._artifact_from_session(
                 session=session,
@@ -290,8 +304,11 @@ class CriticalThinkingSessionService:
             "question_instruction": CRITICAL_THINKING_QUESTION_INSTRUCTION,
             "evaluation_instruction": CRITICAL_THINKING_EVALUATION_INSTRUCTION,
         }
-        if prompt_instruction_version is not None:
-            metadata["prompt_instruction_version"] = prompt_instruction_version
+        metadata.update(policy_metadata(request))
+        context_metadata = dict(context_metadata)
+        effective_language = request_language(request)
+        if effective_language is not None:
+            context_metadata["document_language"] = effective_language
         if context_metadata:
             metadata["context"] = dict(context_metadata)
             artifact_reference = build_artifact_reference_metadata(context_metadata)
@@ -375,6 +392,7 @@ class CriticalThinkingSessionService:
             raw_output,
             output_name="critical-thinking question",
         )
+        check_source_abstention(parsed_output)
         question = parsed_output.get("question")
         if not isinstance(question, str) or not question.strip():
             raise ValueError("critical-thinking output missing non-empty question")

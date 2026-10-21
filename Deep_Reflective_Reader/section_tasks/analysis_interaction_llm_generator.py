@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from llm.llm_provider import LLMProvider
+from section_tasks.interaction_source_sufficiency import SOURCE_SUFFICIENCY_INSTRUCTION
+from section_tasks.interaction_output_language import language_instruction, request_language
 from section_tasks.reading_interaction_service_contracts import (
     ReadingInteractionRequest,
 )
@@ -9,7 +11,7 @@ from section_tasks.reading_interaction_prompt_context import (
 )
 
 
-ANALYSIS_INTERACTION_PROMPT_VERSION = "analysis_interaction_prompt_v5"
+ANALYSIS_INTERACTION_PROMPT_VERSION = "analysis_interaction_prompt_v7"
 
 
 class AnalysisInteractionLLMGenerator:
@@ -43,6 +45,8 @@ class AnalysisInteractionLLMGenerator:
             "Return only a strict JSON object with non-empty string fields: "
             "summary, reasoning, explanation.\n"
             "Do not include markdown, code fences, citations, or extra keys.\n\n"
+            f"{SOURCE_SUFFICIENCY_INSTRUCTION}\n"
             f"{context_text}\n"
+            f"{language_instruction(request_language(request))}"
         )
         return self._llm_provider.complete_text(prompt)

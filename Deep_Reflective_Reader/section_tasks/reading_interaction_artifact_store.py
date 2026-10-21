@@ -36,6 +36,16 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
 
     _METADATA_KEY = "reading_interaction_artifacts"
 
+    @classmethod
+    def from_snapshot(cls, document, doc_name: str):
+        """Request-local reader: reuse one authoritative snapshot, never write."""
+        class SnapshotReader:
+            def load_document(self, requested_name):
+                if requested_name != doc_name:
+                    raise ValueError("snapshot document mismatch")
+                return document
+        return cls(SnapshotReader())
+
     def __init__(
         self,
         document_artifact_repository: DocumentArtifactRepository,
@@ -228,23 +238,22 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
             artifact_id=artifact_id,
         )
         doc_name = self._doc_name_from_artifact(artifact)
-        document = self._document_artifact_repository.load_document(doc_name)
-        document_artifacts = document.document_task_artifacts or DocumentTaskArtifacts()
-        document_metadata = dict(document_artifacts.metadata)
-        interaction_metadata = self._read_interaction_metadata(document_metadata)
-        artifact_type_payload = dict(
-            interaction_metadata.get(artifact.interaction_type, {})
-        )
-        artifact_type_payload[common_artifact.artifact_id or ""] = (
-            common_artifact.to_dict()
-        )
-        interaction_metadata[artifact.interaction_type] = artifact_type_payload
-        document_metadata[self._METADATA_KEY] = interaction_metadata
-
-        self._document_artifact_repository.update_document_artifacts(
-            doc_name=doc_name,
-            artifacts=replace(document_artifacts, metadata=document_metadata),
-        )
+        def mutation(document):
+            version = common_artifact.source_structure_version
+            if version is not None and document.parse_provenance.get("storage_structure_version") != version:
+                raise ValueError("stale_interaction_write")
+            revision = document.parse_provenance.get("reading_content",{}).get("revision",0)
+            if artifact.metadata.get("interaction_policy",{}).get("reading_revision",0) != revision:
+                raise ValueError("stale_interaction_write")
+            document_artifacts = document.document_task_artifacts or DocumentTaskArtifacts()
+            document_metadata = dict(document_artifacts.metadata)
+            interaction_metadata = self._read_interaction_metadata(document_metadata)
+            artifact_type_payload = dict(interaction_metadata.get(artifact.interaction_type, {}))
+            artifact_type_payload[common_artifact.artifact_id or ""] = common_artifact.to_dict()
+            interaction_metadata[artifact.interaction_type] = artifact_type_payload
+            document_metadata[self._METADATA_KEY] = interaction_metadata
+            return replace(document_artifacts, metadata=document_metadata), None
+        self._document_artifact_repository.mutate_document_artifacts(doc_name, mutation)
 
     def _get_current_common_artifact(
         self,
@@ -441,17 +450,22 @@ class DocumentAncestorSummaryArtifactStore(AncestorSummaryReader):
             metadata=dict(summary.metadata),
         )
         doc_name = self._doc_name_from_requirement(requirement)
-        document = self._document_artifact_repository.load_document(doc_name)
-        document_artifacts = document.document_task_artifacts or DocumentTaskArtifacts()
-        document_metadata = dict(document_artifacts.metadata)
-        summary_metadata = self._read_summary_metadata(document_metadata)
-        summary_metadata[artifact_id] = summary_to_save.to_dict()
-        document_metadata[self._METADATA_KEY] = summary_metadata
-
-        self._document_artifact_repository.update_document_artifacts(
-            doc_name=doc_name,
-            artifacts=replace(document_artifacts, metadata=document_metadata),
-        )
+        def mutation(document):
+            from section_tasks.reading_target_resolver import ReadingTargetResolver
+            import hashlib
+            target = requirement.target
+            current = ReadingTargetResolver().resolve(document=document, target_level=target.target_level,
+                chapter_id=target.chapter_id, section_id=target.section_id, task_unit_id=target.task_unit_id)
+            content_hash = hashlib.sha256(current.content.encode("utf-8")).hexdigest()
+            if current.source_needs_review or (current.reading_revision and content_hash != requirement.source_hash):
+                raise ValueError("stale_ancestor_summary_write")
+            document_artifacts = document.document_task_artifacts or DocumentTaskArtifacts()
+            document_metadata = dict(document_artifacts.metadata)
+            summary_metadata = self._read_summary_metadata(document_metadata)
+            summary_metadata[artifact_id] = summary_to_save.to_dict()
+            document_metadata[self._METADATA_KEY] = summary_metadata
+            return replace(document_artifacts, metadata=document_metadata), None
+        self._document_artifact_repository.mutate_document_artifacts(doc_name, mutation)
         return summary_to_save
 
     @classmethod

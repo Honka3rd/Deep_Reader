@@ -1,14 +1,18 @@
 import os
+import fcntl
+from contextlib import contextmanager, ExitStack
 import tempfile
 from collections.abc import Callable
 from dataclasses import replace
 import json
+from uuid import uuid4
 from pathlib import Path
 
 from config.storage_namespace_helper import StorageNamespaceHelper
 from document_structure.document_artifact_repository import (
     DocumentArtifactRepository,
     DocumentListItem,
+    preserve_explicit_annotations,
 )
 from document_structure.document_hierarchy_index import (
     build_section_index_from_chapters,
@@ -64,16 +68,81 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             searchable = " ".join(part for part in [doc_name, title] if part).casefold()
             if normalized_query and normalized_query not in searchable:
                 continue
+            try:
+                provenance = json.loads(path.read_text()).get("parse_provenance",{})
+                review_required = any(not provenance.get("reading_content",{}).get("regions",{}).get(r["id"])
+                    for r in provenance.get("source_review",{}).get("regions",[]))
+            except (ValueError,OSError,TypeError,KeyError,AttributeError):
+                review_required = False
             candidates.append(
                 DocumentListItem(
                     doc_name=doc_name,
                     title=title,
                     source="structured_file",
+                    review_required=review_required,
                 )
             )
             if len(candidates) >= bounded_limit:
                 break
         return candidates
+
+    def delete_document(self, doc_name: str) -> bool:
+        """Delete the structured artifact without requiring valid hierarchy content."""
+        with self._artifact_lock(doc_name):
+            try:
+                self._resolve_document_path(doc_name).unlink()
+            except FileNotFoundError:
+                return False
+            return True
+
+    @contextmanager
+    def _artifact_lock(self, doc_name):
+        path = self._resolve_document_path(doc_name).with_suffix(".lock")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+    def mutate_document_artifacts(self, doc_name, mutation):
+        with self._artifact_lock(doc_name):
+            document = self._load_document_for_write(doc_name)
+            artifacts, result = mutation(document)
+            if artifacts != document.document_task_artifacts:
+                self._atomic_save(replace(document, document_task_artifacts=artifacts),
+                                  self._resolve_document_path(doc_name))
+            return result
+
+    def mutate_reading_content(self, doc_name, mutation):
+        with self._artifact_lock(doc_name):
+            document = self._load_document_for_write(doc_name)
+            updated,result = mutation(document)
+            if updated != document:
+                chapters = [replace(c,task_artifacts=None,sections=[replace(s,task_artifacts=None,
+                    task_units=[replace(u,task_artifacts=None) for u in s.task_units]) for s in c.sections]) for c in updated.chapters]
+                self._atomic_save(replace(updated,chapters=chapters),self._resolve_document_path(doc_name))
+            return result
+
+    def rename_document(self, doc_name, new_name, transform):
+        with ExitStack() as stack:
+            for name in sorted({doc_name, new_name}):
+                stack.enter_context(self._artifact_lock(name))
+            destination = self._resolve_document_path(new_name)
+            if destination.exists():
+                raise ValueError("conflict")
+            original = self._resolve_document_path(doc_name)
+            if not original.exists():
+                return False
+            document = transform(self.load_document(doc_name), new_name)
+            self._atomic_save(document, destination)
+            try:
+                original.unlink()
+            except OSError:
+                destination.unlink()
+                raise
+            return True
 
     def load_document(self, doc_name: str) -> StructuredDocument:
         """Load structured document by logical doc name."""
@@ -104,7 +173,13 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         """Persist structured document with atomic write."""
         resolved_doc_name = doc_name or document.document_id
         path = self._resolve_document_path(resolved_doc_name)
-        self._atomic_save(document=document, path=path)
+        with self._artifact_lock(resolved_doc_name):
+            if path.exists():
+                document = preserve_explicit_annotations(self.load_document(resolved_doc_name), document)
+            else:
+                document = replace(document, parse_provenance={**document.parse_provenance,
+                                   "interaction_epoch": uuid4().hex})
+            self._atomic_save(document=document, path=path)
 
     def save_reparsed_document(
         self,
@@ -113,7 +188,11 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> None:
         """Persist a parser-level replacement after clearing derived artifacts."""
         cleaned_document = self.cleanup_reparsed_document_derived_artifacts(document)
-        self.save_document(cleaned_document, doc_name=doc_name)
+        cleaned_document = replace(cleaned_document, parse_provenance={
+            **cleaned_document.parse_provenance, "interaction_epoch": uuid4().hex})
+        resolved_doc_name = doc_name or document.document_id
+        with self._artifact_lock(resolved_doc_name):
+            self._atomic_save(cleaned_document, self._resolve_document_path(resolved_doc_name))
 
     def update_section_artifacts(
         self,
@@ -498,6 +577,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             sections=[],
             chapters=cleaned_chapters,
             document_task_artifacts=None,
+            parse_provenance={k:v for k,v in document.parse_provenance.items() if k not in {"reading_content","reading_projected"}},
         )
 
     @classmethod

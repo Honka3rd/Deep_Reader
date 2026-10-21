@@ -83,13 +83,12 @@ Args:
         self._evict_if_needed()
 
     def clear_artifacts(self, config: FaissStorageConfig, doc_name: str) -> None:
-        """Remove persisted artifacts and cached bundle for a document.
+        """Remove index artifacts and cached bundle, preserving the document profile.
 
 Args:
     config: FaissStorageConfig describing filesystem artifact paths.
     doc_name: Logical document name and artifact namespace (without extension)."""
         self.store.clear(config)
-        self.profile_store.clear(config)
         self.fingerprint_handler.clear(config.get_raw_meta_path())
         self.invalidate(doc_name)
 
@@ -99,7 +98,7 @@ Args:
         raw_text: str,
         document_language: str,
     ) -> DocumentProfile:
-        """Ensure document profile exists and rebuild when missing/corrupted.
+        """Reuse the persisted profile; runtime bundles cannot generate profiles.
 
 Args:
     config: FaissStorageConfig describing filesystem artifact paths.
@@ -107,28 +106,13 @@ Args:
     document_language: Primary document language code (e.g. en/zh).
 
 Returns:
-    Loaded or newly generated document profile for the target document."""
-        if self.profile_store.exists(config):
-            try:
-                print(
-                    f"BundleFactory#ensure_profile_ready: loading existing profile for {config.get_doc_name()}"
-                )
-                return self.profile_store.load(config)
-            except Exception as e:
-                print(
-                    f"BundleFactory#ensure_profile_ready: profile load failed, rebuilding. error={e}"
-                )
-                self.profile_store.clear(config)
-
-        print(
-            f"BundleFactory#ensure_profile_ready: building new profile for {config.get_doc_name()}"
-        )
-        profile = self.profile_builder.build(
-            text=raw_text,
-            document_language=document_language,
-        )
-        self.profile_store.save(profile, config)
-        return profile
+    Loaded profile for the target document."""
+        if not self.profile_store.exists(config):
+            raise RuntimeError("profile_not_ready: explicit initial preparation or reparse required")
+        try:
+            return self.profile_store.load(config)
+        except Exception as error:
+            raise RuntimeError("profile_unreadable: explicit reparse required") from error
 
     def ensure_index_ready(self, config: FaissStorageConfig, raw_text: str) -> FaissIndexBundle:
         """Ensure index artifacts are reusable; rebuild when needed.

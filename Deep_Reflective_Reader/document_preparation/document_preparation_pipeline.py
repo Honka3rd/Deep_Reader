@@ -1,6 +1,11 @@
 from pathlib import Path
 from dataclasses import dataclass, field
 import hashlib
+import json
+import logging
+from contextlib import nullcontext
+
+from logging_config import log_stage
 
 from bundle_provider import BundleProvider
 from config.faiss_storage_config import FaissStorageConfig
@@ -11,6 +16,9 @@ from doc_loaders.document_load_errors import (
     RawTextRequiresOcrError,
 )
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
+from doc_loaders.pdf_extraction_contract import (
+    PdfExtractionMode,
+)
 from doc_loaders.pdf_page_evidence import (
     PdfPageBoundaryEvidenceResult,
     PdfPageLayoutEvidence,
@@ -19,9 +27,11 @@ from doc_loaders.pdf_page_evidence import (
 from doc_loaders.pdf_outline import PdfOutlineResult
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from document_structure.structured_document_store import StructuredDocumentStore
+from document_structure.structured_document import StructuredDocument
 from document_structure.section_splitter_selector import SectionSplitterMode
 from document_structure.text_normalization import normalize_ocr_text
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
+from doc_loaders.extraction_identity import extraction_matches, read_extraction_record
 from document_preparation.preparation_mode import PreparationMode
 from document_preparation.prepared_document_result import PreparedDocumentResult
 from fingerprint_handler import FingerprintHandler
@@ -34,6 +44,9 @@ from profile.post_structure_metadata_enricher import PostStructureMetadataEnrich
 from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
 from retrieval.node_provider import NodeProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -51,6 +64,35 @@ class ManualStructureSourceEvidence:
 
 class DocumentPreparationPipeline:
     """First-round preparation pipeline contract for one document."""
+
+    def inspect_enhancement_capacity(self, *, snapshot, toc_hint="auto", enhancement_intent="restore_source"):
+        """Use the exact planner without extraction, model generation or storage writes."""
+        from document_structure.enhancement_capacity import capacity_identity, capacity_projection
+        from document_structure.plan_prompt_budget import EnhancementPromptBudgetError
+        from document_structure.common_parse_policy import TocHint
+        from document_structure.structure_plan_contract import EnhancementIntent, TocObservation
+        try:
+            splitter, observed = self.structured_document_builder.enhancement_request_context(
+                snapshot.canonical_text, TocHint(toc_hint))
+            preview, prompt, budget = splitter.assemble_candidate_request(
+                snapshot.canonical_text, LanguageCode(snapshot.language), EnhancementIntent(enhancement_intent),
+                TocHint(toc_hint), TocObservation(observed))
+        except EnhancementPromptBudgetError as error:
+            return {"capacity": capacity_projection(error.decision, reason=str(error),
+                                                     source_chars=snapshot.text_length), "fingerprint": None}
+        fingerprint = capacity_identity(prompt, budget, splitter.resource_limits)
+        return {"capacity": capacity_projection({**budget, "full_source": True,
+                    "visible_source_chars": preview["source_length"]}, source_chars=snapshot.text_length),
+                "fingerprint": fingerprint}
+
+    def build_enhancement_candidate(self, *, snapshot, toc_hint="auto",
+                                    enhancement_intent="restore_source"):
+        """Internal in-memory build; deliberately bypass all prepare/load stages."""
+        from document_preparation.structure_enhancement_candidate import build_structure_enhancement_candidate
+        return build_structure_enhancement_candidate(
+            snapshot=snapshot, builder=self.structured_document_builder,
+            toc_hint=toc_hint, enhancement_intent=enhancement_intent,
+        )
 
     def __init__(
         self,
@@ -83,12 +125,42 @@ class DocumentPreparationPipeline:
             post_structure_enricher or PostStructureMetadataEnricher()
         )
 
+    @log_stage(logger, "prepare_pipeline")
     def prepare(
         self,
         doc_name: str,
         force_rebuild: bool = False,
         mode: PreparationMode | str = PreparationMode.FREE_QA,
         structured_parser_mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
+        *,
+        pdf_extraction_mode: PdfExtractionMode | str | None = None,
+        toc_hint: str | None = None,
+        enhancement_intent: str = "restore_source",
+    ) -> PreparedDocumentAssets:
+        """Bound loader evidence/budgets to one preparation, including lazy layout."""
+        from document_structure.common_parse_policy import TocHint
+        from document_structure.structure_plan_contract import EnhancementIntent, validate_enhancement_intent
+        intent = validate_enhancement_intent(SectionSplitterMode.resolve(structured_parser_mode).value, enhancement_intent)
+        hint_options = {"toc_hint": TocHint(toc_hint)} if toc_hint is not None else {}
+        if intent != EnhancementIntent.RESTORE_SOURCE:
+            hint_options["enhancement_intent"] = intent.value
+        scope = getattr(self.loader_factory, "preparation_scope", nullcontext)
+        with scope():
+            loader = self.loader_factory.get(doc_name)
+            open_source = getattr(loader, "open_source", None)
+            with log_stage(logger, "source_capture"):
+                session = open_source(doc_name, mode=pdf_extraction_mode) if callable(open_source) else None
+            assets = self._prepare_in_scope(doc_name, force_rebuild, mode, structured_parser_mode,
+                source_session=session, **hint_options)
+        return assets
+
+    def _prepare_in_scope(
+        self,
+        doc_name: str,
+        force_rebuild: bool,
+        mode: PreparationMode | str,
+        structured_parser_mode: SectionSplitterMode | str,
+        *, source_session=None, toc_hint=None, enhancement_intent="restore_source",
     ) -> PreparedDocumentAssets:
         """Prepare a document in fixed order and return asset readiness snapshot.
 
@@ -101,6 +173,9 @@ class DocumentPreparationPipeline:
         """
         preparation_mode = PreparationMode.resolve(mode)
         parser_mode = SectionSplitterMode.resolve(structured_parser_mode)
+        logger.info("prepare_started doc_name=%s mode=%s parser_mode=%s force_rebuild=%s storage=%s",
+                    json.dumps(doc_name, ensure_ascii=False), preparation_mode.value,
+                    parser_mode.value, force_rebuild, type(self.structured_document_store).__name__)
         assets = PreparedDocumentAssets(
             doc_name=doc_name,
             raw_text=None,
@@ -112,7 +187,12 @@ class DocumentPreparationPipeline:
             structured_document_path=None,
             faiss_namespace=None,
             errors=[],
+            requested_toc_hint=toc_hint,
+            enhancement_intent=enhancement_intent,
         )
+        assets.source_session = source_session
+        if source_session is not None:
+            assets.apply_extraction_status(source_session.compatibility_status("pending"))
 
         if (
             preparation_mode == PreparationMode.BASE
@@ -123,13 +203,25 @@ class DocumentPreparationPipeline:
                 parser_mode=parser_mode,
             )
         ):
+            self._log_preparation_result(assets, reused=True)
             return assets
 
+        assets.profile_creation_allowed = force_rebuild or not self.structured_document_store.exists(
+            StructuredDocumentStorageConfig(namespace=doc_name))
+
         # Step 1. Load canonical raw text.
-        raw_text = self._load_raw_text(
-            doc_name=doc_name,
-            assets=assets,
-        )
+        extraction = None
+        if source_session is None:
+            raw_text, page_boundaries = self._load_raw_source(doc_name=doc_name, assets=assets)
+        else:
+            with log_stage(logger, "source_extract", extractor=source_session.identity.extractor_id):
+                extraction = source_session.extract()
+            raw_text = extraction.result.canonical_text
+            page_boundaries = list(extraction.page_boundaries)
+            if page_boundaries and self._validate_manual_structure_page_boundaries(boundaries=page_boundaries, raw_text=raw_text):
+                raise ValueError("Invalid extracted text/page evidence")
+            assets.extraction_result = extraction.result
+            assets.apply_extraction_status(source_session.compatibility_status("applied"))
         assets.raw_text = raw_text
 
         # Step 2. Detect document language.
@@ -140,13 +232,11 @@ class DocumentPreparationPipeline:
         )
 
         # Step 3. Prepare profile artifact.
-        assets.profile_ready, prepared_profile = self._prepare_profile(
-            doc_name=doc_name,
-            raw_text=assets.raw_text,
-            language=assets.language,
-            assets=assets,
-            force_rebuild=force_rebuild,
-        )
+        prepared_profile = None
+        if parser_mode != SectionSplitterMode.LLM_ENHANCED:
+            assets.profile_ready, prepared_profile = self._prepare_profile(
+                doc_name=doc_name, raw_text=assets.raw_text, language=assets.language,
+                assets=assets, force_rebuild=force_rebuild)
 
         # Step 4. Prepare structured document artifact.
         (
@@ -160,11 +250,22 @@ class DocumentPreparationPipeline:
             assets=assets,
             force_rebuild=force_rebuild,
             parser_mode=parser_mode,
+            page_boundaries=page_boundaries,
+            extraction=extraction,
         )
+
+        if parser_mode == SectionSplitterMode.LLM_ENHANCED:
+            if not assets.structured_document_ready:
+                self._log_preparation_result(assets)
+                return assets
+            assets.profile_ready, prepared_profile = self._prepare_profile(
+                doc_name=doc_name, raw_text=assets.raw_text, language=assets.language,
+                assets=assets, force_rebuild=force_rebuild)
 
         # Step 4.5 Enrich profile with hierarchy-grounded structured metadata.
         if (
             assets.profile_ready
+            and assets.profile_generated
             and prepared_profile is not None
             and assets.structured_document_ready
             and assets.structured_document_path is not None
@@ -179,6 +280,7 @@ class DocumentPreparationPipeline:
                 prepared_profile = enriched_profile
 
         if preparation_mode == PreparationMode.BASE:
+            self._log_preparation_result(assets)
             return assets
 
         # Step 5. Prepare FAISS artifacts.
@@ -197,7 +299,19 @@ class DocumentPreparationPipeline:
             force_rebuild=force_rebuild,
         )
 
+        self._log_preparation_result(assets)
         return assets
+
+    @staticmethod
+    def _log_preparation_result(assets: PreparedDocumentAssets, reused: bool = False) -> None:
+        logger.info(
+            "prepare_result doc_name=%s structured_reused=%s raw_chars=%s language=%s "
+            "structured_ready=%s profile_ready=%s faiss_ready=%s bundle_ready=%s error_codes=%s",
+            json.dumps(assets.doc_name, ensure_ascii=False), reused, len(assets.raw_text or ""),
+            assets.language, assets.structured_document_ready, assets.profile_ready,
+            assets.faiss_ready, assets.bundle_ready,
+            json.dumps([error.split(":", 1)[0] for error in assets.errors]),
+        )
 
     def prepare_and_load(
         self,
@@ -205,6 +319,8 @@ class DocumentPreparationPipeline:
         force_rebuild: bool = False,
         mode: PreparationMode | str = PreparationMode.FREE_QA,
         structured_parser_mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
+        *, toc_hint: str | None = None, enhancement_intent: str = "restore_source",
+        pdf_extraction_mode: PdfExtractionMode | str | None = None,
     ) -> PreparedDocumentResult:
         """Prepare document artifacts, then load reusable runtime artifacts."""
         preparation_mode = PreparationMode.resolve(mode)
@@ -213,6 +329,9 @@ class DocumentPreparationPipeline:
             force_rebuild=force_rebuild,
             mode=preparation_mode,
             structured_parser_mode=structured_parser_mode,
+            **({"pdf_extraction_mode": pdf_extraction_mode} if pdf_extraction_mode is not None else {}),
+            **({"toc_hint": toc_hint} if toc_hint is not None else {}),
+            **({"enhancement_intent": enhancement_intent} if enhancement_intent != "restore_source" else {}),
         )
 
         structured_document = None
@@ -221,9 +340,10 @@ class DocumentPreparationPipeline:
                 if self.structured_document_store.exists(
                     assets.structured_document_path
                 ):
-                    structured_document = self.structured_document_store.load(
-                        assets.structured_document_path
-                    )
+                    with log_stage(logger, "structured_runtime_read"):
+                        structured_document = self.structured_document_store.load(
+                            assets.structured_document_path
+                        )
                 else:
                     assets.errors.append(
                         "prepare_and_load_structured_missing:"
@@ -256,10 +376,67 @@ class DocumentPreparationPipeline:
             bundle=bundle,
         )
 
+    def load_task_layout_page_boundaries(
+        self, doc_name: str, *, document: StructuredDocument,
+    ) -> list[PdfPageTextBoundary]:
+        """Read proven persisted spans for this exact projection snapshot; never extract."""
+        with log_stage(logger, "task_layout.persisted_page_evidence") as timing:
+            timing["outcome"] = "unavailable"
+            try:
+                identity, record = read_extraction_record(document.parse_provenance)
+                if not extraction_matches(document.parse_provenance, identity, document.raw_text):
+                    timing["reason"] = "text_identity_mismatch"
+                    return []
+                loader = self.loader_factory.get(doc_name)
+                if not callable(getattr(loader, "source_path", None)):
+                    timing["reason"] = "source_verification_unavailable"
+                    return []
+                source_path = loader.source_path(doc_name)
+                from document_preparation.accepted_source_snapshot import source_file_sha256
+                if source_file_sha256(source_path) != identity.source_sha256:
+                    timing["reason"] = "source_changed"
+                    return []
+                spans = document.parse_provenance.get("source_page_spans", document.parse_provenance.get("pdf_page_spans"))
+                if not isinstance(spans, list) or not spans:
+                    timing["reason"] = "missing_spans"
+                    return []
+                boundaries = []
+                for span in spans:
+                    if not isinstance(span, dict) or any(
+                        type(span.get(key)) is not int
+                        for key in ("page_index", "char_start", "char_end")
+                    ):
+                        raise ValueError("invalid span fields")
+                    label = span.get("page_label")
+                    if label is not None and not isinstance(label, str):
+                        raise ValueError("invalid page label")
+                    boundaries.append(PdfPageTextBoundary(
+                        page_index=span["page_index"], char_start=span["char_start"],
+                        char_end=span["char_end"], page_label=label,
+                        text=document.raw_text[span["char_start"]:span["char_end"]],
+                        source_sha256=identity.source_sha256,
+                    ))
+                if self._validate_manual_structure_page_boundaries(
+                    boundaries=boundaries, raw_text=document.raw_text,
+                ):
+                    timing["reason"] = "invalid_spans"
+                    return []
+                timing.update(outcome="reused", page_count=len(boundaries))
+                return boundaries
+            except (OSError, ValueError, TypeError, KeyError) as error:
+                timing.update(reason="invalid_or_unavailable_evidence", error_type=type(error).__name__)
+                return []
+
     def load_manual_structure_source_evidence(
         self,
         doc_name: str,
     ) -> ManualStructureSourceEvidence:
+        """Share bounded source evidence within one explicit manual read."""
+        scope = getattr(self.loader_factory, "preparation_scope", nullcontext)
+        with scope():
+            return self._load_manual_source_in_scope(doc_name)
+
+    def _load_manual_source_in_scope(self, doc_name: str) -> ManualStructureSourceEvidence:
         """Load source evidence for explicit manual-structure reparse.
 
         This is a read-only handoff for app-layer manual reparse orchestration. It
@@ -271,6 +448,31 @@ class DocumentPreparationPipeline:
             raise ValueError("doc_name cannot be empty")
 
         loader = self.loader_factory.get(normalized_doc_name)
+        if callable(getattr(loader, "source_path", None)):
+            config = StructuredDocumentStorageConfig(namespace=normalized_doc_name)
+            if self.structured_document_store.exists(config):
+                document = self.structured_document_store.load(config)
+                if "extraction" in document.parse_provenance or "pdf_extraction" in document.parse_provenance:
+                    identity, record = read_extraction_record(document.parse_provenance)
+                    from document_preparation.accepted_source_snapshot import source_file_sha256
+                    if not extraction_matches(document.parse_provenance, identity, document.raw_text) or source_file_sha256(loader.source_path(normalized_doc_name)) != identity.source_sha256:
+                        raise ValueError("Prepared source changed; explicit preparation is required.")
+                    spans = document.parse_provenance.get("source_page_spans", document.parse_provenance.get("pdf_page_spans", []))
+                    if not isinstance(spans, list) or (not spans and getattr(loader, "supports_page_boundaries", False)):
+                        raise ValueError("Prepared page evidence is unavailable; prepare explicitly.")
+                    boundaries = [PdfPageTextBoundary(
+                        **span, text=document.raw_text[span["char_start"]:span["char_end"]],
+                        source_sha256=identity.source_sha256,
+                    ) for span in spans]
+                    error = self._validate_manual_structure_page_boundaries(boundaries=boundaries, raw_text=document.raw_text) if boundaries else None
+                    if error:
+                        raise ValueError(f"Prepared PDF page evidence is invalid: {error}")
+                    return ManualStructureSourceEvidence(
+                        doc_name=normalized_doc_name, source_identity=normalized_doc_name,
+                        raw_text=document.raw_text,
+                        source_hash=hashlib.sha256(document.raw_text.encode("utf-8")).hexdigest(),
+                        language=document.language, page_boundaries=boundaries,
+                    )
         raw_text = loader.load(normalized_doc_name)
         if raw_text is None or not raw_text.strip():
             raise ValueError(
@@ -381,42 +583,52 @@ class DocumentPreparationPipeline:
             previous_end = boundary.char_end
         return None
 
-    def _load_raw_text(
+    @log_stage(logger, "raw_load")
+    def _load_raw_source(
         self,
         doc_name: str,
         assets: PreparedDocumentAssets,
-    ) -> str | None:
-        """Load canonical raw text through document loader factory."""
+    ) -> tuple[str | None, list[PdfPageTextBoundary] | None]:
+        """Load text and optional same-pass page spans without shared mutable state."""
         try:
             loader = self.loader_factory.get(doc_name)
-            raw_text = loader.load(doc_name)
+            logger.info("raw_loader_selected doc_name=%s loader=%s",
+                        json.dumps(doc_name, ensure_ascii=False), type(loader).__name__)
+            load_with_boundaries = getattr(loader, "load_with_page_boundary_evidence", None)
+            if callable(load_with_boundaries):
+                raw_text, evidence = load_with_boundaries(doc_name)
+                page_boundaries = list(evidence.boundaries)
+            else:
+                raw_text = loader.load(doc_name)
+                page_boundaries = None
             if not raw_text:
                 assets.errors.append(
                     f"load_raw_text_empty:{doc_name}"
                 )
-                return None
-            return raw_text
+                return None, None
+            return raw_text, page_boundaries
         except RawTextRequiresOcrError:
             assets.errors.append(
                 f"load_raw_text_requires_ocr:{doc_name}"
             )
-            return None
+            return None, None
         except RawTextOcrFailedError as error:
             assets.errors.append(
                 f"load_raw_text_ocr_failed:{doc_name}:{error.detail or 'unknown'}"
             )
-            return None
+            return None, None
         except RawTextOcrLowQualityError as error:
             assets.errors.append(
                 f"load_raw_text_ocr_low_quality:{doc_name}:{error.detail or 'unknown'}"
             )
-            return None
+            return None, None
         except Exception as error:
             assets.errors.append(
                 f"load_raw_text_failed:{doc_name}:{error}"
             )
-            return None
+            return None, None
 
+    @log_stage(logger, "language_detect")
     def _detect_language(
         self,
         doc_name: str,
@@ -440,6 +652,7 @@ class DocumentPreparationPipeline:
             assets.errors.append(f"detect_language_failed:{error}")
             return None
 
+    @log_stage(logger, "structured_prepare")
     def _prepare_structured_document(
         self,
         doc_name: str,
@@ -449,6 +662,8 @@ class DocumentPreparationPipeline:
         assets: PreparedDocumentAssets,
         force_rebuild: bool,
         parser_mode: SectionSplitterMode,
+        page_boundaries: list[PdfPageTextBoundary] | None = None,
+        extraction=None,
     ) -> tuple[bool, str | None]:
         """Build and persist structured document artifact."""
         if raw_text is None or not raw_text.strip():
@@ -481,19 +696,39 @@ class DocumentPreparationPipeline:
             ):
                 return True, structured_document_path
 
-            page_evidence = self._load_page_layout_evidence(doc_name)
-            page_boundaries = self._load_page_text_boundaries(doc_name)
-            outline = self._load_outline(doc_name)
-            structured_document = self.structured_document_builder.build(
-                document_id=doc_name,
-                title=doc_name,
-                raw_text=raw_text,
-                language=language_code,
-                parser_mode=parser_mode,
-                page_evidence=page_evidence,
-                page_boundaries=page_boundaries,
-                outline=outline,
-            )
+            if page_boundaries is None:
+                page_boundaries = self._load_page_text_boundaries(doc_name)
+            if extraction is None:
+                outline = self._load_outline(doc_name)
+            else:
+                try:
+                    outline = extraction.outline_provider() if extraction.outline_provider else None
+                except Exception:
+                    outline = None
+            def layout_provider():
+                if extraction is None:
+                    return self._load_page_layout_evidence(doc_name)
+                try:
+                    return extraction.layout_provider() if extraction.layout_provider else None
+                except Exception as error:
+                    logger.warning("source_optional_layout_failed error_type=%s", type(error).__name__)
+                    return None
+            with log_stage(logger, "structured_build", raw_chars=len(raw_text), parser_mode=parser_mode.value) as timing:
+                structured_document = self.structured_document_builder.build(
+                    document_id=doc_name,
+                    title=doc_name,
+                    raw_text=raw_text,
+                    language=language_code,
+                    parser_mode=parser_mode,
+                    page_evidence_provider=layout_provider,
+                    page_boundaries=page_boundaries,
+                    outline=outline,
+                    **({"toc_hint": assets.requested_toc_hint} if assets.requested_toc_hint is not None else {}),
+                    **({"enhancement_intent": assets.enhancement_intent} if assets.enhancement_intent != "restore_source" else {}),
+                )
+                timing["chapter_count"] = len(structured_document.chapters)
+                timing["section_count"] = sum(len(chapter.sections) for chapter in structured_document.chapters)
+                timing["structure_error_code"] = structured_document.structure_error_code
             if (
                 parser_mode == SectionSplitterMode.LLM_ENHANCED
                 and structured_document.structure_error_code is not None
@@ -504,6 +739,21 @@ class DocumentPreparationPipeline:
                 )
                 return False, None
 
+            if assets.source_session is not None and assets.extraction_result is None:
+                raise ValueError("Unproven extraction cannot be persisted")
+            if assets.extraction_result is not None:
+                result = assets.extraction_result
+                if structured_document.raw_text != result.canonical_text:
+                    raise ValueError("Extraction text changed before structured save")
+                assets.source_session.verify_source()
+                if extraction is not None:
+                    structured_document.parse_provenance.update(extraction.storage_metadata)
+                    if extraction.page_boundaries:
+                        structured_document.parse_provenance["source_page_spans"] = [
+                            {"page_index": b.page_index, "char_start": b.char_start,
+                             "char_end": b.char_end, "page_label": b.page_label}
+                            for b in extraction.page_boundaries]
+                structured_document.parse_provenance["extraction"] = result.record()
             self._save_structured_document_atomically(
                 document=structured_document,
                 storage_config=storage_config,
@@ -512,12 +762,14 @@ class DocumentPreparationPipeline:
                 doc_name=doc_name,
                 raw_text=raw_text,
                 assets=assets,
+                extraction=extraction,
             )
             return True, structured_document_path
         except Exception as error:
             assets.errors.append(f"prepare_structured_document_failed:{error}")
             return False, None
 
+    @log_stage(logger, "structured_cache_check")
     def _try_reuse_existing_structured_document(
         self,
         *,
@@ -530,6 +782,7 @@ class DocumentPreparationPipeline:
     ) -> bool:
         """Reuse a valid structured document before any expensive raw load work."""
         if force_rebuild or parser_mode == SectionSplitterMode.LLM_ENHANCED:
+            logger.info("structured_cache outcome=bypass force_rebuild=%s parser_mode=%s", force_rebuild, parser_mode.value)
             return False
 
         try:
@@ -540,9 +793,39 @@ class DocumentPreparationPipeline:
                 resolved_storage_config
             )
             if not self.structured_document_store.exists(resolved_storage_config):
+                logger.info("structured_cache outcome=miss")
                 return False
-            self.structured_document_store.load(resolved_storage_config)
+            with log_stage(logger, "structured_cache_read"):
+                document = self.structured_document_store.load(resolved_storage_config)
+            if assets.requested_toc_hint is not None:
+                from document_structure.common_parse_policy import COMMON_POLICY_VERSION
+                policy = document.parse_provenance.get("common_parse_policy", {})
+                if (policy.get("version") != COMMON_POLICY_VERSION
+                        or policy.get("toc_hint") != assets.requested_toc_hint
+                        or policy.get("parser_mode") != parser_mode.value
+                        or policy.get("enhancement_intent") != assets.enhancement_intent):
+                    logger.info("structured_cache outcome=miss reason=common_policy_mismatch")
+                    return False
+            session = assets.source_session
+            if session is not None:
+                canonical_text = document.raw_text
+                if not canonical_text:
+                    from document_preparation.accepted_source_snapshot import resolve_accepted_source_snapshot
+                    snapshot = resolve_accepted_source_snapshot(
+                        document=document, namespace=doc_name,
+                        expected_document_id=document.document_id,
+                        structure_version=document.parse_provenance.get("storage_structure_version"),
+                        source_path=session.source_path,
+                        accepted=True,
+                    )
+                    canonical_text = snapshot.canonical_text
+                if not extraction_matches(document.parse_provenance, session.identity, canonical_text):
+                    logger.info("structured_cache outcome=miss reason=extraction_identity_mismatch")
+                    return False
+                session.verify_source()
+                assets.apply_extraction_status(session.compatibility_status("reused"))
         except Exception as reuse_error:
+            logger.warning("structured_cache outcome=reload_failed error_type=%s", type(reuse_error).__name__)
             assets.errors.append(
                 f"prepare_structured_document_reload_failed:{doc_name}:{reuse_error}"
             )
@@ -550,31 +833,36 @@ class DocumentPreparationPipeline:
 
         assets.structured_document_ready = True
         assets.structured_document_path = resolved_path
+        logger.info("structured_cache outcome=hit")
         return True
 
+    @log_stage(logger, "ocr_persist")
     def _persist_ocr_run(
         self,
         *,
         doc_name: str,
         raw_text: str,
         assets: PreparedDocumentAssets,
+        extraction=None,
     ) -> None:
         """Persist OCR provenance after the document row exists; never controls parsing."""
         loader = self.loader_factory.get(doc_name)
-        provenance = getattr(loader, "last_ocr_provenance", None)
+        diagnostic = extraction.ocr_run if extraction is not None else None
+        provenance = diagnostic.get("provenance") if diagnostic else (getattr(loader, "last_ocr_provenance", None) if extraction is None else None)
         save_ocr_run = getattr(self.structured_document_store, "save_ocr_run", None)
-        if not isinstance(provenance, dict) or not callable(save_ocr_run):
+        if not isinstance(provenance, dict) or not provenance or not callable(save_ocr_run):
             return
         try:
             save_ocr_run(
                 doc_name=doc_name,
                 provenance=provenance,
                 full_text=raw_text,
-                pages=getattr(loader, "last_ocr_pages", None),
+                pages=diagnostic.get("pages") if diagnostic else getattr(loader, "last_ocr_pages", None),
             )
         except Exception as error:
             assets.errors.append(f"persist_ocr_run_failed:{doc_name}:{error}")
 
+    @log_stage(logger, "pdf_layout_evidence")
     def _load_page_layout_evidence(
         self,
         doc_name: str,
@@ -586,10 +874,12 @@ class DocumentPreparationPipeline:
             if load_evidence is None:
                 return None
             return load_evidence(doc_name, candidate_page_limit=30)
-        except Exception:
+        except Exception as error:
             # Layout analysis is enrichment; raw text preparation remains usable.
+            logger.warning("pdf_layout_evidence outcome=unavailable error_type=%s", type(error).__name__)
             return None
 
+    @log_stage(logger, "pdf_page_boundaries")
     def _load_page_text_boundaries(
         self,
         doc_name: str,
@@ -604,6 +894,7 @@ class DocumentPreparationPipeline:
         except Exception:
             return None
 
+    @log_stage(logger, "pdf_outline")
     def _load_outline(self, doc_name: str) -> PdfOutlineResult | None:
         """Load native PDF outline evidence before visual TOC analysis."""
         try:
@@ -615,6 +906,7 @@ class DocumentPreparationPipeline:
         except Exception:
             return None
 
+    @log_stage(logger, "profile_enrich")
     def _enrich_profile_with_structured_document(
         self,
         *,
@@ -670,10 +962,13 @@ class DocumentPreparationPipeline:
         storage_config: StructuredDocumentStorageConfig,
     ) -> None:
         """Atomically replace structured artifact to prevent half-written corruption."""
-        self.structured_document_store.save(document=document, target=storage_config)
+        with log_stage(logger, "structured_save", storage=type(self.structured_document_store).__name__):
+            self.structured_document_store.save(document=document, target=storage_config)
         # Read-back validation before reporting structured readiness.
-        self.structured_document_store.load(storage_config)
+        with log_stage(logger, "structured_readback"):
+            self.structured_document_store.load(storage_config)
 
+    @log_stage(logger, "faiss_prepare")
     def _prepare_faiss(
         self,
         doc_name: str,
@@ -682,6 +977,7 @@ class DocumentPreparationPipeline:
         force_rebuild: bool,
     ) -> tuple[bool, str | None]:
         """Prepare FAISS index artifacts using canonical raw text."""
+        force_rebuild = force_rebuild or assets.extraction_result is not None
         if raw_text is None or not raw_text.strip():
             assets.errors.append("prepare_faiss_skipped:missing_raw_text")
             return False, None
@@ -701,21 +997,40 @@ class DocumentPreparationPipeline:
                 and has_position_metadata
                 and fingerprint_matched
             ):
+                logger.info("faiss_cache outcome=hit")
                 return True, namespace
 
             self.faiss_index_store.clear(config)
             self.fingerprint_handler.clear(config.get_raw_meta_path())
 
-            parsed_document = self.node_provider.parse(raw_text, config)
-            bundle = self.faiss_index_builder.build_from_parsed_document(parsed_document)
-            self.faiss_index_store.save(bundle, config)
+            logger.info("faiss_cache outcome=rebuild force_rebuild=%s", force_rebuild)
+            with log_stage(logger, "retrieval_parse"):
+                parsed_document = self.node_provider.parse(raw_text, config)
+            with log_stage(logger, "faiss_build"):
+                bundle = self.faiss_index_builder.build_from_parsed_document(parsed_document)
+            with log_stage(logger, "faiss_save"):
+                self.faiss_index_store.save(bundle, config)
             self.fingerprint_handler.save(raw_text, config.get_raw_meta_path())
             return True, namespace
         except Exception as error:
             assets.errors.append(f"prepare_faiss_failed:{doc_name}:{error}")
             return False, None
 
+    @log_stage(logger, "profile_prepare")
     def _prepare_profile(
+        self, doc_name, raw_text, language, assets, force_rebuild,
+    ) -> tuple[bool, DocumentProfile | None]:
+        # Serialize initial profile creation across workers; recheck inside the lock.
+        import fcntl
+        config = FaissStorageConfig(namespace=doc_name)
+        with open(Path(config.get_raw_profile_path()).with_suffix(".lock"), "a") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                return self._prepare_profile_locked(doc_name, raw_text, language, assets, force_rebuild)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    def _prepare_profile_locked(
         self,
         doc_name: str,
         raw_text: str | None,
@@ -724,45 +1039,48 @@ class DocumentPreparationPipeline:
         force_rebuild: bool,
     ) -> tuple[bool, DocumentProfile | None]:
         """Prepare profile artifact using canonical raw text and detected language."""
-        if raw_text is None or not raw_text.strip():
-            assets.errors.append("prepare_profile_skipped:missing_raw_text")
-            return False, None
-        if language is None or not language.strip():
-            assets.errors.append("prepare_profile_skipped:missing_language")
-            return False, None
-
         config = FaissStorageConfig(namespace=doc_name)
 
         try:
             if self.profile_store.exists(config) and not force_rebuild:
+                logger.info("profile_cache outcome=hit")
                 print(
                     "DocumentPreparationPipeline#profile_cache_hit",
                     f"doc={doc_name}",
                 )
                 try:
-                    profile = self.profile_store.load(config)
+                    with log_stage(logger, "profile_load"):
+                        profile = self.profile_store.load(config)
                     return True, profile
                 except Exception as load_error:
                     assets.errors.append(
                         f"prepare_profile_reload_failed:{doc_name}:{load_error}"
                     )
-                    self.profile_store.clear(config)
-            elif self.profile_store.exists(config) and force_rebuild:
-                print(
-                    "DocumentPreparationPipeline#profile_force_rebuild_clear",
-                    f"doc={doc_name}",
-                )
-                self.profile_store.clear(config)
+                    return False, None
+
+            if not (assets.profile_creation_allowed or force_rebuild):
+                assets.errors.append("profile_not_ready:explicit_reparse_required")
+                return False, None
+            if not raw_text or not raw_text.strip():
+                assets.errors.append("prepare_profile_skipped:missing_raw_text")
+                return False, None
+            if not language or not language.strip():
+                assets.errors.append("prepare_profile_skipped:missing_language")
+                return False, None
 
             print(
                 "DocumentPreparationPipeline#profile_build_start",
                 f"doc={doc_name}",
             )
-            profile = self.profile_builder.build(
-                text=raw_text,
-                document_language=language.strip().lower(),
-            )
-            self.profile_store.save(profile, config)
+            logger.info("profile_cache outcome=rebuild force_rebuild=%s", force_rebuild)
+            with log_stage(logger, "profile_generate", raw_chars=len(raw_text), language=language.strip().lower()):
+                profile = self.profile_builder.build(
+                    text=raw_text,
+                    document_language=language.strip().lower(),
+                )
+            with log_stage(logger, "profile_save"):
+                self.profile_store.save(profile, config)
+            assets.profile_generated = True
             print(
                 "DocumentPreparationPipeline#profile_build_success",
                 f"doc={doc_name}",
@@ -779,6 +1097,7 @@ class DocumentPreparationPipeline:
             assets.errors.append(f"prepare_profile_failed:{doc_name}:{error}")
             return False, None
 
+    @log_stage(logger, "bundle_prepare")
     def _prepare_bundle(
         self,
         doc_name: str,
@@ -787,6 +1106,7 @@ class DocumentPreparationPipeline:
         force_rebuild: bool,
     ) -> bool:
         """Validate runtime bundle readiness through the existing bundle provider path."""
+        force_rebuild = force_rebuild or assets.extraction_result is not None
         if raw_text is None or not raw_text.strip():
             assets.errors.append("prepare_bundle_skipped:missing_raw_text")
             return False

@@ -11,6 +11,12 @@ class ReparseDocumentStructureResult:
     structured_document_path: str | None
     error: str | None
     section_count: int | None = None
+    structure_version: int | None = None
+    change_kind: str | None = None
+    committed: bool | None = None
+    interactions_cleared: bool | None = None
+    reading_layout_required: bool | None = None
+    retryable: bool = False
 
     @classmethod
     def ok(
@@ -20,6 +26,8 @@ class ReparseDocumentStructureResult:
         parser_mode: str,
         structured_document_path: str | None,
         section_count: int | None = None,
+        structure_version: int | None = None,
+        change_kind: str | None = None,
     ) -> "ReparseDocumentStructureResult":
         """Build success reparse result."""
         return cls(
@@ -29,6 +37,11 @@ class ReparseDocumentStructureResult:
             structured_document_path=structured_document_path,
             error=None,
             section_count=section_count,
+            structure_version=structure_version,
+            change_kind=change_kind,
+            committed=None if change_kind is None else change_kind != "unchanged",
+            interactions_cleared=None if change_kind is None else change_kind == "structure_changed",
+            reading_layout_required=None if change_kind is None else change_kind == "structure_changed",
         )
 
     @classmethod
@@ -39,6 +52,7 @@ class ReparseDocumentStructureResult:
         parser_mode: str,
         error: str,
         structured_document_path: str | None = None,
+        retryable: bool = False,
     ) -> "ReparseDocumentStructureResult":
         """Build failure reparse result with explicit reason."""
         normalized_error = error.strip() or "reparse_document_structure_failed"
@@ -49,4 +63,5 @@ class ReparseDocumentStructureResult:
             structured_document_path=structured_document_path,
             error=normalized_error,
             section_count=None,
+            retryable=retryable,
         )

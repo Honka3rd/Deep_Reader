@@ -1,8 +1,13 @@
 import hashlib
+import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
+from logging_config import log_stage
+from section_tasks.interaction_policy_identity import server_request, stale_projection
+from app.task_layout_readiness import TaskLayoutNotReadyError
 from config.faiss_storage_config import FaissStorageConfig
 from doc_loaders.document_load_errors import (
     RawTextOcrFailedError,
@@ -16,6 +21,7 @@ from document_preparation.document_preparation_pipeline import (
 )
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.document_artifact_repository import DocumentArtifactRepository
+from section_tasks.reading_interaction_artifact_store import DocumentReadingInteractionArtifactStore
 from document_structure.document_hierarchy_index import (
     find_chapter_by_id_effective,
     find_chapters_by_title_effective,
@@ -432,6 +438,7 @@ class SectionTaskCoordinator:
         quiz_interaction_orchestrator: _ReadingInteractionOrchestrator | None = None,
         critical_thinking_session_service: _CriticalThinkingSessionService | None = None,
         critical_thinking_session_store: _CriticalThinkingSessionStore | None = None,
+        summary_interaction_service=None,
     ):
         self.document_preparation_pipeline = document_preparation_pipeline
         self.document_artifact_repository = document_artifact_repository
@@ -447,6 +454,56 @@ class SectionTaskCoordinator:
         self.quiz_interaction_orchestrator = quiz_interaction_orchestrator
         self.critical_thinking_session_service = critical_thinking_session_service
         self.critical_thinking_session_store = critical_thinking_session_store
+        self.summary_interaction_service = summary_interaction_service
+
+    def _summary_operation(self, operation, **kwargs):
+        if self.summary_interaction_service is None:
+            raise ValueError("summary service is not configured")
+        doc_name = kwargs.pop("doc_name").strip()
+        refresh = kwargs.pop("refresh", False)
+        document = self.document_artifact_repository.load_document(doc_name)
+        version = document.parse_provenance.get("storage_structure_version")
+        supplied = kwargs.get("source_structure_version")
+        if supplied is not None and supplied != version:
+            raise ValueError("stale_structure_version")
+        target = replace(self.reading_target_resolver.resolve(document=document, **kwargs),
+                         source_structure_version=version)
+        request = ReadingInteractionRequest(target=target, interaction_type="summary", refresh=refresh,
+            context_metadata={"doc_name": doc_name,
+                "document_language": self._resolve_reading_interaction_language(doc_name=doc_name, target=target)})
+        profile = self._load_existing_document_profile(doc_name)
+        if profile is not None:
+            request = replace(request, context_metadata={**request.context_metadata,
+                              "document_profile_summary": profile.summary})
+        artifact = getattr(self.summary_interaction_service, operation)(request)
+        return self._build_reading_interaction_response(request=request, artifact=artifact)
+
+    def read_summary_artifact(self, **kwargs):
+        return self._summary_operation("read", **kwargs)
+
+    def generate_summary_artifact(self, **kwargs):
+        return self._summary_operation("generate", **kwargs)
+
+    def refresh_summary_artifact(self, **kwargs):
+        return self._summary_operation("generate", refresh=True, **kwargs)
+
+    def _note_operation(self, operation, *, doc_name, **kwargs):
+        from section_tasks.note_interaction_service import NoteInteractionService
+        service = NoteInteractionService(self.document_artifact_repository)
+        result = getattr(service, operation)(doc_name, **kwargs)
+        result["target"] = vars(self._build_reading_interaction_target_dto(
+            doc_name=doc_name, target=result["target"]))
+        result["target"]["target_type"] = result["target"].pop("target_level")
+        return result
+
+    def read_note(self, **kwargs):
+        return self._note_operation("read", **kwargs)
+
+    def save_note(self, **kwargs):
+        return self._note_operation("save", **kwargs)
+
+    def delete_note(self, **kwargs):
+        return self._note_operation("delete", **kwargs)
 
     def resolve_reading_target(
         self,
@@ -465,18 +522,13 @@ class SectionTaskCoordinator:
         if not normalized_doc_name:
             raise ValueError("doc_name cannot be empty")
 
-        preparation_result = self.document_preparation_pipeline.prepare_and_load(
-            doc_name=normalized_doc_name,
-            mode=PreparationMode.BASE,
-        )
-        structured_document = preparation_result.structured_document
-        if structured_document is None:
-            detail = " | ".join(preparation_result.assets.errors)
-            raise ValueError(
-                f"structured document unavailable for doc_name='{normalized_doc_name}'. errors={detail}"
-            )
+        structured_document = self.document_artifact_repository.load_document(normalized_doc_name)
 
-        return self.reading_target_resolver.resolve(
+        stored_version = structured_document.parse_provenance.get("storage_structure_version")
+        if stored_version is not None:
+            if source_structure_version is not None and source_structure_version != stored_version:
+                raise ValueError("stale_structure_version")
+        resolved = self.reading_target_resolver.resolve(
             document=structured_document,
             target_level=target_level,
             chapter_id=chapter_id,
@@ -486,6 +538,7 @@ class SectionTaskCoordinator:
             source_hash=source_hash,
             source_structure_version=source_structure_version,
         )
+        return replace(resolved, source_structure_version=stored_version)
 
     def read_analysis_artifact(
         self,
@@ -703,7 +756,7 @@ class SectionTaskCoordinator:
             if artifact is not None:
                 return self._build_reading_interaction_response(
                     request=request,
-                    artifact=artifact,
+                    artifact=stale_projection(artifact, request),
                 )
             artifact = ReadingInteractionArtifact.from_target(
                 target=request.target,
@@ -731,7 +784,7 @@ class SectionTaskCoordinator:
             )
         return self._build_reading_interaction_response(
             request=request,
-            artifact=artifact,
+            artifact=stale_projection(artifact, request),
             session_id=normalized_session_id,
         )
 
@@ -899,13 +952,13 @@ class SectionTaskCoordinator:
         )
         if document_language is not None:
             context_metadata["document_language"] = document_language
-        return ReadingInteractionRequest(
+        return server_request(ReadingInteractionRequest(
             target=target,
             interaction_type=interaction_type,
             refresh=refresh,
             context_metadata=context_metadata,
             prompt_instruction_version=prompt_instruction_version,
-        )
+        ))
 
     def _resolve_reading_interaction_language(
         self,
@@ -1507,6 +1560,52 @@ class SectionTaskCoordinator:
         except Exception as error:
             return SectionTaskResult.from_llm_error(error)
 
+    @log_stage(logging.getLogger(__name__), "task_layout.ensure")
+    def ensure_document_task_layout(
+        self,
+        doc_name: str,
+        refresh_task_units: bool = False,
+        task_unit_split_mode: TaskUnitSplitMode | str | None = None,
+        semantic_top_k_candidates: int | None = None,
+    ) -> None:
+        """Explicitly persist layout for an already-prepared structured document."""
+        options = self._resolve_task_unit_request_options(
+            task_unit_split_mode=task_unit_split_mode,
+            semantic_top_k_candidates=semantic_top_k_candidates,
+        )
+        with log_stage(logging.getLogger(__name__), "task_layout.repository_read"):
+            document = self.document_artifact_repository.load_document(doc_name)
+        self._get_or_refresh_task_layout_document(
+            doc_name=doc_name,
+            structured_document=document,
+            resolve_options=options,
+            refresh_task_units=refresh_task_units,
+        )
+        # Validate persisted state, not the in-memory write result (DB may assign IDs).
+        self._load_ready_task_layout_document(doc_name, options)
+
+    def _load_ready_task_layout_document(
+        self, doc_name: str, options: TaskUnitResolveOptions,
+    ) -> StructuredDocument:
+        try:
+            with log_stage(logging.getLogger(__name__), "task_layout.repository_read"):
+                document = self.document_artifact_repository.load_document(doc_name)
+        except FileNotFoundError as error:
+            raise TaskLayoutNotReadyError("missing_structure") from error
+        except ValueError as error:
+            raise TaskLayoutNotReadyError("invalid_structure") from error
+        try:
+            reason = self._task_layout_cache_reason(document=document, resolve_options=options)
+            if self.task_unit_id_normalizer.find_duplicate_task_unit_ids(document=document):
+                reason = "duplicate_task_unit_ids"
+        except ValueError as error:
+            raise TaskLayoutNotReadyError("invalid_hierarchy") from error
+        logging.getLogger(__name__).info("task_layout_cache reason=%s", reason)
+        if reason != "valid":
+            raise TaskLayoutNotReadyError(reason)
+        return document
+
+    @log_stage(logging.getLogger(__name__), "task_layout.total")
     def get_document_task_layout(
         self,
         doc_name: str,
@@ -1515,28 +1614,14 @@ class SectionTaskCoordinator:
         semantic_top_k_candidates: int | None = None,
         include_anchor_page_evidence: bool = False,
     ) -> DocumentTaskLayout:
-        """Return hierarchy-first document layout with embedded task-unit metadata."""
+        """Project persisted hierarchy; ordinary reads never prepare or repair it."""
+        if refresh_task_units:
+            raise TaskLayoutNotReadyError("explicit_preparation_required")
         resolve_options = self._resolve_task_unit_request_options(
             task_unit_split_mode=task_unit_split_mode,
             semantic_top_k_candidates=semantic_top_k_candidates,
         )
-        preparation_result = self.document_preparation_pipeline.prepare_and_load(
-            doc_name=doc_name,
-            mode=PreparationMode.BASE,
-        )
-        structured_document = preparation_result.structured_document
-        if structured_document is None:
-            detail = " | ".join(preparation_result.assets.errors)
-            raise ValueError(
-                f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
-            )
-        task_layout_document_result = self._get_or_refresh_task_layout_document(
-            doc_name=doc_name,
-            structured_document=structured_document,
-            resolve_options=resolve_options,
-            refresh_task_units=refresh_task_units,
-        )
-        cached_document = task_layout_document_result.document
+        cached_document = self._load_ready_task_layout_document(doc_name, resolve_options)
         document_profile = self._load_existing_document_profile(doc_name)
         effective_sections = self._resolve_task_layout_sections(
             document=cached_document,
@@ -1546,11 +1631,13 @@ class SectionTaskCoordinator:
             sections=effective_sections,
             context="SectionTaskCoordinator#get_document_task_layout",
         )
-        page_boundaries = (
-            []
-            if task_layout_document_result.cache_hit and not include_anchor_page_evidence
-            else self._load_task_layout_anchor_page_boundaries(doc_name=doc_name)
-        )
+        skip_evidence = not include_anchor_page_evidence
+        with log_stage(logging.getLogger(__name__), "task_layout.anchor_evidence",
+                       requested=include_anchor_page_evidence, skipped=skip_evidence):
+            page_boundaries = (
+                [] if skip_evidence
+                else self._load_task_layout_anchor_page_boundaries(doc_name=doc_name, document=cached_document)
+            )
         anchor_evidence = project_structure_anchor_evidence(
             cached_document,
             page_boundaries=page_boundaries,
@@ -1578,6 +1665,14 @@ class SectionTaskCoordinator:
 
         section_layout_by_id: dict[str, DocumentTaskLayoutSectionDTO] = {}
         section_layouts: list[DocumentTaskLayoutSectionDTO] = []
+        origins = cached_document.parse_provenance.get("boundary_origins", [])
+        origins = origins if isinstance(origins, list) else []
+        title_origins = {
+            (item["char_start"], item["char_end"]): item["title_origin"]
+            for item in origins if isinstance(item, dict)
+            and isinstance(item.get("char_start"), int) and isinstance(item.get("char_end"), int)
+            and item.get("title_origin") in ("source", "implicit", "generated")
+        }
         for section in effective_sections:
             section_units = section_units_by_section_id.get(section.section_id, [])
             section_mode = self._resolve_section_task_mode(
@@ -1596,6 +1691,7 @@ class SectionTaskCoordinator:
                 parent_chapter_id=section.parent_chapter_id,
                 section_kind=section.section_kind,
                 is_implicit_section=section.is_implicit_section,
+                title_origin=title_origins.get((section.char_start, section.char_end)),
                 task_mode=section_mode,
                 task_units=section_units,
                 artifacts=self._build_section_artifact_availability(
@@ -1713,16 +1809,15 @@ class SectionTaskCoordinator:
                 + ", ".join(sorted(set(duplicate_requested_ids)))
             )
 
-        preparation_result = self.document_preparation_pipeline.prepare_and_load(
-            doc_name=doc_name,
-            mode=PreparationMode.BASE,
-        )
-        structured_document = preparation_result.structured_document
-        if structured_document is None:
-            detail = " | ".join(preparation_result.assets.errors)
-            raise ValueError(
-                f"structured document unavailable for doc_name='{doc_name}'. errors={detail}"
-            )
+        with log_stage(logging.getLogger(__name__), "content.snapshot_read"):
+            structured_document = self.document_artifact_repository.load_document(doc_name)
+        from document_structure.reading_content import project_document
+        structured_document = project_document(structured_document)
+        profile = self._load_existing_document_profile(doc_name)
+        document_language = ((profile.document_language_code if profile else None)
+                             or structured_document.language)
+        availability_store = DocumentReadingInteractionArtifactStore.from_snapshot(
+            structured_document, doc_name.strip())
 
         sections = self._resolve_task_layout_sections(
             document=structured_document,
@@ -1778,9 +1873,14 @@ class SectionTaskCoordinator:
                     section=match[1],
                     chapter=match[2],
                     segmented=segmented,
+                    availability_store=availability_store,
+                    document_language=document_language,
                 )
             )
 
+        logging.getLogger(__name__).info(
+            "content_read units=%s blocks=%s document_snapshots=1 profile_reads=1",
+            len(contents), sum(len(item.content_blocks) for item in contents))
         return contents
 
     def _build_task_unit_content_dto(
@@ -1792,14 +1892,16 @@ class SectionTaskCoordinator:
         section: StructuredSection,
         chapter: StructuredChapter | None,
         segmented: bool,
+        availability_store=None,
+        document_language: str | None = None,
     ) -> TaskUnitContentDTO:
         """Build one task-unit content DTO from an already resolved hierarchy match."""
-        if not task_unit.content.strip():
+        if not task_unit.content.strip() and not document.parse_provenance.get("reading_projected"):
             raise ValueError(
                 f"task_unit_id '{task_unit.unit_id}' has empty content and cannot be rendered"
             )
 
-        content_blocks = (
+        content_blocks = task_unit.content_blocks if document.parse_provenance.get("reading_projected") else (
             self._build_segmented_content_blocks_for_rendering(
                 task_unit=task_unit,
                 section=section,
@@ -1816,6 +1918,8 @@ class SectionTaskCoordinator:
             section=section,
             chapter=chapter,
             content_blocks=content_blocks,
+            availability_store=availability_store,
+            document_language=document_language,
         )
 
         return TaskUnitContentDTO(
@@ -1844,6 +1948,8 @@ class SectionTaskCoordinator:
         section: StructuredSection,
         chapter: StructuredChapter | None,
         content_blocks: list[TaskUnitContentBlock],
+        availability_store=None,
+        document_language: str | None = None,
     ) -> list[TaskUnitContentBlock]:
         """Attach lightweight persisted interaction state for block menus."""
         projected_blocks: list[TaskUnitContentBlock] = []
@@ -1856,6 +1962,8 @@ class SectionTaskCoordinator:
                 "section": section,
                 "chapter": chapter,
                 "content_block": content_block,
+                "availability_store": availability_store,
+                "document_language": document_language,
             }
             analysis_slot = self._read_content_block_availability_slot(
                 interaction_type="analysis",
@@ -1896,6 +2004,8 @@ class SectionTaskCoordinator:
         section: StructuredSection,
         chapter: StructuredChapter | None,
         content_block: TaskUnitContentBlock,
+        availability_store=None,
+        document_language: str | None = None,
     ) -> dict[str, str | None] | None:
         try:
             request = self._build_content_block_availability_request(
@@ -1906,6 +2016,7 @@ class SectionTaskCoordinator:
                 chapter=chapter,
                 content_block=content_block,
                 interaction_type=interaction_type,
+                document_language=document_language,
             )
         except ValueError:
             return None
@@ -1913,16 +2024,16 @@ class SectionTaskCoordinator:
         if interaction_type == "analysis":
             if self.analysis_interaction_orchestrator is None:
                 return None
-            artifact = self.analysis_interaction_orchestrator.read(request)
+            artifact = self.analysis_interaction_orchestrator.read(request, artifact_store=availability_store)
         elif interaction_type == "quiz":
             if self.quiz_interaction_orchestrator is None:
                 return None
-            artifact = self.quiz_interaction_orchestrator.read(request)
+            artifact = self.quiz_interaction_orchestrator.read(request, artifact_store=availability_store)
         elif interaction_type == "critical_thinking_session":
             if self.critical_thinking_session_store is None:
                 return None
             artifact = (
-                self.critical_thinking_session_store
+                (availability_store or self.critical_thinking_session_store)
                 .get_current_critical_thinking_session(request)
             )
             if artifact is None:
@@ -1931,6 +2042,8 @@ class SectionTaskCoordinator:
                     interaction_type=interaction_type,
                     status="not_generated",
                 )
+            else:
+                artifact = stale_projection(artifact, request)
         else:
             raise ValueError(
                 f"unsupported content-block availability type: '{interaction_type}'"
@@ -1947,6 +2060,7 @@ class SectionTaskCoordinator:
         chapter: StructuredChapter | None,
         content_block: TaskUnitContentBlock,
         interaction_type: str,
+        document_language: str | None = None,
     ) -> ReadingInteractionRequest:
         target = self.reading_target_resolver.resolve(
             document=document,
@@ -1956,12 +2070,14 @@ class SectionTaskCoordinator:
             task_unit_id=task_unit.unit_id,
             content_block_id=content_block.block_id,
         )
+        target = replace(target, source_structure_version=document.parse_provenance.get("storage_structure_version"))
         return ReadingInteractionRequest(
             target=target,
             interaction_type=interaction_type,
             context_metadata={
                 "context_mode": "full_target",
                 "doc_name": doc_name.strip(),
+                "document_language": document_language or target.document_language,
             },
         )
 
@@ -2259,7 +2375,26 @@ class SectionTaskCoordinator:
         effective = parse_provenance.get("effective_parser_mode")
         fallback_reason = parse_provenance.get("fallback_reason")
         source = parse_provenance.get("source")
+        policy = parse_provenance.get("common_parse_policy")
+        policy = policy if isinstance(policy, dict) else {}
+        def choice(value, allowed):
+            return value if isinstance(value, str) and value in allowed else None
+
+        observation = choice(policy.get("toc_observation", parse_provenance.get("toc_observation")), {
+            "validated_native_outline", "skipped_by_declaration", "validated_printed_toc",
+            "candidate_rejected", "not_detected", "not_checked", "not_found", "candidate_unusable",
+        })
+        hint = choice(policy.get("toc_hint"), {"auto", "present", "absent"})
+        unconfirmed = policy.get("declaration_unconfirmed")
+        if not isinstance(unconfirmed, bool):
+            unconfirmed = True if hint == "present" and observation in {"not_found", "candidate_unusable"} else None
         return ParseProvenanceDTO(
+            toc_hint=hint,
+            toc_observation=observation,
+            enhancement_intent=choice(policy.get("enhancement_intent", parse_provenance.get("enhancement_intent")),
+                                      {"restore_source", "generate_reading_outline"}),
+            implicit_single_body=policy.get("implicit_single_body") if isinstance(policy.get("implicit_single_body"), bool) else None,
+            declaration_unconfirmed=unconfirmed,
             requested_parser_mode=(
                 requested if isinstance(requested, str) and requested.strip() else None
             ),
@@ -2348,10 +2483,90 @@ class SectionTaskCoordinator:
             page_end_label=evidence.page_end_label,
         )
 
+    @contextmanager
+    def enhancement_candidate(self, *, doc_name: str, discard_interactions=False,
+                              confirmation_token=None, toc_hint="auto",
+                              enhancement_intent="restore_source"):
+        """Candidate handoff retaining consent and lease through atomic commit.
+
+        Keep the lease through the caller's future commit, not just generation.
+        The immutable source/state must be revalidated by that commit owner.
+        """
+        from app.enhancement_preflight import enhancement_preflight_service
+        with enhancement_preflight_service.authorize_execution(
+            doc_name=doc_name, discard_interactions=discard_interactions,
+            confirmation_token=confirmation_token, toc_hint=toc_hint,
+            enhancement_intent=enhancement_intent,
+        ) as state:
+            candidate = self.document_preparation_pipeline.build_enhancement_candidate(
+                snapshot=state.source, toc_hint=toc_hint,
+                enhancement_intent=enhancement_intent,
+            )
+            yield state, candidate
+
+    def inspect_enhancement_capacity(self, state, toc_hint, enhancement_intent):
+        return self.document_preparation_pipeline.inspect_enhancement_capacity(
+            snapshot=state.source, toc_hint=toc_hint, enhancement_intent=enhancement_intent)
+
+    def read_enhancement_state(self, doc_name: str):
+        from app.enhancement_preflight import EnhancementConflict, EnhancementState
+        from document_preparation.accepted_source_snapshot import resolve_accepted_source_snapshot, SourceNotReady
+        from pathlib import Path
+
+        reader = getattr(self.document_artifact_repository, "load_enhancement_snapshot", None)
+        if reader is None:
+            raise EnhancementConflict("enhancement_storage_backend_unsupported", 503)
+        try:
+            stored = reader(doc_name)
+        except FileNotFoundError as error:
+            raise SourceNotReady("document_missing") from error
+        name = stored.document.document_id
+        if not name or Path(name).name != name or name in {".", ".."}:
+            raise SourceNotReady("source_identity_invalid")
+        # Resolve under the configured intake root; never trust a persisted path
+        # or instantiate a loader/config that could migrate data on a read.
+        root = Path(self.document_preparation_pipeline.loader_factory.base_dir).resolve()
+        candidates = [root / f"{name}{suffix}" for suffix in (".pdf", ".txt")]
+        present = [path for path in candidates if path.is_file()]
+        if len(present) != 1:
+            raise SourceNotReady("source_ambiguous" if present else "source_missing")
+        source_path = present[0].resolve()
+        if source_path.parent != root:
+            raise SourceNotReady("source_identity_invalid")
+        source = resolve_accepted_source_snapshot(
+            document=stored.document, namespace=stored.namespace,
+            expected_document_id=name, structure_version=stored.structure_version,
+            source_path=source_path, accepted=stored.accepted,
+        )
+        return EnhancementState(source, stored.interaction_revision,
+                                stored.interaction_count, stored.includes_user_notes)
+
+    def enhancement_lease(self, doc_name: str):
+        from app.enhancement_preflight import EnhancementConflict
+        lease = getattr(self.document_artifact_repository, "enhancement_lease", None)
+        if lease is None:
+            raise EnhancementConflict("enhancement_storage_backend_unsupported", 503)
+        return lease(doc_name)
+
+    def enhancement_unavailable_reason(self, doc_name: str):
+        repository = self.document_artifact_repository
+        guards = getattr(repository, "enhancement_guards_available", None)
+        if not callable(guards) or not callable(getattr(repository, "commit_enhancement", None)):
+            return "enhancement_storage_backend_unsupported"
+        profile_guard = getattr(getattr(self, "document_profile_store", None),
+                                "supports_enhancement_invalidation", None)
+        if not callable(profile_guard) or profile_guard(repository) is not True:
+            return "enhancement_profile_guards_unavailable"
+        if not guards():
+            return "enhancement_storage_guards_unavailable"
+        return None
+
     def reparse_document_structure(
         self,
         doc_name: str,
         parser_mode: SectionParserMode | str,
+        *, toc_hint: str | None = None, enhancement_intent: str = "restore_source",
+        discard_interactions: bool = False, confirmation_token: str | None = None,
     ) -> ReparseDocumentStructureResult:
         """Explicitly reparse one document structure with selected parser mode."""
         normalized_doc_name = doc_name.strip()
@@ -2364,6 +2579,41 @@ class SectionTaskCoordinator:
 
         resolved_splitter_mode = SectionSplitterMode.resolve(str(parser_mode))
         resolved_parser_mode = SectionParserMode.resolve(resolved_splitter_mode.value)
+        if resolved_splitter_mode.value == "llm_enhanced":
+            from app.enhancement_preflight import enhancement_preflight_service, EnhancementConflict
+            from db.postgres_structured_document_store import EnhancementCommitConflict
+            from document_preparation.structure_enhancement_candidate import EnhancementCandidateRejected
+            from pathlib import Path
+            request = dict(doc_name=normalized_doc_name, toc_hint=toc_hint or "auto",
+                           enhancement_intent=enhancement_intent, discard_interactions=discard_interactions,
+                           confirmation_token=confirmation_token)
+            enhancement_preflight_service.verify_consent(**request)
+            unavailable = enhancement_preflight_service.execution_unavailable_reason(normalized_doc_name)
+            if unavailable:
+                raise EnhancementConflict(unavailable, 503)
+            try:
+                with self.enhancement_candidate(**request) as (state, candidate):
+                    root = Path(self.document_preparation_pipeline.loader_factory.base_dir).resolve()
+                    paths = [root / f"{state.source.document_id}{suffix}" for suffix in (".pdf", ".txt")]
+                    present = [path for path in paths if path.is_file() and path.resolve().parent == root]
+                    if len(present) != 1:
+                        raise EnhancementConflict("source_changed")
+                    committed = self.document_artifact_repository.commit_enhancement(
+                        normalized_doc_name, candidate=candidate,
+                        interaction_revision=state.interaction_revision, source_path=present[0])
+                return ReparseDocumentStructureResult.ok(
+                    doc_name=normalized_doc_name, parser_mode="llm_enhanced",
+                    structured_document_path=None,
+                    structure_version=committed.structure_version,
+                    change_kind=committed.change_kind,
+                    section_count=len(get_effective_sections(committed.document)))
+            except EnhancementCandidateRejected as error:
+                return ReparseDocumentStructureResult.fail(doc_name=normalized_doc_name,
+                    parser_mode="llm_enhanced",
+                    error=f"prepare_structured_document_llm_enhanced_rejected:{error}",
+                    retryable=str(error) == "enhancement_provider_transient")
+            except EnhancementCommitConflict as error:
+                raise EnhancementConflict(str(error), 503 if "unavailable" in str(error) else 409) from error
         print(
             "SectionTaskCoordinator#reparse_document_structure:",
             f"doc_name={normalized_doc_name}",
@@ -2375,6 +2625,8 @@ class SectionTaskCoordinator:
             force_rebuild=True,
             mode=PreparationMode.BASE,
             structured_parser_mode=resolved_splitter_mode,
+            **({"toc_hint": toc_hint} if toc_hint is not None else {}),
+            **({"enhancement_intent": enhancement_intent} if enhancement_intent != "restore_source" else {}),
         )
 
         assets = preparation_result.assets
@@ -2552,14 +2804,12 @@ class SectionTaskCoordinator:
         self,
         *,
         doc_name: str,
+        document: StructuredDocument,
     ) -> list[PdfPageTextBoundary]:
         """Load optional page evidence for read-only task-layout anchor prefill."""
-        source_evidence, _error, _status_code = self._load_manual_structure_source_evidence(
-            doc_name=doc_name,
+        return self.document_preparation_pipeline.load_task_layout_page_boundaries(
+            doc_name, document=document,
         )
-        if source_evidence is None:
-            return []
-        return list(source_evidence.page_boundaries)
 
     def _load_manual_structure_source_text(
         self,
@@ -2612,6 +2862,7 @@ class SectionTaskCoordinator:
             total_task_units=total_task_units,
         )
 
+    @log_stage(logging.getLogger(__name__), "task_layout.unit_dtos")
     def _build_task_unit_dtos_from_document(
         self,
         *,
@@ -2888,36 +3139,38 @@ class SectionTaskCoordinator:
         resolve_options: TaskUnitResolveOptions,
     ) -> bool:
         """Check persisted section.task_units cache validity against request options."""
+        return self._task_layout_cache_reason(document=document, resolve_options=resolve_options) == "valid"
+
+    def _task_layout_cache_reason(
+        self, *, document: StructuredDocument, resolve_options: TaskUnitResolveOptions,
+    ) -> str:
         sections = self._resolve_task_layout_sections(
             document=document,
             context="SectionTaskCoordinator#_is_task_layout_cache_valid",
         )
         for section in sections:
             if section.content.strip() and not section.task_units:
-                return False
+                return "missing_task_units"
 
         document_task_artifacts = document.document_task_artifacts
         if document_task_artifacts is None:
-            return False
+            return "missing_artifacts"
 
         metadata = dict(document_task_artifacts.metadata or {})
         raw_task_layout = metadata.get(self._TASK_LAYOUT_METADATA_KEY)
         if not isinstance(raw_task_layout, dict):
-            return False
+            return "missing_layout_metadata"
 
         expected = self._build_task_layout_metadata(
             document=document,
             resolve_options=resolve_options,
         )
-        return (
-            raw_task_layout.get("source_hash") == expected["source_hash"]
-            and raw_task_layout.get("task_unit_split_mode")
-            == expected["task_unit_split_mode"]
-            and raw_task_layout.get("semantic_top_k_candidates")
-            == expected["semantic_top_k_candidates"]
-            and raw_task_layout.get("resolver_version") == expected["resolver_version"]
-        )
+        for key in ("source_hash", "task_unit_split_mode", "semantic_top_k_candidates", "resolver_version"):
+            if raw_task_layout.get(key) != expected[key]:
+                return key + "_mismatch"
+        return "valid"
 
+    @log_stage(logging.getLogger(__name__), "task_layout.cache")
     def _get_or_refresh_task_layout_document(
         self,
         *,
@@ -2927,13 +3180,11 @@ class SectionTaskCoordinator:
         refresh_task_units: bool,
     ) -> _TaskLayoutDocumentResult:
         """Return document with valid persisted section.task_units, recomputing when needed."""
-        if (
-            not refresh_task_units
-            and self._is_task_layout_cache_valid(
-                document=structured_document,
-                resolve_options=resolve_options,
-            )
-        ):
+        reason = "explicit_refresh" if refresh_task_units else self._task_layout_cache_reason(
+            document=structured_document, resolve_options=resolve_options,
+        )
+        logging.getLogger(__name__).info("task_layout_cache reason=%s", reason)
+        if reason == "valid":
             duplicate_ids = self.task_unit_id_normalizer.find_duplicate_task_unit_ids(
                 document=structured_document
             )
@@ -2941,10 +3192,11 @@ class SectionTaskCoordinator:
                 repaired_document = self.task_unit_id_normalizer.normalize_document_task_unit_ids(
                     document=structured_document
                 )
-                self.document_artifact_repository.save_document(
-                    repaired_document,
-                    doc_name=doc_name,
-                )
+                with log_stage(logging.getLogger(__name__), "task_layout.repository_repair"):
+                    self.document_artifact_repository.save_document(
+                        repaired_document,
+                        doc_name=doc_name,
+                    )
                 print(
                     "SectionTaskCoordinator#task_layout_cache_repair_duplicate_task_unit_ids:",
                     f"doc_name={doc_name}",
@@ -2977,19 +3229,14 @@ class SectionTaskCoordinator:
             "resolve_for_task_layout",
             None,
         )
-        if callable(layout_resolver):
-            resolved_task_units = layout_resolver(
+        with log_stage(logging.getLogger(__name__), "task_layout.resolve_units") as metrics:
+            resolver = layout_resolver if callable(layout_resolver) else self.task_unit_resolver.resolve_with_options
+            resolved_task_units = resolver(
                 document=task_layout_document,
                 split_mode=resolve_options.split_mode,
                 semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
             )
-        else:
-            # Keep lightweight test/double resolvers compatible with the coordinator.
-            resolved_task_units = self.task_unit_resolver.resolve_with_options(
-                document=task_layout_document,
-                split_mode=resolve_options.split_mode,
-                semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
-            )
+            metrics["unit_count"] = len(resolved_task_units)
         sections_for_write = self._resolve_task_layout_sections(
             document=structured_document,
             context="SectionTaskCoordinator#task_layout_cache_write_target",
@@ -3006,11 +3253,12 @@ class SectionTaskCoordinator:
             document=structured_document,
             resolve_options=resolve_options,
         )
-        updated_document = self.document_artifact_repository.update_task_layout(
-            doc_name=doc_name,
-            task_units_by_section_id=task_units_by_section_id,
-            task_layout_metadata=task_layout_metadata,
-        )
+        with log_stage(logging.getLogger(__name__), "task_layout.repository_update"):
+            updated_document = self.document_artifact_repository.update_task_layout(
+                doc_name=doc_name,
+                task_units_by_section_id=task_units_by_section_id,
+                task_layout_metadata=task_layout_metadata,
+            )
         self._assert_unique_task_unit_ids_in_sections(
             sections=self._resolve_task_layout_sections(
                 document=updated_document,
@@ -4103,16 +4351,10 @@ class SectionTaskCoordinator:
         self,
         doc_name: str,
     ) -> tuple[StructuredDocument | None, DocumentProfile | None, list[str]]:
-        """Prepare base structured artifact and optionally load existing profile."""
-        preparation_result = self.document_preparation_pipeline.prepare_and_load(
-            doc_name=doc_name,
-            mode=PreparationMode.BASE,
-        )
-        structured_document = preparation_result.structured_document
-        if structured_document is None:
-            return None, None, list(preparation_result.assets.errors)
+        """Reuse accepted inputs; task execution cannot initialize a document/profile."""
+        structured_document = self.document_artifact_repository.load_document(doc_name)
         document_profile = self._load_existing_document_profile(doc_name)
-        return structured_document, document_profile, list(preparation_result.assets.errors)
+        return structured_document, document_profile, []
 
     @staticmethod
     def _resolve_section_task_mode(
@@ -4140,6 +4382,7 @@ class SectionTaskCoordinator:
 
         return SectionTaskMode.MERGED
 
+    @log_stage(logging.getLogger(__name__), "task_layout.profile_read")
     def _load_existing_document_profile(self, doc_name: str) -> DocumentProfile | None:
         """Load existing profile artifact when available; return None otherwise."""
         config = FaissStorageConfig(namespace=doc_name)

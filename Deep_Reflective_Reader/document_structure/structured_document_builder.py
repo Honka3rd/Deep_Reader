@@ -1,10 +1,15 @@
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
+from document_structure.common_parse_policy import COMMON_POLICY_VERSION, TocHint
+from document_structure.heading_acceptance import validate_projection
 from document_structure.section_splitter import CommonSectionSplitter
 from document_structure.section_splitter_selector import (
     SectionSplitterMode,
     SectionSplitterSelector,
 )
 import re
+from dataclasses import replace
+import logging
+from collections.abc import Callable
 
 from document_structure.section_role import SectionRole
 from document_structure.structured_document import (
@@ -22,6 +27,9 @@ from document_structure.text_normalization import normalize_ocr_text
 from language.language_code import LanguageCode
 
 
+logger = logging.getLogger(__name__)
+
+
 class StructuredDocumentBuilder:
     """Build one StructuredDocument from metadata + raw text + language."""
 
@@ -36,6 +44,16 @@ class StructuredDocumentBuilder:
         self.section_splitter_selector = section_splitter_selector
         self.toc_detector = toc_detector or TableOfContentsDetector()
 
+    def enhancement_request_context(self, raw_text, hint):
+        selector = self.section_splitter_selector or SectionSplitterSelector()
+        splitter = selector.get_splitter(SectionSplitterMode.LLM_ENHANCED)
+        splitter.resource_limits.check_source(raw_text)
+        observed = "not_checked"
+        if hint != TocHint.ABSENT:
+            toc = self.toc_detector.detect(raw_text)
+            observed = "candidate_unusable" if toc.detected else "not_found"
+        return splitter, observed
+
     def build(
         self,
         document_id: str,
@@ -47,15 +65,44 @@ class StructuredDocumentBuilder:
         page_evidence: list[PdfPageLayoutEvidence] | None = None,
         page_boundaries: list[PdfPageTextBoundary] | None = None,
         outline: PdfOutlineResult | None = None,
+        page_evidence_provider: Callable[[], list[PdfPageLayoutEvidence] | None] | None = None,
+        toc_hint: TocHint | str = TocHint.AUTO,
+        enhancement_intent: str = "restore_source",
     ) -> StructuredDocument:
         """Build a structured document with fallback on split errors."""
         try:
+            hint = TocHint(toc_hint)
             resolved_mode = SectionSplitterMode.resolve(parser_mode)
+            if resolved_mode == SectionSplitterMode.LLM_ENHANCED:
+                splitter, observed = self.enhancement_request_context(raw_text, hint)
+                sections, provenance = splitter.split_candidate_with_provenance(
+                    raw_text=raw_text, language=language,
+                    toc_hint=hint, enhancement_intent=enhancement_intent, observed_toc=observed)
+                provenance["common_parse_policy"] = {
+                    "version": COMMON_POLICY_VERSION, "toc_hint": hint.value,
+                    "parser_mode": resolved_mode.value, "enhancement_intent": enhancement_intent,
+                }
+                document = StructuredDocument(document_id=document_id, title=title,
+                    source_path=source_path, language=language.value, raw_text=raw_text,
+                    sections=sections, parse_provenance=provenance)
+                document = build_document_hierarchy_from_sections(document)
+                origins = {item["char_start"]: item["title_origin"]
+                           for item in provenance.get("boundary_origins", [])}
+                chapters = [replace(chapter, metadata={**chapter.metadata,
+                    "title_origin": (origins.get(chapter.sections[0].char_start, "implicit")
+                        if chapter.sections and chapter.title == chapter.sections[0].title else "implicit")})
+                    for chapter in document.chapters]
+                return replace(document, chapters=chapters)
             outline_sections, outline_projection = (
                 self._project_outline_sections(raw_text, outline, page_boundaries)
                 if outline is not None and outline.usable
                 else ([], None)
             )
+            outline_candidate = bool(outline_sections)
+            outline_sections = validate_projection(raw_text, outline_sections)
+            outline_heading_rejected = outline_candidate and not outline_sections
+            if not outline_sections:
+                outline_projection = None
             if outline_sections:
                 sections = outline_sections
                 parse_provenance = self._build_parse_provenance(
@@ -71,12 +118,14 @@ class StructuredDocumentBuilder:
                         raw_text=raw_text,
                         language=language,
                         mode=resolved_mode,
+                        **({"toc_hint": hint} if hint != TocHint.AUTO else {}),
                     )
                 )
             else:
                 sections = self.section_splitter.split(
                     raw_text=raw_text,
                     language=language,
+                    **({"toc_hint": hint} if hint != TocHint.AUTO else {}),
                 )
                 parse_provenance = self._build_parse_provenance(
                     requested_parser_mode=SectionSplitterMode.COMMON.value,
@@ -91,7 +140,31 @@ class StructuredDocumentBuilder:
                 parse_provenance["outline_projection"] = outline_projection
             if outline_sections:
                 toc_result = None
+                parse_provenance["layout_evidence"] = {"status": "skipped_validated_outline"}
+                logger.info("pdf_layout_schedule outcome=skipped_validated_outline")
+            elif hint == TocHint.ABSENT:
+                toc_result = None
+                parse_provenance["layout_evidence"] = {"status": "skipped_toc_hint_absent"}
+            elif outline_heading_rejected:
+                toc_result = self.toc_detector.detect(raw_text)
+                parse_provenance["layout_evidence"] = {"status": "skipped_uncertain_outline_heading"}
             else:
+                layout_status = {"status": "provided" if page_evidence is not None else "unavailable"}
+                if page_evidence is None and page_evidence_provider is not None:
+                    try:
+                        page_evidence = page_evidence_provider()
+                        layout_status["status"] = "loaded" if page_evidence is not None else "unavailable"
+                    except Exception as error:
+                        layout_status = {"status": "failed", "error_type": type(error).__name__}
+                source_hashes = {page.source_sha256 for page in page_boundaries or [] if page.source_sha256}
+                if page_evidence is not None and source_hashes and (
+                    len(source_hashes) != 1
+                    or any(page.source_sha256 not in source_hashes for page in page_evidence)
+                ):
+                    page_evidence = None
+                    layout_status = {"status": "rejected_source_mismatch"}
+                parse_provenance["layout_evidence"] = layout_status
+                logger.info("pdf_layout_schedule outcome=%s", layout_status["status"])
                 toc_result = (
                     self.toc_detector.detect_with_page_evidence(raw_text, page_evidence)
                     if page_evidence is not None
@@ -109,11 +182,27 @@ class StructuredDocumentBuilder:
                 if toc_result is not None and toc_result.usable
                 else ([], None)
             )
+            projected_sections = validate_projection(raw_text, projected_sections)
             if projected_sections:
                 sections = projected_sections
                 parse_provenance["effective_parser"] = "validated_toc_projection"
                 if toc_projection is not None:
                     parse_provenance["toc_projection"] = toc_projection
+            parse_provenance["common_parse_policy"] = {
+                "version": COMMON_POLICY_VERSION,
+                "parser_mode": resolved_mode.value,
+                "enhancement_intent": enhancement_intent,
+                "toc_hint": hint.value,
+                "toc_observation": (
+                    "validated_native_outline" if outline_sections else
+                    "skipped_by_declaration" if hint == TocHint.ABSENT else
+                    "validated_printed_toc" if projected_sections else
+                    "candidate_rejected" if toc_result is not None and toc_result.detected else
+                    "not_detected"
+                ),
+                "implicit_single_body": len(sections) == 1 and sections[0].title is None,
+                "declaration_unconfirmed": hint == TocHint.PRESENT and not projected_sections,
+            }
             if not sections:
                 return self._build_fallback_document(
                     document_id=document_id,
@@ -184,7 +273,17 @@ class StructuredDocumentBuilder:
     @staticmethod
     def _map_value_error_code(error: ValueError) -> str:
         """Map expected ValueError messages to stable structure error codes."""
+        from document_structure.plan_rejection import EnhancementPlanRejected
+        if isinstance(error, EnhancementPlanRejected):
+            return str(error)
         message = str(error).lower()
+        if message in {"enhancement_provider_unavailable", "enhancement_provider_failed",
+                       "enhancement_provider_transient",
+                       "enhancement_candidate_rejected", "invalid_enhancement_source",
+                       "enhancement_budget_unavailable", "enhancement_output_budget_invalid",
+                       "enhancement_prompt_budget_exceeded", "local_resource_limit",
+                       "incomplete_enhancement_source", "enhancement_configuration_changed"}:
+            return message
         if "unsupported document structure language" in message:
             return "unsupported_structure_language"
         return "section_split_value_error"
@@ -261,14 +360,23 @@ class StructuredDocumentBuilder:
         """Project a validated native Outline into page-backed section ranges."""
         if not page_boundaries or not outline.entries:
             return [], None
-        separator_text = "\n\n" if "\n\n" in raw_text else "\n"
-        all_boundary_text = separator_text.join(
-            boundary.text for boundary in page_boundaries
-        )
-        non_empty_boundary_text = separator_text.join(
-            boundary.text for boundary in page_boundaries if boundary.text
-        )
-        if raw_text not in {all_boundary_text, non_empty_boundary_text}:
+        source_hashes = {page.source_sha256 for page in page_boundaries if page.source_sha256}
+        if len(source_hashes) > 1 or (
+            outline.source_sha256 and source_hashes != {outline.source_sha256}
+        ):
+            return [], None
+        # Validate actual canonical spans, not a guessed separator from body text.
+        previous_end = 0
+        for index, boundary in enumerate(page_boundaries):
+            if (
+                boundary.page_index != index
+                or not previous_end <= boundary.char_start <= boundary.char_end <= len(raw_text)
+                or raw_text[boundary.char_start:boundary.char_end] != boundary.text
+                or raw_text[previous_end:boundary.char_start] not in {"", "\n", "\n\n"}
+            ):
+                return [], None
+            previous_end = boundary.char_end
+        if previous_end != len(raw_text):
             return [], None
         page_by_index = {boundary.page_index: boundary for boundary in page_boundaries}
         starts: list[tuple[PdfOutlineEntry, int]] = []

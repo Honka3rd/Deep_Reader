@@ -1,4 +1,7 @@
 from typing import List
+import logging
+
+from logging_config import log_stage
 
 from llama_index.embeddings.openai import OpenAIEmbedding
 
@@ -28,6 +31,7 @@ Args:
             api_key=api_key,
         )
 
+    @log_stage(logging.getLogger(__name__), "embedding.single")
     def get_text_embedding(self, text: str) -> List[float]:
         """Generate embedding vector for one text input.
 
@@ -38,6 +42,7 @@ Returns:
     Embedding vector for the input text."""
         return self.embed_model.get_text_embedding(text)
 
+    @log_stage(logging.getLogger(__name__), "embedding.batch")
     def get_text_embedding_batch(self, texts: List[str]) -> List[List[float]]:
         """Generate embedding vectors for a batch of texts.
 

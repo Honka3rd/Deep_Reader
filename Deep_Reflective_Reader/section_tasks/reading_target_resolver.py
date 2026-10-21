@@ -32,6 +32,7 @@ class ResolvedReadingTarget:
     target_id: str
     content: str
     document_language: str | None = None
+    source_structure_version: int | None = None
     chapter_id: str | None = None
     section_id: str | None = None
     task_unit_id: str | None = None
@@ -40,6 +41,8 @@ class ResolvedReadingTarget:
     section: StructuredSection | None = None
     task_unit: TaskUnit | None = None
     content_block: TaskUnitContentBlock | None = None
+    reading_revision: int = 0
+    source_needs_review: bool = False
 
 
 class ReadingTargetResolver:
@@ -60,6 +63,8 @@ class ReadingTargetResolver:
         with the segmented render ids. This keeps visible UI block ids addressable
         without using UI row position/title text as authority.
         """
+        if any((b.metadata or {}).get("reading_overlay") for b in task_unit.content_blocks):
+            return list(task_unit.content_blocks)
         render_blocks = self._build_segmented_content_blocks_for_target_validation(
             task_unit=task_unit,
             section=section,
@@ -77,7 +82,13 @@ class ReadingTargetResolver:
         ]
         return [*render_blocks, *non_colliding_explicit_blocks]
 
-    def resolve(
+    def resolve(self, *, document, apply_edits=True, **kwargs):
+        from document_structure.reading_content import project_document, needs_review, state_for
+        resolved = self._resolve(document=project_document(document) if apply_edits else document, **kwargs)
+        return replace(resolved, reading_revision=state_for(document).get("revision",0),
+                       source_needs_review=needs_review(document))
+
+    def _resolve(
         self,
         *,
         document: StructuredDocument,
@@ -400,7 +411,7 @@ class ReadingTargetResolver:
         task_unit_content = cls._join_content_parts(
             task_unit.content for task_unit in section.task_units
         )
-        if task_unit_content:
+        if task_unit_content or section.task_units:
             return task_unit_content
         return section.content.strip()
 

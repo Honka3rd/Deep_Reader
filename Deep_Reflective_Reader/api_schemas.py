@@ -1,7 +1,14 @@
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from document_structure.common_parse_policy import TocHint
+from document_structure.structure_plan_contract import EnhancementIntent, validate_enhancement_intent
 from shared.artifact_target_model import ArtifactTargetLevel
+from doc_loaders.pdf_extraction_contract import (
+    PdfExtractionFailureReason,
+    PdfExtractionMode,
+    PdfExtractionProvenance,
+)
 
 ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS: frozenset[str] = frozenset(
     {
@@ -27,7 +34,7 @@ READING_INTERACTION_TARGET_TYPES: frozenset[str] = frozenset(
 )
 
 READING_INTERACTION_TYPES: frozenset[str] = frozenset(
-    {"analysis", "quiz", "critical_thinking_session"}
+    {"analysis", "quiz", "critical_thinking_session", "summary", "note"}
 )
 
 READING_INTERACTION_STATUSES: frozenset[str] = frozenset(
@@ -123,10 +130,48 @@ DOCUMENT_LIFECYCLE_REASON_REQUIRED_STATUSES: frozenset[str] = frozenset(
 )
 
 
+class PdfExtractionMetadataResponse(BaseModel):
+    """Request intent is separate from proven extraction provenance."""
+
+    requested_mode: PdfExtractionMode | None = None
+    effective_mode: PdfExtractionMode | None = None
+    provenance: PdfExtractionProvenance = PdfExtractionProvenance.UNKNOWN
+
+    @model_validator(mode="after")
+    def _validate_provenance(self) -> "PdfExtractionMetadataResponse":
+        proven = self.provenance in {
+            PdfExtractionProvenance.APPLIED, PdfExtractionProvenance.REUSED,
+        }
+        if proven != (self.effective_mode is not None):
+            raise ValueError("effective_mode requires applied or reused provenance")
+        if proven and self.requested_mode is not None and self.requested_mode != self.effective_mode:
+            raise ValueError("effective_mode must match the requested mode")
+        return self
+
+
+class PdfExtractionFailureResponse(BaseModel):
+    doc_name: str
+    reason: PdfExtractionFailureReason
+    detail: str
+    pdf_extraction: PdfExtractionMetadataResponse
+
+
+class PreparationValidationFailureResponse(BaseModel):
+    """FastAPI request validation shape, separate from an execution failure."""
+
+    detail: list[dict[str, Any]]
+
+
 class PrepareDocumentRequest(BaseModel):
     """Request payload for document preparation operations."""
 
     doc_name: str = Field(..., description="Document name")
+    toc_hint: TocHint = Field(TocHint.AUTO, description="Advisory printed TOC declaration: auto | present | absent; independent of PDF extraction.")
+    enhancement_intent: EnhancementIntent = EnhancementIntent.RESTORE_SOURCE
+    pdf_extraction_mode: PdfExtractionMode = Field(
+        PdfExtractionMode.FAST,
+        description="PDF text extraction: fast | ocr | auto. Unsupported execution fails explicitly.",
+    )
     mode: str = Field("base", description="Preparation mode: base | free_qa")
     force_rebuild: bool = Field(
         False,
@@ -136,6 +181,12 @@ class PrepareDocumentRequest(BaseModel):
         "common",
         description="Structured parser mode: common | llm_enhanced",
     )
+
+
+    @model_validator(mode="after")
+    def _validate_enhancement_intent(self):
+        validate_enhancement_intent(self.structured_parser_mode, self.enhancement_intent)
+        return self
 
 
 class PrepareDocumentResponse(BaseModel):
@@ -151,12 +202,30 @@ class PrepareDocumentResponse(BaseModel):
     profile_ready: bool
     bundle_ready: bool
     errors: list[str]
+    pdf_extraction: PdfExtractionMetadataResponse = Field(default_factory=PdfExtractionMetadataResponse)
 
 
 class PrepareTaskLayoutRequest(BaseModel):
     """Request payload for prepare-if-needed task-layout orchestration."""
 
     doc_name: str = Field(..., description="Document name")
+    toc_hint: TocHint = TocHint.AUTO
+    enhancement_intent: EnhancementIntent = EnhancementIntent.RESTORE_SOURCE
+
+    @model_validator(mode="after")
+    def _validate_enhancement_intent(self):
+        validate_enhancement_intent(self.structured_parser_mode, self.enhancement_intent)
+        if self.layout_only and self.enhancement_intent != EnhancementIntent.RESTORE_SOURCE:
+            raise ValueError("layout_only cannot apply enhancement_intent")
+        return self
+    layout_only: bool = Field(
+        False,
+        description="Prepare task units from persisted structure only; no raw extraction or structure rebuild. PDF mode is not executed.",
+    )
+    pdf_extraction_mode: PdfExtractionMode = Field(
+        PdfExtractionMode.FAST,
+        description="PDF text extraction: fast | ocr | auto; independent of structure/task splitting.",
+    )
     force_rebuild: bool = Field(
         False,
         description="When true, rebuild preparation artifacts before loading layout.",
@@ -228,6 +297,17 @@ class DocumentListResponse(BaseModel):
     total: int
 
 
+class ReadingContentMutationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["edit", "delete", "undo", "discard_region"]
+    expected_revision: int = Field(ge=0, strict=True)
+    source_token: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mutation_id: str = Field(min_length=1,max_length=100)
+    block_id: str | None = Field(default=None,max_length=200)
+    text: str | None = Field(default=None,max_length=10000)
+    region_id: str | None = Field(default=None,max_length=100)
+
+
 class DocumentManagementItemResponse(BaseModel):
     """Lightweight document management row without heavy document payloads."""
 
@@ -248,6 +328,7 @@ class DocumentManagementItemResponse(BaseModel):
     source_size_bytes: int | None = Field(None, ge=0)
     source_status: str = "unknown"
     preparation_status: str = "unknown"
+    review_required: bool = False
     uploaded_at: str | None = None
     updated_at: str | None = None
     last_error: str | None = None
@@ -889,15 +970,15 @@ class GetDocumentTaskLayoutRequest(BaseModel):
     refresh_task_units: bool = Field(
         False,
         description=(
-            "When true, force recompute task units and overwrite persisted task-unit cache. "
-            "When false, reuse persisted section.task_units when cache is valid."
+            "Read-only endpoint: true returns 409 with explicit preparation guidance. "
+            "Use /documents/prepare-task-layout for recompute/repair. False reads valid persisted units."
         ),
     )
     task_unit_split_mode: str | None = Field(
         None,
         description=(
             "Task-unit split mode: semantic_safe | progressive | llm_enhanced. "
-            "This controls task-unit resolution only, not structured parser mode."
+            "Validates persisted layout compatibility; never resolves units on this read endpoint."
         ),
     )
     semantic_top_k_candidates: int | None = Field(
@@ -1418,6 +1499,87 @@ class AnalysisArtifactPayloadResponse(BaseModel):
             normalized_key_points.append(normalized)
         self.key_points = normalized_key_points
         return self
+
+
+class SummaryInteractionReadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: ReadingInteractionTargetRequest
+
+
+class SummaryInteractionGenerateRequest(SummaryInteractionReadRequest):
+    """Generate reuses current output; the refresh route replaces only this target."""
+
+
+class SummaryInteractionRefreshRequest(SummaryInteractionGenerateRequest):
+    pass
+
+
+class SummaryPayloadResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    headline: str = Field(min_length=1, max_length=300)
+    body: str = Field(min_length=1, max_length=12000)
+    key_points: list[str] = Field(default_factory=list, max_length=12)
+
+    @model_validator(mode="after")
+    def _validate_summary(self) -> "SummaryPayloadResponse":
+        from section_tasks.summary_note_contracts import SummaryPayload
+        SummaryPayload.from_dict(self.model_dump())
+        return self
+
+
+class SummaryInteractionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    envelope: ReadingInteractionResponseEnvelope
+    payload: SummaryPayloadResponse | None = None
+
+    @model_validator(mode="after")
+    def _validate_summary_response(self) -> "SummaryInteractionResponse":
+        if self.envelope.interaction_type != "summary":
+            raise ValueError("summary envelope required")
+        if (self.envelope.status == "completed") != (self.payload is not None):
+            raise ValueError("summary payload required only for completed status")
+        return self
+
+
+class NoteReadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: ReadingInteractionTargetRequest
+
+
+class NoteSaveRequest(NoteReadRequest):
+    text: str = Field(min_length=1, max_length=10000)
+    expected_revision: int = Field(ge=0, strict=True)
+    mutation_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+    target_token: str = Field(min_length=1, max_length=256)
+
+    @model_validator(mode="after")
+    def _validate_note(self) -> "NoteSaveRequest":
+        from section_tasks.summary_note_contracts import validate_note_text
+        validate_note_text(self.text)
+        return self
+
+
+class NoteDeleteRequest(NoteReadRequest):
+    expected_revision: int = Field(ge=1, strict=True)
+    target_token: str = Field(min_length=1, max_length=256)
+
+
+class NotePayloadResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note_id: str
+    text: str = Field(min_length=1, max_length=10000)
+    revision: int = Field(ge=1)
+    created_at: str
+    updated_at: str
+
+
+class NoteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: ReadingInteractionTargetResponse
+    target_token: str
+    note: NotePayloadResponse | None = None
+    max_chars: int = 10000
+    source_stale: bool = False
 
 
 class AnalysisInteractionReadRequest(BaseModel):
@@ -1960,6 +2122,7 @@ class AnchorEvidenceResponse(BaseModel):
 class SectionTaskLayoutResponse(BaseModel):
     """Section layout response node with embedded task-unit metadata."""
 
+    title_origin: Literal["source", "implicit", "generated"] | None = None
     section_id: str
     title: str | None
     container_title: str | None
@@ -2017,6 +2180,15 @@ class ProfileStructureDiagnosticsResponse(BaseModel):
 class ParseProvenanceResponse(BaseModel):
     """Lightweight parser provenance for task-layout observability."""
 
+    toc_hint: Literal["auto", "present", "absent"] | None = None
+    toc_observation: Literal[
+        "validated_native_outline", "skipped_by_declaration", "validated_printed_toc",
+        "candidate_rejected", "not_detected", "not_checked", "not_found", "candidate_unusable",
+    ] | None = None
+    enhancement_intent: Literal["restore_source", "generate_reading_outline"] | None = None
+    implicit_single_body: bool | None = None
+    declaration_unconfirmed: bool | None = None
+
     requested_parser_mode: str | None = Field(
         None,
         description="Parser mode requested for the accepted structured hierarchy.",
@@ -2049,6 +2221,12 @@ class DocumentTaskLayoutResponse(BaseModel):
     enhanced_parse_recommendation: EnhancedParseRecommendationResponse | None
     profile_diagnostics: ProfileStructureDiagnosticsResponse | None = None
     parse_provenance: ParseProvenanceResponse | None = None
+
+
+class PrepareTaskLayoutResponse(DocumentTaskLayoutResponse):
+    """Preparation metadata is not added to ordinary layout reads."""
+
+    pdf_extraction: PdfExtractionMetadataResponse = Field(default_factory=PdfExtractionMetadataResponse)
 
 
 class ManualStructureAnchorRequest(BaseModel):
@@ -2412,6 +2590,10 @@ class ReparseDocumentStructureRequest(BaseModel):
     )
 
     doc_name: str = Field(..., description="Document name")
+    discard_interactions: bool = Field(False, strict=True)
+    confirmation_token: str | None = Field(None, max_length=1024)
+    toc_hint: TocHint = TocHint.AUTO
+    enhancement_intent: EnhancementIntent = EnhancementIntent.RESTORE_SOURCE
     parser_mode: str = Field(
         ...,
         description="Parser mode: common | llm_enhanced | manual_structure",
@@ -2437,8 +2619,11 @@ class ReparseDocumentStructureRequest(BaseModel):
                 "parser_mode must be common, llm_enhanced, or manual_structure"
             )
         self.parser_mode = normalized_parser_mode
+        validate_enhancement_intent(normalized_parser_mode, self.enhancement_intent)
 
         if normalized_parser_mode == "manual_structure":
+            if self.toc_hint != TocHint.AUTO:
+                raise ValueError("toc_hint does not apply to manual_structure")
             if self.manual_structure is None:
                 raise ValueError("manual_structure is required when parser_mode is manual_structure")
             return self
@@ -2446,6 +2631,55 @@ class ReparseDocumentStructureRequest(BaseModel):
         if self.manual_structure is not None:
             raise ValueError("manual_structure is only allowed when parser_mode is manual_structure")
         return self
+
+
+class EnhancementPreflightRequest(BaseModel):
+    doc_name: str = Field(..., min_length=1)
+    parser_mode: Literal["llm_enhanced"] = "llm_enhanced"
+    toc_hint: TocHint = TocHint.AUTO
+    enhancement_intent: EnhancementIntent = EnhancementIntent.RESTORE_SOURCE
+
+    @model_validator(mode="after")
+    def normalize_name(self):
+        self.doc_name = self.doc_name.strip()
+        if not self.doc_name:
+            raise ValueError("doc_name cannot be empty")
+        return self
+
+
+class EnhancementCapacityResponse(BaseModel):
+    status: Literal["fits", "exceeded", "unavailable", "resource_limited"]
+    reason_code: Literal["model_capacity_exceeded", "capacity_unavailable", "local_resource_limit"] | None = None
+    model: str | None = None
+    context_window_tokens: int | None = None
+    max_input_tokens: int | None = None
+    max_output_tokens: int | None = None
+    output_reserve_tokens: int | None = None
+    safety_margin_tokens: int | None = None
+    transport_overhead_tokens: int | None = None
+    required_input_tokens: int | None = None
+    available_input_tokens: int | None = None
+    count_method: Literal["tokenizer", "conservative_estimate", "unavailable"] = "unavailable"
+    tokenizer_identity: str | None = None
+    full_source: bool | None = None
+    source_chars: int | None = None
+    visible_source_chars: int | None = None
+    budget_policy_version: str | None = None
+    prompt_version: str | None = None
+
+
+class EnhancementPreflightResponse(BaseModel):
+    ready: bool
+    execution_available: bool = False
+    reason: str | None
+    structure_version: int | None
+    interaction_count: int | None
+    includes_user_notes: bool | None
+    cleanup_scope: str
+    cleanup_condition: Literal["structure_changed_only"] = "structure_changed_only"
+    confirmation_token: str | None
+    expires_at: int | None
+    capacity: EnhancementCapacityResponse | None = None
 
 
 class ReparseDocumentStructureResponse(BaseModel):
@@ -2457,3 +2691,21 @@ class ReparseDocumentStructureResponse(BaseModel):
     structured_document_path: str | None
     error: str | None
     section_count: int | None
+    structure_version: int | None = None
+    change_kind: Literal["unchanged", "titles_only", "structure_changed"] | None = None
+    committed: bool | None = None
+    interactions_cleared: bool | None = None
+    reading_layout_required: bool | None = None
+    retryable: bool = False
+
+
+class EnhancementOperationRequest(EnhancementPreflightRequest):
+    confirmation_token: str = Field(min_length=1, max_length=1024)
+
+
+class EnhancementOperationResponse(BaseModel):
+    status: Literal["not_started", "running", "completed", "failed", "unknown"]
+    result: ReparseDocumentStructureResponse | None = None
+    reason: str | None = None
+    retryable: bool = False
+    durability: Literal["process_local"] = "process_local"

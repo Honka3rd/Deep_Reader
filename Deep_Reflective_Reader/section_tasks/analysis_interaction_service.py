@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from section_tasks.interaction_source_sufficiency import InsufficientPrimarySource, check_source_abstention
+
 from collections.abc import Callable
 import json
 import re
 from typing import Any
+from section_tasks.interaction_policy_identity import policy_metadata
+from section_tasks.interaction_output_language import request_language, validate_output_language
 
 from section_tasks.artifact_validity import (
     ReadingInteractionTargetValidity,
@@ -123,9 +127,16 @@ class AnalysisInteractionService:
         try:
             raw_output = self._generator(generation_request)
             payload = self._parse_and_validate_output(raw_output)
+            validate_output_language(payload, request_language(generation_request))
             self._validate_payload_against_source(
                 payload,
                 generation_request.target.content,
+            )
+        except InsufficientPrimarySource as error:
+            return self._artifact(
+                request=generation_request,
+                status="insufficient_content",
+                reason=str(error),
             )
         except ValueError as error:
             return self._artifact(
@@ -181,8 +192,7 @@ class AnalysisInteractionService:
         metadata: dict[str, object] = {
             "output_schema_version": ANALYSIS_OUTPUT_SCHEMA_VERSION,
         }
-        if request.prompt_instruction_version is not None:
-            metadata["prompt_instruction_version"] = request.prompt_instruction_version
+        metadata.update(policy_metadata(request))
         if request.context_metadata:
             metadata["context"] = dict(request.context_metadata)
             artifact_reference = build_artifact_reference_metadata(
@@ -224,6 +234,8 @@ class AnalysisInteractionService:
 
         if not isinstance(parsed_output, dict):
             raise ValueError("analysis output must be a JSON object")
+
+        check_source_abstention(parsed_output)
 
         payload: dict[str, object] = {}
         for field_name in REQUIRED_ANALYSIS_FIELDS:

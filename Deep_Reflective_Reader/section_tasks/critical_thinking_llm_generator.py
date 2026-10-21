@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from llm.llm_provider import LLMProvider
+from section_tasks.interaction_source_sufficiency import SOURCE_SUFFICIENCY_INSTRUCTION
+from section_tasks.interaction_output_language import (
+    language_instruction, request_language, session_language,
+)
 from section_tasks.reading_interaction_service_contracts import (
     ReadingInteractionArtifact,
     ReadingInteractionRequest,
@@ -11,28 +15,7 @@ from section_tasks.reading_interaction_prompt_context import (
 )
 
 
-CRITICAL_THINKING_PROMPT_VERSION = "critical_thinking_prompt_v1"
-LANGUAGE_LABELS_BY_CODE = {
-    "ar": "Arabic",
-    "de": "German",
-    "en": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "hi": "Hindi",
-    "id": "Indonesian",
-    "it": "Italian",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "nl": "Dutch",
-    "pl": "Polish",
-    "pt": "Portuguese",
-    "ru": "Russian",
-    "th": "Thai",
-    "tr": "Turkish",
-    "uk": "Ukrainian",
-    "vi": "Vietnamese",
-    "zh": "Chinese",
-}
+CRITICAL_THINKING_PROMPT_VERSION = "critical_thinking_prompt_v3"
 
 
 class CriticalThinkingLLMGenerator:
@@ -54,8 +37,9 @@ class CriticalThinkingLLMGenerator:
             f"{instruction}\n\n"
             "Return only the JSON object. Do not include markdown, code fences, "
             "headings, explanations, or any text before or after the JSON.\n\n"
-            f"{self._language_instruction_from_context(request.context_metadata)}"
+            f"{SOURCE_SUFFICIENCY_INSTRUCTION}\n"
             f"{context_text}\n"
+            f"{language_instruction(request_language(request))}"
         )
         return self._llm_provider.complete_text(prompt)
 
@@ -71,35 +55,11 @@ class CriticalThinkingLLMGenerator:
             "Return only the JSON object. Do not include markdown, code fences, "
             "headings, explanations, or any text before or after the JSON.\n\n"
             f"{NO_EXTERNAL_RESEARCH_DEFAULT_INSTRUCTION}\n"
-            f"{self._language_instruction_from_session(session)}"
             f"Document id: {session.document_id}\n"
             f"Target level: {session.target_level}\n"
             f"Target id: {session.target_id}\n\n"
             f"Question:\n{question}\n\n"
             f"User answer:\n{answer}\n"
+            f"{language_instruction(session_language(session), evaluation=True)}"
         )
         return self._llm_provider.complete_text(prompt)
-
-    @classmethod
-    def _language_instruction_from_session(
-        cls,
-        session: ReadingInteractionArtifact,
-    ) -> str:
-        context = session.metadata.get("context")
-        if not isinstance(context, dict):
-            return ""
-        return cls._language_instruction_from_context(context)
-
-    @staticmethod
-    def _language_instruction_from_context(context_metadata: dict[str, object]) -> str:
-        raw_language = context_metadata.get("document_language")
-        if not isinstance(raw_language, str):
-            return ""
-        language = raw_language.strip()
-        if not language or language.lower() == "unknown":
-            return ""
-        language_label = LANGUAGE_LABELS_BY_CODE.get(language.lower(), language)
-        return (
-            "Output language: Write every user-facing JSON string in "
-            f"{language_label} ({language}).\n"
-        )

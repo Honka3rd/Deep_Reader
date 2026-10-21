@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from section_tasks.interaction_policy_identity import policy_matches, server_request, stale_projection
 
 from section_tasks.quiz_interaction_service import QuizInteractionService
 from section_tasks.reading_interaction_service_contracts import (
@@ -48,21 +49,23 @@ class QuizInteractionOrchestrator:
     def read(
         self,
         request: ReadingInteractionRequest,
+        *, artifact_store=None,
     ) -> ReadingInteractionArtifact:
         """Read current artifact state without generating missing quizzes."""
         self._validate_request(request)
-        existing_artifact = self._artifact_store.get_quiz_artifact(request)
+        request = server_request(request)
+        existing_artifact = (artifact_store or self._artifact_store).get_quiz_artifact(request)
         if existing_artifact is not None:
-            if (
-                existing_artifact.status == "insufficient_content"
-                and self._service.preflight(request) is None
-            ):
+            preflight = self._service.preflight(request)
+            if preflight is not None:
+                return preflight
+            if existing_artifact.status == "insufficient_content":
                 return ReadingInteractionArtifact.from_target(
                     target=request.target,
                     interaction_type=self.interaction_type,
                     status="not_generated",
                 )
-            return existing_artifact
+            return stale_projection(existing_artifact, request)
         return ReadingInteractionArtifact.from_target(
             target=request.target,
             interaction_type=self.interaction_type,
@@ -75,11 +78,14 @@ class QuizInteractionOrchestrator:
     ) -> ReadingInteractionArtifact:
         """Generate a quiz only on explicit request, then persist valid outcomes."""
         self._validate_request(request)
+        request = server_request(request)
         if not request.refresh:
             existing_artifact = self._artifact_store.get_quiz_artifact(request)
             if (
                 existing_artifact is not None
                 and existing_artifact.status in REUSABLE_QUIZ_STATUSES
+                and policy_matches(existing_artifact, request)
+                and self._service.preflight(request) is None
             ):
                 return existing_artifact
 

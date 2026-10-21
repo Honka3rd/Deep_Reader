@@ -11,15 +11,21 @@ import shutil
 import time
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from doc_loaders.pdf_extraction_contract import PdfExtractionError, PdfExtractionFailureReason
 
 from app.qa_coordinator import QACoordinator
+from app.enhancement_preflight import EnhancementConflict, enhancement_preflight_service
+from api_schemas import EnhancementPreflightRequest, EnhancementPreflightResponse
+from api_schemas import EnhancementOperationRequest, EnhancementOperationResponse
+from app.task_layout_readiness import TaskLayoutNotReadyError
 from app.section_task_coordinator import (
     ManualStructureAnchorDTO,
     ManualStructureEntryDTO,
     ManualStructurePlanDTO,
 )
-from logging_config import configure_logging
+from logging_config import configure_logging, log_stage, request_id_context
 from document_structure.document_artifact_repository import DocumentListItem
 from document_structure.manual_structure_projection import (
     ManualStructureAnchor,
@@ -52,6 +58,10 @@ from api_schemas import (
     PrepareDocumentRequest,
     PrepareDocumentResponse,
     PrepareTaskLayoutRequest,
+    PrepareTaskLayoutResponse,
+    PdfExtractionFailureResponse,
+    PdfExtractionMetadataResponse,
+    PreparationValidationFailureResponse,
     AskDocumentRequest,
     AskDocumentResponse,
     DocumentListItemResponse,
@@ -111,6 +121,62 @@ app = FastAPI(
 qa_coordinator = QACoordinator()
 section_task_coordinator = qa_coordinator.container.section_task_coordinator()
 document_artifact_repository = qa_coordinator.container.structured_document_artifact_repository()
+enhancement_preflight_service.reader = section_task_coordinator.read_enhancement_state
+enhancement_preflight_service.lease = section_task_coordinator.enhancement_lease
+enhancement_preflight_service.availability = section_task_coordinator.enhancement_unavailable_reason
+enhancement_preflight_service.capacity_reader = section_task_coordinator.inspect_enhancement_capacity
+
+
+def _reading_content_service():
+    from document_structure.reading_content import ReadingContentService
+    return ReadingContentService(document_artifact_repository,
+        section_task_coordinator.document_preparation_pipeline.loader_factory)
+
+
+def _reading_content_error(error):
+    from document_structure.reading_content import ReadingContentConflict
+    if isinstance(error,FileNotFoundError):
+        return HTTPException(status_code=404,detail="document_or_region_missing")
+    if isinstance(error,(ReadingContentConflict,ValueError)):
+        return HTTPException(status_code=409,detail=str(error))
+    logger.exception("reading_content_operation_failed")
+    return HTTPException(status_code=503,detail="reading_content_unavailable")
+
+
+from api_schemas import ReadingContentMutationRequest
+
+
+@app.get("/documents/{doc_name}/reading-content")
+def read_reading_content(doc_name: str, include_blocks: bool = False, block_id: str | None = None):
+    try:
+        result = _reading_content_service().read(doc_name)
+        if block_id is not None:
+            result["blocks"] = [b for b in result["blocks"] if b["block_id"]==block_id]
+        elif not include_blocks:
+            result["blocks"] = []
+        return result
+    except Exception as error:
+        raise _reading_content_error(error) from error
+
+
+@app.post("/documents/{doc_name}/reading-content")
+def mutate_reading_content(doc_name: str, request: ReadingContentMutationRequest):
+    try:
+        result = _reading_content_service().mutate(doc_name,**request.model_dump())
+        result["blocks"] = [b for b in result["blocks"] if b["block_id"]==request.block_id]
+        return result
+    except Exception as error:
+        raise _reading_content_error(error) from error
+
+
+@app.get("/documents/{doc_name}/source-review/{region_id}/image")
+def preview_reading_source(doc_name: str, region_id: str):
+    from fastapi.responses import Response
+    try:
+        return Response(_reading_content_service().preview(doc_name,region_id),media_type="image/png",
+                        headers={"Cache-Control":"no-store"})
+    except Exception as error:
+        raise _reading_content_error(error) from error
 
 
 def _should_suppress_success_request_log(path: str) -> bool:
@@ -122,21 +188,27 @@ def _should_suppress_success_request_log(path: str) -> bool:
 async def request_logging_middleware(request, call_next):
     """Log request lifecycle without recording request bodies or credentials."""
     started_at = time.perf_counter()
+    request_id = uuid4().hex
+    token = request_id_context.set(request_id)
+    if not _should_suppress_success_request_log(request.url.path):
+        logger.info("request_started method=%s path=%s", request.method, request.url.path)
     try:
         response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        if not _should_suppress_success_request_log(request.url.path):
+            logger.info(
+                "request_completed method=%s path=%s status=%s duration_ms=%.1f",
+                request.method, request.url.path, response.status_code,
+                (time.perf_counter() - started_at) * 1000,
+            )
+        return response
     except Exception:
-        logger.exception("request_failed method=%s path=%s", request.method, request.url.path)
+        logger.exception("request_failed method=%s path=%s duration_ms=%.1f",
+                         request.method, request.url.path,
+                         (time.perf_counter() - started_at) * 1000)
         raise
-    duration_ms = (time.perf_counter() - started_at) * 1000
-    if not _should_suppress_success_request_log(request.url.path):
-        logger.info(
-            "request_completed method=%s path=%s status=%s duration_ms=%.1f",
-            request.method,
-            request.url.path,
-            response.status_code,
-            duration_ms,
-        )
-    return response
+    finally:
+        request_id_context.reset(token)
 
 _RAW_DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")
 _RAW_DOCUMENT_BASE_DIR = Path("data/raw")
@@ -389,6 +461,7 @@ def _structured_document_management_item(
         source_type="unknown",
         source_status="unknown",
         preparation_status="ready",
+        review_required=item.review_required,
     )
 
 
@@ -425,6 +498,7 @@ def _merge_document_management_items(
             source_size_bytes=raw_item.source_size_bytes,
             source_status=raw_item.source_status,
             preparation_status=existing.preparation_status,
+            review_required=existing.review_required,
             uploaded_at=raw_item.uploaded_at,
             updated_at=raw_item.updated_at,
             last_error=existing.last_error or raw_item.last_error,
@@ -523,30 +597,24 @@ def _delete_document_file_backed_artifacts(doc_name: str) -> dict[str, bool]:
     """Delete file-backed document artifacts for an explicit lifecycle request."""
     normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
     raw_path = _resolve_raw_document_delete_path(normalized_doc_name)
-    structured_path = _resolve_structured_document_delete_path(normalized_doc_name)
     derived_dir = _resolve_faiss_document_artifact_dir(normalized_doc_name)
 
     source_affected = False
-    structured_affected = False
     derived_affected = False
+
+    if derived_dir.exists() and not derived_dir.is_dir():
+        raise ValueError("storage_failure")
 
     if raw_path is not None and raw_path.exists():
         raw_path.unlink()
         source_affected = True
 
-    if structured_path.exists():
-        structured_path.unlink()
-        structured_affected = True
-
     if derived_dir.exists():
-        if not derived_dir.is_dir():
-            raise ValueError("storage_failure")
         shutil.rmtree(derived_dir)
         derived_affected = True
 
     return {
         "source_affected": source_affected,
-        "structured_artifacts_affected": structured_affected,
         "derived_resources_affected": derived_affected,
     }
 
@@ -623,6 +691,10 @@ def _update_renamed_structured_document_metadata(
 
     old_namespace = _document_lifecycle_namespace(old_doc_name)
     new_namespace = _document_lifecycle_namespace(new_doc_name)
+    if payload.get("chapters") and payload.get("document_task_artifacts"):
+        from document_structure.structured_document import StructuredDocument
+        from section_tasks.interaction_rename import renamed_interactions
+        payload = renamed_interactions(StructuredDocument.from_dict(payload), new_namespace).to_dict()
     if payload.get("document_id") in {None, old_doc_name, old_namespace}:
         payload["document_id"] = new_namespace
     if payload.get("title") in {None, old_doc_name, old_namespace}:
@@ -997,6 +1069,24 @@ def _resolve_reparse_failure_status(error: str) -> int:
     normalized_error = error.strip() or "reparse failed"
     lowered = normalized_error.lower()
 
+    prefix = "prepare_structured_document_llm_enhanced_rejected:"
+    if lowered.startswith(prefix):
+        reason = lowered[len(prefix):]
+        if reason in {"enhancement_prompt_budget_exceeded", "local_resource_limit"}:
+            return 413
+        if reason in {"enhancement_budget_unavailable", "enhancement_output_budget_invalid",
+                      "enhancement_provider_unavailable"}:
+            return 503
+        if reason in {"enhancement_provider_failed", "enhancement_provider_transient"}:
+            return 502
+        if reason == "enhancement_configuration_changed":
+            return 409
+        if reason == "enhancement_candidate_rejected:unexpected_validation_error":
+            return 500
+        if reason == "enhancement_candidate_rejected" or reason.startswith("enhancement_candidate_rejected:"):
+            return 422
+        return 500
+
     status_match = re.search(r"status=(\d{3})", normalized_error)
     if status_match is not None:
         status_code = int(status_match.group(1))
@@ -1033,6 +1123,66 @@ _READING_INTERACTION_STATUS_HTTP_STATUS: dict[str, int] = {
     "validation_failed": 422,
     "generation_failed": 502,
 }
+
+
+from api_schemas import NoteReadRequest, NoteSaveRequest, NoteDeleteRequest, NoteResponse
+from api_schemas import (SummaryInteractionReadRequest, SummaryInteractionGenerateRequest,
+                         SummaryInteractionRefreshRequest, SummaryInteractionResponse)
+
+
+def _summary_route(operation, request, response):
+    try:
+        result = getattr(section_task_coordinator, operation)(**_reading_target_kwargs(request.target))
+        mapped = SummaryInteractionResponse(envelope=_map_reading_interaction_envelope(result),
+                                             payload=result.payload if result.status == "completed" else None)
+        response.status_code = _reading_interaction_http_status(result.status)
+        return mapped
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post("/documents/reading-interactions/summary/read", response_model=SummaryInteractionResponse)
+def read_summary_interaction(request: SummaryInteractionReadRequest, response: Response):
+    return _summary_route("read_summary_artifact", request, response)
+
+
+@app.post("/documents/reading-interactions/summary/generate", response_model=SummaryInteractionResponse)
+def generate_summary_interaction(request: SummaryInteractionGenerateRequest, response: Response):
+    return _summary_route("generate_summary_artifact", request, response)
+
+
+@app.post("/documents/reading-interactions/summary/refresh", response_model=SummaryInteractionResponse)
+def refresh_summary_interaction(request: SummaryInteractionRefreshRequest, response: Response):
+    return _summary_route("refresh_summary_artifact", request, response)
+
+
+@app.post("/documents/reading-interactions/note/read", response_model=NoteResponse)
+def read_note_interaction(request: NoteReadRequest):
+    try:
+        return section_task_coordinator.read_note(**_reading_target_kwargs(request.target))
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post("/documents/reading-interactions/note/save", response_model=NoteResponse)
+def save_note_interaction(request: NoteSaveRequest):
+    try:
+        return section_task_coordinator.save_note(
+            **_reading_target_kwargs(request.target), text=request.text,
+            expected_revision=request.expected_revision, mutation_id=request.mutation_id,
+            target_token=request.target_token)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
+
+
+@app.post("/documents/reading-interactions/note/delete", response_model=NoteResponse)
+def delete_note_interaction(request: NoteDeleteRequest):
+    try:
+        return section_task_coordinator.delete_note(
+            **_reading_target_kwargs(request.target),
+            expected_revision=request.expected_revision, target_token=request.target_token)
+    except Exception as error:
+        _raise_reading_interaction_http_exception(error)
 
 
 def _reading_interaction_http_status(status: str) -> int:
@@ -1141,6 +1291,10 @@ def _map_reading_interaction_envelope(result) -> ReadingInteractionResponseEnvel
         status=result.status,
         artifact_id=result.artifact_id,
         session_id=result.session_id,
+        generated_at=metadata.get("generated_at"),
+        updated_at=metadata.get("updated_at"),
+        source_structure_version=metadata.get("source_structure_version"),
+        source_hash=metadata.get("source_hash"),
         schema_version=(
             None
             if metadata.get("output_schema_version") is None
@@ -1370,15 +1524,21 @@ def list_document_management_items(
 @app.post("/documents/upload", response_model=DocumentUploadResponse)
 async def upload_document(request: Request, response: Response):
     """Store a raw document source candidate without preparing or parsing it."""
-    body = await request.body()
+    with log_stage(logger, "upload_receive") as timing:
+        body = await request.body()
+        timing["body_bytes"] = len(body)
     try:
-        filename, file_bytes, title, conflict_policy = _parse_document_upload_multipart(
-            request.headers.get("content-type"),
-            body,
-        )
+        with log_stage(logger, "upload_multipart_parse"):
+            filename, file_bytes, title, conflict_policy = _parse_document_upload_multipart(
+                request.headers.get("content-type"),
+                body,
+            )
         normalized_filename = _normalize_upload_filename(filename)
+        logger.info("upload_metadata filename=%s file_bytes=%s conflict_policy=%s",
+                    json.dumps(normalized_filename, ensure_ascii=False), len(file_bytes), conflict_policy)
 
         if not file_bytes:
+            logger.info("upload_rejected reason=missing_source")
             response.status_code = 400
             return DocumentUploadResponse(
                 doc_name=Path(normalized_filename).stem,
@@ -1392,6 +1552,7 @@ async def upload_document(request: Request, response: Response):
                 reason="missing_source",
             )
         if len(file_bytes) > _DOCUMENT_UPLOAD_MAX_BYTES:
+            logger.info("upload_rejected reason=file_too_large max_bytes=%s", _DOCUMENT_UPLOAD_MAX_BYTES)
             response.status_code = 413
             return DocumentUploadResponse(
                 doc_name=Path(normalized_filename).stem,
@@ -1411,17 +1572,24 @@ async def upload_document(request: Request, response: Response):
             conflict_policy,
             _RAW_DOCUMENT_BASE_DIR,
         )
-        destination.write_bytes(file_bytes)
+        with log_stage(logger, "upload_write", filename=destination.name, file_bytes=len(file_bytes)):
+            destination.write_bytes(file_bytes)
+        with log_stage(logger, "upload_hash", file_bytes=len(file_bytes)):
+            source_hash = hashlib.sha256(file_bytes).hexdigest()
         response.status_code = 201
+        logger.info("upload_stored doc_name=%s filename=%s file_bytes=%s preparation_started=false",
+                    json.dumps(destination.stem, ensure_ascii=False),
+                    json.dumps(destination.name, ensure_ascii=False), len(file_bytes))
         return _build_document_upload_response(
             destination=destination,
             source_size_bytes=len(file_bytes),
-            source_hash=hashlib.sha256(file_bytes).hexdigest(),
+            source_hash=source_hash,
             source_status="uploaded",
             title=title,
             conflict_policy=conflict_policy,
         )
     except FileExistsError:
+        logger.info("upload_rejected reason=duplicate_conflict")
         response.status_code = 409
         filename = filename if "filename" in locals() else "upload"
         normalized_filename = Path(filename).name
@@ -1450,6 +1618,7 @@ async def upload_document(request: Request, response: Response):
             "validation_failure",
         }:
             reason = "validation_failure"
+        logger.info("upload_rejected reason=%s", reason)
         return DocumentUploadResponse(
             doc_name=Path(normalized_filename).stem or "upload",
             title=title if "title" in locals() else None,
@@ -1487,7 +1656,7 @@ def delete_document_lifecycle(
     request: DocumentLifecycleActionRequest,
     response: Response,
 ):
-    """Explicitly delete a document candidate and file-backed derived artifacts."""
+    """Explicitly delete source, derived files, and active structured storage data."""
     try:
         doc_name = _validate_document_lifecycle_doc_name(request.doc_name)
         if request.action != "delete":
@@ -1511,6 +1680,10 @@ def delete_document_lifecycle(
             )
 
         effects = _delete_document_file_backed_artifacts(doc_name)
+        # Keep the discoverable structured record until file cleanup succeeds.
+        effects["structured_artifacts_affected"] = (
+            document_artifact_repository.delete_document(doc_name)
+        )
         deleted = any(effects.values())
         if not deleted:
             response.status_code = 404
@@ -1593,6 +1766,16 @@ def rename_document_lifecycle(
             doc_name=doc_name,
             new_doc_name=request.new_doc_name,
         )
+        from db.postgres_structured_document_artifact_repository import PostgresStructuredDocumentArtifactRepository
+        if isinstance(document_artifact_repository, PostgresStructuredDocumentArtifactRepository):
+            from section_tasks.interaction_rename import renamed_interactions
+            try:
+                effects["structured_artifacts_affected"] = document_artifact_repository.rename_document(
+                    _document_lifecycle_namespace(doc_name),
+                    _document_lifecycle_namespace(request.new_doc_name), renamed_interactions)
+            except Exception:
+                _rename_document_file_backed_artifacts(doc_name=request.new_doc_name, new_doc_name=doc_name)
+                raise
         return DocumentLifecycleActionResponse(
             doc_name=doc_name,
             action="rename",
@@ -1640,7 +1823,45 @@ def rename_document_lifecycle(
         )
 
 
-@app.post("/documents/prepare", response_model=PrepareDocumentResponse)
+_PDF_EXTRACTION_FAILURE_HTTP_STATUS = {
+    PdfExtractionFailureReason.MODE_UNAVAILABLE: 501,
+    PdfExtractionFailureReason.MODE_NOT_APPLICABLE: 422,
+    PdfExtractionFailureReason.NO_TEXT: 422,
+    PdfExtractionFailureReason.ENGINE_UNAVAILABLE: 503,
+    PdfExtractionFailureReason.QUALITY_FAILED: 422,
+    PdfExtractionFailureReason.BUDGET_EXCEEDED: 422,
+    PdfExtractionFailureReason.EXTRACTION_FAILED: 502,
+}
+_PREPARATION_ERROR_RESPONSES = {
+    422: {"model": PdfExtractionFailureResponse | PreparationValidationFailureResponse},
+    501: {"model": PdfExtractionFailureResponse},
+    502: {"model": PdfExtractionFailureResponse},
+    503: {"model": PdfExtractionFailureResponse},
+}
+
+
+def _pdf_extraction_failure_response(request, error: PdfExtractionError) -> JSONResponse:
+    payload = PdfExtractionFailureResponse(
+        doc_name=request.doc_name,
+        reason=error.reason,
+        detail=str(error),
+        pdf_extraction=PdfExtractionMetadataResponse(requested_mode=request.pdf_extraction_mode),
+    )
+    return JSONResponse(
+        status_code=_PDF_EXTRACTION_FAILURE_HTTP_STATUS[error.reason],
+        content=payload.model_dump(mode="json"),
+    )
+
+
+def _pdf_extraction_metadata(request, assets) -> PdfExtractionMetadataResponse:
+    return PdfExtractionMetadataResponse(
+        requested_mode=request.pdf_extraction_mode,
+        effective_mode=assets.effective_pdf_extraction_mode,
+        provenance=assets.pdf_extraction_provenance,
+    )
+
+
+@app.post("/documents/prepare", response_model=PrepareDocumentResponse, responses=_PREPARATION_ERROR_RESPONSES)
 def prepare_document(request: PrepareDocumentRequest, response: Response):
     """Prepare document artifacts through REST for deterministic parser-mode testing."""
     try:
@@ -1649,6 +1870,9 @@ def prepare_document(request: PrepareDocumentRequest, response: Response):
             force_rebuild=request.force_rebuild,
             mode=request.mode,
             structured_parser_mode=request.structured_parser_mode,
+            pdf_extraction_mode=request.pdf_extraction_mode,
+            toc_hint=request.toc_hint,
+            enhancement_intent=request.enhancement_intent,
         )
 
         success = (
@@ -1672,36 +1896,71 @@ def prepare_document(request: PrepareDocumentRequest, response: Response):
             profile_ready=assets.profile_ready,
             bundle_ready=assets.bundle_ready,
             errors=list(assets.errors),
+            pdf_extraction=_pdf_extraction_metadata(request, assets),
         )
+    except PdfExtractionError as error:
+        return _pdf_extraction_failure_response(request, error)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error))
 
 
-@app.post("/documents/prepare-task-layout", response_model=DocumentTaskLayoutResponse)
+@app.post("/documents/prepare-task-layout", response_model=PrepareTaskLayoutResponse,
+          responses={**_PREPARATION_ERROR_RESPONSES, 409: {"description": "Persisted task layout is not ready; explicit preparation guidance in detail."}})
 def prepare_task_layout(request: PrepareTaskLayoutRequest):
     """Prepare a document when needed, then return its task-layout projection."""
     try:
-        assets = qa_coordinator.document_preparation_pipeline.prepare(
-            doc_name=request.doc_name,
-            force_rebuild=request.force_rebuild,
-            mode="base",
-            structured_parser_mode=request.structured_parser_mode,
-        )
-        if not assets.structured_document_ready:
-            detail = " | ".join(assets.errors) or "structured document preparation failed"
-            raise HTTPException(status_code=400, detail=detail)
+        assets = None
+        if request.layout_only:
+            if request.toc_hint != "auto":
+                raise HTTPException(status_code=400, detail="layout_only cannot apply toc_hint")
+            if request.force_rebuild:
+                raise HTTPException(status_code=400, detail="layout_only cannot rebuild source structure")
+            if request.include_anchor_page_evidence:
+                raise HTTPException(status_code=400, detail="layout_only cannot load raw page evidence; request evidence separately")
+        else:
+            assets = qa_coordinator.document_preparation_pipeline.prepare(
+                doc_name=request.doc_name,
+                force_rebuild=request.force_rebuild,
+                mode="base",
+                structured_parser_mode=request.structured_parser_mode,
+                pdf_extraction_mode=request.pdf_extraction_mode,
+                toc_hint=request.toc_hint,
+                enhancement_intent=request.enhancement_intent,
+            )
+            if not assets.structured_document_ready:
+                detail = " | ".join(assets.errors) or "structured document preparation failed"
+                raise HTTPException(status_code=400, detail=detail)
 
-        return get_document_task_layout(
+        section_task_coordinator.ensure_document_task_layout(
+            doc_name=request.doc_name,
+            refresh_task_units=request.refresh_task_units,
+            task_unit_split_mode=request.task_unit_split_mode,
+            semantic_top_k_candidates=request.semantic_top_k_candidates,
+        )
+        layout = get_document_task_layout(
             GetDocumentTaskLayoutRequest(
                 doc_name=request.doc_name,
-                refresh_task_units=request.refresh_task_units,
+                refresh_task_units=False,
                 task_unit_split_mode=request.task_unit_split_mode,
                 semantic_top_k_candidates=request.semantic_top_k_candidates,
                 include_anchor_page_evidence=request.include_anchor_page_evidence,
             )
         )
+        return PrepareTaskLayoutResponse(
+            **layout.model_dump(),
+            pdf_extraction=(
+                _pdf_extraction_metadata(request, assets) if assets is not None
+                else PdfExtractionMetadataResponse(requested_mode=request.pdf_extraction_mode)
+            ),
+        )
+    except TaskLayoutNotReadyError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except FileNotFoundError:
+        raise HTTPException(status_code=409, detail=str(TaskLayoutNotReadyError("missing_structure")))
+    except PdfExtractionError as error:
+        return _pdf_extraction_failure_response(request, error)
     except HTTPException:
         raise
     except ValueError as error:
@@ -2177,17 +2436,21 @@ def generate_document_chapter_quiz(
         raise HTTPException(status_code=500, detail=str(error))
 
 
-@app.post("/documents/task-layout", response_model=DocumentTaskLayoutResponse)
+@app.post("/documents/task-layout", response_model=DocumentTaskLayoutResponse,
+          responses={409: {"description": "Task layout requires explicit preparation; detail contains recovery guidance."}})
 def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
     """Read current effective document-task layout snapshot."""
     try:
-        layout = section_task_coordinator.get_document_task_layout(
-            doc_name=request.doc_name,
-            refresh_task_units=request.refresh_task_units,
-            task_unit_split_mode=request.task_unit_split_mode,
-            semantic_top_k_candidates=request.semantic_top_k_candidates,
-            include_anchor_page_evidence=request.include_anchor_page_evidence,
-        )
+        with log_stage(logger, "task_layout_projection", doc_name=request.doc_name,
+                       refresh_task_units=request.refresh_task_units,
+                       split_mode=request.task_unit_split_mode):
+            layout = section_task_coordinator.get_document_task_layout(
+                doc_name=request.doc_name,
+                refresh_task_units=request.refresh_task_units,
+                task_unit_split_mode=request.task_unit_split_mode,
+                semantic_top_k_candidates=request.semantic_top_k_candidates,
+                include_anchor_page_evidence=request.include_anchor_page_evidence,
+            )
         def _artifact_response(
             artifact,
         ) -> ArtifactAvailabilityResponse | None:
@@ -2238,6 +2501,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                 parent_chapter_id=section.parent_chapter_id,
                 section_kind=section.section_kind,
                 is_implicit_section=section.is_implicit_section,
+                title_origin=section.title_origin,
                 task_mode=section.task_mode.value,
                 task_units=[
                     _task_unit_response(task_unit)
@@ -2299,9 +2563,16 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
                     fallback_used=layout.parse_provenance.fallback_used,
                     fallback_reason=layout.parse_provenance.fallback_reason,
                     source=layout.parse_provenance.source,
+                    toc_hint=layout.parse_provenance.toc_hint,
+                    toc_observation=layout.parse_provenance.toc_observation,
+                    enhancement_intent=layout.parse_provenance.enhancement_intent,
+                    implicit_single_body=layout.parse_provenance.implicit_single_body,
+                    declaration_unconfirmed=layout.parse_provenance.declaration_unconfirmed,
                 )
             ),
         )
+    except TaskLayoutNotReadyError as error:
+        raise HTTPException(status_code=409, detail=str(error))
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
     except FileNotFoundError as error:
@@ -2413,6 +2684,20 @@ def validate_manual_structure(
         raise HTTPException(status_code=422, detail=str(error))
 
 
+@app.post("/documents/reparse-structure/preflight", response_model=EnhancementPreflightResponse)
+def preflight_document_structure(request: EnhancementPreflightRequest):
+    return enhancement_preflight_service.preflight(
+        doc_name=request.doc_name, toc_hint=request.toc_hint,
+        enhancement_intent=request.enhancement_intent,
+    )
+
+
+@app.post("/documents/reparse-structure/result", response_model=EnhancementOperationResponse)
+def enhancement_operation_result(request: EnhancementOperationRequest):
+    """Read process-local operation evidence; never infer success from a version."""
+    return enhancement_preflight_service.operations.lookup(request.model_dump())
+
+
 @app.post("/documents/reparse-structure", response_model=ReparseDocumentStructureResponse)
 def reparse_document_structure(
     request: ReparseDocumentStructureRequest,
@@ -2444,10 +2729,18 @@ def reparse_document_structure(
         )
 
     try:
-        result = section_task_coordinator.reparse_document_structure(
-            doc_name=request.doc_name,
-            parser_mode=normalized_parser_mode,
-        )
+        def execute():
+            return section_task_coordinator.reparse_document_structure(
+                doc_name=request.doc_name,
+                parser_mode=normalized_parser_mode,
+                toc_hint=request.toc_hint,
+                enhancement_intent=request.enhancement_intent,
+                **({"discard_interactions": request.discard_interactions,
+                    "confirmation_token": request.confirmation_token}
+                   if normalized_parser_mode == "llm_enhanced" else {}),
+            )
+        result = (enhancement_preflight_service.operations.execute(request.model_dump(), execute)
+                  if normalized_parser_mode == "llm_enhanced" else execute())
         if result.success:
             return ReparseDocumentStructureResponse(
                 success=True,
@@ -2456,6 +2749,11 @@ def reparse_document_structure(
                 structured_document_path=result.structured_document_path,
                 error=None,
                 section_count=result.section_count,
+                structure_version=getattr(result, "structure_version", None),
+                change_kind=getattr(result, "change_kind", None),
+                committed=getattr(result, "committed", None),
+                interactions_cleared=getattr(result, "interactions_cleared", None),
+                reading_layout_required=getattr(result, "reading_layout_required", None),
             )
 
         response.status_code = _resolve_reparse_failure_status(result.error or "")
@@ -2466,10 +2764,22 @@ def reparse_document_structure(
             structured_document_path=result.structured_document_path,
             error=result.error,
             section_count=result.section_count,
+            retryable=getattr(result, "retryable", False),
         )
+    except EnhancementConflict as error:
+        if error.capacity is not None:
+            from api_schemas import EnhancementCapacityResponse
+            return JSONResponse(status_code=error.status_code, content={
+                "detail": error.reason,
+                "capacity": EnhancementCapacityResponse.model_validate(error.capacity).model_dump()})
+        raise HTTPException(status_code=error.status_code, detail=error.reason)
     except HTTPException:
         raise
     except ValueError as error:
+        if normalized_parser_mode == "llm_enhanced":
+            raise HTTPException(status_code=500, detail="enhancement_execution_failed") from None
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
+        if normalized_parser_mode == "llm_enhanced":
+            raise HTTPException(status_code=500, detail="enhancement_execution_failed") from None
         raise HTTPException(status_code=500, detail=str(error))

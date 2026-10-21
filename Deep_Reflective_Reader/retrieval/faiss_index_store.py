@@ -66,6 +66,7 @@ Args:
             f"model_capability=model={self.token_budgets.capability_model_name},"
             f"endpoint={self.token_budgets.capability_endpoint_kind},"
             f"max_input={self.token_budgets.capability_max_input_tokens},"
+            f"context_window={self.token_budgets.capability_context_window_tokens},"
             f"max_output={self.token_budgets.capability_max_output_tokens}",
             f"utilization_ratios=input={self.token_budgets.input_budget_utilization_ratio},"
             f"context={self.token_budgets.context_budget_utilization_ratio}",

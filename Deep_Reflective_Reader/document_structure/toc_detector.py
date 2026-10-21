@@ -188,7 +188,20 @@ class TableOfContentsDetector:
         if not text.strip():
             return TocDetectionResult(False, False, 0.0, TocShape.UNKNOWN)
 
+        from document_structure.common_parse_policy import fragmented_prose_ranges
+        fragments = fragmented_prose_ranges(text)
         lines = self._line_records(text)
+        if fragments:
+            # Do not promote glyph-fragment lines to title-list TOC evidence.
+            fragment_index = 0
+            retained = []
+            for line in lines:
+                while fragment_index < len(fragments) and fragments[fragment_index].end <= line[1]:
+                    fragment_index += 1
+                if fragment_index < len(fragments) and fragments[fragment_index].start <= line[1] < fragments[fragment_index].end:
+                    continue
+                retained.append(line)
+            lines = retained
         early_lines = [line for line in lines if line[1] <= self._MAX_SCAN_CHARS]
         marker_index = next(
             (index for index, (_, _, _, value) in enumerate(early_lines) if self._is_marker(value)),

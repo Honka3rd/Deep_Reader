@@ -42,7 +42,7 @@ from db.postgres_structured_document_store import PostgresStructuredDocumentStor
 from language.document_language_detector import DocumentLanguageDetector
 from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile_evidence_builder import DocumentProfileEvidenceBuilder
-from profile.document_profile_store import DocumentProfileStore
+from profile.versioned_document_profile_store import VersionedDocumentProfileStore
 from profile.post_structure_metadata_enricher import PostStructureMetadataEnricher
 from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
@@ -66,6 +66,7 @@ from section_tasks.analysis_interaction_orchestrator import (
     AnalysisInteractionOrchestrator,
 )
 from section_tasks.analysis_interaction_service import AnalysisInteractionService
+from section_tasks.summary_interaction_service import SummaryInteractionService
 from section_tasks.critical_thinking_llm_generator import (
     CriticalThinkingLLMGenerator,
 )
@@ -175,7 +176,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     )
 
     document_profile_store = providers.Singleton(
-        DocumentProfileStore,
+        VersionedDocumentProfileStore,
     )
     post_structure_metadata_enricher = providers.Singleton(
         PostStructureMetadataEnricher,
@@ -311,6 +312,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         file=file_structured_document_artifact_repository,
         postgres=postgres_structured_document_artifact_repository,
     )
+    document_profile_store.add_kwargs(repository=structured_document_artifact_repository)
 
     bundle_provider = providers.Singleton(
         BundleProvider,
@@ -477,6 +479,11 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         AnalysisInteractionLLMGenerator,
         llm_provider=llm_provider,
     )
+    summary_interaction_service = providers.Singleton(
+        SummaryInteractionService,
+        repository=structured_document_artifact_repository,
+        llm_provider=llm_provider,
+    )
     reading_interaction_artifact_store = providers.Singleton(
         DocumentReadingInteractionArtifactStore,
         document_artifact_repository=structured_document_artifact_repository,
@@ -542,6 +549,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         quiz_interaction_orchestrator=quiz_interaction_orchestrator,
         critical_thinking_session_service=critical_thinking_session_service,
         critical_thinking_session_store=reading_interaction_artifact_store,
+        summary_interaction_service=summary_interaction_service,
     )
 
     @classmethod

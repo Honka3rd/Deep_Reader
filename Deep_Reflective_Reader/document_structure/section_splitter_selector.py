@@ -1,4 +1,5 @@
 from enum import StrEnum
+from document_structure.common_parse_policy import TocHint
 
 from document_structure.abstract_section_splitter import AbstractSectionSplitter
 from document_structure.llm_section_splitter import LLMSectionSplitter
@@ -60,8 +61,7 @@ class SectionSplitterSelector:
         mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
     ):
         """Convenience method: split by selected mode."""
-        splitter = self.get_splitter(mode=mode)
-        return splitter.split(raw_text=raw_text, language=language)
+        return self.split_with_provenance(raw_text=raw_text, language=language, mode=mode)[0]
 
     def split_with_provenance(
         self,
@@ -69,15 +69,19 @@ class SectionSplitterSelector:
         raw_text: str,
         language: LanguageCode,
         mode: SectionSplitterMode | str = SectionSplitterMode.COMMON,
+        toc_hint: TocHint | str = TocHint.AUTO,
+        enhancement_intent: str = "restore_source",
+        observed_toc: str = "not_checked",
     ) -> tuple[list[StructuredSection], dict[str, object]]:
         """Split by selected mode and return advisory parse provenance."""
         resolved_mode = SectionSplitterMode.resolve(mode)
         if resolved_mode == SectionSplitterMode.LLM_ENHANCED:
-            return self.llm_splitter.split_with_provenance(
+            return self.llm_splitter.split_candidate_with_provenance(
                 raw_text=raw_text,
                 language=language,
+                toc_hint=toc_hint, enhancement_intent=enhancement_intent, observed_toc=observed_toc,
             )
-        sections = self.common_splitter.split(raw_text=raw_text, language=language)
+        sections = self.common_splitter.split(raw_text=raw_text, language=language, toc_hint=toc_hint)
         return sections, {
             "requested_parser_mode": SectionSplitterMode.COMMON.value,
             "effective_parser_mode": SectionSplitterMode.COMMON.value,

@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from collections import Counter
 from dataclasses import dataclass
 import re
+import logging
+
+from document_structure.common_parse_policy import common_analysis_view
+from document_structure.source_mapped_text import MAX_SOURCE_CHARS
 
 from section_tasks.reading_interaction_service_contracts import (
     ReadingInteractionRequest,
@@ -160,6 +165,8 @@ class ReadingInteractionValidityPolicy:
         self,
         request: ReadingInteractionRequest,
     ) -> ReadingInteractionPreflightResult | None:
+        if request.target.source_needs_review:
+            return ReadingInteractionPreflightResult(status="insufficient_content",reason="source_needs_review")
         target_validity = self._target_validity_checker(request)
         if not target_validity.valid:
             reason = target_validity.reason
@@ -207,6 +214,8 @@ _INDEX_LINE_PATTERN = re.compile(
     r"(?:\.{2,}|…{1,}|[\s\t]{2,})?\s*\d{1,4}\s*$",
     re.UNICODE,
 )
+SEMANTIC_GUARD_VERSION = "fragment-evidence-v2"
+_LOGGER = logging.getLogger(__name__)
 
 
 def _semantic_content_insufficient_reason(
@@ -214,17 +223,51 @@ def _semantic_content_insufficient_reason(
     *,
     interaction_label: str,
 ) -> str | None:
+    if len(content) > MAX_SOURCE_CHARS:
+        _LOGGER.info("semantic_preflight version=%s decision=analysis_budget_exceeded raw_chars=%d",
+                     SEMANTIC_GUARD_VERSION, len(content))
+        return f"target content exceeds semantic analysis budget for {interaction_label}"
+    try:
+        view = common_analysis_view(content)
+    except ValueError:
+        _LOGGER.info("semantic_preflight version=%s decision=evidence_budget_exceeded raw_chars=%d",
+                     SEMANTIC_GUARD_VERSION, len(content))
+        return f"target content exceeds semantic evidence budget for {interaction_label}"
+    reason = _semantic_view_insufficient_reason(
+        view.text, interaction_label=interaction_label,
+        repaired=bool(view.removed_ranges), original=content,
+    )
+    _LOGGER.info(
+        "semantic_preflight version=%s decision=%s raw_chars=%d readable_chars=%d "
+        "raw_lines=%d fragment_ranges=%d removed_gaps=%d",
+        SEMANTIC_GUARD_VERSION, reason or "accepted", len(content),
+        sum(char.isalnum() for char in view.text), len(view.line_ranges),
+        len(view.confirmed_fragment_ranges), len(view.removed_ranges),
+    )
+    return reason
+
+
+def _semantic_view_insufficient_reason(
+    content: str, *, interaction_label: str, repaired: bool, original: str,
+) -> str | None:
     tokens = _TOKEN_PATTERN.findall(content.lower())
     cjk_chars = _CJK_PATTERN.findall(content)
     nonempty_lines = [line.strip() for line in content.splitlines() if line.strip()]
 
-    if _looks_repetitive(tokens):
+    dominant_cjk = bool(cjk_chars) and max(Counter(cjk_chars).values()) / len(cjk_chars) >= 0.55
+    if _looks_repetitive(tokens) or (repaired and dominant_cjk):
         return f"target content is too repetitive for {interaction_label}"
 
-    if _looks_like_index_or_toc(nonempty_lines):
+    original_lines = [line.strip() for line in original.splitlines() if line.strip()]
+    if _looks_like_index_or_toc(nonempty_lines) or _looks_like_index_or_toc(original_lines):
         return f"target content looks index-like rather than readable for {interaction_label}"
 
-    if _looks_like_fragmented_headings(nonempty_lines, tokens, len(cjk_chars)):
+    # Repaired prose must dominate character mass, not just a few long lines.
+    # Glyph-per-line extraction otherwise overwhelms the line-count heuristic.
+    prose_chars = sum(len(_CJK_PATTERN.findall(line)) for line in nonempty_lines
+                      if len(_CJK_PATTERN.findall(line)) > 12)
+    evidenced_prose = repaired and prose_chars > len(cjk_chars) / 2
+    if not evidenced_prose and _looks_like_fragmented_headings(nonempty_lines, tokens, len(cjk_chars)):
         return (
             "target content looks like fragmented headings rather than readable "
             f"source text for {interaction_label}"
