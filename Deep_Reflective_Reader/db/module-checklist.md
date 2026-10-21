@@ -1,5 +1,24 @@
 # db Checklist
 
+## Format-Neutral Extraction Backlog (2026-10-21)
+
+Implemented; evidence and scope are recorded per item. Ordered design: [shared plan](../document_preparation/module-detailed-design.md#format-neutral-extraction-plan-2026-10-21).
+
+- [x] EXTRACT-07: Integrate generic identities into atomic enhancement persistence.
+  Depends on: EXTRACT-06.
+  Acceptance: Normalize candidate/current identities and provenance whitelist; PostgreSQL/file readback, stale source/consent/concurrent writers, rollback and conditional cleanup tests; no implicit migration or table creation.
+  Evidence: Normalized atomic source comparisons and generic whitelist; 75 existing PostgreSQL tests pass (two opt-in skips), plus two TXT migration/commit tests.
+  Timestamp: 2026-10-21
+
+## Conditional Enhancement Follow-up
+
+- [x] ENH-REV-02: Implement atomic unchanged/title-only/structural persistence.
+  Depends on: document_structure ENH-REV-01.
+  Acceptance: No-op performs no version/hierarchy/cleanup write; title-only changes labels atomically with stable IDs/structure version and all interactions retained; structural changes reuse full replacement/cleanup. Revalidate baseline labels as well as source/hierarchy. Keep relational and snapshot labels consistent; no fake hard-reparse event for title edits, no partial reparse.
+  Evidence: `postgres_structured_document_store.py`; `scripts/test_enhancement_conditional_commit.py` runs 43 disposable PostgreSQL tests (42 pass, one private-source opt-in skipped), covering all branches, label/snapshot readback, same-version title changes, concurrent label/artifact writers, rollback and delayed writes retaining latest labels. 20 comparator tests and manual-reparse repository boundary regression pass.
+  Notes: Existing row fingerprint includes labels; no new migration required. Internal result now includes change_kind. Public outcome/consent/recovery integration remains ENH-REV-03/05; no production migration or paid LLM call performed.
+  Timestamp: 2026-10-21
+
 ## Purpose
 
 This checklist records completed documentation decisions and future implementation tasks for the documentation-only `db/` module.
@@ -50,6 +69,11 @@ It is used to:
 - Uncertain items must go to `Needs Confirmation`, not the completed checklist.
 
 ## Completed Checklist
+
+- [x] Implement namespace-scoped permanent document deletion in PostgreSQL.
+  Evidence: `postgres_structured_document_store.py`; `postgres_structured_document_artifact_repository.py`; Docker execution of `scripts/test_postgres_document_delete.py` on 2026-10-14.
+  Notes: Transactional document deletion uses existing FK cascades for all owned rows including OCR pages, preserves other namespaces/documents, and returns false for missing retries. The regression uses a unique disposable schema.
+  Timestamp: 2026-10-14
 
 - [x] Capture DB-era identity strategy as documentation-only golden source.
   Evidence: `Deep_Reflective_Reader/db/module-detailed-design.md (DB-Era Identity Strategy)`; maintainer-confirmed grill-me decisions in current architecture task.
@@ -236,6 +260,16 @@ It is used to:
 No unresolved confirmation items identified in this pass.
 
 ## Future Task Policy
+
+### Source-Preserving Enhancement (2026-10-19)
+
+- [x] ENH-DB-01: Guard atomic enhancement replacement with confirmed source, structure and interaction revisions.
+  Depends on: ENH-APP-01 and ENH-PREP-02; required before public structure-only activation.
+  Scope: inventory relational and embedded interactions at all affected levels; coordinate writers/revisions and document single-flight; prevent candidate artifact resurrection; preserve source provenance.
+  Acceptance: stale/concurrent writes and failed commits preserve prior state; successful replacement clears consented data atomically and increments version once; supported storage adapters pass equivalent tests or report explicit unavailability.
+  Evidence: `commit_enhancement`, migration `003_interaction_version_guards.sql`, server-bound interaction versions; 22 live disposable-schema cases in `scripts/test_enhancement_postgres_preflight.py` passed, including delayed book insight through the real artifact store. Candidate, policy identity, orchestration and artifact-store/model regressions passed.
+  Boundary: PREP-03 now accepts guarded public PostgreSQL execution and version-aware file-profile invalidation; file hierarchy enhancement stays unsupported. No user documents were changed and no production migration was run during acceptance.
+  Timestamp: 2026-10-19
 
 New future tasks for this module must be added here first as unchecked items:
 

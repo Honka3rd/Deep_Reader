@@ -1,5 +1,12 @@
 # bundle_factory.py Checklist
 
+## Content Read Performance (2026-10-21)
+
+- [x] CONTENT-03: Make runtime bundle profile access reuse-only and preserve profiles during index rebuilds.
+  Acceptance: See app detailed design Content Read Recovery; evidence required before completion.
+  Evidence: BundleFactory no longer builds or clears profiles; explicit readiness failures preserve bytes. test_content_read_recovery covers normal reuse, corrupt/missing profiles and index cleanup with zero profile builder calls.
+  Timestamp: 2026-10-21
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `bundle_factory.py` module.
@@ -31,9 +38,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/bundle_factory.py; Deep_Reflective_Reader/bundle_factory.module-detailed-design.md (Main Responsibilities)`
   Notes: Factory keeps bounded in-memory cache with eviction behavior.
 
-- [x] Implements profile readiness logic with existing-load and rebuild fallback.
+- [x] Implements reuse-only profile readiness; missing/corrupt profile requires explicit preparation/reparse.
   Evidence: `Deep_Reflective_Reader/bundle_factory.py; Deep_Reflective_Reader/bundle_factory.module-detailed-design.md (Main Flows)`
   Notes: Profile is guaranteed before final bundle save/load return.
+  Timestamp: 2026-10-21
 
 - [x] Implements index readiness with fingerprint matching and legacy-record-schema rebuild guard.
   Evidence: `Deep_Reflective_Reader/bundle_factory.py; Deep_Reflective_Reader/bundle_factory.module-detailed-design.md (Known Legacy / Compatibility Behavior)`

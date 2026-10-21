@@ -1,10 +1,193 @@
 # db Detailed Design
 
+## Atomic Reading Mutations (2026-10-21)
+
+OCR-REVIEW-05 uses mutate_reading_content with SELECT FOR UPDATE on the document
+inside one PostgreSQL transaction. Persist reading overlays in metadata provenance;
+clear generated document/hierarchy artifacts and generated artifact rows atomically.
+Preserve note metadata, raw source, hierarchy identity and document_profile. No new
+table is required. Optimistic revision/source checks run under the lock. Replays
+are no-ops. Hard reparse clears overlays; ordinary metadata writes preserve them.
+Disposable-schema tests cover concurrent writers, late saves, stale generation,
+notes, reparse and an injected task-unit update failure after the document update,
+proving rollback of the entire mutation. No production rows are touched by tests.
+
+## Generic Extraction Commit Checks (2026-10-21)
+
+**[Code-Confirmed]** EXTRACT-07 is implemented; see [the preparation plan](../document_preparation/module-detailed-design.md#format-neutral-extraction-plan-2026-10-21).
+Replace PDF-key-specific candidate/current-source comparisons and provenance
+whitelisting with the shared normalized extraction contract. Preserve atomic source,
+hierarchy, label and interaction guards, existing no-op/title-only retention and
+whole-document cleanup on structural change. Persist/read back generic provenance
+through existing storage; no new table is presumed. Compatibility normalization
+must not write during reads. Explicit identity backfill must atomically preserve
+version/IDs/interactions/profile and reject concurrent changes. Test PostgreSQL
+readback with omitted raw_text and existing file-store paths, not only mocks.
+
+## Atomic Summary And Note Mutations (2026-10-21)
+
+Supporting SN-07/14/15, no new table/migration. Repository callbacks acquire
+documents ROW EXCLUSIVE table lock before FOR UPDATE row lock, read current
+hierarchy and metadata in the same transaction, validate and update only
+document_task_artifacts JSONB. This serializes notes and cleanup, avoids stale
+editor overwrite, and follows enhancement lock ordering. Generic metadata saves
+preserve note/public_summary; only explicit callbacks or structural replacement
+own those fields. Identity/source checks remain domain-owned, not parser rules.
+Document rename preserves numeric hierarchy IDs/version, rekeys new interaction
+identities, updates source metadata/name and snapshot labels atomically. Source
+file moves are separately compensated by the lifecycle route if DB rejects.
+Evidence: disposable PostgreSQL note/summary tests, rename-route rollback test,
+and conditional enhancement no-op/title-only/structural/failure tests.
+
+## Conditional Enhancement Commit (2026-10-20)
+
+Implemented in ENH-REV-02 (2026-10-21): the classification contract
+in `../document_structure/module-detailed-design.md`, "Enhancement Autonomy And
+Change Semantics", determines persistence. ENH-REV-02 owns this change; previous
+hard-reparse cleanup remains restricted to actual structural replacement.
+
+| Validated change | Persistence | Interactions |
+|---|---|---|
+| unchanged | No new version, hierarchy write or replacement event | Retain all |
+| titles_only | Atomic label update on existing matching nodes | Retain all |
+| structure_changed | Atomic whole-document hierarchy replacement, version +1 | Clear all |
+
+Title-only implementation must preserve chapter/section/task-unit/block identities,
+body spans, parent links, source_structure_version and interaction payloads. Updating
+labels must not use the hard-reparse sanitizer, invalidate artifacts indirectly by
+advancing the structure version, or discard drafts through an API side effect.
+Keep authoritative labels and current JSONB snapshot/projections consistent in one
+transaction; do not introduce a second hierarchy truth. A title update is not an
+initial_parse/hard_reparse event; do not forge a version-increment event to fit an
+old enum. If label revision/audit storage is required, define it explicitly in this
+task with migration/tests rather than repurposing structure_version.
+
+Revalidate source identity, baseline hierarchy AND labels under the existing lease/
+commit locks. A concurrent label edit must invalidate stale consent even though
+structure_version is unchanged; app ENH-REV-03 binds a baseline fingerprint that
+includes labels. Compute classification against the revalidated baseline, not a
+client-provided change kind. Rollback preserves previous labels and all artifacts.
+For no-op, returning old authoritative version/IDs is sufficient; do not mutate
+document snapshots simply to record an attempt. Safe operational logs are separate.
+
+For structure_changed, retain current all-document cleanup and late-writer guards;
+no selective reparse, local cleanup or partial artifact migration is authorized.
+For titles_only, old-version interaction writers remain legitimate because target
+structure did not change; prevent a delayed hierarchy/snapshot write from restoring
+old labels. Tests must prove both artifact retention and label freshness.
+
+Implementation evidence (2026-10-21): `PostgresStructuredDocumentStore.commit_enhancement`
+classifies against locked authoritative readback after validating the candidate,
+source identity, version and confirmation fingerprint. The existing fingerprint
+already covers chapter/section labels and row revisions, so concurrent label edits
+invalidate confirmation without a new schema column or migration. All three branches
+retain current lease, table-lock and version-guard prerequisites.
+
+- `unchanged` returns existing authoritative IDs/version without UPDATE/INSERT/DELETE,
+  snapshot rewriting, cleanup, profile invalidation or parse events.
+- `titles_only` patches chapter/section titles and section container titles on existing
+  rows and the current JSONB snapshot in one transaction. Snapshot structural parity
+  is validated before accepting positional label correspondence, independent of its
+  original generated IDs. Unknown embedded metadata, task units/blocks, interaction
+  payloads, profile data and structure version are retained; no parse event is created.
+- `structure_changed` uses the existing full replacement/cleanup transaction and
+  increments structure_version once. Source bytes are rechecked after writes.
+
+`EnhancementCommitResult` extends the internal snapshot with `change_kind` for the
+next app task. Public API exposure, conditional consent, and UI no-op/title-only
+recovery are NOT claimed here; ENH-REV-03/05 still own those behaviors.
+Ordinary metadata saves now reload authoritative chapter/section labels while holding
+the document row lock. A delayed current-version interaction save may succeed, but
+cannot restore old labels in either relational rows or the JSONB snapshot. Explicit
+parser/hard-reparse saves retain their separate ownership of structural replacement.
+
+Validation: `scripts/test_enhancement_conditional_commit.py` runs 43 disposable-schema
+PostgreSQL tests (42 pass; one private-source opt-in skipped), including 11 new
+conditional-commit cases plus existing guard/route regressions. Row payloads and xmin
+prove zero no-op writes and preserved artifacts/units/blocks for title-only updates.
+Tests cover label readback, stale confirmation, label/artifact writers, source changes,
+snapshot mismatch, rollback and delayed metadata saves. The 20 pure comparator tests
+and manual-reparse repository boundary regression also pass. Tests make no live LLM
+calls or production document/schema changes.
+
+## Enhancement Commit Guards (2026-10-19)
+
+ENH-DB-01 delivered as a PostgreSQL repository operation. PREP-03 invokes it from the
+confirmed public route only when migration/profile guards are available. The caller
+must hold the document enhancement lease across candidate generation and commit.
+The original pre-ENH-REV-02 implementation revalidated the candidate, accepted extraction identity, source
+hash, structure version and interaction fingerprint before replacement. A shared
+connection keeps cleanup, hierarchy replacement, one version increment and readback
+inside one transaction; any failure rolls everything back.
+
+Commit takes fixed-order, NOWAIT table locks and a document row lock. This deliberately
+conservative implementation can reject unrelated-document writers too; locks cover
+only the short commit, never LLM generation. Conflicts require renewed confirmation,
+not an automatic paid retry. Cleanup removes old relational/embedded interactions,
+task units/blocks and obsolete snapshots; raw-source provenance and source-level
+profile summary/language survive. DB-backed derived profile structure is invalidated.
+
+Migration `003_interaction_version_guards.sql` rejects stale relational artifact and
+block writes. Embedded writes validate the loaded structure version, hierarchy IDs
+and changed artifact versions. Server-owned versions travel from resolved reading
+targets through generation policy metadata into CommonArtifact; delayed old work
+cannot be relabelled with the current version on save. Missing guards reject commit.
+
+Evidence: 22 disposable PostgreSQL schema tests cover cleanup/readback, rollback,
+source changes, consent revision changes, lock conflicts, missing guards and real
+artifact-store stale resurrection. Migration has not been applied to user schemas.
+Source files are checked before and after writes, but are not transactional DB data;
+deployment must prevent out-of-band source replacement. PREP-03 adds a readonly
+profile invalidation projection from the committed, server-owned enhancement_source
+marker. Runtime profile adapters suppress stale file-derived structure advice without
+pretending filesystem writes are atomic. File hierarchy storage remains unsupported.
+The live suite now contains 30 cases including public routes and an opt-in source
+copy; no production migration was executed here.
+
+Supporting ENH-APP-01 delivered: `load_enhancement_snapshot` reads all current
+hierarchy, embedded metadata, raw-source and relational artifact rows in one
+REPEATABLE READ READ ONLY transaction. The revision fingerprint includes full row
+payloads and xmin; this is not a monotonic durable revision or commit guard. Exact
+interaction count is null where embedded representations cannot be deduplicated;
+known notes are flagged. `enhancement_lease` uses a session advisory lock scoped by
+namespace/document, supports multiple processes, and releases on failure/close.
+It does not lock interaction writers. Eight live disposable-schema tests validate
+this handoff, including concurrent reads and lease exclusion; commit coverage is above.
+
+ENH-DB-01 extends existing transactional hard replacement, not a
+new hierarchy/history model. PostgreSQL currently loads `raw_text=""`; accepted
+canonical source reuse therefore needs verified spans/hash/length reconstruction
+through the preparation contract, not an assumption of persisted full raw text.
+
+For a structure_changed replacement, before deleting anything, compare the confirmed source identity, structure version
+and interaction revision under appropriate transaction locks. Every affected artifact
+writer, including session updates and embedded payload changes, must participate in
+revision/locking semantics; counts alone cannot detect edits. Revalidate source-file
+identity via the owning source boundary and prevent replacement races during commit.
+Mismatch rolls back with a conflict and requires renewed consent, not automatic retry.
+
+Inventory relational artifacts and embedded document/chapter/section/task-unit
+payloads, including book-level interactions. Clean candidates must not carry old
+embedded artifacts into the new hierarchy. A structural replacement commit atomically replaces the
+hierarchy, increments its version once and clears all consented derived interactions,
+answers/evaluations/sessions and affected task units/blocks. Explicitly identify any
+persisted user notes in the impact inventory; do not assume note support exists.
+Preserve source files and accepted extraction provenance. Candidate rejection,
+persistence errors and stale tokens preserve previous hierarchy and interactions.
+
+Document-scoped single-flight integration must avoid duplicate paid work without
+holding DB locks during generation. File-backed deployments must provide equivalent
+atomic behavior or explicitly report enhancement unavailable. Test concurrent artifact
+writes, competing enhances, failed commits, embedded artifact resurrection, and
+successful cleanup/readback. Read-only preflight must not mutate storage.
+
 ## 1. Module Purpose
 
 `db/` is the golden source for DB-era persistence planning and isolated Phase 1 DB validation implementation. It records maintainer-approved DB identity, versioning, reparse, and derived-resource lifecycle rules, and now includes the first PostgreSQL Phase 1 DDL shape plus an isolated core hierarchy persistence validation slice. **[Maintainer-Confirmed] + [Code-Confirmed]**
 
-The implemented slice is intentionally isolated from production runtime read/write selection. It exists to validate the core DB hierarchy path before broader schema, ORM, repository, migration, backend configuration, API, or runtime rollout work. **[Code-Confirmed]**
+The SQLite validation slice remains isolated. PostgreSQL store/repository adapters now
+also support explicitly selected runtime persistence, including permanent document
+deletion. Backend selection remains owned by `config`. **[Code-Confirmed]**
 
 ## 2. Position in Overall Architecture
 
@@ -46,7 +229,7 @@ The existing file-backed runtime remains valid until DB readiness, rollout, and 
 
 ## 5. Non-Responsibilities
 
-1. Does not implement production database rollout, ORM models, production repositories, API integration, backend selection, or runtime read/write behavior. **[Maintainer-Confirmed] + [Code-Confirmed]**
+1. Does not own API routing or backend selection; PostgreSQL runtime storage is exposed through store/repository adapters selected by `config`. **[Code-Confirmed]**
 2. Does not select a final DB backend beyond previously documented PostgreSQL JSONB evaluation assumptions. **[From Proposal]**
 3. Does not redefine `StructuredDocument` hierarchy truth. **[From HLD]**
 4. Does not make database schema a parser, hierarchy, artifact, profile, retrieval, or raw-document authority. **[From Proposal]**
@@ -90,6 +273,27 @@ Out of scope:
 - JSONB parity snapshot implementation
 - migration of existing JSON outputs
 - public/domain identity introduction
+
+## 5.2 Explicit Runtime Document Deletion
+
+`PostgresStructuredDocumentArtifactRepository.delete_document` delegates to
+`PostgresStructuredDocumentStore.delete`, using the same normalized logical name and
+configured namespace as reads/writes. Parameterized `DELETE ... RETURNING id` runs in a
+transaction and returns whether a row existed. It performs permanent deletion, including
+non-active records, rather than leaving a hidden row available to later reads or writes.
+**[Code-Confirmed]**
+
+Existing `ON DELETE CASCADE` ownership constraints remove raw-source metadata, profile,
+parse events, chapters, sections, task units, content blocks, artifacts, snapshots,
+OCR runs and OCR pages. No new migration is needed. A DB error rolls the DB transaction
+back; physical raw/FAISS files are handled separately by the explicit lifecycle route.
+This is document deletion, separate from hard-reparse replacement semantics.
+**[Code-Confirmed]**
+
+`scripts/test_postgres_document_delete.py` applies both migrations in a unique temporary
+schema and verifies all owned rows disappear, missing retries return false, and another
+namespace's same-name document plus another same-namespace document survive.
+**[Test-Confirmed]**
 
 ## 6. DB-Era Identity Strategy
 

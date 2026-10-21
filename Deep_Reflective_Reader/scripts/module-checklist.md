@@ -1,5 +1,29 @@
 # scripts Checklist
 
+## Loader Boundary Governance
+
+- [x] LOADER-04: Validate loader abstraction with third-format contracts, PDF regressions and backed-up real books.
+  Acceptance: no production adapter claimed for synthetic format; exact source/profile preservation, existing API/identity regressions and real-book reports.
+  Evidence: test_loader_boundary.py; accept_loader_boundary_books.py; private loader-boundary-20261021T133550.json and final read-only content-recovery-20261021T133544.json. Docker PDF 180 pass, focused 95 pass, PostgreSQL 88 pass/two skips (overlapping suites). Both books preserve canonical hashes and zero warm extraction/profile work. Initial unsafe-default live acceptance and explicit layout recovery recorded in design; read-only flag added.
+  Timestamp: 2026-10-21
+
+## Format-Neutral Extraction Backlog (2026-10-21)
+
+Implemented; evidence and scope are recorded per item. Ordered design: [shared plan](../document_preparation/module-detailed-design.md#format-neutral-extraction-plan-2026-10-21).
+
+- [x] EXTRACT-10: Accept real TXT and PDF enhancement using immutable backup books.
+  Depends on: EXTRACT-01 through EXTRACT-09.
+  Acceptance: Both named books complete actual LLM enhancement/atomic commit/automatic layout from backup-only isolated inputs; exact text and profile hashes preserved, negative matrix and PDF regressions pass; private reports required, mocks/Common parse alone do not close.
+  Evidence: Madame Bovary backup fa794acef055f235/20261021T083239624177Z/api-live.json: direct real API/model, three calls, 5 chapters/31 sections/423 units, 652001 characters preserved and profile hashes unchanged. PDF backup 085747b65094d52f/20261021T083612482751Z: two real model calls, 11 chapters/30 sections; api-replay.json proves atomic commit/cleanup and 108 real-layout units with unchanged profiles. Final 95 focused tests pass; 180 PDF tests pass; 75 PostgreSQL regressions pass with two opt-in skips; desktop/mobile confirmation and build pass. Failed live run led to a located semantic-boundary regression/fix (prompt v16), not a weakened validator. All enhancement writes used disposable schemas; live Library TXT provenance was explicitly migrated without replacing hierarchy/profile.
+  Timestamp: 2026-10-21
+
+## Content Read Performance (2026-10-21)
+
+- [x] CONTENT-05: Rebuild both authorized books from verified backups and accept full-section latency, constant read counts and profile immutability.
+  Acceptance: See app detailed design Content Read Recovery; evidence required before completion.
+  Evidence: accept_content_read_books.py and test-content-read-live.mjs pass after authorized deletion/reupload/Common Fast preparation. Private content-recovery-20261021T073403.json and final-deployment content-recovery-20261021T074014.json: largest sections, three HTTP runs each, unchanged profile hashes, unchanged repeated-prepare layout and five interaction reads. 51 focused tests and eight regression scripts pass.
+  Timestamp: 2026-10-21
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `scripts` module.
@@ -26,6 +50,22 @@ It is used to:
 - Uncertain items must go to `Needs Confirmation`, not the completed checklist.
 
 ## Completed Checklist
+
+- [x] Move real-book fixtures under data and run acceptance against immutable backups.
+  Acceptance: Preserve the raw PDF, accepted source and original hierarchy with hash checks; never overwrite a different backup. Both live generation and API replay use backup case IDs without original Library reads. Verify deletion survival, corruption rejection and real-book replay.
+  Evidence: `private_book_corpus.py`, migrated `data/test-books/085747b65094d52f`, four passing corpus tests (original deletion, immutable overwrite guard, corruption/missing backup, path containment). Backup-only live attempt `20261021T052028529811Z` passes with 18 chapters/35 sections and exact 147401-character preservation. Backup-only real API/disposable PostgreSQL/layout replay passes with 107 units; production source-read methods are explicitly blocked. Git/data Docker exclusions and diff check pass.
+  Timestamp: 2026-10-21
+
+- [x] Validate upload/preparation timing logs without real document parsing or LLM calls.
+  Evidence: passing `test_upload_preparation_logging.py` (4 cases), `test_document_upload_route.py`, `test_prepare_structured_reuse_before_raw_load.py`, `test_document_preparation_raw_load_errors.py`, `test_pdf_document_loader_inspection.py`, and `test_main_request_logging.py`.
+  Notes: Covers worker/async request-id isolation, stage boundaries, cache reuse, unchanged exception propagation, and exclusion of content/error-detail sentinels from added logs.
+  Validation limitation: Additional `test_task_layout_chapters_response.py` fails its existing task-unit ordering assertion both in the working tree and an isolated `git archive HEAD` baseline. No unrelated task-layout fix is included. Live Docker rejected-upload smoke confirms stage records and request id are persisted without creating a document.
+  Timestamp: 2026-10-14
+
+- [x] Regress storage-aware deletion, residual database records, failures, and namespace isolation.
+  Evidence: passing `test_document_delete_route.py`, `test_document_management_route.py`, `test_document_list_search_api.py`; Docker execution of `test_postgres_document_delete.py` on 2026-10-14.
+  Notes: Covers confirmation, missing raw files, full-width slash names, database failures and retry, catalog readback, all document-owned PostgreSQL cascades, and namespace isolation without LLM calls.
+  Timestamp: 2026-10-14
 
 - [x] Maintains regression script suite for hierarchy, task-layout, artifact persistence, and profile metadata.
   Evidence: `Deep_Reflective_Reader/scripts/test_task_layout_hierarchy_first_read.py; Deep_Reflective_Reader/scripts/test_post_structure_metadata_enrichment.py; Deep_Reflective_Reader/scripts/module-detailed-design.md (Key Files)`
@@ -271,6 +311,69 @@ After implementation, the task owner must update this checklist and mark the tas
 - [x] <completed task>
 
 No coding task should be considered complete unless the corresponding module checklist is updated.
+
+## Selective Per-Page OCR Track
+
+OCR-01 supporting evidence (counted only in the loader checklist):
+`test_pdf_ocr_decision.py` passed 7 contract tests on 2026-10-14; existing
+`test_pdf_document_loader_inspection.py` and `test_pdf_page_evidence.py` passed.
+Runtime routing and real-document performance acceptance remain pending.
+
+OCR-02 supporting evidence (counted only in the loader checklist):
+`test_pdf_page_inspection.py` passed 18 tests on 2026-10-14; OCR-01's 7 tests and
+existing PDF loader inspection, page-evidence and Outline regressions also passed.
+Evidence covers real synthetic PDF streams, single native extraction, clipped
+image union, unknown geometry/errors, no image decoding/subprocess, metadata
+content exclusion and source replacement. No extra delivery task is counted.
+The 18 inspection tests also passed with pinned pypdf 6.17.0 in a disposable
+Compose container, without rebuilding the API or preparing user documents.
+
+OCR-03 supporting evidence (counted only in the loader checklist):
+`test_pdf_ocr_policy.py` passed 22 tests locally and in an isolated Compose
+container on 2026-10-14; existing OCR-01 (7), OCR-02 (18) and PDF loader inspection
+also passed. Tests cover three-way decisions, numeric/Chinese/Latin fixtures,
+conservative mixed/hidden/header handling, conflicts, threshold/config validation
+and bounded probe plans. Visual checks are fixtures; no actual detector or routing
+is implemented by this task.
+
+OCR-04 supporting evidence (counted only in the loader checklist):
+`test_pdf_layout_routing.py` passed 14 tests locally and in isolated Compose on
+2026-10-14, alongside earlier decision/policy/inspection, loader, page-evidence,
+Outline and OCR layout fixture regressions. Read-only local four-page `《歸來》`
+layout smoke retained 8,187 native characters with zero render/OCR calls in
+346.1 ms; this is not full preparation acceptance or a deployed timing claim.
+
+OCR-05 supporting evidence (counted only in the loader checklist):
+`test_pdf_raw_recovery.py` passed 25 tests locally and in isolated Compose on
+2026-10-14. Earlier PDF and manual-structure regressions, including the updated
+mixed-PDF Outline test, pass; upload/preparation logging tests pass. Read-only
+`《歸來》` smoke retained exact native text and four-page raw-span parity with OCR
+disabled. Raster cover/trailing recovery in the Outline test is mocked, not a
+real OCR quality claim. Design section 15 and loader section 16.9 record limits.
+
+OCR-06 supporting evidence (counted only in the preparation checklist):
+`test_prepare_lazy_pdf_layout.py` passes 15 tests locally and in isolated Compose
+on 2026-10-14; all 86 PDF unittest cases and standalone PDF/TOC, raw-error,
+structured-reuse, profile-ordering, manual and logging regressions pass. Shared
+raw/spans, lazy acceptance, source mismatch, required recovery, force/cache and
+failure paths are covered with isolated fixtures. No full latency acceptance.
+
+OCR-07 supporting evidence (counted only in the loader checklist):
+`test_pdf_execution_pass.py` adds 25 tests; all 111 PDF unittest cases pass locally
+and in isolated Compose on 2026-10-14. Fifteen lazy-layout tests and 11 standalone
+PDF/TOC/preparation/manual/logging scripts pass locally. Coverage includes bounded
+cache identity/lifecycle, worker isolation, actual attempts/deadlines, required
+failure atomicity, optional fallback and content-free correlated diagnostics.
+Earlier memory fixtures explicitly declare their shared scope; timeout fixtures
+expect the new budget-specific reason. No live deployment or OCR-08 completion.
+
+- [x] OCR-08: Validate selective OCR correctness and measured cost end to end.
+  Acceptance: Run fixture matrix in design section 15; assert render/OCR call counts, native/scanned/mixed extraction parity, quality rejection, boundary order, Outline/fallback behavior, disabled OCR, budget and cache invalidation. Compare cold/warm stage timings on the reported four-page PDF and representative scans using disposable preparation storage; record unavailable cases explicitly.
+  Evidence: `accept_selective_ocr.py`; `test_selective_ocr_acceptance.py` (3 tests); 111 PDF and 15 lazy-preparation tests, all passing locally and in isolated Compose. Eleven standalone PDF/TOC/preparation/manual/logging scripts pass locally. Real-engine native/scanned/mixed fixtures verify full known transcript, exact native/blank spans and zero layout OCR for accepted Outline. Design section 15 records measured cases, environment, commands and limitations.
+  Results: Four-page `《歸來》` retains 8,200 exact canonical characters with zero render/OCR calls; controlled cold/warm preparation 789.9/1.9 ms. Real `暗水幽灵` page 8 completes and reuses structure; `國富論lite` page 1 is quality-rejected without persistence. Scanned-page timings/counts are recorded separately, not hidden behind overall latency.
+  Limits: Real language/profile/LLM, HTTP/PostgreSQL costs, full scanned-book accuracy and real vertical/rotated transcription accuracy are unverified. Excerpt quality-gate success is not ground-truth accuracy. No live deployment, user-artifact changes or matched historical speedup claim; broader historical roadmap items remain open.
+  Depends on: OCR-07 in `../doc_loaders/module-checklist.md`. Final task of eight; earlier contract/policy tests belong to their implementation task, not extra progress items.
+  Timestamp: 2026-10-14
 
 ## Maintenance Notes
 

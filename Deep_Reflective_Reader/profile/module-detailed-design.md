@@ -1,5 +1,28 @@
 # profile Detailed Design
 
+## Persistent Profile Ownership (2026-10-21)
+
+Supporting CONTENT-02: profile topic, summary and language are stable document
+metadata. Only initial preparation or explicit full reparse may generate/replace
+them. Runtime content/layout/interactions/QA and index repair reuse them. Missing
+or corrupt profiles never authorize implicit generation. save uses same-directory
+atomic replacement so failed writes do not destroy a previously valid profile.
+Structure-only enhancement may suppress obsolete derived advice on read without
+rewriting persisted source-level metadata. Profile remains advisory, not parser truth.
+
+## Enhancement Invalidation (2026-10-19)
+
+PREP-03 supporting implementation: VersionedDocumentProfileStore retains existing
+JSON save/exists/clear behavior and wraps runtime load. An injected repository reads
+the atomic PostgreSQL enhancement_source marker; if present, the returned profile
+omits structure_profile/post_structure_metadata. Topic, summary, language and parser
+metadata survive; profile bytes are not rewritten. DB read failure must not serve
+stale derived advice. No diagnostics write-back, parsing authority or generation is
+introduced. Suppression remains conservative until explicit full preparation replaces
+hierarchy provenance. File hierarchy deployments keep existing profile behavior and
+cannot enhance yet. Real route commit/profile-file byte comparison and rollback tests
+pass; completion belongs to document_preparation ENH-PREP-03.
+
 ## 1. Module Purpose
 
 `profile/` 提供文件 profile 與 metadata 能力：

@@ -1,5 +1,14 @@
 # llm Checklist
 
+## Full-Source Enhancement Follow-up
+
+- [x] FULL-01: Separate verified context/input/output capacity and migrate budget consumers.
+  Acceptance: Preserve verified gpt-4.1-mini context=1047576/output=32768; label current effective output=3276 as policy. Add explicit context-window versus optional input-only semantics, audit all legacy max_input_tokens consumers, avoid double output reservation, match tokenizer identity and fail closed on unavailable capacity. Verify other models independently before migrating their constants.
+  Evidence needed: Official source recorded in design; capability/config/normalizer boundary tests and migration compatibility tests. No provider switch or assumed account quota.
+  Delivery: Explicit context/input/output fields, shared input ceiling and QA combined-budget adapter; all in-repository consumers/fixtures audited and migrated. Provider, retrieval and planner logs distinguish limits; planner budget v2 retains fail-closed behavior. Other model entries independently verified against official pages linked in design.
+  Validation: 66 unittest cases including 9 new capacity cases and 10 standalone regression scripts passed; git diff --check passed. No paid LLM or deployment. Full-source assembly and frontend preflight remain FULL-02..05.
+  Timestamp: 2026-10-20
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `llm` module.

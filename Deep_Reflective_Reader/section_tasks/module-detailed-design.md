@@ -1,5 +1,271 @@
 # section_tasks Detailed Design
 
+## Reviewed Reading Sources (2026-10-21)
+
+OCR-REVIEW-06: ReadingTargetResolver applies the pure reading overlay to block,
+unit and ancestor content; revision and needs-review disposition travel with the
+resolved target. Any unresolved region conservatively blocks all four generated
+actions document-wide before secondary context or model calls. Notes remain usable.
+Policy identity includes effective text hash and reading revision. Generated writes
+check the revision under the repository mutation lock; summary writes also check
+current content/version. Ancestor-summary writes use the same lock and reject
+unreviewed/stale corrected content. Correction invalidates generated artifacts
+document-wide rather than claiming selective descendant dependency tracking.
+Notes resolve against original stable identity and expose source_stale after a
+reading mutation; no silent note deletion. Source text/profile are not regenerated.
+
+## Content Availability Snapshot (2026-10-21)
+
+Supporting app CONTENT-01: DocumentReadingInteractionArtifactStore.from_snapshot
+creates a request-local read-only adapter for an already loaded authoritative
+StructuredDocument. It rejects another doc_name and provides no mutation adapter.
+Analysis/quiz read accept an explicit snapshot store and retain normal server policy,
+preflight and stale projection. Thinking current-session reads use the same snapshot.
+No global cache, source mutation, model generation or profile construction is allowed.
+
+## Enhancement Commit Result (2026-10-19)
+
+PREP-03 adds nullable structure_version to ReparseDocumentStructureResult, populated
+only from successful repository readback. It distinguishes committed replacement
+from later task-layout readiness/reload failure; it is not client authority.
+The preparation checklist records API/DB/browser acceptance.
+
+## Enhancement Version Safety (2026-10-19)
+
+Supporting ENH-DB-01: ResolvedReadingTarget carries optional server-owned
+source_structure_version. Generation policy metadata includes it before LLM work;
+the CommonArtifact adapter preserves it when no explicit version is supplied.
+PostgreSQL rejects changed stale/unversioned artifacts rather than stamping delayed
+results with the new structure version. File-backed targets without a storage version
+retain their existing policy identity. Completion belongs to db, not this checklist.
+Evidence: real PostgreSQL artifact-store delayed-write test, policy identity tests,
+CommonArtifact model, artifact-store and app orchestration regressions.
+
+## READER-01 Layout DTO (2026-10-19)
+
+ParseProvenanceDTO adds nullable toc_hint, toc_observation, enhancement_intent,
+implicit_single_body and declaration_unconfirmed. Section DTO adds nullable
+title_origin. These are bounded read projections, not authority to change parsing,
+hierarchy or interaction artifacts. No full source/prompt is added to layout.
+Evidence: four `test_reader_provenance.py` cases; completion is owned by UI READER-01.
+
+## INTERACT-03 Delivery (2026-10-19)
+
+`interaction_policy_identity.py` owns `interaction_policy_v1`, persisted under
+`metadata.interaction_policy`. It includes interaction type, effective server prompt
+version, output-language policy/version and selected language, semantic/quantity
+guard version, source-mapping policy version, SHA-256 of exact resolved target text
+and the complete target hierarchy identity. Optional client prompt versions cannot
+select runtime policy. Coordinator/orchestrator requests use server defaults;
+services always stamp actual server metadata, including insufficient outcomes.
+Source text and hierarchy are not rewritten. Exact source hashes capture changes
+without trusting client source hashes; this is not a replacement for existing
+structure-version checks or explicit reparse cleanup.
+
+Analysis/quiz reads recheck current preflight and compare identities. Missing or
+different identity yields `stale_target` with `interaction_policy_stale`, without
+generation or interaction persistence. Stale analysis/quiz payloads are withheld.
+Old insufficient outcomes become `not_generated` when source now passes, otherwise
+the current preflight reason is returned. Explicit generate reuses completed output
+only when policy and preflight match; explicit refresh always regenerates. A failed
+generation does not overwrite an existing artifact. Successful generation uses
+the existing hierarchy-aware save path and records the new identity.
+
+The document artifact store remains a raw history/persistence boundary, not a cache
+authority: its getters intentionally return old artifacts so orchestrators and
+session history can inspect them. Real file-store round trips prove policy metadata
+survives serialization. No schema migration, blanket deletion, profile write-back,
+background regeneration or new read-path preparation behavior was introduced.
+
+Thinking reads by latest target or explicit session ID project a stale status on
+policy mismatch without mutating the stored status, question, answer, evaluation
+or session ID. Current sessions are reused on ordinary reads. Explicit generate
+creates a new session using the existing append/history behavior; old sessions
+remain retrievable internally. Submit/retry still operate on the original stored
+session and do not relabel its old question as current. Public responses retain
+the existing 409/stale_target contract and session ID with null payload; stored
+history is preserved, but showing that stale history in the UI is not delivered
+here. Content-block availability uses the same policy projection and profile-first
+language selection. No UI progress is claimed by this backend change.
+
+Validation: eight new `test_interaction_policy_identity.py` cases exercise temporary
+real JSON storage, each policy dimension, missing identity, changed source/language,
+untrusted client versions, same-policy reuse, refresh failure, old insufficient
+recovery, thinking history and real FastAPI-to-coordinator defaults/409 recovery.
+Four unittest suites pass 38 tests. Twelve standalone scripts pass: three services,
+analysis/quiz read-generate split, app orchestration, three route suites, artifact
+store, artifact validity and hard-reparse cleanup. Existing reuse fixtures now
+explicitly carry current server identity; legacy cases are tested separately.
+
+Residual validation warning: `test_task_layout_artifact_availability.py` constructs
+a root-sections-only document; it fails in hierarchy loading before interaction
+cache logic. That legacy fixture is unchanged and is not counted as passing.
+No live PostgreSQL, real provider, private-document write or deployment was run.
+Current track: 8/10 (80%), section_tasks 3/3. Next is READER-01, then NATIVE-06.
+
+## INTERACT-02 Delivery (2026-10-19)
+
+`interaction_output_language.py` is the shared generation-only policy for analysis,
+quiz, thinking questions and thinking evaluation. The existing coordinator chooses
+profile language first; the policy consumes its `context.document_language`, then
+falls back to `target.document_language` when metadata is unknown/unrecognized.
+Only canonical codes/labels reach instructions. Explicit zh-Hans/zh-Hant are
+preserved; plain zh never invents a simplified/traditional preference. Ancestor
+summaries and secondary artifacts do not choose output language. No parser,
+hierarchy, source content, schema, profile or read-path mutation was introduced.
+
+Every generator appends an explicit instruction covering all user-facing fields,
+while preserving keys, type codes, booleans, numbers, names and brief quotations.
+Insight's thesis/detail/contrast and non-summary rules remain unchanged. Unknown
+language instructs the model to follow Primary Source, not default to English.
+Thinking sessions snapshot the effective document fallback in existing context
+metadata so evaluation preserves the question-generation language even if the
+user answers in another language. Legacy sessions without metadata follow the
+question's language, never the user's answer. No legacy session is rewritten.
+
+Validation runs on parsed, normalized generated payloads before success. The typed
+`OutputLanguageMismatch` has stable reason `output_language_mismatch`, routed to
+existing `generation_failed` or `evaluation_failed` states. There is no automatic
+retry. Failed evaluation retains the original question, user answer, identity and
+metadata; rejected generated text is not returned as a successful payload.
+Machine fields and numeric scores are excluded. Brief quoted spans are excluded
+from script checks. A zh field is rejected only with no Han characters and at
+least 40 Latin letters/eight words; an en field only with at least 20 Han
+characters and fewer than four Latin letters. Short, mixed, uncertain and other
+language pairs abstain. This is a conservative script guard, not a universal
+language detector or a simplified/traditional script verifier. Full-field quotes
+can also escape this heuristic; prompt constraints remain the first line of defense.
+
+Prompt versions are analysis v6, quiz v2 and thinking v2. This does not enforce
+server-owned cache identity or repair stored English results: INTERACT-03 owns
+that work. Existing cached artifacts may still be served until explicit recovery.
+
+Evidence: `test_interaction_output_language.py` has 12 cases covering precedence,
+unknown/variants, all prompt entry points, individual generated fields, positive
+and negative Chinese/English cases, quotes/names, no retries, session fallback,
+legacy sessions and foreign-language user answers. With fragmentation baselines,
+30 unittest cases pass. Thirteen standalone regressions pass: three services,
+thinking generator, prompt context, app orchestration (including real coordinator
+profile precedence), artifact validity, analysis/quiz read-generate split, three
+interaction route suites and thinking abstraction. All providers are fake; no paid
+LLM, Docker deployment, live DB migration or private-document mutation occurred.
+Current combined progress: 7/10 (70%); this module 2/3. Next: INTERACT-03.
+
+## INTERACT-01 Delivery (2026-10-19)
+
+`artifact_validity.py` now evaluates semantic checks against the bounded
+`common_analysis_view`, using NATIVE-02 mapping and NATIVE-03 sentence-bearing
+CJK fragmentation evidence. This is a validation-only view: request content,
+source hashes, hierarchy identifiers, persisted text and prompt evidence are not
+rewritten. Existing minimum character/alphanumeric thresholds and stale-target
+precedence remain unchanged. No OCR, provider call or profile fallback is added.
+
+Repetition is evaluated on repaired tokens rather than individual PDF glyphs;
+dominant repeated CJK characters remain rejected. Original and analysis-view TOC
+checks both run. The fragmented-heading line-count test is bypassed only when
+actual whitespace repairs occurred and over half of CJK character mass lies in
+lines longer than the existing 12-character heading threshold. This handles
+partially repaired prose without letting a small prose appendix rescue a TOC.
+Repetition and OCR-noise checks still apply. These are deterministic heuristics,
+not proof that any arbitrary text has meaning.
+
+The source-map budgets (2,000,000 characters and 4096 evidence ranges) bound work;
+exhaustion returns an explicit semantic-analysis/evidence-budget reason through
+the existing insufficient-content contract, never a truncated acceptance or 500.
+Logs contain policy `fragment-evidence-v2`, decision/reason and counts of source
+characters, readable characters, lines, evidence ranges and removed gaps. They
+exclude document names, IDs, source text and provider output. Policy identity is
+diagnostic only in this task; persistence/cache enforcement belongs to INTERACT-03.
+
+Only analysis opts into semantic checks today. Quiz and critical thinking retain
+quantity-only checks; their behavior was separately verified, not inferred from
+analysis. Eight new tests include all 15 combinations of three services and five
+resolved target levels, exact source/identity preservation, tiny-input rejection,
+repeated text, heading lists, TOCs, noise, normal prose, partial repairs, budgets
+and log privacy. Six unittest suites pass 61 cases with no expected failures;
+five standalone validity/service/resolver regressions also pass.
+
+Read-only local fast extraction (Python 3.12.2, pypdf 6.9.2) now accepts both
+reported PDFs: `家醜不可外揚` (3557 characters, 1241 nonempty lines) and
+`《歸來》白事／喪葬／鄉村儀式素材整理稿` (8190 characters, 2688 lines).
+Both retain original file hashes and complete source coverage. This is local
+guard evidence, not deployed/private-document LLM acceptance. Existing cached
+failures are not rewritten; INTERACT-03 owns explicit recovery. Combined progress
+is 6/10 (60%), this module 1/3; next is INTERACT-02 output language.
+
+## Investigation: Fragmented Prose And Output Language (2026-10-17)
+
+Historical investigation; INTERACT-01..03 are delivered above.
+The implementation index is owned by the dated investigation in
+`document_structure/module-detailed-design.md`. This module owns INTERACT-01..03.
+
+### Confirmed Evidence
+
+Read-only PostgreSQL inspection of `家醜不可外揚` (document 32, version 2)
+shows 3590 section characters and three task units totaling 3576 characters.
+Document/chapter analysis failures explicitly say `target content looks like
+fragmented headings rather than readable source text for analysis`, not `too short`.
+Hierarchy aggregation exists in `ReadingTargetResolver`; this case does not prove
+a return of the earlier empty-document-source bug. PDF extraction creates many
+single-character lines, which meet `_looks_like_fragmented_headings` thresholds.
+The running pypdf 6.17.0 diagnostic reproduces rejection; using the existing
+normalized view removes it. That experiment is causal evidence, not a safe fix:
+blind normalization could disguise actual heading lists or corrupt source offsets.
+
+The first stored block analysis is English, the following one Chinese, while both
+carry `context.document_language=zh`. `analysis_interaction_llm_generator.py`
+v5 provides English instructions and contextual language metadata, but no explicit
+output-language requirement. Quiz has the same missing instruction risk; critical
+thinking already adds one. This explains an unconstrained output opportunity,
+not a deterministic claim about every model response. No new LLM call was made.
+No DB `document_profile` rows exist for these two documents; this alone is not a
+missing-profile diagnosis because the active profile path can be file-backed.
+
+Only analysis failures were confirmed in stored artifacts. Quiz and thinking
+at document/chapter level still need separate reproduction; analysis alone enables
+the semantic guard. Do not generalize its failure to all three services as fact.
+
+### Planned Behavior
+
+- INTERACT-01 consumes NATIVE-02's evidence-backed analysis view for semantic
+  checks, while keeping exact selected source as prompt evidence and unchanged
+  hierarchy identifiers. Distinguish low text quantity, extraction fragmentation,
+  actual heading/index content, repeated boilerplate and OCR noise. Bound work and
+  emit metadata-only diagnostic counts (raw/readable size, line fragmentation,
+  decision/reason/version). Do not globally relax thresholds, trigger OCR/LLM
+  from guard evaluation, or treat profile summaries as replacement source text.
+  Confirm all target levels; preserve existing meaningless-content negatives.
+- INTERACT-02 shares profile-first, document-fallback output-language selection
+  across analysis, quiz and critical-thinking question/evaluation. Language is
+  advisory to generation, never parser authority. Explicitly require every
+  user-facing JSON field in that language, allowing brief original quotations,
+  names and technical terms; keys/type codes stay stable. Unknown language gets
+  a documented source-language fallback, not forced English. Test conflicting
+  ancestor/secondary context, Chinese/English, mixed quotations and missing profile.
+  Add conservative mismatch detection with typed failure and no unbounded retry;
+  do not persist a clearly mismatched result as completed. Language variants
+  must use supported profile evidence, not invent a simplified/traditional choice.
+- INTERACT-03 makes effective prompt/language/guard/source policy identity
+  server-owned and persisted; prompt constants alone are insufficient. Existing
+  reported artifacts omit effective prompt versions. The analysis orchestrator
+  reuses completed artifacts unless refresh is requested, so a prompt-only fix
+  cannot guarantee old English output disappears. Audit store reuse as well as
+  orchestrator checks; missing/old identity is unverified, not automatically current.
+  Reads remain side-effect-free and surface recoverable stale/not-generated state
+  under the existing supported API contract; regeneration happens only on explicit
+  generate/refresh. Preserve valid same-version reuse and critical-thinking session
+  history; never create a new session just by opening a drawer.
+- Existing insufficient-content reads already re-run preflight and can return
+  `not_generated` when source becomes eligible. Preserve that recovery, and test
+  cached bad status versus wrong-language completed artifacts separately. Parser
+  fixes need explicit versioned reparse; language-only fixes need no hierarchy
+  rewrite or destructive deletion of unrelated artifacts/user answers.
+
+Validation uses stub generators and isolated stores first. Real LLM adherence,
+exact historical failed anchors and unobserved quiz/thinking failures remain
+Needs Confirmation until explicit evidence exists. No new runtime/schema guarantee
+is claimed by this planning document.
+
 ## 1. Module Purpose
 
 `section_tasks/` 定義 section/chapter/task-unit 任務層：
@@ -1051,7 +1317,133 @@ Validation direction:
    API/backward-compatibility task across backend and frontend contracts. It should not
    be smuggled into a prompt-only change. **[Future Direction]**
 
-### 24.5 Future Direction: Summary and Note Interactive Actions
+### 24.5 Summary and Note Interactive Actions
+
+#### Resumed Delivery Requirements (2026-10-21)
+
+Contract implementation: `summary_note_contracts.py` defines strict Summary
+`headline` (1..300), `body` (1..12000), `key_points` (0..12, each 1..1000),
+with independent v1 schema/prompt identity. All counts are Unicode code points.
+Notes use one plain-text note per resolved target, max 10000 code points;
+blank-only and isolated surrogate text are rejected, other whitespace preserved.
+No title/tags in v1. Server-generated note_id, positive revision and timestamps
+are returned. Save requires expected_revision (0=create), mutation_id for retry
+deduplication and a server-issued target_token from read; delete requires the
+current revision/token. Contracts, services, persistence, coordinator and routes
+are implemented. File/PostgreSQL and real-book tests provide evidence below.
+
+`SummaryInteractionService` reads existing structure directly; it never calls
+prepare on read. Generation supplies full target text plus existing profile and
+current ancestor summaries, using the public_summary records as its sole summary
+cache. Ancestor references adapt those records into the existing readiness and
+prompt-context contracts; historical internal caches are not copied or rewritten.
+Generate reuses current output; refresh replaces only the requested target and
+prepares parents only when missing/stale. Each dispatch checks configured model
+capacity against actual full prompt, output reserve and 1024-token overhead.
+No primary truncation or research fallback. Readability uses quantity checks plus
+model abstention: whole-book vocabulary diversity is not a short-passage test.
+Strict output and document-language validation precede persistence; failures never
+overwrite an existing successful summary. Metadata retains source hash/version,
+prompt/schema, timestamps and bounded ancestor provenance, not parent source text.
+
+Notes are stored under document artifact metadata.note, public summaries under
+metadata.public_summary. No new hierarchy or task-layout payload. Mutations use
+repository-owned atomic callbacks: file lock/atomic replacement or PostgreSQL
+document row lock/JSONB update. Notes validate source token/revision under lock;
+server UUID identity and latest mutation replay make network retry idempotent.
+Delete advances a tombstone epoch to reject delayed creates. Initial file creation
+and structural reparse advance a separate source epoch. Ordinary metadata writers
+preserve these two owned fields, preventing delayed legacy saves from erasing them.
+Confirmed structural replacement clears both; no-op/title-only/failure preserves
+them. Source/version/epoch guards reject delayed writes. Explicit rename rekeys
+new action identities and provenance without changing note text or summary prose.
+
+Evidence: `test_summary_note_contracts.py`, `test_note_interaction_service.py`,
+`test_summary_interaction_service.py`, disposable PostgreSQL
+`test_summary_note_postgres.py` and four conditional-commit cases in
+`test_summary_note_lifecycle.py`. Live `accept_summary_note_books.py` uses the
+verified private backups, authorized full deletion/reupload/Common Fast parse,
+and actual provider/API checks for both books at all five levels. The 2026-10-21
+06:29:38 and 06:44:38 UTC reports pass ten target workflows, persisted reads and
+repeat-generation reuse. Raw files, DB rows and existing derived files are backed
+up under data/test-books/summary-note-20261021 with immutable manifest hashes.
+
+#### Governance And Final Validation Record (2026-10-21)
+
+Inspected unchanged global memory: AGENTS.md, proposal.md, high-level-design.md,
+docs/modules/index.md; inspected progress.md and design/checklist pairs for
+section_tasks, api_schemas, app, main, db, document_structure, config, scripts and
+Deep_Reader_UI. No proposal/HLD/index or unrelated checklist was modified.
+
+Modified controlled markdown and reasons:
+- section_tasks design/checklist: finalized contracts, implementation/lifecycle
+  evidence and closure of original tasks plus SN-14..16.
+- api_schemas design/checklist: actual strict wire contracts and SN-08/09 status.
+- app design/checklist: no-prepare Summary reads, Note dispatch and SN-10/11 status.
+- main design/checklist: exposed routes/status mapping and SN-12/13 status.
+- db design: atomic callbacks, preserved annotation fields and rename transaction.
+- document_structure design: file locks, epochs and repository mutation boundary.
+- config design: configured Summary service composition, no provider for Note.
+- scripts design: private backup/delete/reparse/live acceptance and fixture cleanup.
+- Deep_Reader_UI design/checklist: implemented menus/drawers/guards and SN-17..20 evidence.
+- progress.md: backend owner counts synchronized (section_tasks 92, app 43,
+  api_schemas 34, main 40); frontend progress remains owned by its checklist.
+
+Validation: final 33 contract/service/route/PostgreSQL tests and four enhancement
+lifecycle tests pass, plus seven existing interaction/schema/store/rename regression
+scripts. Real provider acceptance passes both books x five targets. Actual API
+browser acceptance passes both books x five targets x 1280px/390px, with fault
+injection supplementing real reads/writes. Screenshots reviewed, TypeScript/Vite
+build passes (existing bundle warning), diff check passes. New/changed checklist
+items carry Timestamp: 2026-10-21. Immutable nine-file backup manifest and current
+raw SHA-256 checks match; test notes removed, useful real summaries retained.
+This closes the 20-task track only, not unrelated future checklists. No Git commit
+or unrelated worktree cleanup was performed.
+
+#### Original Planning Rationale
+
+The following planning rationale is retained as history, superseded by the
+implemented contract above. The delivery index in this module checklist resumes
+13 existing unchecked tasks and adds missing backend/UI tasks; it does not claim
+summary/note public APIs are implemented. SN-01/06 must settle strict field names,
+statuses and note multiplicity before SN-08/09 freeze wire schemas. Optional
+title/tags are proposals, not approved implementation requirements.
+
+For summary, include all resolved primary-target text and labelled ancestor
+summaries; never substitute an ancestor summary for the target text or silently
+truncate primary evidence. Check the actual assembled input/output budget before
+dispatch and return a clear refusal when it cannot fit. Book-level uses its full
+primary text plus the already-loaded document profile; do not regenerate the
+profile. Reads never prepare ancestors. Explicit generate prepares only missing/
+stale required ancestors, reuses current artifacts and does not touch descendants.
+Refresh must specify target-versus-ancestor invalidation rather than unconditionally
+refreshing the whole tree. Define a single adapter/source-of-truth policy between
+internal ancestor cache and public summary artifacts before persistence; no cyclic
+self-summary preparation. A failed replacement must not destroy a usable current
+summary. Summary remains distinct from insight's historical payload.summary field.
+
+For notes, SN-06 must choose one-note versus multiple-note semantics, exact maximum
+text length, Unicode counting units, whitespace/empty behavior, and optional field
+limits. Do not ship an unspecified maximum or let frontend/backend count differently.
+SN-09 must encode stable validation/conflict responses. Service and schema enforce
+limits before writes; UI counters are only assistance. Define revision/conflict
+handling so a stale editor cannot silently overwrite a newer note; retrying a
+create/save must not silently duplicate notes. Notes are plain user-authored text
+unless a later explicit formatting decision changes that contract; safely render
+untrusted content. No LLM, prompt, ancestor preparation or hidden autosave is allowed.
+
+All five target levels use server-validated IDs and source/version information,
+not titles or UI positions. Block targets are not a new hierarchy. Document deletion
+and confirmed structural replacement must include these new resources in the
+existing full-document cleanup and confirmation inventory, including user notes.
+No-op/title-only changes and failed enhancement retain them. In-flight saves must
+not resurrect cleared interactions. This integrates the confirmed lifecycle policy,
+not an implicit permission to erase notes during an ordinary read/generate call.
+
+SN-14 owns note service behavior, SN-15 lifecycle integration, SN-16 real-backed-book
+backend acceptance; UI SN-17..20 own adapters, summary view, note editor and end-to-end
+acceptance. Existing app tasks include configured dependency wiring, not merely
+method stubs. No new endpoints or SQL tables are prescribed as already implemented.
 
 > 本節規劃兩個新增 reading interactive actions：`summary` 與 `note`。它是
 > documentation-governance planning，不代表目前 API schema、route、service、

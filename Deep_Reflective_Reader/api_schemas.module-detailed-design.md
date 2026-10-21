@@ -1,10 +1,142 @@
 # api_schemas.py Detailed Design
 
+## Reading Content Contract (2026-10-21)
+
+ReadingContentMutationRequest forbids unknown fields and restricts action to edit,
+delete, undo, discard_region. It requires a nonnegative strict integer revision,
+64-hex source token and bounded mutation ID; text is limited to 10000 code points
+and service validation rejects blank edits. There is no manual block insertion.
+Additive management review_required and note source_stale flags default false.
+The reading-content read projection is currently a service-owned dictionary,
+not a claim of a generated response DTO. Source preview returns bounded PNG bytes.
+
+## Summary And Note Contracts (2026-10-21)
+
+Summary has dedicated read/generate/refresh request types and a strict shared
+envelope response carrying headline/body/key_points only when completed. Note
+uses read/save/delete requests and a nullable single-note response with target,
+target_token, server note_id, revision, timestamps and max_chars=10000. Save
+requires explicit expected_revision/mutation_id; writes forbid extra fields,
+blank text and oversized Unicode text. Corresponding routes are now implemented
+in main; schema evidence: test_summary_note_contracts.py, route evidence in
+test_note_interaction_service.py and test_summary_interaction_service.py.
+
+## FULL-03 Capacity Contract (2026-10-20)
+
+EnhancementPreflightResponse now includes nullable EnhancementCapacityResponse.
+It exposes fits/exceeded/unavailable/resource_limited, safe reason codes, selected
+model, context/input/output limits, output/margin/framing reservations, required
+and available input tokens, count method/identity, full-source coverage and policy/
+prompt versions. Unknown measurements are null; no prompt or private fingerprint.
+Preflight readiness is source readiness, not capacity fit. Token requires both
+execution availability and fit. Consent recheck 413/503 errors preserve string
+detail and add the same filtered capacity object. Main/app own status/auth, not
+schemas. Completion and tests belong to app FULL-03; UI integration is pending.
+
+## Enhancement Consent Schemas (2026-10-19)
+
+Preflight contract and PostgreSQL reader implemented; execution remains gated.
+Supporting work inside ENH-APP-01. Preflight accepts
+document identity, `parser_mode=llm_enhanced`, `toc_hint` and compatible legacy intent.
+Response describes `ready`, a machine-readable `reason`, current structure version,
+cleanup scope/counts (nullable when unknown) and a short-lived `confirmation_token`
+only if ready. No source text or private paths are exposed. Token is server-bound to
+document namespace, source/canonical identity, structure/interaction revisions and
+selected options, not a client-asserted boolean or hash.
+
+Enhanced reparse additionally requires `discard_interactions: true` and the issued
+token; never default destructive consent to true. Missing consent returns
+`409 confirmation_required`; stale/expired state returns a distinguishable conflict
+requiring renewed preflight. Invalid source readiness returns actionable preparation
+guidance without invoking extraction. Successful enhanced execution now carries committed
+structure version so consumers distinguish replacement from later layout failures.
+Current DTOs expose the preflight fields above and strict-boolean discard consent
+(default false) with a bounded token on reparse. Optional structure_version is populated
+after enhanced commit and remains null for other legacy flows. Preflight resolves readiness
+and impact; unsupported file storage fails explicitly. `execution_available=false`
+is distinct from ready: a valid token alone cannot bypass missing migration/profile
+guards or enable OCR fallback. PREP-03 tests route-to-storage and browser contract parity.
+Tests cover 409 missing/invalid/expired/stale consent, 503 gated execution and 422
+invalid input. Do not alter the one-operation enhancement policy.
+
+## Enhancement Semantics Correction (2026-10-19)
+
+Existing EnhancementIntent enum values/default remain wire-compatible, not two
+user-facing operations. Both enhanced requests now optimize Common results and
+may propose labelled semantic navigation. The planner owns this policy; request
+mode guards/forwarding remain unchanged. Source/generated origin comes from the
+accepted boundary metadata, not the intent value. The two-purpose interpretation
+in historical NATIVE-04 notes is superseded by document_structure's unified correction.
+
+## READER-01 Public Provenance (2026-10-19)
+
+Task-layout responses now expose nullable toc_hint, toc_observation,
+enhancement_intent, implicit_single_body and declaration_unconfirmed through
+ParseProvenanceResponse. String values use Literal allowlists; absent legacy
+evidence remains null. SectionTaskLayoutResponse adds nullable title_origin
+(source/implicit/generated). No prompt, source text or full boundary map is exposed.
+Evidence: `scripts/test_reader_provenance.py` exercises real route serialization,
+unknown evidence and exact-range origins without persistence mutation. This
+supersedes the older NATIVE-05 public-projection staging note below.
+
+## NATIVE-05 Runtime Status (2026-10-19)
+
+Existing typed enhancement intents are now executable through explicit preparation
+and reparse. The NATIVE-04 staging guard is removed; validation/provider failures
+remain errors rather than successful fallback writes. No additional public response
+fields or inferred generated-origin guarantees are introduced. Internal v2
+provenance/origin persistence is documented by document_structure; public projection
+mapping still needs an explicit contract before UI consumption.
+
+## NATIVE-04 Enhancement Intent (2026-10-19)
+
+Prepare, prepare-task-layout and reparse request schemas accept EnhancementIntent:
+restore_source (default) or generate_reading_outline. Generation requires explicit
+llm_enhanced and cannot be combined with common/manual/layout-only execution.
+Schema acceptance is not application readiness: generated runtime execution returns
+400 reading_outline_application_not_available until NATIVE-05. Strict versioned
+candidate models are internal planning DTOs, not new public response fields.
+Evidence: structure-plan and API contract tests.
+
+## NATIVE-03 Request Contract (2026-10-19)
+
+PrepareDocumentRequest, PrepareTaskLayoutRequest and ReparseDocumentStructureRequest
+now expose shared `TocHint` enum `auto|present|absent`, default auto. Invalid values
+are validation errors. It is an advisory printed-TOC declaration, independent of
+PDF extraction mode; it cannot invent source structure. Non-auto hints are rejected
+with manual-structure reparse. No new public response/provenance fields are claimed.
+Evidence: `test_common_parse_policy.py`, `test_pdf_extraction_mode_contract.py`.
+
 ## 1. Module Purpose
+
+LAYOUT-02 (2026-10-16): `PrepareTaskLayoutRequest.layout_only` defaults false;
+true skips raw/structure preparation, retaining explicit task-unit persistence and
+readback. It cannot combine with force_rebuild or page-evidence requests (400).
+PDF mode is not executed in layout-only mode, so successful metadata remains unknown
+with null effective_mode. Ordinary layout `refresh_task_units=true` now returns 409,
+as do missing/stale/invalid layouts, with recovery guidance in string `detail`.
+Read split options validate existing cache, never invoke resolution. Success DTOs
+and management structured-ready semantics are unchanged. Owned by app LAYOUT-02.
 
 `api_schemas.py` 定義 REST API 的 request/response schema contract（Pydantic models），是 API 層與 orchestration 層之間的資料邊界。 **[Code-Confirmed]**
 
 ## 2. Position in Overall Architecture
+
+### PDF Extraction Contract (2026-10-15)
+
+PDF-MODE-01 adds the shared `PdfExtractionMode` enum (fast/ocr/auto, default fast)
+to both preparation requests, independently of parser/base/free_qa settings.
+`PdfExtractionMetadataResponse` separates requested mode from effective mode and
+unknown/not_applicable/applied/reused provenance; effective mode requires applied
+or reused provenance and must match a supplied requested mode. Legacy assets remain
+unknown, never relabeled fast. `PrepareDocumentResponse` and the dedicated
+`PrepareTaskLayoutResponse` expose this metadata; ordinary layout DTOs do not.
+`PdfExtractionFailureResponse` exposes doc_name/reason/detail/pdf_extraction.
+422 also permits standard FastAPI validation detail arrays. Shared enum/error types
+live in the IO-free `doc_loaders/pdf_extraction_contract.py`; schemas do not run loaders.
+PDF-MODE-05 now integrates the mode executors/reuse and removes the temporary 501
+gate. Installed engines and source quality still determine runtime success. Evidence:
+`scripts/test_pdf_extraction_mode_contract.py` (11 tests); status owned by main PDF-MODE-01.
 
 - API Layer
 

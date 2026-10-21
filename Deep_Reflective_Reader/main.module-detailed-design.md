@@ -1,6 +1,169 @@
 # main.py Detailed Design
 
+## Reading Content Routes (2026-10-21)
+
+GET /documents/{doc_name}/reading-content returns revision/source token, review
+regions/disposition and undo availability. Blocks are omitted by default; block_id
+selects one, include_blocks=true opts into the inventory. POST accepts only edit,
+delete, undo or discard_region. No add endpoint exists. The service, not the route,
+owns atomic mutation/invalidation; 404 missing document/region, 409 conflict, 422
+invalid request, 503 bounded infrastructure error. PNG original-region preview at
+/documents/{doc_name}/source-review/{region_id}/image is no-store, server-bbox-only
+and source-hash checked. Existing local namespace routing applies; no new auth layer.
+Library exposes review_required; note responses expose source_stale. Neither reads
+nor preview invoke OCR/profile/LLM. API tests run against isolated file/SQL storage.
+
+## Summary And Note Routes (2026-10-21)
+
+POST /documents/reading-interactions/summary/{read,generate,refresh} and
+POST /documents/reading-interactions/note/{read,save,delete} are implemented.
+Reads are pure. Summary has the shared envelope and strict payload; generation
+failure returns 502 while stored output remains intact. Source hash/version and
+timestamps are exposed when present. Note mutations require revision/source token;
+conflicts return 409, malformed requests 422, missing documents 404.
+No prompts or persistence logic belongs to the handlers. Routes/coordinator and
+actual two-book generation/read/save/reuse acceptance pass.
+
+Rename now includes the configured PostgreSQL record and new interaction identity
+mapping, in addition to file-backed resources. If DB rename rejects, moved files
+are rolled back. Disposable PostgreSQL tests cover conflicts and retained notes/
+summaries; production acceptance does not rename unrelated user books.
+
+## FULL-03 Capacity Transport (2026-10-20)
+
+Wire the coordinator capacity reader into preflight. Capacity recheck failures
+return 413/503 with existing string detail plus schema-filtered capacity; confirmed
+configuration changes immediately before dispatch map to 409. Normal diagnostic
+preflight remains 200. Existing generation/commit errors retain their envelopes.
+No source work or budget calculation lives in routes. See app FULL-03 for verified
+consent behavior and isolated API/PostgreSQL evidence; frontend work remains pending.
+
+## Enhancement Rejection Mapping (2026-10-20)
+
+Supporting ENH-PLAN-05, counted in document_structure: known prefixed enhancement
+rejection results retain ReparseDocumentStructureResponse success=false/error shape.
+Invalid JSON/schema/reference/application plan => 422; prompt budget exceeded => 413;
+FULL-02 also maps local_resource_limit to 413 while retaining the existing response
+shape. This is supporting error mapping only, not FULL-03 capacity preflight delivery.
+provider failure => 502; provider/budget unavailable or invalid output allowance =>
+503; unexpected validation/builder failure => 500. Existing EnhancementConflict
+status/reason paths remain unchanged. Unknown exceptions in enhanced execution
+return only enhancement_execution_failed; Common/manual error behavior is unchanged.
+Tests call the route with mocked coordinator results to verify status/envelope and
+exception redaction, not live HTTP/DB execution. No implicit retry or mutation added.
+
+## Enhancement Consent Transport (2026-10-19)
+
+ENH-APP-01 owns this supporting adapter work. Read-only
+`POST /documents/reparse-structure/preflight` and explicit consent fields on enhanced
+reparse are implemented. The coordinator's PostgreSQL reader is wired; preflight
+returns validated readiness, impact and a token only when evidence is sufficient.
+Unsupported storage returns ready=false with an explicit reason and no token.
+PREP-03 wires execution_available to storage/profile capability checks. Coordinator
+rejects missing/stale consent with 409 and missing guards with 503 before generation.
+Supported execution returns committed structure_version; nullable path does not imply
+failure for PostgreSQL. Browser/API/storage acceptance passed in a disposable served
+fixture; the user's running API was not redeployed.
+Main only validates/forwards contracts
+and maps readiness/conflict results; it must not extract text, start OCR, construct
+plans or delete interactions. Missing/stale consent must not reach paid generation.
+See app and api_schemas dated designs. Existing legacy intent compatibility does not
+authorize unconfirmed destructive execution once this new contract is activated.
+
+## Enhancement Semantics Correction (2026-10-19)
+
+Reparse retains its current endpoint and legacy enhancement_intent inputs, but the
+UI has one LLM enhance operation optimizing Common output. Both enhanced wire
+values use that same planner policy; generated titles need no second user choice.
+Transport/mode validation and explicit-write boundaries are unchanged. Current
+policy supersedes the two-purpose interpretation in historical NATIVE-04 notes;
+see document_structure's unified enhancement correction and local validation rules.
+
+## READER-01 Public Layout (2026-10-19)
+
+The existing task-layout mapper forwards bounded TOC/intent/implicit provenance
+and section title_origin into the additive schemas. Ordinary reads remain read-only;
+prepare-task-layout reuses the same response projection after explicit preparation.
+No endpoint or parser authority is added. Four `test_reader_provenance.py` cases
+cover real API serialization and isolated unchanged-file evidence; readiness
+regressions pass eleven cases. UI READER-01 owns this supporting delivery/count.
+
+## NATIVE-05 Runtime Status (2026-10-19)
+
+The existing enhancement-intent forwarding now reaches active v2 application.
+Prepare and Reparse succeed in isolated real-route tests with fake providers and
+an in-memory store; invalid candidates fail without rewriting the stored hierarchy.
+The NATIVE-04 staged 400 guard is removed. No route/schema expansion or read-path
+mutation is introduced by this activation; live service deployment is not claimed.
+
+## NATIVE-04 Intent Forwarding (2026-10-19)
+
+Three explicit preparation/reparse routes forward enhancement_intent without
+selecting OCR or silently changing parser mode. Incompatible requests fail schema
+validation; valid generated intent currently receives 400 from the staged pipeline
+guard, with no paid plan or write. Restore defaults remain compatible. API tests
+verify independent toc_hint and intent propagation and the explicit rejection.
+Full v2 runtime activation belongs to NATIVE-05, not this transport change.
+
+## NATIVE-03 Explicit TOC Intent (2026-10-19)
+
+Prepare and prepare-task-layout forward `toc_hint` to preparation; reparse forwards
+it through the coordinator. The layout-only path rejects non-auto hints with 400,
+since it cannot apply source-parser settings. Defaults preserve existing callers'
+request shape while explicit preparation now checks Common policy identity.
+GET/task-layout reads do not rebuild. Contract tests cover defaults, all three
+hints, PDF-mode independence, forwarding and layout-only rejection. LLM prompt
+consumption belongs to NATIVE-04, not route behavior.
+
 ## 1. Module Purpose
+
+### Task-Layout Readiness Separation (2026-10-16)
+
+App LAYOUT-02 owns this implementation. Ordinary `/documents/task-layout` reads
+persisted units only; missing/stale/invalid layouts and refresh requests return
+409 with actionable string `detail`. `/documents/prepare-task-layout` explicitly
+prepares structure, ensures persisted units and validates repository readback before
+returning the lightweight projection. Management `ready` remains structured-ready.
+Additive `layout_only=true` skips base preparation and only ensures units on existing
+structure; force_rebuild/page-evidence combinations return 400, missing structure
+409, PDF effective mode null/provenance unknown. UI uses this after explicit repair
+or TOC commit, while post-upload Prepare uses the full flow. Explicit page evidence
+on ordinary reads now uses source-validated persisted page spans (LAYOUT-03), with
+character-anchor fallback when unavailable; no read-time extraction/language LLM.
+Evidence: readiness, page-evidence and PDF-mode route tests.
+
+### PDF Extraction Mode API Contract (2026-10-15)
+
+Implemented contract (PDF-MODE-01): `pdf_extraction_mode: fast | ocr | auto`, omitted => fast,
+on explicit `/documents/prepare` and `/documents/prepare-task-layout` requests.
+This is separate from `mode=base/free_qa` and `structured_parser_mode=common/...`.
+Both routes forward the enum through the existing coordinator's preparation pipeline;
+preparation owns execution/reuse. Unknown/null values fail validation before work.
+TXT omitted/fast retains normal preparation; explicit ocr/auto returns 422.
+Successful prepare responses add `pdf_extraction` with `requested_mode`, nullable
+`effective_mode`, and `provenance` (unknown/not_applicable/applied/reused).
+Only applied/reused permits an effective mode, which must match requested mode.
+Prepare-task-layout uses a dedicated response subclass; ordinary layout reads are unchanged.
+Typed failures contain `doc_name`, `reason`, `detail`, and `pdf_extraction`.
+HTTP mappings: mode_unavailable=501; mode_not_applicable/no_text/quality_failed/
+budget_exceeded=422; engine_unavailable=503; extraction_failed=502. Standard request
+validation remains a separate 422 detail-array shape. Engine failure mappings are
+contract-tested with injected errors, not evidence of implemented mode executors.
+No new cancellation/job endpoint is implied. Raw upload stores only the source;
+UI subsequently starts a visible explicit preparation using the returned unique
+name. Management/Open reads cannot change mode or trigger preparation. Existing
+artifacts lacking mode provenance remain readable and unknown, never backfilled
+as fast by a read. Mode-changing rebuild is an explicit preparation operation.
+
+PDF-MODE-05 removes the temporary 501 gate: both routes now dispatch fast/ocr/auto
+through source-snapshot and identity-aware preparation. Auto retains existing
+selective-policy/configuration limits. Engine availability and quality/budget
+errors remain explicit; this is not a real-document accuracy acceptance claim.
+TXT success reports not_applicable with no effective mode. Internal callers that
+omit the pipeline argument retain legacy execution and unknown provenance; they
+are not advertised as fast. No live deployment was performed. UI LIB-06 still owns
+the selector; ordinary layout reads are unchanged. Evidence:
+`test_pdf_extraction_mode_contract.py` and `test_pdf_mode_preparation.py`.
 
 `main.py` 是 FastAPI 入口，負責 route 註冊、request 映射到 coordinator，以及 coordinator 結果映射回 API response schema。 **[Code-Confirmed]**
 
@@ -42,7 +205,7 @@
 | `GET /documents` | `DocumentArtifactRepository.list_documents` | lightweight read/search |
 | `GET /documents/management` | structured list + raw source metadata merge | lightweight management status read |
 | `POST /documents/upload` | route-local raw source registration | explicit raw-source write |
-| `POST /documents/lifecycle/delete` | file-backed document candidate cleanup | explicit delete mutation |
+| `POST /documents/lifecycle/delete` | active structured repository plus raw/derived file cleanup | explicit delete mutation |
 | `POST /documents/lifecycle/rename` | file-backed document candidate rename | explicit rename mutation |
 | `POST /documents/prepare` | prepare pipeline via coordinator path | write-capable orchestration |
 | `POST /documents/ask` | `QACoordinator` | runtime QA |
@@ -220,16 +383,17 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
     evolves beyond this raw-source slice. **[Code-Confirmed] + [Future Direction]**
 11. Route responses must preserve user-scope and raw-file ownership boundaries; no list or
     upload response should imply cross-user document sharing. **[From Proposal] + [Future Direction]**
-12. Lifecycle route policy is now fixed at the API boundary: route handlers may validate
-    lifecycle requests and map lightweight lifecycle responses, but cleanup of raw
-    sources, structured artifacts, retrieval indexes, profiles, and reading-interaction
-    artifacts must be delegated to a storage/service layer outside `main.py`.
+12. Lifecycle route handlers validate requests and map lightweight responses.
+    Structured deletion delegates to the active repository; raw source and derived
+    directory cleanup currently remain route-local helpers. Moving those file helpers
+    into a dedicated storage/service layer remains future work.
     **[Code-Confirmed] + [Future Direction]**
 13. `POST /documents/lifecycle/delete` is an explicit destructive lifecycle mutation
-    route. It requires `action=delete` and `confirm=true`, removes matching file-backed
-    raw source, structured JSON artifact, and derived FAISS/profile directory when
-    present, and returns a lightweight `DocumentLifecycleActionResponse` with effect
-    flags only. It does not call prepare, reparse, task-layout, OCR/profile generation,
+    route. It requires `action=delete` and `confirm=true`, removes matching raw source
+    and derived FAISS/profile files, then calls the active repository's
+    `delete_document(doc_name)` for structured JSON or PostgreSQL data. It returns a
+    lightweight `DocumentLifecycleActionResponse` with effect flags only.
+    It does not call prepare, reparse, task-layout, OCR/profile generation,
     retrieval build, or reading-interaction generation. **[Code-Confirmed]**
 14. Maintainer-scoped lifecycle MVP is limited to `delete` and `rename`. `archive` and
     `restore` remain reserved lifecycle vocabulary only and should not be implemented or
@@ -250,6 +414,55 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
     It does not call prepare, reparse, task-layout, OCR/profile generation, retrieval
     build, reading-interaction generation, or upload conflict-policy behavior.
     **[Code-Confirmed]**
+
+### Delete Consistency And Recovery (2026-10-14)
+
+- Root cause: deleting files alone left an active PostgreSQL document visible through
+  both `GET /documents` and `GET /documents/management`. Raw-file absence does not prove
+  document deletion. **[Code-Confirmed]**
+- Structured cleanup follows the selected repository, without falling back to inactive
+  structured JSON storage. `structured_artifacts_affected` includes DB document deletion
+  and its owned rows; `derived_resources_affected` reports file-directory cleanup.
+  **[Code-Confirmed]**
+- File cleanup precedes repository deletion so a file failure retains the structured
+  discovery record. Filesystem and PostgreSQL writes do not share an atomic transaction;
+  a storage failure may leave files already removed, but must never return accepted.
+  Retry removes remaining resources, including a database-only document. A fully absent
+  target returns `404 / missing_document`. **[Code-Confirmed]**
+- Live verification: the reported `《歸來》白事／喪葬／鄉村儀式素材整理稿` residual
+  document (former DB id 18) was deleted through the corrected route. Both catalogs
+  exclude it, the FAISS directory is absent, and other catalog names are unchanged.
+  Evidence: `scripts/test_document_delete_route.py`, `scripts/test_postgres_document_delete.py`,
+  local Docker API/SQL verification on 2026-10-14. **[Test-Confirmed]**
+
+### Upload And Preparation Timing Logs (2026-10-14)
+
+Each HTTP request receives a server-generated `request_id`, propagated to synchronous
+worker logs and returned as `X-Request-ID`. Upload and prepare remain separate requests;
+correlate them by the final backend-owned `doc_name` and timestamp, then filter each
+request id for its stages. Health success probes remain suppressed. **[Code-Confirmed]**
+
+`stage_started`, `stage_finished`, and `stage_failed` include a unique `stage_id`;
+finish/failure includes monotonic `duration_ms`. Stages cover `upload_receive`,
+`upload_multipart_parse`, `upload_write`, `upload_hash`, the preparation pipeline,
+PDF/OCR substeps, and `task_layout_projection`. `upload_stored` records the actual
+filename/doc_name and size, explicitly marking `preparation_started=false`.
+Upload rejections log stable reason codes. **[Code-Confirmed]**
+
+Default output is stderr/container logs plus rotating `data/logs/deep-reader.log`
+at INFO level. From repository root, follow
+`tail -f Deep_Reflective_Reader/data/logs/deep-reader.log` or
+`docker compose logs -f api`. Filter by `request_id=<X-Request-ID>` for one request.
+**[Code-Confirmed]**
+
+Timing is server-observed: `upload_receive` measures application body reading, not
+browser/proxy time before the request reaches the API. Nested stage durations are
+inclusive and must not be summed. `stage_finished` means the call returned, not that
+all assets succeeded; check `prepare_result` readiness/error codes and HTTP status.
+A start without a finish identifies in-progress/interrupted work, not a diagnosed
+performance cause. Added logs exclude document bodies, prompts, credentials, and
+exception text; this change does not investigate latency or alter processing policy.
+**[Code-Confirmed]**
 
 ## 17. Route Mapping For TOC Anchor Evidence
 

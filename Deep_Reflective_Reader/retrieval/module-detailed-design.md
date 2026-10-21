@@ -1,5 +1,12 @@
 # retrieval Detailed Design
 
+## FULL-01 Capacity Logs (2026-10-20)
+
+Builder/store budget logs distinguish shared context_window from optional max_input;
+the config resolver retains existing combined QA budget semantics. No index schema,
+embedding, persistence or retrieval behavior changed. Evidence: llm FULL-01 tests
+and config/container regressions; no additional checklist completion counted here.
+
 ## 1. Module Purpose
 
 `retrieval/` 管理節點解析後的向量索引建置、持久化、重載與檢索，形成 `FaissIndexBundle` 供 QA 與 context 模組使用。 **[Code-Confirmed]**

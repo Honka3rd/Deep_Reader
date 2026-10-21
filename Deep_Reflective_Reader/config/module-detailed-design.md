@@ -1,5 +1,28 @@
 # config Detailed Design
 
+## Summary Service Wiring (2026-10-21)
+
+SN-10 supporting composition: SummaryInteractionService receives the configured
+structured repository and current LLM provider, and is injected into the task
+coordinator. Notes require only that existing repository and no provider. No
+private key, model selection or capacity configuration changes were introduced.
+
+## FULL-01 Capacity Consumer Migration (2026-10-20)
+
+Token budget resolver uses combined_token_limit because QA's TokenBudgetManager
+subtracts output downstream. Existing target caps/utilization and no-capability
+fallback remain unchanged. EffectiveTokenBudgets now reports context_window_tokens
+separately from optional input-only capacity; no model/DI setting changed.
+Completion/testing evidence belongs to llm FULL-01, not a new config task.
+
+## Enhancement Profile Wiring (2026-10-19)
+
+Supporting PREP-03: the shared profile-store provider uses VersionedDocumentProfileStore
+with the selected structured repository injected. All existing runtime consumers get
+this adapter; PostgreSQL invalidates file-derived structure advice through committed
+provenance, while file storage keeps existing behavior. Config only wires dependencies,
+not invalidation semantics. Container wiring and real API/DB acceptance pass.
+
 ## 1. Module Purpose
 
 `config/` 負責應用層設定契約與依賴注入組裝，並提供 storage namespace normalization 與 token budget 解析策略。 **[Code-Confirmed]**

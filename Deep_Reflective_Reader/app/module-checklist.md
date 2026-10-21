@@ -1,5 +1,40 @@
 # app Checklist
 
+## Format-Neutral Extraction Backlog (2026-10-21)
+
+Implemented; evidence and scope are recorded per item. Ordered design: [shared plan](../document_preparation/module-detailed-design.md#format-neutral-extraction-plan-2026-10-21).
+
+- [x] EXTRACT-08: Connect TXT/PDF preflight and execution to generic accepted sources.
+  Depends on: EXTRACT-06, EXTRACT-07.
+  Acceptance: Common full-prompt capacity gate, source versus capacity reasons, normalized consent, correlated logs and automatic layout flow; zero model calls for failed preflight and zero extraction/profile regeneration.
+  Evidence: Live Madame Bovary preflight ready=true, execution_available=true, capacity=fits; generic accepted snapshots reach existing API/consent/capacity flows.
+  Timestamp: 2026-10-21
+
+## Enhancement Outcome Follow-up
+
+- [x] ENH-REV-03: Expose three-way enhancement results and conditional consent.
+  Depends on: document_structure ENH-REV-01 and db ENH-REV-02.
+  Acceptance: Coordinate validated comparison/commit; additive typed change_kind/committed/version/cleanup/layout-required semantics distinguish no-op, label commit and structural commit. Preflight warns conditionally before generation and binds baseline labels as well as hierarchy/source/policy. API schemas/routes must be implemented before UI adoption. Permit retry of transient generation failures without cost gates; reconcile unknown outcomes and prevent duplicate commit/cleanup. No hidden task-layout writes.
+  Evidence: `enhancement_operations.py`, preflight/coordinator, reparse result/DTO/routes and safe provider failure classification; `test_enhancement_outcome_api.py` and `test_enhancement_operations.py` cover three outcomes, legacy defaults, stale label consent, same-version response-loss reconciliation/replay, in-flight exclusion, transient retry, invalid plans and unknown state after restart/record expiry. Existing API/DB tests retain capacity-zero-call and explicit layout-only recovery coverage.
+  Validation: Seven-suite acceptance runs 124 tests: 123 passed, one private-source opt-in skipped. No paid LLM or production mutation. Process-local result registry: 1024 records, one-hour inactive retention, unknown on another worker/restart; no durable job guarantee. UI integration remains ENH-REV-05.
+  Timestamp: 2026-10-21
+
+## Full-Source Enhancement Follow-up
+
+- [x] FULL-03: Expose capacity-aware preflight and consent-bound execution checks.
+  Depends on: FULL-01 and FULL-02.
+  Acceptance: Shared full-source budgeting exposes safe nullable capacity/count details; no token or execution when capacity fails. Bind model/prompt/output/budget identity to consent and revalidate before dispatch. Preserve existing source readiness, atomic cleanup and concurrency guards; no OCR, LLM or writes in preflight.
+  Evidence: `enhancement_preflight.py`, coordinator/pipeline capacity handoff, shared builder observation, request-scoped dispatch identity, typed API capacity response and `test_enhancement_capacity_preflight.py`. No token unless storage/source/capacity checks pass; consent v2 and under-lease rechecks preserve existing atomic commit guards.
+  Validation: 139 tests discovered, 138 passed, one explicit private-source opt-in skip; includes 11 new cases and isolated PostgreSQL/API regression. git diff --check passed. No paid LLM, production mutation or frontend implementation.
+  Timestamp: 2026-10-20
+
+## Content Read Performance (2026-10-21)
+
+- [x] CONTENT-01: Read content from one persisted snapshot; remove prepare and per-block storage/profile I/O.
+  Acceptance: See app detailed design Content Read Recovery; evidence required before completion.
+  Evidence: Coordinator direct repository reads, snapshot artifact adapter, request-level profile reuse and version-aware status projection; content endpoint regressions and ten new recovery cases pass. Real largest-section API acceptance passes.
+  Timestamp: 2026-10-21
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `app` module.
@@ -147,6 +182,16 @@ No unresolved confirmation items identified in this pass.
 
 ## Future Task Policy
 
+### Source-Preserving Enhancement (2026-10-19)
+
+- [x] ENH-APP-01: Add read-only enhancement preflight and explicit discard consent contract.
+  Depends on: ENH-PREP-01; public execution remains gated by ENH-DB-01.
+  Scope: app orchestration plus main/api_schemas adapters; readiness/impact inventory, server-bound token, explicit consent, stale/missing-consent conflicts and single-flight handoff.
+  Acceptance: no preflight writes/OCR/LLM; no paid work without valid consent; token bound to document/source/structure/interaction state; execution availability is explicit. Actual committed-version/timeout reconciliation remains integration acceptance under DB-01/PREP-03, not a claim of successful execution here.
+  Evidence: storage-backed coordinator reader; PostgreSQL repeatable-read read-only snapshot and full-row revision fingerprint; embedded/relational inventory with unknown counts; advisory single-flight handoff; explicit unsupported file backend. Eight live disposable-schema tests, nine consent tests and fourteen PDF-mode regressions passed. No production documents modified or live deployment claim.
+  Boundary: ready is not execution_available. PREP-02/DB-01 remain mandatory before execution; process-local tokens require renewed consent after restart/worker change.
+  Timestamp: 2026-10-19
+
 New future tasks for this module must be added here first as unchecked items:
 
 - [ ] Support content-block-level lookup/read API orchestration
@@ -182,14 +227,16 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence needed: generated artifact result metadata includes whether lower-level artifacts were referenced, referenced artifact ids, and deduplication/abstraction hint flags.
   Notes: Metadata supports UI observability and future debugging.
   Timestamp: 2026-10-05
-- [ ] Add app orchestration methods for summary read/generate/refresh
+- [x] Add app orchestration methods for summary read/generate/refresh
   Evidence needed: coordinator resolves a hierarchy-aware target once, dispatches summary read without generation, and performs higher-level summary preparation only for explicit generate/refresh paths.
   Notes: Response DTOs should carry summary envelope/payload metadata without raw ancestor text or frontend UI state.
-  Timestamp: 2026-10-13
-- [ ] Add app orchestration methods for user-authored notes
+  Evidence: coordinator methods and configured service provider; direct repository read (no prepare), existing profile only, stored version validation. Real route/coordinator tests and ten live targets pass.
+  Timestamp: 2026-10-21
+- [x] Add app orchestration methods for user-authored notes
   Evidence needed: coordinator supports note read/list/save/delete or an explicitly chosen note route pattern with target validation and length-limit errors before persistence.
   Notes: Notes must not call LLMs, prepare/reparse documents, generate summaries, mutate task-layout, or write profile diagnostics.
-  Timestamp: 2026-10-13
+  Evidence: read_note/save_note/delete_note dispatch explicit NoteInteractionService, no provider dependency. File/PostgreSQL and actual API tests pass including conflict/length checks.
+  Timestamp: 2026-10-21
 - [x] Orchestrate batch task-unit content lookup through a single hierarchy load
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.
   Notes: Coordinator batch path resolves the document/hierarchy once, validates ordered unique task-unit ids, returns per-task-unit content in request order, and preserves single endpoint segmented semantics. It replaces frontend selected-section request fan-out with one on-demand content call while remaining read-only and avoiding task-layout heavy payload, profile write-back, parser authority, and legacy fallback paths.
@@ -224,6 +271,31 @@ New future tasks for this module must be added here first as unchecked items:
 After implementation, the task owner must update this checklist and mark the task as completed:
 
 No coding task should be considered complete unless the corresponding module checklist is updated.
+
+## Task-Layout Readiness / Latency Follow-up (2026-10-15)
+
+Design's dated investigation section records logs, residual timing uncertainty and
+the read/write boundary gap. New track: 3/3 implemented. Coordinate with UI LIB-01..05
+and loader PDF-MODE-02/03, PDF-FIX-02/03, deferred PDF-AUTO-01; main PDF-MODE-01
+and preparation PDF-MODE-04/05 own mode integration. UI now includes LIB-06.
+Existing preparation language-cache tasks are not duplicated.
+
+- [x] LAYOUT-01: Instrument the post-preparation task-layout stages and establish matched baselines.
+  Acceptance: Request-correlated task-unit/embedding orchestration, cache hit/miss reason, repository and optional anchor-evidence spans; actual external call counts without source/prompt/credentials. Cold, structured-ready and layout-ready measurements in disposable storage distinguish nested spans and residual work. Cover content-free logs with tests; do not attribute all timestamp gaps to remote API latency.
+  Evidence: `section_task_coordinator.py`, `logging_config.py`, preparation repository-read spans, embedding SDK spans; `scripts/test_task_layout_logging.py` (5 passing tests), existing persistence-cache and upload/preparation logging regressions. Same-fixture temporary JSON cold/structured-ready/layout-ready baselines are recorded in detailed design; fake external dependencies, not production latency claims. HTTP counters measure completed responses including retry statuses, not transport attempts without responses. Historical requests remain observational context, not matched benchmarks.
+  Timestamp: 2026-10-15
+
+- [x] LAYOUT-02: Move preparation/cache repair writes behind explicit reader-readiness orchestration.
+  Acceptance: Ordinary task-layout reads do not prepare, resolve/persist new task units, repair IDs, call OCR/LLM/embeddings or write on cache miss. Missing/stale/invalid layout yields actionable readiness failure; explicit prepare-task-layout still creates valid hierarchy/task-unit cache and readback before success. Preserve existing management structured-ready semantics; define any finer readiness response before changing it. Poison-write/LLM tests cover both hits and misses, plus explicit prepare success and Library service handling.
+  Depends on: LAYOUT-01 baseline; coordinates main route/preparation/section-task services and UI LIB-03/04 without moving parser authority or heavy content into DTOs.
+  Evidence: `ensure_document_task_layout`, `TaskLayoutNotReadyError`, explicit prepare route with persisted readback, Library `prepareReader`, and layout-only refresh after explicit repair/TOC commit. `test_task_layout_readiness.py` (10 tests), persistence-cache, logging, PDF API contract and intercepted Playwright Library tests pass; UI build passes. Management structured-ready semantics unchanged; LAYOUT-03 evidence refactor remains pending.
+  Timestamp: 2026-10-16
+
+- [x] LAYOUT-03: Remove implicit page-evidence reload and language detection from ordinary reading.
+  Acceptance: No manual source-evidence calls for ordinary task-layout reads, including misses; use character anchors when page evidence was not requested. Explicit TOC/page-evidence reads use source-validated boundary-only evidence without unrelated language/profile generation. Retain manual commit freshness checks and regression coverage for native/scanned/cache/changed-source cases.
+  Depends on: LAYOUT-01 and LAYOUT-02. Broader language detection cache priority remains in the existing preparation checklist.
+  Evidence: Dedicated persisted boundary-only pipeline read and same-snapshot coordinator handoff. `test_task_layout_page_evidence.py` (8), `test_task_layout_readiness.py` (11), `test_pdf_mode_preparation.py` (10), cache smoke and manual preparation/commit source-evidence regressions pass. Source/hash/schema/span guards fail closed to character anchors; no read-time extraction/LLM/write or relaxed commit validation.
+  Timestamp: 2026-10-16
 
 ## Maintenance Notes
 

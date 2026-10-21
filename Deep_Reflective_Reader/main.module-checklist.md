@@ -27,6 +27,16 @@ It is used to:
 
 ## Completed Checklist
 
+- [x] Add request-correlated upload and task-layout timing logs.
+  Evidence: `main.py`; `logging_config.py`; passing `scripts/test_upload_preparation_logging.py`, `scripts/test_document_upload_route.py`, and `scripts/test_main_request_logging.py`.
+  Notes: Records body receive, multipart parse, write, hash, rejection reasons and request elapsed time; propagates generated request ids to worker logs and response headers. Upload still does not prepare documents. No latency cause is inferred.
+  Timestamp: 2026-10-14
+
+- [x] Repair storage-aware document deletion and retry after partial file cleanup.
+  Evidence: `main.py`; `scripts/test_document_delete_route.py`; passing delete, management, and list/search regressions; local Docker API deletion and both catalog readbacks on 2026-10-14.
+  Notes: Confirmed deletion uses the active repository after raw/FAISS cleanup. Database-only residual records can be removed; storage errors do not report accepted. The reported document id 18 and its FAISS directory were removed, with other catalog names unchanged.
+  Timestamp: 2026-10-14
+
 - [x] Add task-unit content read endpoint
   Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`
   Notes: 新增 `GET /documents/{doc_name}/task-units/{task_unit_id}/content`，read-only、id-based lookup，404/400 fail-fast error mapping。
@@ -165,15 +175,17 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence needed: route behavior or client-facing contract makes it clear that `/documents/task-layout` is the preferred existing-layout read path, while `/documents/prepare-task-layout` is reserved for first-time prepare, explicit repair, or fallback.
   Notes: Repeated UI selection of an already prepared document should not implicitly enter OCR/language/profile or LLM-backed work merely to display the current layout. Route observability should report whether prepare-then-read reused existing structured artifacts or performed expensive preparation.
 
-- [ ] Expose summary reading-interaction route family
+- [x] Expose summary reading-interaction route family
   Evidence needed: routes map summary read/generate/refresh requests through app orchestration, reuse shared envelope/status mapping, and keep read paths no-auto-generation.
   Notes: Route handlers should not build prompts, prepare ancestor summaries, persist artifacts directly, or expose raw source/ancestor text.
-  Timestamp: 2026-10-13
+  Evidence: POST /documents/reading-interactions/summary/{read,generate,refresh}, shared envelope/error mapping; real coordinator and live two-book acceptance pass. Failed refresh returns 502 without replacing saved output.
+  Timestamp: 2026-10-21
 
-- [ ] Expose note route family for user-authored annotations
+- [x] Expose note route family for user-authored annotations
   Evidence needed: routes map note read/list/save/delete or equivalent explicit note operations through app orchestration with stable validation and HTTP status mapping.
   Notes: Note routes must not call LLMs, prepare/reparse, generate summaries, mutate task-layout, or persist frontend-only UI state.
-  Timestamp: 2026-10-13
+  Evidence: POST /documents/reading-interactions/note/{read,save,delete}, strict schemas and 409 conflict mapping. Actual API tests and ten real-book targets verify persistence and idempotent retry.
+  Timestamp: 2026-10-21
 
 - [x] Add explicit document upload route.
   Evidence: `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_document_upload_route.py`; validation: `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_upload_route.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_document_list_search_api.py`; `Deep_Reflective_Reader/.venv/bin/python -m py_compile Deep_Reflective_Reader/main.py Deep_Reflective_Reader/scripts/test_document_upload_route.py`.
@@ -208,6 +220,15 @@ New future tasks for this module must be added here first as unchecked items:
 After implementation, the task owner must update this checklist and mark the task as completed:
 
 No coding task should be considered complete unless the corresponding module checklist is updated.
+
+## PDF Extraction Mode Contract (2026-10-15)
+
+- [x] PDF-MODE-01: Expose a validated fast/ocr/auto extraction contract on explicit preparation routes.
+  Acceptance: Add pdf_extraction_mode with omitted default fast on prepare and prepare-task-layout, validate enum before expensive work, pass through app/preparation, and expose effective mode/provenance plus typed no-text/engine/quality/budget failures. Keep base/free_qa and structured_parser_mode independent. Non-PDF omission/fast is a no-op; explicit ocr/auto for non-PDF is rejected clearly. Upload remains raw-only; no mode-triggered mutation on list/Open/read routes. Contract tests cover omitted/invalid/non-PDF modes and both explicit endpoints; specify legacy unknown-provenance artifacts without relabeling them fast.
+  Depends on: Interface agreement with PDF-MODE-04/05; runtime delivery requires their propagation. This task owns schemas/routes and supporting app pass-through, not loader policy.
+  Evidence: api_schemas.py; main.py; doc_loaders/pdf_extraction_contract.py; document_preparation/document_preparation_pipeline.py and prepared_document_assets.py; scripts/test_pdf_extraction_mode_contract.py (11 tests passed). Existing raw-load error, structured-reuse, lazy-layout and upload/preparation logging regressions also passed.
+  Delivery boundary: Contract only. Both public PDF prepare routes return typed 501 mode_unavailable before any cache/mutation, including omitted fast; TXT fast remains operational and TXT ocr/auto returns 422. Internal legacy callers remain unknown-provenance. Engine failure mappings are tested with injected errors; executors/cache integration and live deployment are not claimed.
+  Timestamp: 2026-10-15
 
 ## Maintenance Notes
 

@@ -1,5 +1,13 @@
 # bundle_factory.py Detailed Design
 
+## Reuse-Only Profile Policy (2026-10-21)
+
+CONTENT-03 supersedes the former missing/corrupt-profile rebuild fallback.
+ensure_profile_ready now only loads the persisted profile or raises actionable
+profile_not_ready/profile_unreadable. Index clearing/rebuilding cannot clear,
+generate, save or enrich profiles, even with supplied raw text. Initial preparation
+and explicit full reparse belong to document_preparation, not runtime bundles.
+
 ## 1. Module Purpose
 
 `bundle_factory.py` 負責 FAISS runtime bundle 的建立、快取、重建與 profile/index artifact readiness 保證。 **[Code-Confirmed]**
@@ -18,8 +26,8 @@
 
 1. 管理 doc-scoped bundle cache（LRU-like OrderedDict）。 **[Code-Confirmed]**
 2. 依 fingerprint + records schema 判斷重用/重建。 **[Code-Confirmed]**
-3. 確保 profile artifact 可讀/可重建。 **[Code-Confirmed]**
-4. 持久化 index/profile 與 fingerprint metadata。 **[Code-Confirmed]**
+3. Load the existing profile or report readiness failure; never rebuild it. **[Code-Confirmed]**
+4. Persist index and fingerprint metadata only. **[Code-Confirmed]**
 
 ## 5. Non-Responsibilities
 
@@ -46,7 +54,7 @@
 
 ## 9. Persistence / Side Effects
 
-- read/write persistence：是（index/records/profile/meta）
+- read/write persistence: index/records/meta; profile is read-only.
 - side effects：cache mutation、clear/remove artifacts
 
 ## 10. Known Legacy / Compatibility Behavior
@@ -59,9 +67,9 @@
 - why：可能讀到 stale bundle
 - guardrail：fingerprint + ensure_index_ready gate
 
-2. risk：profile rebuild 失敗影響 bundle 完整性
-- why：下游 prompt 依賴 profile
-- guardrail：profile store clear + rebuild path
+2. risk: missing/corrupt profile prevents a complete runtime bundle.
+- why: downstream prompts require stable document metadata.
+- guardrail: explicit readiness error; only initial preparation/full reparse owns recovery.
 
 ## 12. Open Questions for Maintainer
 

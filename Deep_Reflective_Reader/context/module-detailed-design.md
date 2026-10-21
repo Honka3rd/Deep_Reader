@@ -1,5 +1,13 @@
 # context Detailed Design
 
+## FULL-01 Capacity Consumer Migration (2026-10-20)
+
+Reading interaction context uses input_token_limit(output_reserve) before deducting
+instruction tokens. Full-text QA uses combined_token_limit to retain the existing
+downstream TokenBudgetManager output subtraction exactly once. Semantic compaction,
+fallback, hierarchy lookup and storage ownership are unchanged. Completion and
+regression evidence are counted only under llm FULL-01.
+
 ## 1. Module Purpose
 
 `context/` 負責在 QA 執行時組裝可用上下文，支援 local window、retrieval 與 full-text 三種模式，並透過 token budget 控制輸入大小。 **[Code-Confirmed]**

@@ -1,5 +1,41 @@
 # document_preparation Checklist
 
+## Loader Boundary Governance
+
+- [x] LOADER-03: Consume sessions in preparation/cache/save and remove concrete loader dispatch from persisted-evidence reads.
+  Acceptance: no PDF/TXT isinstance or private source-path calls in pipeline; generic cache/source checks, lifecycle/profile authority preserved.
+  Evidence: source_session-based preparation/reuse/save; generic source_page_spans, legacy API projection, source_capture/source_extract logs. 95 focused Docker tests and PostgreSQL 88 passing cases/two opt-in skips. Source replacement rejects writes. Live default-Common acceptance incident and layout-only recovery are recorded in detailed design.
+  Timestamp: 2026-10-21
+
+## Format-Neutral Extraction Backlog (2026-10-21)
+
+Implemented; evidence and scope are recorded per item. Ordered design: [shared plan](module-detailed-design.md#format-neutral-extraction-plan-2026-10-21).
+
+- [x] EXTRACT-04: Persist and reuse generic extraction results during explicit preparation.
+  Depends on: EXTRACT-02, EXTRACT-03.
+  Acceptance: Store validated generic provenance only after successful complete extraction; exact text/source/settings reuse checks and DB readback; identity changes never trigger profile regeneration.
+  Evidence: Generic preparation persistence/reuse and DB canonical-slice validation; single-pass TXT prepare/reuse and no-profile-work tests pass.
+  Timestamp: 2026-10-21
+
+- [x] EXTRACT-05: Normalize legacy PDF identity and support explicit verified TXT backfill.
+  Depends on: EXTRACT-04.
+  Acceptance: Read-only normalization, conflict/unknown-schema rejection, exact source-to-accepted-text proof for TXT, atomic idempotent explicit migration with stable hierarchy/version/interactions/profile; unprovable legacy data requires explicit preparation.
+  Evidence: Explicit backfill script and locked provenance-only migration; Madame Bovary migration, PostgreSQL idempotence/rollback/stable hierarchy and artifact tests pass.
+  Timestamp: 2026-10-21
+
+- [x] EXTRACT-06: Generalize accepted-source snapshots and enhancement candidate provenance.
+  Depends on: EXTRACT-05.
+  Acceptance: Remove PDF-only identity/key assumptions; trusted format-aware source lookup, completeness/hash/coverage/race validation and canonical conservation; missing mappings allowed, zero extraction/OCR/profile calls during enhancement.
+  Evidence: Generic accepted snapshots/candidate provenance and legacy normalization; exact source/text/coverage checks and snapshot regressions pass.
+  Timestamp: 2026-10-21
+
+## Content Read Performance (2026-10-21)
+
+- [x] CONTENT-02: Restrict profile creation/replacement to initial preparation or explicit full reparse; never rebuild on extraction identity or corrupt-cache reads.
+  Acceptance: See app detailed design Content Read Recovery; evidence required before completion.
+  Evidence: Lifecycle authority/generated flags, locked initial creation, atomic profile replacement and PostgreSQL canonical-source cache validation. Concurrency, corrupt/missing/failure cases pass; real repeated prepare preserves layout and profile hashes.
+  Timestamp: 2026-10-21
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `document_preparation` module.
@@ -27,6 +63,11 @@ It is used to:
 
 ## Completed Checklist
 
+- [x] Add preparation stage timing and cache/readiness diagnostics.
+  Evidence: `document_preparation_pipeline.py`; passing `scripts/test_upload_preparation_logging.py`, `scripts/test_prepare_structured_reuse_before_raw_load.py`, and `scripts/test_document_preparation_raw_load_errors.py`.
+  Notes: Logs stage starts/elapsed times, cache outcomes, storage backend, readiness and error codes without changing preparation ordering, cache policy, failure mapping or artifact contents.
+  Timestamp: 2026-10-14
+
 - [x] Implements ordered prepare pipeline with profile-before-structured sequencing.
   Evidence: `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py; Deep_Reflective_Reader/document_preparation/module-detailed-design.md (Preparation Lifecycle)`
   Notes: Current lifecycle includes Step 4.5 post-structure enrichment.
@@ -44,6 +85,34 @@ It is used to:
 No unresolved confirmation items identified in this pass.
 
 ## Future Task Policy
+
+### Source-Preserving Enhancement (2026-10-19)
+
+New track: this module 3/3; combined 6/6 (100%; backend 5/5, UI 1/1). Execution order and
+requirements are in the owning detailed design. Engineering acceptance is complete;
+production deployment and live-model semantic quality are not claimed.
+
+- [x] ENH-PREP-01: Resolve and validate an accepted canonical source snapshot without extraction.
+  Acceptance: Namespace/file/text hashes, completion, language and exact coverage validated; PostgreSQL empty raw_text is not mistaken for missing source without checking verifiable canonical section slices. Reject gaps/overlap/hash mismatch/unknown legacy identity with actionable readiness reasons; no loader/render/OCR/LLM call, no source mutation. Preserve accepted extraction identity independently of newer parser/prompt versions.
+  Evidence required: File and PostgreSQL readback fixtures, changed/missing source, partial OCR, empty text and explicit no-I/O-to-parser guards.
+  Evidence: accepted_source_snapshot.py; scripts/test_accepted_source_snapshot.py (13 passed), extraction identity (9 passed) and structured-reuse regression passed locally. JSON storage roundtrip and PostgreSQL-shaped readback covered; no live DB or public API claim. Storage-owner adapter/version handoff remains APP-01; no existing enhance entry changed.
+  Timestamp: 2026-10-19
+
+- [x] ENH-PREP-02: Separate structure-only enhancement from full source preparation.
+  Depends on: ENH-PREP-01 and ENH-APP-01; public activation also requires ENH-DB-01.
+  Acceptance: Existing snapshot -> bounded in-memory Common context -> LLM plan -> local validation; no raw extraction, language/profile generation, OCR or embeddings. Preserve source/extraction identity and accepted state on candidate failure. Explicit re-extraction remains a separate mode-aware operation; no fallback from enhancement. Do not enable an unguarded persistence path while DB consent checks are pending.
+  Evidence required: Real coordinator/pipeline integration with loaders/providers spied or forbidden as appropriate, exact text conservation and failed-candidate preservation.
+  Evidence: structure_enhancement_candidate.py; pipeline candidate entry and coordinator consent/lease context. Seven candidate tests, ten live disposable PostgreSQL tests, thirteen snapshot tests and nine consent tests passed locally. Real builder/planner/application with deterministic LLM responses; no live provider call or user-document writes. Success/failure leave existing artifacts unchanged; public execution stays gated pending DB-01.
+  Timestamp: 2026-10-19
+
+- [x] ENH-PREP-03: Accept the complete confirmed enhancement workflow across entry points and storage.
+  Depends on: ENH-PREP-01/02, ENH-APP-01, ENH-DB-01 and ENH-UI-01.
+  Acceptance: Real route-to-storage flow verifies no source/OCR re-entry; consent/cancel/stale/new-interaction races; success version advance and cleanup; provider/validation/commit failures preserve data; post-commit layout failure cannot rerun enhancement. Exercise the reported long-PDF failure using safe isolated fixtures and an opt-in source case without mutating production data. Verify supported file/DB behavior or explicit unsupported-backend failure, and deployed API/UI contract parity.
+  Evidence required: Disposable PostgreSQL transactions, source/hash assertions, explicit stage/call counts and browser confirmation tests. Report live-provider semantic-quality evidence separately; no completion based only on mocked planner success.
+  Evidence: 30 live disposable-schema cases in test_enhancement_postgres_preflight.py, including opt-in reported PDF copied read-only and explicitly prepared in isolation; all 8,190 canonical characters preserved, no extraction during enhancement. accept_enhancement_browser.py passes real browser/FastAPI/PostgreSQL flow at 1280px/390px, with deterministic planner/unit resolver. Consent/candidate/layout regressions, container wiring, UI browser confirmation, build and shell syntax pass.
+  Delivery: guarded public commit and committed-version response; file-profile derived-field invalidation from atomic DB marker; explicit post-commit layout preparation; migration 003 mounted for fresh volumes and applied by local startup for existing volumes. File hierarchy enhancement remains explicitly unsupported.
+  Boundary: runtime API/UI parity verified in isolated served fixtures, not the user's running Docker instance. No production books, profile files or schema changed; no paid model call. The legacy reported book requires explicit Prepare to establish accepted extraction identity. Deployment remains an operator action using the existing scripts.
+  Timestamp: 2026-10-19
 
 New future tasks for this module must be added here first as unchecked items:
 
@@ -114,7 +183,8 @@ New future tasks for this module must be added here first as unchecked items:
 
 - [ ] Define OCR/layout cost and observability budget
   Evidence needed: page count, candidate pages, rendered pages, OCR passes, DPI, elapsed time, cache hit/miss, renderer warnings, and rejection reasons are recorded.
-  Notes: Set deterministic limits for rendered pages, resolution, OCR attempts, and elapsed work. Budget exhaustion produces advisory diagnostics and current-parser fallback, never a partial hierarchy.
+  Notes: Set deterministic limits for rendered pages, resolution, OCR attempts, and elapsed work. Optional layout budget exhaustion permits advisory current-parser fallback; required canonical OCR text budget exhaustion fails preparation, never a partial hierarchy. Fast forbids renderer/OCR use; coordinate mode-aware logging with PDF-MODE-05 without duplicating its delivery.
+  Timestamp: 2026-10-15
 
 - [x] Define layout failure and user-visible fallback contract
   Evidence needed: renderer failure, empty OCR, ambiguous orientation, corrupted page numbers, low confidence, and incomplete multi-page grouping preserve existing structure parsing with explicit provenance.
@@ -143,7 +213,43 @@ After implementation, the task owner must update this checklist and mark the tas
 
 No coding task should be considered complete unless the corresponding module checklist is updated.
 
+## Selective Per-Page OCR Track
+
+- [x] OCR-06: Schedule Outline-first preparation with lazy layout evidence.
+  Acceptance: Reuse valid structure first; share inspected page text/boundaries; defer expensive layout until Outline acceptance/fallback is known through structure-owned validation. Accepted Outline skips optional coordinate OCR, never required body-text recovery. Missing/rejected Outline and optional layout failures preserve parser fallback; no extra raw/LLM calls on reuse.
+  Evidence: `document_preparation_pipeline.py`; `doc_loaders/pdf_document_loader.py`; `document_structure/structured_document_builder.py`; `scripts/test_prepare_lazy_pdf_layout.py` (15 tests passed locally and in isolated Compose); 86 existing PDF unittest cases and standalone Outline/TOC/page-evidence, raw-error, structured-reuse, profile-ordering, manual source-evidence/handoff and logging regressions passed on 2026-10-14.
+  Scope: Request-local combined raw/boundary handoff; one structure-owned acceptance/build and lazy fallback provider, source mismatch rejection, preserved required recovery/cache/force semantics, content-free scheduling diagnostics. No API schema, new durable cache, live deployment or full performance acceptance. Broader reuse/budgets remain OCR-07.
+  Depends on: OCR-05 in `../doc_loaders/module-checklist.md`; next is OCR-07 there. Design: section 21 and loader design section 16. One of eight unique OCR tasks, not a duplicate of the broader historical layout roadmap.
+  Timestamp: 2026-10-14
+
+## PDF Mode Integration (2026-10-15)
+
+New track: 0/2 implemented. Existing OCR-06 completion remains historical.
+
+- [x] PDF-MODE-04: Make preparation provenance and reuse extraction-mode-aware.
+  Acceptance: Define source fingerprint + mode + extraction policy/settings version for raw/OCR/structured reuse and derived profile/layout/retrieval dependencies. Different modes or unknown legacy provenance cannot silently satisfy a new explicit mode request. Existing artifacts remain readable; only explicit preparation can rebuild, using existing validated hierarchy replacement/invalidation boundaries, no premature deletion on failed extraction. Cover same-mode reuse, fast-to-ocr/auto switches, legacy artifacts, source changes and failure preservation in file/DB-backed paths as applicable.
+  Depends on: PDF-MODE-01 contract; coordinate repository owners without making mode a hierarchy identity authority.
+  Evidence: pdf_extraction_identity.py; prepared_document_assets.py; preparation structured reuse/save and derived-resource hooks; test_pdf_extraction_identity.py (9 tests), structured reuse, lazy layout (15) and API contract (11) regressions passed. JSON persistence tested; DB-shaped repository substituted and existing PostgreSQL parse_provenance mapping inspected, not live DB-tested.
+  Boundary: Hooks/identity contract delivered; PDF-MODE-05 supplies actual request snapshot and extraction result. Public PDF prepare stays gated. Derived resources conservatively rebuild when identity-bearing, no new raw cache or hierarchy identity; failed/missing extraction cannot delete existing resources. No deployment or cross-store transaction guarantee.
+  Timestamp: 2026-10-15
+
+- [x] PDF-MODE-05: Propagate the selected mode through every preparation/evidence path.
+  Acceptance: Carry immutable request-scoped mode from both explicit endpoints through factory/raw/page-boundary/lazy-layout calls. Fast cannot render/OCR via optional TOC fallback; ocr cannot silently switch to native; auto uses existing selective policy. Log mode, stage timings and render/OCR counts without content; concurrent requests cannot leak modes. Persist successful provenance and return truthful readiness; failed extraction cannot publish partial structure. Regression covers defaults, cache hits/misses, optional providers and request cancellation/late completion semantics without claiming server cancellation.
+  Depends on: PDF-MODE-01..04 and PDF-FIX-02; coordinates LAYOUT-02 without duplicating that task's read/write-boundary fix.
+  Evidence: preparation snapshot/identity/result flow; loader fast/ocr/auto dispatch; result-bound optional providers; stored page spans/manual evidence reuse; test_pdf_mode_preparation.py (10 cases), mode contract (11), identity (9), fast (9), full OCR (7), lazy layout (15), raw recovery (25), execution pass (25), raw errors and structured reuse regressions passed.
+  Boundary: Temporary API 501 gate removed in code, not deployed. Auto retains existing OCR configuration and graphics limitations. Tests use temporary sources and simulated OCR/storage/LLM dependencies; live DB/engine acceptance remains PDF-FIX-03. Client cancellation is not server cancellation; no new job or same-document serialization guarantee.
+  Timestamp: 2026-10-15
+
 ## Maintenance Notes
+
+OCR-07 supporting evidence (counted only in the loader checklist): preparation
+and manual-source reads now open the factory's bounded PDF scope, preserving
+structured reuse, read-only manual handoff and existing persistence policy.
+`test_pdf_execution_pass.py` covers actual factory integration, required-budget
+failure without partial saves and optional-budget fallback. All 25 new tests pass
+locally/in isolated Compose on 2026-10-14, alongside existing preparation/manual/
+logging regressions. Design section 21 records the scope lifecycle; broader
+historical layout/TOC roadmap items remain open.
 
 - This checklist is module memory for completed work.
 - It does not replace the module detailed design document.

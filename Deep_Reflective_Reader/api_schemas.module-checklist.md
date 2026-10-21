@@ -155,14 +155,16 @@ New future tasks for this module must be added here first as unchecked items:
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`; `.venv` execution of `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`; `python3 -m py_compile Deep_Reflective_Reader/api_schemas.py Deep_Reflective_Reader/scripts/test_artifact_aware_interaction_metadata_schema.py`.
   Notes: `ArtifactAwareInteractionMetadataResponse` now forbids extra fields so nested lower-level artifact payloads such as `child_artifacts` or `referenced_artifact_payloads` fail validation. Higher-level interaction metadata exposes only referenced artifact ids/types/target levels and bounded provenance fields.
   Timestamp: 2026-10-08
-- [ ] Define summary interaction request/response schemas
+- [x] Define summary interaction request/response schemas
   Evidence needed: public schemas define summary read/generate/refresh requests, summary payload response, shared envelope mapping, and strict no-heavy-payload behavior.
   Notes: Summary must reuse shared reading targets but not reuse analysis payload semantics.
-  Timestamp: 2026-10-13
-- [ ] Define note interaction request/response schemas with max-length validation
+  Evidence: `SummaryInteractionReadRequest/GenerateRequest/RefreshRequest/Response`, strict `SummaryPayloadResponse`; `scripts/test_summary_note_contracts.py` passes. Route exposure remains separate.
+  Timestamp: 2026-10-21
+- [x] Define note interaction request/response schemas with max-length validation
   Evidence needed: public schemas define user-authored note save/read/list/delete or equivalent route payloads, max text length, optional title/tags, target metadata, note id, and timestamps.
   Notes: Note schemas must forbid raw target content, LLM prompt fields, generated artifacts, and frontend-only UI state.
-  Timestamp: 2026-10-13
+  Evidence: `NoteReadRequest/SaveRequest/DeleteRequest/Response`; code-point limit, strict revision, mutation id and target token, extra fields forbidden; `scripts/test_summary_note_contracts.py` passes. Optional title/tags deferred by single-note contract.
+  Timestamp: 2026-10-21
 - [x] Design batch task-unit content request/response schema
   Evidence: `Deep_Reflective_Reader/api_schemas.py`; `Deep_Reflective_Reader/main.py`; `Deep_Reflective_Reader/scripts/test_task_unit_content_endpoint.py`; validation with `.venv` task-unit content endpoint regression and `py_compile`.
   Notes: `BatchTaskUnitContentRequest` accepts ordered non-empty unique `task_unit_ids` plus `segmented` / `include_raw_content`; `BatchTaskUnitContentResponse` returns ordered per-task-unit `TaskUnitContentResponse` items while preserving the single endpoint schema contract. Batch content remains an on-demand content API path, not a task-layout payload expansion.

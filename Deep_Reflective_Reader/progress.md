@@ -1,5 +1,79 @@
 # Deep Reflective Reader Progress
 
+## Reviewable OCR Recovery (2026-10-21)
+
+Backend-owned shared queue: OCR-REVIEW-01..06 complete: 6/6 (100%), zero pending.
+Explicit OCR supports source-linked reviewable partial imports with conservative
+document-wide generation guards. Versioned block Edit/Delete actions and single-level
+undo preserve source/profile/notes; manual addition is not supported. File/SQL
+mutation tests, backup-only Sample/Sample2 actual OCR, fault-injected partial review,
+and desktop/mobile production-editor/API checks pass. Fast/Auto are unchanged.
+This does not claim arbitrary-scan accuracy or production Library reparse/deployment.
+Source: doc_loaders/module-checklist.md#reviewable-ocr-recovery.
+Timestamp: 2026-10-22
+
+## Direction-Aware OCR Remediation (2026-10-21)
+
+doc_loaders OCR-DIR-01..07: 7/7 complete (100%) within the scoped acceptance;
+zero pending in this track. Chinese-local routing, pinned models, column/label
+assembly, quality diagnostics and model identity are implemented. Private backed-up
+six-page sample passes explicit OCR title/order/label acceptance: 12/17 columns,
+4.82%/1.85% CJK title CER below 8%; real-image horizontal-header/vertical-body passes.
+Decorative headings remain imperfect and are excluded from title CER. Auto remains
+a verified native_coverage_unresolved rejection, not success. Fast uses zero
+subprocesses. Tests: 15 Chinese, 101 overlapping focused, 180 PDF (178 pass/two
+skips), 18/18 synthetic real-engine mode cases. No universal rotation/artistic-layout
+guarantee, live Library reparse, profile mutation or running-container deployment.
+Source: [checklist](doc_loaders/module-checklist.md#direction-aware-ocr-remediation)
+and [design](doc_loaders/module-detailed-design.md#direction-aware-ocr-remediation-2026-10-21).
+Timestamp: 2026-10-21
+
+## Loader Boundary Governance (2026-10-21)
+
+LOADER-01..04: 4/4 completed (100%), zero pending in this backend track.
+Owners: doc_loaders 2/2, document_preparation 1/1, scripts 1/1. SourceSession and
+SourceArtifact now separate extraction implementations from preparation control;
+legacy API/provenance compatibility remains explicit. PDF 180 tests pass, focused
+95 pass, PostgreSQL 88 pass/two skips; suites overlap. Both backed-up real books
+pass isolated cold/warm preparation and final live read-only acceptance. The earlier
+default-Common acceptance changed Red-book hierarchy; layout-only recovery restored
+93 units. See [preparation governance](document_preparation/module-detailed-design.md#loader-boundary-governance-2026-10-21)
+for evidence and limitations. No EPUB/DOCX production support or new live LLM
+acceptance is claimed; unrelated historical counts remain unchanged.
+Timestamp: 2026-10-21
+
+## Common Multilingual Correctness Backlog (2026-10-21)
+
+document_structure COMMON-LANG-01: candidate/final heading evidence now shares
+the selected language registry, with source-local guards retained. Track status:
+1/1 completed (100%), no pending item in this track. Evidence: 63 unittest cases,
+four standalone regressions and both real books deleted/rebuilt from verified
+backups; final content reads and profile immutability pass. Multilingual fixtures
+cover 19 registry languages; real-book coverage is English/Chinese only.
+Unrelated historical completion counts are unchanged.
+Timestamp: 2026-10-21
+Source: [module checklist](document_structure/module-checklist.md#common-multilingual-correctness-backlog)
+and [design](document_structure/module-detailed-design.md#common-multilingual-validation-mismatch-2026-10-21).
+
+## Format-Neutral Extraction Backlog (2026-10-21)
+
+EXTRACT-01..08 and EXTRACT-10 implemented and accepted. Authoritative order and
+acceptance: [preparation design](document_preparation/module-detailed-design.md#format-neutral-extraction-plan-2026-10-21).
+This pending track does not invalidate earlier Common/content/PDF-mode acceptance,
+which did not establish TXT LLM-enhance readiness.
+
+| Backend owner | Pending IDs | Completed / total |
+|---|---|---|
+| doc_loaders | none | 3 / 3 |
+| document_preparation | none | 3 / 3 |
+| db | none | 1 / 1 |
+| app | none | 1 / 1 |
+| scripts | none | 1 / 1 |
+
+Backend track: 9/9 (100%), no unresolved tasks in this track. UI EXTRACT-09 is tracked
+only in Deep_Reader_UI/module-checklist.md and excluded from this aggregate.
+Counts apply only to this new track, not unrelated historical backlog.
+
 ## 1. Purpose
 
 This file aggregates module-level checklists into a global progress view.
@@ -32,41 +106,118 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 17 | 0 | Reading Interaction Exposure Audit Captured |
+| `app/` | package | `app/module-checklist.md` | 45 | 0 | Format-Neutral Enhancement Accepted |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 19 | 0 | PDF Page Layout Metadata Captured |
-| `db/` | package + design module | `db/module-checklist.md` | 46 | 0 | OCR Run Page Persistence Fixed |
-| `document_preparation/` | package | `document_preparation/module-checklist.md` | 12 | 0 | Layout Failure Fallback Contract Captured |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 25 | 0 | Multi-Page TOC Grouping Captured |
+| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 57 | 0 | Reviewable OCR Recovery 6/6 (2026-10-22) |
+| `db/` | package + design module | `db/module-checklist.md` | 55 | 0 | Generic Extraction Commit Accepted |
+| `document_preparation/` | package | `document_preparation/module-checklist.md` | 25 | 0 | Generic Accepted Sources Delivered |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 60 | 0 | ID-Free Semantic Plan Accepted On Real Book |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `llm/` | package | `llm/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `llm/` | package | `llm/module-checklist.md` | 4 | 0 | Full-Source FULL-01 Capacity Migration Delivered |
 | `profile/` | package | `profile/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `scripts/` | package | `scripts/module-checklist.md` | 17 | 0 | Page-Backed Manual Structure Route Regression Added |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 17 | 0 | Page/Layout Task-Layout Consumption Contract Captured |
+| `scripts/` | package | `scripts/module-checklist.md` | 59 | 0 | Real TXT/PDF Enhancement Accepted |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 92 | 0 | Summary And Note Real-Book Acceptance Complete |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 17 | 0 | Reading Interaction Schema Exposure Audit Captured |
-| `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 34 | 0 | Summary And Note Schemas Delivered |
+| `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 4 | 0 | Runtime Profile Reuse Only |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 18 | 0 | Reading Interaction Route Exposure Audit Captured |
+| `main.py` | root-python-module | `main.module-checklist.md` | 40 | 0 | Summary And Note Routes Exposed |
 
 ## 5. Package Module Progress
+
+Summary/Note resumed backend track (2026-10-21): SN-01..16 complete, 16/16 (100%).
+Owner counts above were recounted from their actual checklists, including correction
+of the formerly stale api_schemas aggregate. This is not completion of unrelated
+future tasks. UI ownership/progress remains in Deep_Reader_UI/module-checklist.md,
+not aggregated here.
+
+Implemented independent summary read/generate/refresh and single-note read/save/
+delete APIs, full primary prompt plus lazy ancestor summaries, capacity/language/
+abstention validation, atomic note revision/token/idempotency guards and lifecycle
+cleanup/retention. 32 initial contract/service/disposable-PostgreSQL tests, four
+conditional enhancement outcome tests and a further real rename-route test pass.
+Existing interaction schemas/store/read-generate and rename regressions pass.
+User-authorized live acceptance backs up raw/DB/derived files with immutable hashes,
+deletes both named books via product API, verifies absence, uploads only backups,
+and reparses. Both books pass all five Summary/Note levels using the actual configured
+provider; final deployed read/generate reuse report is accept-20261021T064438.json
+under ignored data/test-books/summary-note-20261021. No private book/prompt/response
+files are committed. File/PostgreSQL failure tests remain isolated.
+
+Semantic-plan ownership refactor (2026-10-21): SEM-01..04 complete, 4/4 (100%).
+The model emits semantic titles/levels/quotes, while exact positions and IDs remain
+backend-owned. Two independent final v15 real-book runs pass (147401 characters,
+exact preservation, 3/33 and 4/27 chapters/sections). Accepted output also passes
+real API/disposable PostgreSQL commit/cleanup and real layout with 107 task units;
+original book/interactions unchanged. Backend regressions: 179 pass, one private
+opt-in skip; live harnesses separately executed. This supersedes historical ID-copy
+mitigation evidence, not unrelated future tasks. Module completed count is 60,
+excluding the literal checklist template; 18 historical future items remain open.
+Two successful runs are incident acceptance, not guaranteed model/editorial quality.
+
+Enhancement autonomy/conditional lifecycle revision (updated 2026-10-21): backend 5/5
+accepted (100%). document_structure owns ENH-REV-01/04/06; db owns ENH-REV-02;
+app owns ENH-REV-03. ENH-REV-01 pure comparator is complete (20 focused tests and
+42 plan regressions). ENH-REV-02 conditional persistence is complete (42 passing
+PostgreSQL cases, one private-source opt-in skipped). ENH-REV-03 delivers public
+three-way outcomes, conditional consent and bounded process-local result/retry handling;
+seven-suite acceptance: 123 pass, one private-source skip. ENH-REV-04 delivers v8
+autonomous semantic planning instructions with unchanged body guards/Common/model
+limits; ten-suite acceptance: 144 pass, one private-source skip. ENH-REV-06 adds a
+single lifecycle acceptance entry: 154 backend tests pass, one private-source skip;
+real API/disposable PostgreSQL browser checks cover three outcomes, preserved row
+payloads, retry, lost responses and explicit reading recovery. Live-model semantic
+quality is unverified, separate from contract tests. No production deployment.
+No-op does not commit/clear; title-only retains
+interactions; boundary/hierarchy/parent change uses full-document cleanup. Common
+conservatism must not govern LLM semantic planning. UI readiness/recovery work is
+tracked only in its owned checklist and is not aggregated here.
+This new track does not reuse historical FULL completion as acceptance.
+
+Full-source enhancement follow-up (2026-10-20): backend 4/4 completed (100%).
+Owners: llm FULL-01, document_structure FULL-02/FULL-05, app FULL-03.
+FULL-01/02/03/05 are checked; no backend task remains in this follow-up. Frontend work
+is tracked only in its own module documents, not aggregated here. Official mini
+context/output values, capability migration and full-source dispatch are verified
+offline. Capacity preflight/consent passed isolated API/PostgreSQL validation;
+FULL-05 passed 139 backend tests (138 passed, one private-source opt-in skipped)
+and desktop/mobile real API/disposable PostgreSQL acceptance with deterministic
+generation. Live model semantic quality remains unverified; no production deployment.
+Evidence and dependencies are in owner designs/checklists.
 
 ### `app/`
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `Reading Interaction Exposure Audit Captured`
-- Completed item count: `17`
+- Status: `ENH-REV-03 Outcome Contract And Process-Local Recovery Delivered`
+- Completed item count: `41` (including FULL-03 and ENH-REV-03).
 - Needs confirmation count: `0`
+- Unchecked item count: `13` (historical items; ENH-REV-03 complete).
+- 2026-10-21 ENH-REV-03: typed outcome/cleanup/layout flags, conditional preflight,
+  result lookup/replay and transient provider retry. 124 tests: 123 pass, one private
+  opt-in skip. Process-local registry explicitly returns unknown after restart/expiry;
+  no cross-worker durability, automatic LLM retry loop or frontend completion claimed.
+- 2026-10-20 FULL-03 delivered: capacity-aware preflight, consent v2, under-lease
+  revalidation and dispatch guard. 139 tests: 138 passed, one private-source skip;
+  isolated PostgreSQL schema created/migrated/removed. No paid model or deployment.
+- 2026-10-19: ENH-APP-01 delivered: PostgreSQL read-only source/impact snapshot,
+  token guards and advisory single-flight handoff. Eight disposable-schema tests,
+  nine consent tests and fourteen PDF-mode regressions pass. Actual enhancement
+  PREP-03 now enables guarded execution; file hierarchy storage remains unsupported.
+  New backend enhancement track is 5/5; UI is excluded
+  from this backend progress aggregation.
+- 2026-10-16 follow-up: LAYOUT-01..03 are `3/3`; explicit preparation owns writes
+  and persisted readback. Ordinary reads reject missing/stale layouts without work.
+  Explicit page evidence reuses source-validated persisted spans without extraction/LLM.
 
 #### Completed Work
 
@@ -167,9 +318,40 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `doc_loaders/module-checklist.md`
 - Detailed Design: `doc_loaders/module-detailed-design.md`
-- Status: `OCR Layout Fixtures Captured`
-- Completed item count: `25`
+- Status: `Reviewable OCR Recovery 2/6; Earlier Three-Mode Acceptance Complete`
+- Completed item count: `53`
 - Needs confirmation count: `0`
+- Unchecked item count: `4`.
+- 2026-10-17 final acceptance: PDF-FIX-03 complete; loader follow-up `5/5`.
+  All 21 real-engine cases, 177 PDF regressions and 18 preparation/support tests
+  pass. Actual-source fast/Auto use zero render/OCR; explicit OCR processes all
+  13 pages. Ordered spans, warm reuse and atomic failure controls pass. Design
+  18.8 records timings and runtime; no production deployment. Earlier entries
+  below describe intermediate states, superseded by this final acceptance.
+- 2026-10-16 routing delivery: loader follow-up `4/5`. PDF-AUTO-01 is complete:
+  scoped native visibility proof, versioned Auto identity and bounded fontTools
+  glyph evidence. 177 PDF tests pass; actual-source Auto preparation succeeds
+  with zero subprocess calls, 13 ordered pages and warm reuse. See design 18.7.
+  Final PDF-FIX-03 matrix remains pending; no deployment or extra task counted.
+- 2026-10-16 acceptance follow-up: PDF-FIX-03 remains unchecked. Real-engine matrix
+  passes 20/21 cases after observed-script-v3 CJK fragmentation correction; actual
+  13-page PDF succeeds in fast and OCR, but auto fails native coverage. Failure
+  preserves the prior hierarchy. 165 local PDF regression tests pass. See loader
+  design 18.5 and `scripts/accept_pdf_modes.py`; no completion
+  count change, deployment or PDF-AUTO-01 implementation.
+- 2026-10-16 fail-fast follow-up: Auto coverage failure now stops at the first
+  conflicting page and reports page/retry guidance. Actual-source regression:
+  1 render/4 OCR calls, 21.2 seconds, saved fast hierarchy unchanged. All 169 PDF
+  tests pass. PDF-FIX-03 stays pending; this is not a new completed task or a full
+  matrix rerun. See loader design 18.6.
+- 2026-10-15 revision: `3/5`; PDF-MODE-02/03 fast/full-OCR executors and PDF-FIX-02
+  quality correction complete. Seven full-OCR isolation tests and fast, quality,
+  raw recovery, execution pass and API contract regressions pass.
+  PDF-MODE-05 now integrates auto entry and mode-aware preparation; the temporary
+  501 gate is removed in code. Auto policy limitations remain; no deployment.
+  PDF-FIX-01 is superseded by deferred PDF-AUTO-01, not completed.
+  Timestamp: 2026-10-15
+- Selective OCR track: `8/8 (100%)` across three owners; see section 13.
 
 #### Completed Work
 
@@ -221,8 +403,9 @@ No unresolved confirmation items identified in module checklist.
   Notes: OCR token evidence now preserves page index, region id, raw and normalized OCR text, confidence, bounding box, normalization version, TSV hierarchy numbers, and low-confidence/symbol-heavy/repeated-garbage quality flags. Token provenance remains supporting evidence and does not become parser authority.
 - [x] Tiered PDF inspection and OCR cost policy is implemented in `doc_loaders/module-checklist.md`.
   Notes: Page-layout evidence distinguishes cheap inventory from coordinate OCR with explicit analysis cost tier, stage, OCR engine/language, render DPI, OCR pass count, cache key, cache hit/miss, failure reason, and high-cost permission metadata. Every page receives cheap inventory evidence; coordinate OCR remains bounded to candidate pages; high-cost analysis is not silently triggered.
-- [x] Region-first OCR evidence is implemented in `doc_loaders/module-checklist.md`.
+- [x] Post-recognition region evidence is implemented in `doc_loaders/module-checklist.md`; canonical region-first OCR remains OCR-DIR work.
   Notes: Page-layout evidence now serializes bounded OCR regions with page-local coordinates, region type, writing mode, reading order, raw OCR, normalized logical text, rotation metadata, confidence, token count, and quality flags. Vertical/right-to-left columns and header/footer bands are retained as provenance regions only; they do not become parser authority or task-layout truth.
+  Timestamp: 2026-10-21
 - [x] OCR layout and renderer-failure fixtures are implemented in `doc_loaders/module-checklist.md`.
   Notes: Synthetic OCR layout fixtures now define expected orientation, reading order, region types, TOC reconstruction behavior, known limitations, and fallback reasons for `暗水幽灵`, `國富論`, horizontal scans, mixed orientation, circular page numbers, leader lines, and renderer decode failure. These fixtures preserve page/region evidence expectations and conservative rejection behavior without promoting OCR evidence to parser authority.
 - [x] Renderer-first PDF page normalization for OCR is implemented and recorded in `doc_loaders/module-checklist.md`.
@@ -232,8 +415,9 @@ No unresolved confirmation items identified in module checklist.
   Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`.
 - [x] Low-quality OCR raw-load failure gate is implemented and maps through preparation as `load_raw_text_ocr_low_quality:<doc_name>:<reason>`.
   Evidence: `Deep_Reflective_Reader/doc_loaders/document_load_errors.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/scripts/test_document_preparation_raw_load_errors.py`.
-- [x] Vertical Chinese OCR raw-text handoff now allows deterministic candidate scoring to reject or supersede noisy default PSM output without becoming parser authority.
+- [x] Multi-PSM raw-text scoring is implemented, but does not establish correct vertical Chinese OCR or reading order; OCR-DIR-01..07 track the confirmed gap.
   Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; container OCR verification on `國富論lite`.
+  Timestamp: 2026-10-21
 - [x] `國富論lite` OCR quality regression is covered by tests and container prepare verification; force rebuild now rejects low-quality OCR before structured hierarchy persistence.
   Evidence: `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; container prepare API verification returned `structured_document_ready=false` with `load_raw_text_ocr_low_quality`.
 
@@ -241,9 +425,27 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_preparation/module-checklist.md`
 - Detailed Design: `document_preparation/module-detailed-design.md`
-- Status: `Layout Failure Fallback Contract Captured`
-- Completed item count: `12`
+- Status: `Guarded Enhancement Workflow Accepted`
+- Completed item count: `21`
 - Needs confirmation count: `0`
+- Unchecked item count: `13` (historical items).
+- 2026-10-19: source snapshot validation, structure-only execution and end-to-end
+  consent acceptance are 3/3. ENH-PREP-02 delivers the no-extraction candidate path:
+  seven candidate tests and ten live disposable PostgreSQL tests pass, including
+  coordinator/pipeline success/failure without persistence. ENH-PREP-03 now accepts
+  guarded public commits with 30 live disposable DB tests and browser/API/DB flow.
+  Profile invalidation is version-aware; post-commit layout preparation is explicit.
+  Migration/startup is wired but production deployment was not performed.
+  Nine consent and thirteen snapshot regressions pass.
+  ENH-PREP-01 internal validator originally passed 13 snapshot tests,
+  9 identity tests and the structured-reuse regression; DB-shaped fixtures, not live DB.
+  Enhancement no longer invokes forced full preparation. Legacy records without
+  accepted extraction identity still require explicit Prepare; no fabricated evidence.
+- 2026-10-15 mode integration: `2/2`; PDF-MODE-04/05 identity/reuse and request
+  propagation complete. Ten integration cases and existing mode/identity/loader/
+  preparation regressions pass. Temporary API 501 gate removed; not deployed.
+  JSON and repository-substitute tests do not claim live DB acceptance.
+  Timestamp: 2026-10-15
 
 #### Completed Work
 
@@ -295,9 +497,22 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
-- Status: `OCR Run Page Persistence Fixed`
-- Completed item count: `46`
+- Status: `ENH-REV-02 Conditional Commit Delivered`
+- Completed item count: `54` (direct checklist count, excluding the template example).
 - Needs confirmation count: `0`
+- Unchecked item count: `4` (historical items; ENH-REV-02 complete).
+- 2026-10-21: ENH-REV-02 implements locked three-way classification, no-op without
+  writes, title-only updates preserving IDs/version/interactions and snapshot labels,
+  and existing full structural replacement. Delayed metadata saves preserve latest
+  labels. Evidence: 43 disposable PostgreSQL cases (42 pass, one opt-in skipped),
+  20 comparator tests and manual-reparse repository regression. No new migration.
+- Count reconciliation: the previous aggregate omitted six already-checked historical
+  items under Future Task Policy; this sync counts them without changing their status.
+- 2026-10-19: ENH-DB-01 delivered internally: atomic replacement/cleanup, source and
+  interaction revision checks, rollback and stale interaction write guards. All 22
+  disposable PostgreSQL tests passed. Migration is not deployed to user schemas;
+  PREP-03 accepts the guarded public route and version-aware file-profile projection;
+  file hierarchy enhancement remains unsupported. Production deployment is separate.
 
 #### Completed Work
 
@@ -367,9 +582,65 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `Multi-Page TOC Grouping Captured`
-- Completed item count: `25`
+- Status: `ENH-REF-01/02 Real-Book Locator Recovery Accepted`
+- Completed item count: `56`
 - Needs confirmation count: `0`
+- Unchecked item count: `18` (historical items; ENH-REV-06 and ENH-REF-01/02 complete).
+- 2026-10-21 ENH-REF: final real-model implementation passes twice on the reported
+  private 147401-character book, each after one validator-guided correction. Exact
+  source is preserved; real API/disposable PostgreSQL/layout replay yields 106 units.
+  Private corpus is Git-ignored; production book/interactions remain unchanged.
+  New follow-up 2/2 (100%); this is scoped case acceptance, not universal reliability.
+- 2026-10-21 ENH-REV-04: prompt v8 separates autonomous semantic divisions from
+  conservative source-heading claims; generated titles, useful subsection hierarchy
+  and legitimate single bodies are supported without quotas. Reference-cap fallback,
+  unchanged output allowance and safe accepted-plan diagnostics are verified.
+  Ten suites: 145 tests, 144 pass, one private-source skip. No paid generation or
+  production mutation; actual model usefulness remains unmeasured.
+- 2026-10-20 FULL-02: full-source assembly/resource guards delivered; 80 offline
+  tests passed. FULL-05 integrated acceptance passed on 2026-10-20; live model
+  reliability remains unverified. See owner checklist/design for reproducible evidence.
+- 2026-10-19 NATIVE-06 delivery: this module's new track is `6/6` complete.
+  `scripts/accept_native_recovery.py` passes 160 regressions, two opt-in real PDF
+  cases with temporary storage, and disposable live PostgreSQL version/rollback/
+  artifact invalidation checks. Private-source fast runs invoke no OCR/remote LLM.
+  Detailed design records provider/embedding/UI integration and deployment limits.
+  This backend aggregate does not count the supporting frontend task.
+- 2026-10-19 NATIVE-05 delivery: this module's new track is `5/6` complete.
+  V2 plans execute through explicit preparation/reparse with mapped anchors,
+  conservative heading gates, full coverage and persisted origins/provenance.
+  Rejected enhancement does not save a Common fallback or rebuild profile/artifacts.
+  92 tests: 91 pass and one INTERACT-01 expected failure; six standalone regressions
+  pass. No live DB/LLM/private-document reparse or deployment; NATIVE-06 remains pending.
+- 2026-10-19 NATIVE-04 delivery: this module's new track is `4/6` complete.
+  Strict v2 plan/prompt, bounded source references and intent contract are tested:
+  80 cases, 78 pass and two existing expected failures; legacy LLM smoke passes.
+  Planning-only entry is intentionally separate from the old applier. Generated
+  runtime requests reject before source loading/LLM/save until NATIVE-05 activation.
+  No live LLM, user-document mutation or deployment is claimed.
+- 2026-10-19 NATIVE-03 delivery: this module's new track is `3/6` complete.
+  Common uses mapped fragment evidence and exact source slices; typed TOC hints
+  reach explicit prepare/reparse and participate in cache identity. Single-body
+  output stays valid, absent skips dedicated TOC work, present cannot fabricate.
+  68 tests: 66 pass, two follow-up expected failures; four standalone regression
+  scripts pass. No private-document reparse, deployment or LLM prompt change.
+- 2026-10-19 NATIVE-02 delivery: this module's new track is `2/6` complete.
+  Pure bounded source mapping preserves original text/hash/line/page evidence;
+  only caller-confirmed intervals allow CJK whitespace repair. Eleven new tests
+  pass; combined fast/baseline run has 25 passes and 5 expected failures.
+  LLM region-plan/TOC projection smoke tests pass. No consumer integration,
+  document repair or deployment; prior snapshots below retain their dated scope.
+- 2026-10-19 NATIVE-01 delivery: this module's new track is `1/6` complete.
+  Synthetic baseline: 5 passing controls and 5 explicit expected failures; two
+  private-source fast diagnostics preserve bytes and report metadata only.
+  LLM region-plan and TOC projection smoke tests pass. No runtime repair or
+  deployment. The planning-only snapshot below predates this baseline delivery.
+- 2026-10-19 governance sync: the 2026-10-17 investigation and six new tasks
+  remain planning-only, `0/6` implemented. Detailed design records live read-only
+  evidence, source-coverage loss, false headings and LLM fallback/anchor risks.
+  Count 37 is a direct checklist recount excluding the completed-task template,
+  correcting the stale aggregate of 25; no new completion is claimed. Existing
+  historical unchecked tasks and completion states are unchanged.
 
 #### Completed Work
 
@@ -505,8 +776,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `llm/module-checklist.md`
 - Detailed Design: `llm/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `FULL-01 Capacity Migration Delivered`
+- Completed item count: `4`
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -514,6 +785,8 @@ No unresolved confirmation items identified in module checklist.
 - [x] Defines LLM provider abstraction contract for completion and capability reporting.
 - [x] Implements OpenAI-backed provider with model-capability mapping and endpoint routing.
 - [x] Implements capability-aware prompt text normalization fallback helper.
+- [x] FULL-01 capacity semantics and consumer migration; 66 tests and 10 standalone scripts passed.
+  Timestamp: 2026-10-20
 
 #### Needs Confirmation
 
@@ -603,9 +876,10 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `Page-Backed Manual Structure Route Regression Added`
-- Completed item count: `17`
+- Status: `Selective OCR Acceptance Complete; Accuracy Limits Recorded`
+- Completed item count: `56`
 - Needs confirmation count: `0`
+- Unchecked item count: `0` (OCR-08 complete).
 
 #### Completed Work
 
@@ -649,9 +923,34 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
-- Status: `Page/Layout Task-Layout Consumption Contract Captured`
-- Completed item count: `17`
+- Status: `Interaction Policy Recovery Delivered`
+- Completed item count: `82`
 - Needs confirmation count: `0`
+- Unchecked item count: `7` (historical items; INTERACT-01..03 complete).
+- 2026-10-19 INTERACT-03 delivery: `3/3` of this module's new track complete.
+  Server-owned prompt/language/guard/source identity gates analysis/quiz reuse and
+  exposes stale thinking sessions without deleting history or generating on read.
+  Four suites pass 38 cases; 12 standalone regressions pass. Additional legacy
+  task-layout availability script fails before cache logic because its fixture has
+  only root sections. No live PostgreSQL, paid LLM or deployment acceptance claimed.
+- 2026-10-19 INTERACT-02 delivery: `2/3` of this module's new track complete.
+  Shared profile-first/document-fallback language instructions cover analysis,
+  quiz, thinking questions and evaluation; conservative zh/en mismatch rejection
+  retains user answers and uses existing failure states. Twelve new tests, 30
+  total unittest cases and 13 standalone regressions pass. No live LLM/deployment
+  or cache recovery is claimed; INTERACT-03 remains pending.
+- 2026-10-19 INTERACT-01 delivery: `1/3` of this module's new track complete.
+  Evidence-backed analysis-view preflight preserves canonical source/IDs, retains
+  negative guards and emits bounded metadata-only diagnostics. All 61 unittest
+  cases and five standalone validity/service/resolver scripts pass. Both private
+  PDFs pass read-only fast-extraction semantic diagnostics; no live generation,
+  deployment or stored-artifact recovery is claimed. Language/cache tasks remain open.
+- 2026-10-19 governance sync: the 2026-10-17 investigation and three new tasks
+  were planning-only at that snapshot, `0/3` implemented. Detailed design separates confirmed
+  analysis guard/language defects from unverified quiz/thinking failures and
+  specifies explicit stale-artifact recovery. Count 79 is a direct checklist
+  recount excluding templates, correcting the stale aggregate of 17; it is not
+  new work completed this turn. No UI task count is aggregated in this file.
 
 #### Completed Work
 
@@ -841,9 +1140,15 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
-- Status: `Reading Interaction Route Exposure Audit Captured`
-- Completed item count: `18`
+- Status: `PDF Mode Contract And Execution Integrated`
+- Completed item count: `38` (direct checklist recount corrects the stale 18-item aggregate).
 - Needs confirmation count: `0`
+- Unchecked item count: `3` (historical items unchanged).
+- 2026-10-15 PDF-MODE-01: `1/1`; enum/default, route pass-through, typed failures
+  and provenance contract verified by 11 tests. PDF-MODE-05 removes the staged
+  501 gate through execution/reuse integration; TXT fast and internal legacy paths
+  retain their behavior. No engine readiness or deployment claimed.
+  Timestamp: 2026-10-15
 
 #### Completed Work
 
@@ -1138,3 +1443,86 @@ No unresolved cross-module confirmation items identified.
 - Task-layout projection boundary is documented as read/projection-focused in current docs/checklists.
 - API entry/schema and coordinator orchestration baselines are captured and linked in module-level documentation.
 - Support modules (language, llm, retrieval, embedding, session, shared, bundle utilities) all have checklist memory established.
+
+## 13. Selective Per-Page OCR Track (2026-10-14)
+
+Design: [loader design section 16](doc_loaders/module-detailed-design.md#16-selective-per-page-ocr-2026-10-14).
+Canonical status is counted once per ID across the three module checklists.
+
+| Task | Status | Owning Checklist |
+|---|---|---|
+| OCR-01: Typed decision contract | Complete | [doc_loaders](doc_loaders/module-checklist.md#selective-per-page-ocr-track) |
+| OCR-02: Cheap page inspection | Complete | doc_loaders |
+| OCR-03: Three-way policy | Complete | doc_loaders |
+| OCR-04: Native-first layout routing | Complete | doc_loaders |
+| OCR-05: Mixed-PDF raw recovery | Complete | doc_loaders |
+| OCR-06: Lazy preparation scheduling | Complete | [document_preparation](document_preparation/module-checklist.md#selective-per-page-ocr-track) |
+| OCR-07: Reuse, budgets and logs | Complete | doc_loaders |
+| OCR-08: End-to-end acceptance | Complete (scoped; limitations recorded) | [scripts](scripts/module-checklist.md#selective-per-page-ocr-track) |
+
+Progress: **8/8 = 100%**, none pending in this track. Governance and supporting tests are not
+extra completed tasks. OCR-01 evidence: `doc_loaders/pdf_ocr_decision.py` and
+seven passing tests in `scripts/test_pdf_ocr_decision.py`; existing loader
+inspection and page-evidence regressions also pass. OCR-02 evidence:
+`doc_loaders/pdf_page_inspection.py`, `PdfDocumentLoader.inspect_pages` and
+18 passing tests in `scripts/test_pdf_page_inspection.py` (local pypdf 6.9.2 and
+isolated Docker pypdf 6.17.0); Outline regression also passes.
+OCR-03 evidence: `pdf_ocr_policy.py`, additional stable
+decision reasons, and 22 passing policy tests locally and in isolated Docker,
+plus the earlier contract/inspection and existing loader inspection regressions.
+Rules and probe plans are pure; no visual detector is added.
+OCR-04 now wires native-first optional layout routing, with 14 passing tests in
+`scripts/test_pdf_layout_routing.py` locally and in isolated Compose. Native/blank
+skip, uncertain native fallback, zero/disabled/prefix gates, scan/vertical candidates
+and page-local failure recovery are covered; earlier PDF regressions pass.
+Read-only local four-page `《歸來》` smoke retained 8,187 native characters and made
+zero render/OCR calls in 346.1 ms. This is one layout-method measurement, not
+end-to-end acceptance or a deployed speedup; the live API and user artifacts are
+unchanged.
+OCR-05 shares canonical pages across load/load_pages/boundaries, preserving native
+pages and selectively recovering suspect pages with per-page quality, coverage,
+prefix-budget and failure-atomicity guards. `test_pdf_raw_recovery.py` passes 25
+tests locally and in isolated Compose; earlier PDF, manual-structure and logging
+regressions pass. The Outline regression now explicitly models recovery of the
+raster cover/trailing page and preserves front-matter anchors before the main chapters.
+Read-only `《歸來》` smoke retains 8,200 canonical characters and exact four-page
+span parity without OCR. General visual detection/region merging and real-scan
+acceptance are not claimed; see loader design section 16.9. No live deployment.
+OCR-06 now shares one canonical PDF raw/boundary pass and hands a lazy layout
+provider to the structure builder. Validated Outline skips optional coordinate
+OCR, while required raw recovery still precedes structure; rejected Outline and
+optional failures preserve parser fallback. Source mismatch is rejected as
+evidence, not silently reused. Fifteen new scheduling tests pass locally and in
+isolated Compose, along with all 86 PDF unittest cases and existing standalone
+PDF/TOC, raw-error, structured reuse, profile-ordering, manual and logging scripts.
+No live deployment, new persistent cache or end-to-end timing claim.
+OCR-07 adds bounded context-local evidence reuse and independent required-text /
+optional-layout execution budgets. Actual subprocess attempts and clipped timeouts
+are enforced; required exhaustion rejects partial text/hierarchy, optional
+exhaustion preserves inventory/fallback. Cache identity includes source/page,
+purpose, policy/schema, executable build fingerprints, language/DPI/stage/rotation;
+request-correlated logs distinguish decisions, actual calls and cache outcomes
+without source text. Factory scopes cover preparation and manual-source reads.
+All 111 PDF unittest cases (including 25 new execution tests) pass locally and in
+isolated Compose; 15 lazy-layout tests and 11 standalone regression scripts pass
+locally. Defaults, identity assumptions and subprocess-only timing boundaries are
+documented in loader design section 16.11. No live deployment or latency claim.
+OCR-08 completes scoped end-to-end acceptance with `scripts/accept_selective_ocr.py`
+and three harness tests: real loaders/OCR/builder/isolated JSON, deterministic
+language/profile substitutes, no live HTTP/DB/LLM or user-artifact writes.
+All 129 PDF/lazy-preparation/harness tests pass locally and in isolated Compose;
+11 standalone regressions pass locally. Real-engine horizontal scan and mixed
+native/scan/blank fixtures assert known transcript, exact spans and Outline skip.
+Reported four-page `《歸來》` retains exactly 8,200 canonical characters and zero
+render/OCR calls; final controlled cold/warm run is 789.9/1.9 ms, layout 5.5 ms.
+`暗水幽灵` page 8 completes/reuses structure; `國富論lite` page 1 remains
+quality-rejected with no partial save. Detailed settings, counts, timings and
+reproduction are in scripts design section 15. Real scan transcription accuracy,
+whole scanned books, vertical/rotated accuracy and production latency remain
+unverified. No fixed speedup or live deployment claim. Broader historical
+preparation roadmap tasks are not marked complete by this eight-task acceptance.
+
+The three affected module summary counts were recounted directly from their
+checklists (excluding the literal `<completed task>` template). This is a scoped
+sync, not a re-audit of historical checklist claims or unrelated module progress.
+No frontend progress is included.

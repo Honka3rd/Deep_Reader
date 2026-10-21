@@ -1,5 +1,52 @@
 # section_tasks Checklist
 
+## Summary And Note Delivery Index (2026-10-21)
+
+This resumes the 2026-10-13 backlog, unrelated to TOC or enhancement prompt work.
+Existing ancestor summaries and the checked standalone-summary planning item
+did not constitute delivery of either public action. Original 13 tasks are
+retained below/in their owners and now checked with implementation evidence.
+
+| ID | Owner | Original task |
+|---|---|---|
+| SN-01 | section_tasks | Define standalone summary interaction contract and payload shape |
+| SN-02 | section_tasks | Design summary prompt assembly with higher-level summary context |
+| SN-03 | section_tasks | Reuse ancestor-summary readiness and staleness policy for summary generation |
+| SN-04 | section_tasks | Implement summary service validation and insufficient-content behavior |
+| SN-05 | section_tasks | Persist summary artifacts as hierarchy-aware reading interaction artifacts |
+| SN-06 | section_tasks | Define note interaction contract and validation limits |
+| SN-07 | section_tasks | Persist notes without colliding with current single-artifact interaction actions |
+| SN-08 | api_schemas | Define summary interaction request/response schemas |
+| SN-09 | api_schemas | Define note interaction request/response schemas with max-length validation |
+| SN-10 | app | Add app orchestration methods for summary read/generate/refresh |
+| SN-11 | app | Add app orchestration methods for user-authored notes |
+| SN-12 | main | Expose summary reading-interaction route family |
+| SN-13 | main | Expose note route family for user-authored annotations |
+
+Gap tasks: SN-14..16 below; SN-17..20 in the UI checklist. Total 20
+implementation tasks (backend 16, UI 4), 20/20 (100%) accepted on 2026-10-21.
+Owner checkboxes and linked test evidence remain authoritative.
+Recommended one-task-at-a-time order:
+SN-01 -> SN-06 -> SN-08 -> SN-09 -> SN-07 -> SN-14 -> SN-11 -> SN-13 ->
+SN-15 -> SN-17 -> SN-19 -> SN-02 -> SN-03 -> SN-04 -> SN-05 -> SN-10 ->
+SN-12 -> SN-18 -> SN-16 -> SN-20.
+Each owner remains authoritative; this table is a navigation/dependency index,
+not a second checkbox list. Contract decisions precede persistence/UI implementation.
+
+- [x] SN-14: Implement explicit note CRUD service and conflict handling.
+  Acceptance: Validate target ownership and chosen text/count limits before writes; list/read never call LLM or prepare. Server-issued note IDs, stable ordering, update/delete concurrency and duplicate-submit behavior follow SN-06/09. Failed saves preserve existing notes; empty/missing/stale targets return explicit errors. No hidden autosave or generated-artifact collision.
+  Evidence: `note_interaction_service.py`; real file/PostgreSQL service tests, route tests and live two-book five-level save/read/idempotency acceptance. Revision/token conflicts reject without writes; deletion epoch prevents delayed create resurrection.
+  Timestamp: 2026-10-21
+- [x] SN-15: Integrate summary/note lifecycle and stale-write protection.
+  Acceptance: Reconcile new storage with existing document rename/delete, source/hash changes and confirmed enhancement outcomes. Unchanged/title-only retain data; confirmed structural replacement clears targeted-document interactions under the established full-clear policy, with notes included in consent inventory. Failure preserves data. Never silently reattach block notes by title/text similarity or let delayed writes recreate cleared data. Verify both supported persistence adapters; schema/migration work stays with its owner.
+  Evidence: file/PostgreSQL note tests, atomic Summary/Note coexistence and delayed legacy writer protection; `test_summary_note_lifecycle.py` passes four real conditional-commit outcomes. `interaction_rename.py` rekeys without modifying user text; actual PostgreSQL rename route passes retention and conflict rollback. Delayed reparse-time writes are rejected by version/epoch guards. Authorized runtime deletion/rebuild of both backed-up books passed.
+  Timestamp: 2026-10-21
+- [x] SN-16: Accept backend composition and real-book summary/note workflows.
+  Depends on: SN-01..15 as applicable; UI acceptance remains SN-20.
+  Acceptance: Verify actual container/service/store wiring and all five target levels through isolated APIs/storage. Use immutable backed-up books and an authorized live provider for summary usefulness/language/context; note operations use zero LLM calls. Cover max-length boundary, concurrent edits, persistence/reload, source staleness, ancestor failure, read-no-generation, repeated generate reuse and lifecycle cleanup. Record actual routes/schemas and results in owner docs; mocks/skipped live prerequisites alone cannot close this task.
+  Evidence: 32 contract/service/route/disposable-PostgreSQL tests plus four conditional-commit tests and one real rename-route test pass. `accept_summary_note_books.py` verifies immutable raw/DB/derived backups, actual authorized deletion/reupload/Common Fast parse, both languages and all ten target workflows. Live reports `accept-20261021T062938.json` and final deployed `accept-20261021T064438.json` pass; generation uses configured gpt-4.1-mini, repeated generate/read reuse saved artifacts. Private reports/sources remain ignored. Actual user-authorized runtime books are used for the destructive/live check; fault/lifecycle tests use disposable storage.
+  Timestamp: 2026-10-21
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `section_tasks` module.
@@ -362,40 +409,47 @@ New future tasks for this module must be added here first as unchecked items:
   Notes: Generator prompt regression now includes paired examples: a low-information answer that mostly repeats the primary source, and a higher-information answer that introduces a supported distinction while acknowledging uncertainty. The test verifies both prompts carry low/high information-gain guidance and preserve the current strict JSON contract; it intentionally does not claim deterministic LLM scoring.
   Timestamp: 2026-10-13
 
-- [ ] Define standalone summary interaction contract and payload shape
+- [x] Define standalone summary interaction contract and payload shape
   Evidence needed: `section_tasks` defines a `summary` interaction type, schema/prompt version policy, target levels, strict payload fields, and status semantics distinct from `analysis`.
   Notes: Summary is compression/recall support, not interpretive insight; it may reuse target resolution and common artifact infrastructure but must not overwrite or weaken analysis artifacts.
-  Timestamp: 2026-10-13
+  Evidence: `summary_note_contracts.py`, shared interaction type registration and `scripts/test_summary_note_contracts.py` (5 passing tests). Strict headline/body/key_points, independent versions and existing five-level target/status contract.
+  Timestamp: 2026-10-21
 
-- [ ] Design summary prompt assembly with higher-level summary context
+- [x] Design summary prompt assembly with higher-level summary context
   Evidence needed: prompt/context contract uses the selected target full resolved text as primary source and includes higher-level summaries as labelled advisory context without concatenating raw ancestor text.
   Notes: Desired chain is content_block -> task_unit summary -> section summary -> chapter summary -> document profile; task_unit -> section -> chapter -> profile; section -> chapter -> profile; chapter -> profile.
-  Timestamp: 2026-10-13
+  Evidence: `summary_interaction_service.py`; full-primary prompt, profile language, no research, source abstention and actual provider capacity checks. `test_summary_interaction_service.py` and live ten-target generation pass.
+  Timestamp: 2026-10-21
 
-- [ ] Reuse ancestor-summary readiness and staleness policy for summary generation
+- [x] Reuse ancestor-summary readiness and staleness policy for summary generation
   Evidence needed: summary generation can reuse fresh higher-level summaries, generate missing/stale higher-level summaries only during explicit generate/refresh, and record bounded context provenance.
   Notes: Public summary artifacts and internal ancestor-summary cache should share compatible payload semantics where possible while avoiding divergent duplicate summaries for the same target.
-  Timestamp: 2026-10-13
+  Evidence: `SummaryInteractionService` adapts public persisted summaries to `AncestorSummaryArtifact` and existing readiness checks; recursive parent generation is explicit, refresh affects only selected target. No second writable cache; read/reuse/parent-order tests pass.
+  Timestamp: 2026-10-21
 
-- [ ] Implement summary service validation and insufficient-content behavior
+- [x] Implement summary service validation and insufficient-content behavior
   Evidence needed: summary service validates strict JSON output, applies readable-content/token limits, returns reasoned insufficient content for tiny targets, and preserves document-language/no-external-research guardrails.
   Notes: Summary output should prioritize headline/body/key retained points rather than insight-style tension, complexity, or close-reading payoff.
-  Timestamp: 2026-10-13
+  Evidence: strict output shape/language, quantity preflight, model abstention and untruncated capacity checks; failed replacement retains previous output. Real Madame Bovary exposed a whole-book false positive in short-text vocabulary diversity; Summary does not use that heuristic. Service/route/live tests pass.
+  Timestamp: 2026-10-21
 
-- [ ] Persist summary artifacts as hierarchy-aware reading interaction artifacts
+- [x] Persist summary artifacts as hierarchy-aware reading interaction artifacts
   Evidence needed: summary artifacts carry `interaction_type=summary`, target metadata including content_block_id when present, schema/prompt versions, source hash/structure version, generated timestamp, and ancestor-summary context metadata.
   Notes: Reads must never generate; generate should reuse completed current summaries unless refresh is requested.
-  Timestamp: 2026-10-13
+  Evidence: repository atomic mutation, public_summary metadata with independent artifact identities and bounded ancestor provenance. Real file/PostgreSQL coexistence tests and two-book five-level persisted read/reuse acceptance pass.
+  Timestamp: 2026-10-21
 
-- [ ] Define note interaction contract and validation limits
+- [x] Define note interaction contract and validation limits
   Evidence needed: note payload supports user-authored bounded text, optional title/tags, timestamps, target metadata, stable note ids, and explicit max text length errors before persistence.
   Notes: Note is not LLM-generated and must not assemble prompts, call LLMs, prepare documents, or mutate task-layout/profile diagnostics.
-  Timestamp: 2026-10-13
+  Evidence: `summary_note_contracts.py`, `scripts/test_summary_note_contracts.py`. Single plain-text note per target; 10,000 Unicode code points, nonblank, whitespace preserved, revision and server identity/timestamps. Optional title/tags deferred.
+  Timestamp: 2026-10-21
 
-- [ ] Persist notes without colliding with current single-artifact interaction actions
+- [x] Persist notes without colliding with current single-artifact interaction actions
   Evidence needed: note storage supports multiple notes per target or an explicitly documented single-note policy, keys by document/target/note id, and separates user-authored note lifecycle from analysis/quiz/summary/critical-thinking artifacts.
   Notes: UI drawer/menu state and raw target content must not be persisted as note truth.
-  Timestamp: 2026-10-13
+  Evidence: dedicated note metadata keyed by validated target; server note IDs, explicit single-note policy and atomic repository callback. File lock/PostgreSQL transaction tests cover simultaneous creation and Summary coexistence.
+  Timestamp: 2026-10-21
 
 - [x] Add semantic-content preflight guard for analysis/insight generation
   Evidence: `Deep_Reflective_Reader/section_tasks/artifact_validity.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_service.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_service.py`; validation: `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_analysis_interaction_service.py`; `PYTHONPATH=Deep_Reflective_Reader Deep_Reflective_Reader/.venv/bin/python Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_validity.py`; `python3 -m py_compile Deep_Reflective_Reader/section_tasks/artifact_validity.py Deep_Reflective_Reader/section_tasks/analysis_interaction_service.py Deep_Reflective_Reader/scripts/test_analysis_interaction_service.py`.
@@ -415,6 +469,28 @@ New future tasks for this module must be added here first as unchecked items:
 After implementation, the task owner must update this checklist and mark the task as completed:
 
 No coding task should be considered complete unless the corresponding module checklist is updated.
+
+## Fragmented Prose / Language Follow-up (2026-10-17)
+
+3/3 implemented here; part of the 8/10 cross-module track in the
+document_structure design. Existing completed guards are retained as historical
+delivery, not evidence that these new PDF fragmentation cases work.
+
+- [x] INTERACT-01: Make semantic preflight distinguish extraction fragmentation from meaningless text.
+  Acceptance: Both reported native PDFs pass when their source is readable; true repeated boilerplate, TOCs, tiny targets and OCR junk remain rejected. Cover document/chapter/section/unit/block and independently reproduce quiz/thinking behavior. Preserve canonical source/IDs and bounded metadata-only diagnostics; no threshold disabling, OCR escalation or profile-as-source fallback.
+  Depends on: NATIVE-01/02. Evidence: `artifact_validity.py`, `test_fragmented_interaction_preflight.py` (8 cases, including 15 service/level combinations); six unittest suites pass all 61 cases and five standalone service/validity/resolver scripts pass. Read-only fast extraction of both reported PDFs now passes the analysis semantic guard with unchanged source hashes. Quiz/thinking retain their existing quantity-only preflight, independently exercised with fake generators. No live LLM, deployment or stale-cache repair is claimed.
+  Timestamp: 2026-10-19
+
+- [x] INTERACT-02: Enforce a shared explicit output-language policy for generated interactions.
+  Acceptance: Profile-first/document-fallback instructions constrain all user-facing analysis/quiz/thinking fields; keys and quoted names remain intact. Chinese/English, missing/conflicting context and conservative output-mismatch rejection tests pass without unbounded retry. Keep insight depth and non-summary requirements unchanged.
+  Evidence: `interaction_output_language.py`, three generators/services, and `test_interaction_output_language.py` (12 cases). Three unittest suites pass 30 tests; 13 standalone service/prompt/orchestration/read-generate/route regressions pass. Typed mismatches use existing generation/evaluation failure contracts without retries; evaluation retains answers. Unknown language follows source/question; short/mixed/other-language output checks abstain. Prompt versions updated, but cache identity/recovery remains INTERACT-03. No live provider or deployment validation.
+  Timestamp: 2026-10-19
+
+- [x] INTERACT-03: Version effective interaction policy and recover stale artifacts without hidden generation.
+  Acceptance: Persist server-owned prompt/language/guard/source identity; old English completed artifacts and old insufficient-content results recover on explicit actions. Reads never generate/write, current artifacts are reused, critical-thinking sessions/history survive ordinary opens, and reparse cleanup remains atomic and explicit. Verify app/API defaults rather than relying on optional client versions.
+  Depends on: INTERACT-01/02. Supporting app/API/store tests are part of this task.
+  Evidence: `interaction_policy_identity.py`, service metadata, analysis/quiz orchestrators and coordinator session/availability projections. `test_interaction_policy_identity.py` adds eight tests using temporary real file stores and real API/coordinator paths; four suites pass 38 tests and 12 standalone regressions pass, including hard-reparse cleanup. Missing/old identity is stale; explicit generation repairs it, refresh failure preserves prior results, and thinking history survives. One additional legacy task-layout availability script fails on its root-sections-only fixture before cache logic; no live PostgreSQL/LLM/deployment acceptance is claimed.
+  Timestamp: 2026-10-19
 
 ## Maintenance Notes
 
