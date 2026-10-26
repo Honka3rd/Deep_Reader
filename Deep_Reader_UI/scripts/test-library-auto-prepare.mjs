@@ -7,14 +7,20 @@ try {
   for (const width of [1280, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const writes = [], reads = [], errors = [], unexpected = [], aborted = [];
-    let uploadCount = 0, ready = false, pendingRoute;
+    let uploadCount = 0, ready = false, pendingRoute, catalogReads = 0;
     page.on("pageerror", e => errors.push(e.message));
     page.on("requestfailed", request => {
       if (request.url().endsWith("/prepare-task-layout")) aborted.push(request.failure()?.errorText);
     });
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
-      if (["/api/documents", "/api/documents/management"].includes(path)) {
+      if (path === "/api/documents/management") {
+        catalogReads++;
+        return route.fulfill({ json: { items: uploadCount ? [{ doc_name: `Unique ${uploadCount}`,
+          title: `Unique ${uploadCount}`, source: "Book.pdf", source_type: "pdf", source_status: "available",
+          preparation_status: ready ? "ready" : "building" }] : [], total: uploadCount ? 1 : 0 } });
+      }
+      if (path === "/api/documents") {
         return route.fulfill({ json: { items: [], total: 0 } });
       }
       if (path === "/api/documents/upload") {
@@ -63,6 +69,10 @@ try {
     assert.equal(writes[0].doc_name, "Unique 1");
     assert.equal(writes[0].pdf_extraction_mode, "fast");
     assert.equal(writes[0].force_rebuild, false);
+    await page.getByText("Structure building", { exact: true }).waitFor();
+    const waitingReads = catalogReads;
+    await page.clock.runFor(60_000);
+    assert.equal(catalogReads, waitingReads, "Pending OCR/preparation must not poll the catalog");
     await page.clock.runFor(500);
     await page.screenshot({ path: `/tmp/library-auto-prepare-pending-${width}.png`, fullPage: true });
     await cancel.click();
@@ -90,9 +100,12 @@ try {
     assert.equal(writes.length, 2, "Reopening must not resubmit");
     await cancel.click();
     ready = true;
+    const beforeCompletion = catalogReads;
     await prepare.click();
     await page.clock.runFor(10);
     await page.getByText("Document prepared. You can open it now.", { exact: true }).waitFor();
+    await page.getByText("Structure prepared", { exact: true }).waitFor();
+    assert.equal(catalogReads, beforeCompletion + 1, "Successful readiness reconciliation refreshes once");
     assert.equal(await open.isEnabled(), true);
     assert.equal(writes.length, 2);
     assert.equal(reads.at(-1).doc_name, "Unique 2");

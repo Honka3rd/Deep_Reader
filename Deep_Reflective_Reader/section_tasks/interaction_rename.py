@@ -41,4 +41,14 @@ def renamed_interactions(document, new_name):
         summaries[key] = artifact.to_dict()
     if "public_summary" in metadata:
         metadata["public_summary"] = summaries
+    if "translations" in metadata:
+        from section_tasks.translation_records import translation_snapshot
+        translations = {}
+        for block_id, entry in metadata["translations"].items():
+            before = translation_snapshot(document, block_id)
+            after = translation_snapshot(renamed, block_id)
+            translations[block_id] = {**entry, "languages": {code: {
+                **record, "binding": after.binding if record.get("binding") == before.binding else record.get("binding")}
+                for code, record in entry.get("languages", {}).items()}}
+        metadata["translations"] = translations
     return replace(renamed, document_task_artifacts=replace(artifacts, metadata=metadata))

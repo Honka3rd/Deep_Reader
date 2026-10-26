@@ -23,7 +23,8 @@ try {
     const index = numbers.indexOf(Math.max(...numbers));
     const start = Date.now();
     await buttons.nth(index).click();
-    await page.waitForFunction(expected => document.querySelectorAll("[data-measure-group]").length === expected,
+    await page.waitForFunction(expected => document.querySelector(".reader-content-pagination-bar")?.textContent.includes(`Page 1 / ${expected}`)
+      && document.querySelectorAll(".reader-content-task-unit-group").length === 1,
       numbers[index], { timeout: 30000 });
     const milliseconds = Date.now() - start;
     assert.ok(milliseconds < 20000, `UI content too slow: ${milliseconds}`);
@@ -45,7 +46,8 @@ try {
       await buttons.nth(index).click();
       await buttons.first().click();
       release();
-      await page.waitForFunction(expected => document.querySelectorAll("[data-measure-group]").length === expected,
+      await page.waitForFunction(expected => document.querySelector(".reader-content-pagination-bar")?.textContent.includes(`Page 1 / ${expected}`)
+        && document.querySelectorAll(".reader-content-task-unit-group").length === 1,
         numbers[0], { timeout: 15000 });
       assert.equal(await buttons.first().getAttribute("aria-selected"), "true");
     }

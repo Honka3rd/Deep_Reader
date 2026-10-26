@@ -1,5 +1,5 @@
 """Immutable private book fixtures, independent of Library lifetime."""
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import hashlib
 import json
 from pathlib import Path
@@ -7,6 +7,13 @@ import os
 
 
 CORPUS_ROOT = Path(__file__).resolve().parents[1] / "data" / "test-books"
+
+
+def snapshot_data(snapshot):
+    value = asdict(snapshot)
+    if snapshot.cleanup_context and snapshot.cleanup_context.evidence is not None:
+        value["cleanup_context"]["evidence"] = snapshot.cleanup_context.evidence.model_dump(mode="json")
+    return value
 
 
 def preserve(path, data):
@@ -40,7 +47,7 @@ def backup_book(coordinator, doc_name):
     if hashlib.sha256(raw).hexdigest() != state.source.extraction_identity.source_sha256:
         raise ValueError("backup_source_changed")
     payloads = {source_name: raw,
-        "snapshot.json": json.dumps(asdict(state.source), ensure_ascii=False, sort_keys=True).encode(),
+        "snapshot.json": json.dumps(snapshot_data(state.source), ensure_ascii=False, sort_keys=True).encode(),
         "original-document.json": json.dumps(before.document.to_dict(), ensure_ascii=False, sort_keys=True).encode()}
     for name, data in payloads.items():
         preserve(corpus / name, data)
@@ -69,6 +76,7 @@ def load_book(case_id):
     if any(hashlib.sha256(data[name]).hexdigest() != manifest["files"][name] for name in names):
         raise ValueError("backup_hash_mismatch")
     values = json.loads(data["snapshot.json"])
+    stored_cleanup_context = values.pop("cleanup_context", None)
     identity = values["extraction_identity"]
     values["extraction_identity"] = (ExtractionIdentity(**identity) if "source_format" in identity
                                      else normalize_pdf_identity(identity))
@@ -81,6 +89,9 @@ def load_book(case_id):
     resolved = resolve_accepted_source_snapshot(document=document, namespace=snapshot.namespace,
         expected_document_id=snapshot.document_id, structure_version=snapshot.structure_version,
         source_path=corpus / source_name, accepted=True)
-    if resolved != snapshot:
+    if replace(resolved, cleanup_context=None) != snapshot:
         raise ValueError("backup_structure_mismatch")
-    return corpus, snapshot, document
+    if stored_cleanup_context is not None and stored_cleanup_context != json.loads(
+            json.dumps(snapshot_data(resolved)["cleanup_context"])):
+        raise ValueError("backup_cleanup_context_mismatch")
+    return corpus, resolved, document

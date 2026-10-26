@@ -13,7 +13,7 @@ from document_structure.common_parse_policy import common_analysis_view
 from document_structure.plan_rejection import BoundaryReferenceRejected
 
 PLAN_VERSION = "structure_plan_v2"
-PROMPT_VERSION = "structure_plan_prompt_v16_semantic"
+PROMPT_VERSION = "structure_plan_prompt_v17_semantic"
 FINAL_INSTRUCTIONS = "\nFINAL INSTRUCTIONS:\n"
 
 

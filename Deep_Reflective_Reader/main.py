@@ -1,4 +1,5 @@
 from uuid import uuid4
+from functools import wraps
 from datetime import datetime, timezone
 from email import policy
 from email.parser import BytesParser
@@ -12,14 +13,17 @@ import time
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
+from smart_cleanup_routes import router as smart_cleanup_router
+from translation_routes import router as translation_router
 from pydantic import ValidationError
 from doc_loaders.pdf_extraction_contract import PdfExtractionError, PdfExtractionFailureReason
 
 from app.qa_coordinator import QACoordinator
 from app.enhancement_preflight import EnhancementConflict, enhancement_preflight_service
 from api_schemas import EnhancementPreflightRequest, EnhancementPreflightResponse
-from api_schemas import EnhancementOperationRequest, EnhancementOperationResponse
+from api_schemas import EnhancementOperationRequest, EnhancementOperationResponse, EnhancementActivityResponse
 from app.task_layout_readiness import TaskLayoutNotReadyError
+from app.preparation_operations import PreparationBusyError, PreparationOperations
 from app.section_task_coordinator import (
     ManualStructureAnchorDTO,
     ManualStructureEntryDTO,
@@ -116,10 +120,14 @@ app = FastAPI(
     title="Deep Reader API",
     version="0.1.0",
 )
+app.include_router(smart_cleanup_router)
+app.include_router(translation_router)
 
 # ⭐ QA coordinator 是自由問答主線 singleton
 qa_coordinator = QACoordinator()
 section_task_coordinator = qa_coordinator.container.section_task_coordinator()
+app.state.smart_cleanup_service = qa_coordinator.container.smart_cleanup_service()
+app.state.translation_action = qa_coordinator.container.translation_action()
 document_artifact_repository = qa_coordinator.container.structured_document_artifact_repository()
 enhancement_preflight_service.reader = section_task_coordinator.read_enhancement_state
 enhancement_preflight_service.lease = section_task_coordinator.enhancement_lease
@@ -143,23 +151,40 @@ def _reading_content_error(error):
     return HTTPException(status_code=503,detail="reading_content_unavailable")
 
 
-from api_schemas import ReadingContentMutationRequest
+from api_schemas import ReadingContentMutationRequest, ReadingContentResponse, ReadingContentRefreshResponse
 
 
-@app.get("/documents/{doc_name}/reading-content")
-def read_reading_content(doc_name: str, include_blocks: bool = False, block_id: str | None = None):
+@app.get("/documents/{doc_name}/reading-content", response_model=ReadingContentResponse | ReadingContentRefreshResponse, response_model_exclude_none=True)
+def read_reading_content(doc_name: str, include_blocks: bool = False, block_id: str | None = None,
+                         include_cleanup_audit: bool = False, cleanup_offset: int = Query(0, ge=0, le=1000),
+                         region_id: str | None = Query(None, max_length=100), block_offset: int = Query(0, ge=0),
+                         refresh_mutation_id: str | None = Query(None, min_length=1, max_length=100),
+                         expected_revision: int | None = Query(None, ge=0),
+                         source_token: str | None = Query(None, pattern=r"^[0-9a-f]{64}$")):
     try:
-        result = _reading_content_service().read(doc_name)
+        if refresh_mutation_id is not None:
+            if (expected_revision is None or source_token is None or include_blocks or block_id is not None
+                    or include_cleanup_audit or cleanup_offset or region_id is not None):
+                raise ValueError("invalid_reading_refresh_query")
+            return _reading_content_service().read_refresh(doc_name, mutation_id=refresh_mutation_id,
+                expected_revision=expected_revision, source_token=source_token, block_offset=block_offset)
+        if expected_revision is not None or source_token is not None:
+            raise ValueError("invalid_reading_refresh_query")
+        result = _reading_content_service().read(doc_name, include_cleanup_audit=include_cleanup_audit,
+                                                 cleanup_offset=cleanup_offset, region_id=region_id, block_offset=block_offset)
         if block_id is not None:
             result["blocks"] = [b for b in result["blocks"] if b["block_id"]==block_id]
-        elif not include_blocks:
+        elif not include_blocks and region_id is None:
             result["blocks"] = []
+        elif region_id is None:
+            result["block_page"] = {"total": len(result["blocks"]), "offset": block_offset, "limit": 20}
+            result["blocks"] = result["blocks"][block_offset:block_offset + 20]
         return result
     except Exception as error:
         raise _reading_content_error(error) from error
 
 
-@app.post("/documents/{doc_name}/reading-content")
+@app.post("/documents/{doc_name}/reading-content", response_model=ReadingContentResponse, response_model_exclude_none=True)
 def mutate_reading_content(doc_name: str, request: ReadingContentMutationRequest):
     try:
         result = _reading_content_service().mutate(doc_name,**request.model_dump())
@@ -392,6 +417,25 @@ def _list_raw_documents(
         if len(candidates) >= bounded_limit:
             break
     return candidates
+
+
+preparation_operations = PreparationOperations()
+
+
+def _track_preparation(handler):
+    @wraps(handler)
+    def tracked(request, *args, **kwargs):
+        try:
+            with preparation_operations.track(request.doc_name) as outcome:
+                result = handler(request, *args, **kwargs)
+                outcome["success"] = (
+                    getattr(result, "status_code", 200) < 400
+                    and getattr(result, "success", True) is True
+                )
+                return result
+        except PreparationBusyError:
+            raise HTTPException(status_code=409, detail="document_preparation_in_progress") from None
+    return tracked
 
 
 def _raw_document_source_type(path: Path) -> str:
@@ -1510,6 +1554,10 @@ def list_document_management_items(
             raw_items=raw_items,
             limit=limit,
         )
+        activity = preparation_operations.snapshot()
+        for item in merged_items:
+            if item.doc_name in activity:
+                item.preparation_status = activity[item.doc_name]
         return DocumentManagementListResponse(
             items=merged_items,
             query=normalized_query,
@@ -1679,6 +1727,8 @@ def delete_document_lifecycle(
                 deleted=False,
             )
 
+        if preparation_operations.snapshot().get(doc_name) == "building":
+            raise ValueError("conflict")
         effects = _delete_document_file_backed_artifacts(doc_name)
         # Keep the discoverable structured record until file cleanup succeeds.
         effects["structured_artifacts_affected"] = (
@@ -1695,6 +1745,7 @@ def delete_document_lifecycle(
                 deleted=False,
             )
 
+        preparation_operations.forget(doc_name)
         return DocumentLifecycleActionResponse(
             doc_name=doc_name,
             action="delete",
@@ -1762,6 +1813,9 @@ def rename_document_lifecycle(
                 reason="validation_failure",
             )
 
+        activity = preparation_operations.snapshot()
+        if any(activity.get(name) == "building" for name in (doc_name, request.new_doc_name)):
+            raise ValueError("conflict")
         effects = _rename_document_file_backed_artifacts(
             doc_name=doc_name,
             new_doc_name=request.new_doc_name,
@@ -1776,6 +1830,7 @@ def rename_document_lifecycle(
             except Exception:
                 _rename_document_file_backed_artifacts(doc_name=request.new_doc_name, new_doc_name=doc_name)
                 raise
+        preparation_operations.forget(doc_name, request.new_doc_name)
         return DocumentLifecycleActionResponse(
             doc_name=doc_name,
             action="rename",
@@ -1862,6 +1917,7 @@ def _pdf_extraction_metadata(request, assets) -> PdfExtractionMetadataResponse:
 
 
 @app.post("/documents/prepare", response_model=PrepareDocumentResponse, responses=_PREPARATION_ERROR_RESPONSES)
+@_track_preparation
 def prepare_document(request: PrepareDocumentRequest, response: Response):
     """Prepare document artifacts through REST for deterministic parser-mode testing."""
     try:
@@ -1908,6 +1964,7 @@ def prepare_document(request: PrepareDocumentRequest, response: Response):
 
 @app.post("/documents/prepare-task-layout", response_model=PrepareTaskLayoutResponse,
           responses={**_PREPARATION_ERROR_RESPONSES, 409: {"description": "Persisted task layout is not ready; explicit preparation guidance in detail."}})
+@_track_preparation
 def prepare_task_layout(request: PrepareTaskLayoutRequest):
     """Prepare a document when needed, then return its task-layout projection."""
     try:
@@ -2689,16 +2746,36 @@ def preflight_document_structure(request: EnhancementPreflightRequest):
     return enhancement_preflight_service.preflight(
         doc_name=request.doc_name, toc_hint=request.toc_hint,
         enhancement_intent=request.enhancement_intent,
+        allow_ocr_cleanup=request.allow_ocr_cleanup,
     )
+
+
+@app.get("/documents/reparse-structure/status", response_model=EnhancementActivityResponse)
+def enhancement_activity(response: Response, doc_name: str = Query(..., min_length=1, max_length=255)):
+    """Current activity only; no consent, generation, preparation or persistent writes."""
+    response.headers["Cache-Control"] = "no-store"
+    if not doc_name.strip():
+        raise HTTPException(status_code=422, detail="invalid_document_name")
+    try:
+        status = ("running" if preparation_operations.snapshot().get(doc_name) == "building"
+                  else enhancement_preflight_service.activity(doc_name))
+        return EnhancementActivityResponse(doc_name=doc_name, status=status)
+    except Exception:
+        raise HTTPException(status_code=503, detail="enhancement_status_unavailable") from None
 
 
 @app.post("/documents/reparse-structure/result", response_model=EnhancementOperationResponse)
 def enhancement_operation_result(request: EnhancementOperationRequest):
-    """Read process-local operation evidence; never infer success from a version."""
-    return enhancement_preflight_service.operations.lookup(request.model_dump())
+    """Read operation evidence without starting generation, commit or layout."""
+    try:
+        return enhancement_preflight_service.operations.lookup(request.model_dump(),
+            durable_reader=section_task_coordinator.read_committed_enhancement if request.allow_ocr_cleanup else None)
+    except Exception:
+        raise HTTPException(status_code=503, detail="enhancement_result_unavailable") from None
 
 
 @app.post("/documents/reparse-structure", response_model=ReparseDocumentStructureResponse)
+@_track_preparation
 def reparse_document_structure(
     request: ReparseDocumentStructureRequest,
     response: Response,
@@ -2738,9 +2815,13 @@ def reparse_document_structure(
                 **({"discard_interactions": request.discard_interactions,
                     "confirmation_token": request.confirmation_token}
                    if normalized_parser_mode == "llm_enhanced" else {}),
+                **({"allow_ocr_cleanup": True} if request.allow_ocr_cleanup else {}),
             )
-        result = (enhancement_preflight_service.operations.execute(request.model_dump(), execute)
+        result = (enhancement_preflight_service.operations.execute(request.model_dump(), execute,
+                    durable_reader=section_task_coordinator.read_committed_enhancement if request.allow_ocr_cleanup else None)
                   if normalized_parser_mode == "llm_enhanced" else execute())
+        if result.success and request.allow_ocr_cleanup:
+            result = section_task_coordinator.finish_enhancement_layout(request.model_dump())
         if result.success:
             return ReparseDocumentStructureResponse(
                 success=True,
@@ -2754,6 +2835,11 @@ def reparse_document_structure(
                 committed=getattr(result, "committed", None),
                 interactions_cleared=getattr(result, "interactions_cleared", None),
                 reading_layout_required=getattr(result, "reading_layout_required", None),
+                retryable=getattr(result, "retryable", False),
+                cleanup=getattr(result, "cleanup", None), phase=getattr(result, "phase", None),
+                retry_stage=getattr(result, "retry_stage", None), layout_error=getattr(result, "layout_error", None),
+                review_required=getattr(result, "review_required", None),
+                pending_review_count=getattr(result, "pending_review_count", None),
             )
 
         response.status_code = _resolve_reparse_failure_status(result.error or "")
@@ -2765,6 +2851,7 @@ def reparse_document_structure(
             error=result.error,
             section_count=result.section_count,
             retryable=getattr(result, "retryable", False),
+            retry_stage=getattr(result, "retry_stage", None),
         )
     except EnhancementConflict as error:
         if error.capacity is not None:

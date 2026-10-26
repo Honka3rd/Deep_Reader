@@ -49,6 +49,7 @@ class EnhancementCommitConflict(ValueError):
 @dataclass(frozen=True)
 class EnhancementCommitResult(EnhancementStorageSnapshot):
     change_kind: EnhancementChangeKind
+    cleanup: dict | None = None
 
 
 class PostgresStructuredDocumentStore:
@@ -78,6 +79,7 @@ class PostgresStructuredDocumentStore:
         replace_existing_hierarchy: bool = True,
         _connection=None,
         _preserve_raw_source: bool = False,
+        _preserve_reading_state: bool = False,
     ) -> None:
         """Persist the current structured document payload in PostgreSQL.
 
@@ -86,7 +88,6 @@ class PostgresStructuredDocumentStore:
         document structure version.
         """
         resolved = self._resolve_target(target)
-        payload = document.to_dict()
         metadata_payload = {
             "title": document.title,
             "language": document.language,
@@ -101,7 +102,8 @@ class PostgresStructuredDocumentStore:
             ),
         }
         if replace_existing_hierarchy:
-            metadata_payload["parse_provenance"].pop("reading_content",None)
+            if not (_preserve_reading_state and _connection is not None):
+                metadata_payload["parse_provenance"].pop("reading_content",None)
             metadata_payload["parse_provenance"].pop("reading_projected",None)
         psycopg, dict_row, Jsonb = self._load_psycopg()
         with (nullcontext(_connection) if _connection is not None else
@@ -185,16 +187,19 @@ class PostgresStructuredDocumentStore:
                         structure_version = previous_structure_version
                         previous_artifacts = DocumentTaskArtifacts.from_dict(
                             (existing_row.get("metadata_payload") or {}).get("document_task_artifacts"))
-                        document = preserve_explicit_annotations(
-                            replace(document, document_task_artifacts=previous_artifacts,
-                                    parse_provenance=(existing_row.get("metadata_payload") or {}).get("parse_provenance",{})), document)
+                        previous_provenance = (existing_row.get("metadata_payload") or {}).get("parse_provenance", {})
+                        previous = replace(document, document_task_artifacts=previous_artifacts,
+                                           parse_provenance=previous_provenance)
+                        if (previous_provenance.get("reading_content", {}).get("revision", 0)
+                                != document.parse_provenance.get("reading_content", {}).get("revision", 0)):
+                            previous = self.load_enhancement_snapshot(resolved, _connection=connection).document
+                        document = preserve_explicit_annotations(previous, document)
                         metadata_payload["parse_provenance"] = document.parse_provenance
                         metadata_payload["document_task_artifacts"] = (
                             document.document_task_artifacts.to_dict() if document.document_task_artifacts else None)
                         self._validate_metadata_write(connection, document, document_id,
                                                       structure_version, existing_row)
                         document = self._preserve_navigation_labels(connection, document, document_id)
-                        payload = document.to_dict()
                         event_type = None
                         invalidated_artifact_count = None
                         invalidated_content_block_count = None
@@ -239,11 +244,25 @@ class PostgresStructuredDocumentStore:
                             Jsonb(metadata_payload),
                         ),
                     )
-                self._replace_current_hierarchy(
+                persisted_document = self._replace_current_hierarchy(
                     connection=connection,
                     document=document,
                     document_id=document_id,
                     Jsonb=Jsonb,
+                )
+                from document_structure.source_review_blocks import persist_region_mapping
+
+                # Mapping must see allocated hierarchy/block IDs and the committed epoch.
+                persisted_document = persist_region_mapping(replace(
+                    persisted_document, document_id=resolved.document_name,
+                    parse_provenance={**metadata_payload["parse_provenance"],
+                                      "storage_structure_version": structure_version},
+                ))
+                metadata_payload["parse_provenance"] = persisted_document.parse_provenance
+                payload = self._snapshot_payload(persisted_document)
+                connection.execute(
+                    "UPDATE documents SET metadata_payload=%s,updated_at=NOW() WHERE id=%s",
+                    (Jsonb(metadata_payload), document_id),
                 )
                 connection.execute(
                     """
@@ -305,15 +324,92 @@ class PostgresStructuredDocumentStore:
             document = self.load_enhancement_snapshot(target,_connection=connection).document
             updated,result = mutation(document)
             if updated != document:
+                from document_structure.source_review_blocks import persist_region_mapping
+
+                updated = persist_region_mapping(updated)
                 metadata = dict(row["metadata_payload"])
                 metadata["parse_provenance"] = updated.parse_provenance
                 metadata["document_task_artifacts"] = updated.document_task_artifacts.to_dict() if updated.document_task_artifacts else None
-                connection.execute("UPDATE documents SET metadata_payload=%s,updated_at=NOW() WHERE id=%s",
-                                   (Jsonb(metadata),row["id"]))
-                for table in ("chapters","sections","task_units"):
-                    connection.execute(f"UPDATE {table} SET metadata_payload=metadata_payload - 'task_artifacts' WHERE document_id=%s",(row["id"],))
-                connection.execute("DELETE FROM artifacts WHERE document_id=%s AND artifact_type NOT IN ('note','notes')",(row["id"],))
+                revision_changed = (updated.parse_provenance.get("reading_content", {}).get("revision", 0)
+                                    != document.parse_provenance.get("reading_content", {}).get("revision", 0))
+                connection.execute("UPDATE documents SET metadata_payload=%s,"
+                                   "updated_at=CASE WHEN %s THEN NOW() ELSE updated_at END WHERE id=%s",
+                                   (Jsonb(metadata), revision_changed, row["id"]))
+                policy = (updated.parse_provenance.get("reading_content", {}).get("audit") or [{}])[-1]
+                reading_changed = revision_changed
+                if reading_changed and policy.get("invalidate_generated", True):
+                    for table in ("chapters","sections","task_units"):
+                        connection.execute(f"UPDATE {table} SET metadata_payload=metadata_payload - 'task_artifacts' WHERE document_id=%s",(row["id"],))
+                    connection.execute("DELETE FROM artifacts WHERE document_id=%s AND artifact_type NOT IN ('note','notes')",(row["id"],))
+                elif reading_changed and policy.get("summaries_invalidated", False):
+                    for table in ("chapters", "sections", "task_units"):
+                        connection.execute(f"UPDATE {table} SET metadata_payload=metadata_payload #- '{{task_artifacts,summary}}' "
+                                           "WHERE document_id=%s", (row["id"],))
+                    connection.execute("DELETE FROM artifacts WHERE document_id=%s AND artifact_type IN "
+                                       "('summary','public_summary','ancestor_summary')", (row["id"],))
+                cleared = list(dict.fromkeys(policy.get("cleared_block_ids", []) +
+                    ([policy["cleared_block_id"]] if policy.get("cleared_block_id") else [])))
+                if reading_changed and cleared:
+                    connection.execute(
+                        "DELETE FROM artifacts a USING content_blocks b WHERE a.document_id=%s "
+                        "AND b.document_id=a.document_id AND a.target_type='content_block' AND a.target_id=b.id "
+                        "AND COALESCE(b.metadata_payload->>'block_id', "
+                        "b.task_unit_id::text || ':content:' || b.block_order::text)=ANY(%s)",
+                        (row["id"], cleared))
+                connection.execute(
+                    "UPDATE structured_document_snapshots SET structured_document_payload=%s "
+                    "WHERE document_id=%s AND source_structure_version=%s",
+                    (Jsonb(self._snapshot_payload(updated)), row["id"],
+                     document.parse_provenance["storage_structure_version"]),
+                )
             return result
+
+    def commit_cleanup(self, command):
+        """One content-only transaction; no provider, hierarchy save or preparation."""
+        from time import perf_counter
+        from document_structure.cleanup_commit import stage_cleanup_commit, verify_cleanup_source_file, log_cleanup_commit
+        from document_structure.reading_content import ReadingContentConflict
+        binding = command.staged.binding
+        target = self.target_for_doc_name(binding.document_id)
+        if target.namespace != binding.namespace or target.document_name != binding.document_id:
+            raise ReadingContentConflict("cleanup_identity_changed")
+        psycopg, dict_row, Jsonb = self._load_psycopg()
+        started = perf_counter()
+        try:
+            with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+                row = connection.execute("SELECT id FROM documents WHERE namespace=%s AND document_name=%s FOR UPDATE",
+                                         (target.namespace, target.document_name)).fetchone()
+                if row is None:
+                    raise FileNotFoundError("document_missing")
+                current = self.load_enhancement_snapshot(target, _connection=connection)
+                if not current.accepted:
+                    raise ReadingContentConflict("cleanup_document_not_ready")
+                verify_cleanup_source_file(current.document, command.snapshot.source,
+                                           accepted_source_path=command.snapshot.accepted_source_path)
+                updated, result = stage_cleanup_commit(current.document, command,
+                    namespace=target.namespace, structure_version=current.structure_version)
+                if not result.replayed:
+                    self._commit_cleanup_state(connection, row["id"], updated,
+                                               result.outcome.model_dump(mode="json"), Jsonb)
+                    verify_cleanup_source_file(current.document, command.snapshot.source,
+                                               accepted_source_path=command.snapshot.accepted_source_path)
+            log_cleanup_commit(binding, "replayed" if result.replayed else "committed", started)
+            return result
+        except Exception:
+            log_cleanup_commit(binding, "commit_unconfirmed", started)
+            raise
+
+    def lookup_cleanup(self, *, namespace, document_id, operation_id):
+        from document_structure.cleanup_commit import lookup_cleanup_receipt
+        from document_structure.reading_content import ReadingContentConflict
+        target = self.target_for_doc_name(document_id)
+        if target.namespace != namespace or target.document_name != document_id:
+            raise ReadingContentConflict("cleanup_identity_changed")
+        try:
+            document = self.load(target)
+        except FileNotFoundError:
+            return None
+        return lookup_cleanup_receipt(document, namespace=namespace, document_id=document_id, operation_id=operation_id)
 
     def mutate_document_artifacts(self, target, mutation):
         """Serialize user mutations with deletion/reparse and other note writers."""
@@ -741,11 +837,14 @@ class PostgresStructuredDocumentStore:
                 raise EnhancementCommitConflict("source_changed")
             return True
 
-    def commit_enhancement(self, target, *, candidate, interaction_revision, source_path):
+    def commit_enhancement(self, target, *, candidate, interaction_revision, source_path, cleanup=None, operation=None):
         """Atomic conditional commit. Caller retains its document execution lease."""
         from document_preparation.accepted_source_snapshot import source_file_sha256
         from document_preparation.structure_enhancement_candidate import validate_enhancement_document
         from doc_loaders.extraction_identity import extraction_matches
+        from document_structure.ocr_cleanup_overlay import log_cleanup
+        from time import perf_counter
+        started = perf_counter()
 
         resolved = self._resolve_target(target)
         expected = candidate.source
@@ -768,6 +867,26 @@ class PostgresStructuredDocumentStore:
                 connection.execute("SELECT id FROM documents WHERE namespace=%s AND document_name=%s "
                                    "FOR UPDATE NOWAIT", (resolved.namespace, resolved.document_name))
                 current = self.load_enhancement_snapshot(target, _connection=connection)
+                if operation is not None:
+                    prior = current.document.parse_provenance.get("enhancement_receipts", {}).get(operation["id"])
+                    if prior is not None:
+                        from document_structure.reading_content import state_for
+                        if (current.structure_version != prior["structure_version"]
+                                or state_for(current.document).get("revision", 0) != prior["reading_revision"]):
+                            raise EnhancementCommitConflict("confirmation_stale")
+                        if source_file_sha256(source_path) != expected.extraction_identity.source_sha256:
+                            raise EnhancementCommitConflict("source_changed")
+                        return EnhancementCommitResult(**vars(current),
+                            change_kind=EnhancementChangeKind(prior["change_kind"]), cleanup=prior["cleanup"])
+                if cleanup is not None and operation is None:
+                    from document_structure.ocr_cleanup_overlay import replay_cleanup
+                    receipt = replay_cleanup(current.document, cleanup, candidate.document)
+                    if receipt is not None:
+                        if source_file_sha256(source_path) != expected.extraction_identity.source_sha256:
+                            raise EnhancementCommitConflict("source_changed")
+                        log_cleanup(cleanup, "replayed", started=started, outcome=receipt["outcome"])
+                        return EnhancementCommitResult(**vars(current),
+                            change_kind=EnhancementChangeKind(receipt["change_kind"]), cleanup=receipt["outcome"])
                 if (current.structure_version != expected.structure_version
                         or current.interaction_revision != interaction_revision):
                     raise EnhancementCommitConflict("confirmation_stale")
@@ -781,17 +900,38 @@ class PostgresStructuredDocumentStore:
                                                            canonical_text=expected.canonical_text)
                 except EnhancementComparisonError as error:
                     raise EnhancementCommitConflict("enhancement_baseline_invalid") from error
-                if change.kind == EnhancementChangeKind.UNCHANGED:
+                staged, cleanup_outcome = None, None
+                if cleanup is not None:
+                    from document_structure.ocr_cleanup_overlay import stage_cleanup
+                    staged, cleanup_outcome = stage_cleanup(current.document, candidate.document, cleanup,
+                        namespace=resolved.namespace, structure_version=current.structure_version,
+                        fingerprint=current.interaction_revision, change_kind=change.kind)
+                    if operation is not None and operation.get("cleanup") is not None:
+                        cleanup_outcome = operation["cleanup"]
+                        staged.parse_provenance["reading_content"]["cleanup_receipts"][
+                            cleanup.plan.binding.operation_id]["outcome"] = cleanup_outcome
+                if change.kind == EnhancementChangeKind.UNCHANGED and cleanup is None and operation is None:
                     return EnhancementCommitResult(**vars(current), change_kind=change.kind)
-                if change.kind == EnhancementChangeKind.TITLES_ONLY:
+                if change.kind in {EnhancementChangeKind.TITLES_ONLY, EnhancementChangeKind.UNCHANGED}:
                     document_id = connection.execute(
                         "SELECT id FROM documents WHERE namespace=%s AND document_name=%s",
                         (resolved.namespace, resolved.document_name)).fetchone()["id"]
-                    self._update_enhancement_labels(connection, current, candidate.document, document_id, Jsonb)
+                    if change.kind == EnhancementChangeKind.TITLES_ONLY:
+                        self._update_enhancement_labels(connection, current, candidate.document, document_id, Jsonb)
+                    if staged is not None:
+                        self._commit_cleanup_state(connection, document_id, staged, cleanup_outcome, Jsonb)
+                    if change.kind == EnhancementChangeKind.TITLES_ONLY:
+                        labeled = self.load_enhancement_snapshot(target, _connection=connection)
+                        self._commit_source_review_mapping(connection, document_id, labeled, Jsonb)
+                    if operation is not None:
+                        self._commit_enhancement_receipt(connection, document_id, current, staged or current.document,
+                            operation, change.kind, current.structure_version, cleanup_outcome, Jsonb)
                     if source_file_sha256(source_path) != expected.extraction_identity.source_sha256:
                         raise EnhancementCommitConflict("source_changed")
                     committed = self.load_enhancement_snapshot(target, _connection=connection)
-                    return EnhancementCommitResult(**vars(committed), change_kind=change.kind)
+                    if cleanup is not None:
+                        log_cleanup(cleanup, "commit_ready", started=started, outcome=cleanup_outcome)
+                    return EnhancementCommitResult(**vars(committed), change_kind=change.kind, cleanup=cleanup_outcome)
                 # Build fresh containers: no embedded metadata may survive cleanup.
                 provenance_keys = {"requested_parser_mode", "effective_parser_mode", "fallback_used",
                     "fallback_reason", "source", "schema_version", "prompt_instruction_version",
@@ -809,12 +949,24 @@ class PostgresStructuredDocumentStore:
                         metadata={"title_origin": chapter.metadata.get("title_origin", "implicit")},
                         sections=[replace(section, task_artifacts=None, task_units=[])
                                   for section in chapter.sections]) for chapter in candidate.document.chapters])
+                if staged is not None:
+                    document = replace(document, parse_provenance={**document.parse_provenance,
+                        **{key: staged.parse_provenance[key] for key in (
+                            "reading_content", "source_review", "source_page_spans", "actual_ocr_evidence") if key in staged.parse_provenance}})
+                else:
+                    document = replace(document, parse_provenance={**document.parse_provenance,
+                        **{key: current.document.parse_provenance[key] for key in (
+                            "source_review", "source_page_spans", "actual_ocr_evidence")
+                           if key in current.document.parse_provenance}})
                 document_id = connection.execute(
                     "SELECT id FROM documents WHERE namespace=%s AND document_name=%s",
                     (resolved.namespace, resolved.document_name)).fetchone()["id"]
                 connection.execute("DELETE FROM structured_document_snapshots WHERE document_id=%s", (document_id,))
                 self.save(document, target, replace_existing_hierarchy=True,
-                          _connection=connection, _preserve_raw_source=True)
+                          _connection=connection, _preserve_raw_source=True, _preserve_reading_state=staged is not None)
+                if operation is not None:
+                    self._commit_enhancement_receipt(connection, document_id, current, document,
+                        operation, change.kind, expected.structure_version + 1, cleanup_outcome, Jsonb)
                 connection.execute("UPDATE document_profile SET profile_payload = "
                     "profile_payload - 'post_structure_metadata' - 'structure_profile', "
                     "advisory_diagnostics=NULL, source_structure_version=NULL WHERE document_id=%s", (document_id,))
@@ -825,9 +977,91 @@ class PostgresStructuredDocumentStore:
                 committed = self.load_enhancement_snapshot(target, _connection=connection)
                 if committed.structure_version != expected.structure_version + 1:
                     raise EnhancementCommitConflict("enhancement_version_invalid")
-            return EnhancementCommitResult(**vars(committed), change_kind=change.kind)
+            if cleanup is not None:
+                log_cleanup(cleanup, "committed", started=started, outcome=cleanup_outcome)
+            return EnhancementCommitResult(**vars(committed), change_kind=change.kind, cleanup=cleanup_outcome)
         except psycopg.errors.LockNotAvailable as error:
+            if cleanup is not None:
+                log_cleanup(cleanup, "commit_busy", started=started)
             raise EnhancementCommitConflict("enhancement_commit_busy") from error
+        except Exception:
+            if cleanup is not None:
+                log_cleanup(cleanup, "rolled_back", started=started)
+            raise
+
+    @staticmethod
+    def _commit_source_review_mapping(connection, document_id, current, Jsonb):
+        from document_structure.source_review_blocks import persist_region_mapping
+
+        document = current.document
+        mapped = persist_region_mapping(document)
+        key = "source_review_mapping"
+        before = {key: document.parse_provenance[key]} if key in document.parse_provenance else {}
+        after = {key: mapped.parse_provenance[key]} if key in mapped.parse_provenance else {}
+        if before == after:
+            return
+        # Patch only mapping evidence; retain cleanup state, receipts and unknown metadata.
+        connection.execute("UPDATE documents SET metadata_payload=jsonb_set(metadata_payload, "
+            "'{parse_provenance}', ((metadata_payload->'parse_provenance') - 'source_review_mapping') || %s) "
+            "WHERE id=%s", (Jsonb(after), document_id))
+        connection.execute("UPDATE structured_document_snapshots SET structured_document_payload="
+            "jsonb_set(structured_document_payload, '{parse_provenance}', "
+            "((structured_document_payload->'parse_provenance') - 'source_review_mapping') || %s) "
+            "WHERE document_id=%s AND source_structure_version=%s",
+            (Jsonb(after), document_id, current.structure_version))
+
+    def _commit_enhancement_receipt(self, connection, document_id, current, document,
+                                    operation, change_kind, version, outcome, Jsonb):
+        """Minimal commit evidence shares the hierarchy/overlay transaction."""
+        from doc_loaders.extraction_identity import read_extraction_record
+        from document_structure.reading_content import state_for
+        from document_structure.ocr_cleanup_contract import CleanupOutcome
+        import re
+        key = operation["id"]
+        if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{64}", key):
+            raise ValueError("invalid_enhancement_operation")
+        cleanup = CleanupOutcome.model_validate(outcome or operation["cleanup"]).model_dump(mode="json")
+        identity, record = read_extraction_record(document.parse_provenance)
+        receipts = dict(current.document.parse_provenance.get("enhancement_receipts", {}))
+        receipts[key] = dict(structure_version=version, change_kind=str(change_kind), cleanup=cleanup,
+            reading_revision=state_for(document).get("revision", 0),
+            section_count=sum(len(chapter.sections) for chapter in document.chapters),
+            extraction_identity=identity.to_dict(), text_sha256=record["text_sha256"])
+        # Bound metadata history, not OCR/model usage. Evicted outcomes remain unknown.
+        receipts = dict(list(receipts.items())[-1000:])
+        connection.execute("UPDATE documents SET metadata_payload=jsonb_set(metadata_payload, "
+            "'{parse_provenance,enhancement_receipts}', %s) WHERE id=%s", (Jsonb(receipts), document_id))
+        connection.execute("UPDATE structured_document_snapshots SET structured_document_payload="
+            "jsonb_set(structured_document_payload, '{parse_provenance,enhancement_receipts}', %s) "
+            "WHERE document_id=%s", (Jsonb(receipts), document_id))
+
+    def _commit_cleanup_state(self, connection, document_id, staged, outcome, Jsonb):
+        """Shared transaction-local cleanup write, never an independent commit."""
+        from document_structure.ocr_cleanup_overlay import invalidate_generated
+        row = connection.execute("SELECT structured_document_payload FROM structured_document_snapshots "
+                                 "WHERE document_id=%s", (document_id,)).fetchone()
+        if row is None:
+            raise EnhancementCommitConflict("enhancement_snapshot_missing")
+        snapshot = StructuredDocument.from_dict(row["structured_document_payload"])
+        from document_structure.cleanup_history import bind_cleanup_record_links
+        snapshot = bind_cleanup_record_links(replace(snapshot, parse_provenance={**snapshot.parse_provenance,
+            "reading_content": staged.parse_provenance["reading_content"]}))
+        state = snapshot.parse_provenance["reading_content"]
+        connection.execute("UPDATE documents SET metadata_payload=jsonb_set(metadata_payload, "
+            "'{parse_provenance,reading_content}', %s),updated_at=NOW() WHERE id=%s",
+            (Jsonb(state), document_id))
+        if outcome["reading_content_changed"]:
+            snapshot = replace(invalidate_generated(snapshot), document_task_artifacts=staged.document_task_artifacts)
+            connection.execute("UPDATE documents SET metadata_payload=jsonb_set(metadata_payload, "
+                "'{document_task_artifacts}', %s) WHERE id=%s",
+                (Jsonb(staged.document_task_artifacts.to_dict() if staged.document_task_artifacts else None), document_id))
+            for table in ("chapters", "sections", "task_units"):
+                connection.execute(f"UPDATE {table} SET metadata_payload=metadata_payload - 'task_artifacts' "
+                                   "WHERE document_id=%s", (document_id,))
+            connection.execute("DELETE FROM artifacts WHERE document_id=%s AND artifact_type NOT IN ('note','notes')",
+                               (document_id,))
+        connection.execute("UPDATE structured_document_snapshots SET structured_document_payload=%s "
+                           "WHERE document_id=%s", (Jsonb(self._snapshot_payload(snapshot)), document_id))
 
     @contextmanager
     def enhancement_lease(self, target):
@@ -871,6 +1105,8 @@ class PostgresStructuredDocumentStore:
         limit: int = 50,
     ) -> list[DocumentListItem]:
         """List lightweight active structured document candidates from PostgreSQL."""
+        from document_structure.source_review_blocks import needs_review_from_provenance
+
         bounded_limit = max(1, min(limit, 200))
         normalized_query = (query or "").strip()
         psycopg, dict_row, _ = self._load_psycopg()
@@ -915,11 +1151,21 @@ class PostgresStructuredDocumentStore:
                     doc_name=str(row["document_name"]),
                     title=title if isinstance(title, str) and title.strip() else None,
                     source="structured_postgres",
-                    review_required=any(not metadata_payload.get("parse_provenance",{}).get("reading_content",{}).get("regions",{}).get(r["id"])
-                        for r in metadata_payload.get("parse_provenance",{}).get("source_review",{}).get("regions",[])),
+                    review_required=needs_review_from_provenance(
+                        metadata_payload.get("parse_provenance", {})),
                 )
             )
         return items
+
+    @staticmethod
+    def _snapshot_payload(document):
+        """Keep explicit block identities alongside their durable mapping evidence."""
+        payload = document.to_dict()
+        for chapter, chapter_data in zip(document.chapters, payload["chapters"]):
+            for section, section_data in zip(chapter.sections, chapter_data["sections"]):
+                section_data["task_units"] = [
+                    unit.to_dict(include_content_blocks=True) for unit in section.task_units]
+        return payload
 
     def _replace_current_hierarchy(
         self,
@@ -928,10 +1174,11 @@ class PostgresStructuredDocumentStore:
         document: StructuredDocument,
         document_id: int,
         Jsonb: Any,
-    ) -> None:
+    ) -> StructuredDocument:
         kept_chapter_ids: list[int] = []
         kept_section_ids: list[int] = []
         kept_task_unit_ids: list[int] = []
+        persisted_chapters = []
 
         for chapter_order, chapter in enumerate(document.chapters):
             chapter_metadata = dict(chapter.metadata)
@@ -984,6 +1231,7 @@ class PostgresStructuredDocumentStore:
                 ),
             )
             kept_chapter_ids.append(chapter_id)
+            persisted_sections = []
 
             for section_order, section in enumerate(chapter.sections):
                 section_metadata: dict[str, Any] = {
@@ -1066,6 +1314,7 @@ class PostgresStructuredDocumentStore:
                     ),
                 )
                 kept_section_ids.append(section_id)
+                persisted_units = []
 
                 for task_unit_order, task_unit in enumerate(section.task_units):
                     task_unit_metadata: dict[str, Any] = {}
@@ -1143,7 +1392,23 @@ class PostgresStructuredDocumentStore:
                             Jsonb(task_unit_metadata),
                         ),
                     )
+                    if str(task_unit_id) != task_unit.unit_id and task_unit.content_blocks:
+                        task_unit_metadata["content_blocks"] = [block.to_dict() for block in
+                            task_unit.with_unit_id(str(task_unit_id)).content_blocks]
+                        connection.execute("UPDATE task_units SET metadata_payload=%s WHERE id=%s AND document_id=%s",
+                                           (Jsonb(task_unit_metadata), task_unit_id, document_id))
                     kept_task_unit_ids.append(task_unit_id)
+                    persisted_units.append(replace(
+                        task_unit.with_unit_id(str(task_unit_id)),
+                        parent_section_id=str(section_id), source_section_ids=[str(section_id)],
+                    ))
+                persisted_sections.append(replace(
+                    section, section_id=str(section_id), parent_chapter_id=str(chapter_id),
+                    task_units=persisted_units,
+                ))
+            persisted_chapters.append(replace(
+                chapter, chapter_id=str(chapter_id), sections=persisted_sections,
+            ))
 
         self._delete_missing_rows(
             connection=connection,
@@ -1163,6 +1428,7 @@ class PostgresStructuredDocumentStore:
             document_id=document_id,
             kept_ids=kept_chapter_ids,
         )
+        return replace(document, chapters=persisted_chapters, sections=[], structure_nodes=[])
 
     def _upsert_hierarchy_row(
         self,

@@ -1,4 +1,8 @@
 import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
+import { ReaderWorkspace } from "./shared/components/ReaderWorkspace";
+import { ReaderContentPane } from "./shared/components/ReaderContentPane";
+import CleaningServicesOutlinedIcon from "@mui/icons-material/CleaningServicesOutlined";
+import { SmartCleanupDialog } from "./features/smart-cleanup";
 import { ReadingContentActions, confirmReadingNavigation, type ContentEditSelection } from "./features/reader-content/ReadingContentActions";
 import { SummaryNoteDrawer, type SummaryNoteSelection } from "./features/reading-interactions/SummaryNoteDrawer";
 import CheckIcon from "@mui/icons-material/Check";
@@ -82,6 +86,8 @@ import {
   useReadingInteractionMenuController,
 } from "./features/reading-interactions";
 
+import { BlockTranslationView, useBlockTranslation } from "./features/block-translation";
+
 export default function App() {
   const navigate = useNavigate();
   const routeMatch = useMatch("/documents/:routeDocName/*");
@@ -90,6 +96,7 @@ export default function App() {
   const activeDocumentRef = useRef("");
   const [summaryNoteSelection, setSummaryNoteSelection] = useState<SummaryNoteSelection | null>(null);
   const [sourceNeedsReview, setSourceNeedsReview] = useState(false);
+  const [readingRefresh, setReadingRefresh] = useState(0);
   const [contentEditSelection,setContentEditSelection] = useState<ContentEditSelection>(null);
   const noteDirtyRef = useRef(false);
   function closeSummaryNote() {
@@ -113,6 +120,7 @@ export default function App() {
   const [repairMenuAnchor, setRepairMenuAnchor] = useState<HTMLElement | null>(null);
   const [repairTocHint, setRepairTocHint] = useState<TocHint>("auto");
   const [enhancementOpen, setEnhancementOpen] = useState(false);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   const [criticalThinkingDraftDirty, setCriticalThinkingDraftDirty] = useState(false);
   const [criticalThinkingDraftAnswersByTarget, setCriticalThinkingDraftAnswersByTarget] =
     useState<Record<string, string>>({});
@@ -143,14 +151,21 @@ export default function App() {
     contentGroups,
     contentStatus,
     contentError,
+    navigationTarget,
+    navigateToBlock,
     selectSection,
     retryContent,
+    refreshChangedContent,
+    refreshFromLayout,
+    refreshAffectedBlocks,
     resetContent,
     refreshSelectionLabels,
   } = useReaderContentController({
     docName: layoutScopeRef.current?.docName || "",
     layout: layoutStatus === "success" ? layout : null,
   });
+  const translations = useBlockTranslation({ docName, blocks: contentBlocks,
+    scopeKey: JSON.stringify([docName, selectedSection?.section.section_id, layoutStatus]) });
   const {
     openInlineInsightsByTarget,
     quizStateByTarget,
@@ -204,7 +219,7 @@ export default function App() {
     return nextLayout;
   }
 
-  async function loadLayoutForDocument(nextDocName: string) {
+  async function loadLayoutForDocument(nextDocName: string, validatedLayout?: DocumentTaskLayout) {
     if (!confirmReadingNavigation()) {
       navigate(`/documents/${encodeURIComponent(activeDocumentRef.current)}`, { replace: true });
       return;
@@ -216,6 +231,7 @@ export default function App() {
     }
     setSummaryNoteSelection(null);
     setEnhancementOpen(false);
+    setCleanupOpen(false);
     const trimmedDocName = nextDocName.trim();
     const requestId = layoutRequestIdRef.current + 1;
     layoutRequestIdRef.current = requestId;
@@ -244,7 +260,7 @@ export default function App() {
     setLayoutStatus("loading");
 
     try {
-      const nextLayout = await taskLayoutService.fetchTaskLayout(trimmedDocName);
+      const nextLayout = validatedLayout ?? await taskLayoutService.fetchTaskLayout(trimmedDocName);
       if (layoutRequestIdRef.current !== requestId) {
         return;
       }
@@ -264,11 +280,11 @@ export default function App() {
     }
   }
 
-  function selectDocument(nextDocName: string) {
+  function selectDocument(nextDocName: string, validatedLayout?: DocumentTaskLayout) {
     if (!nextDocName.trim()) return;
     if (!closeSummaryNote()) return;
     navigate(`/documents/${encodeURIComponent(nextDocName.trim())}`);
-    void loadLayoutForDocument(nextDocName);
+    void loadLayoutForDocument(nextDocName, validatedLayout);
   }
 
   function clearActiveDocument() {
@@ -280,6 +296,7 @@ export default function App() {
     setContentEditSelection(null);
     setSummaryNoteSelection(null);
     setEnhancementOpen(false);
+    setCleanupOpen(false);
     ++layoutRequestIdRef.current;
     activeDocumentRef.current = "";
     setDocName("");
@@ -297,9 +314,10 @@ export default function App() {
 
   async function openManagedDocument(nextDocName: string) {
     const navigation = layoutRequestIdRef.current;
-    if (!await fileManagement.validateDocumentOpen(nextDocName) || navigation !== layoutRequestIdRef.current) return;
+    const readyLayout = await fileManagement.validateDocumentOpen(nextDocName);
+    if (!readyLayout || navigation !== layoutRequestIdRef.current) return;
     fileManagement.closeLibrary();
-    selectDocument(nextDocName);
+    selectDocument(nextDocName, readyLayout);
   }
 
   useEffect(() => {
@@ -356,8 +374,10 @@ export default function App() {
     }
   }
 
-  const canRepair = layoutStatus === "success" && Boolean(layout) && repairStatus !== "loading";
+  const canRepair = repairStatus !== "loading" && ((layoutStatus === "success" && Boolean(layout))
+    || (layoutStatus === "error" && Boolean(docName.trim())));
   const repairMenuOpen = Boolean(repairMenuAnchor);
+  const canCheckCleanup = Boolean(docName.trim()) && repairStatus !== "loading" && layoutStatus !== "loading";
 
   function openRepairMenu(event: MouseEvent<HTMLButtonElement>) {
     setRepairMenuAnchor(event.currentTarget);
@@ -369,7 +389,11 @@ export default function App() {
 
   function selectRepairMode(parserMode: StructureParserMode) {
     closeRepairMenu();
-    if (parserMode === "llm_enhanced") setEnhancementOpen(true);
+    if (parserMode === "llm_enhanced") {
+      if (!confirmReadingNavigation()) return;
+      setContentEditSelection(null);
+      setEnhancementOpen(true);
+    }
     else void repairStructure(parserMode);
   }
 
@@ -387,30 +411,56 @@ export default function App() {
     setLayoutStatus("loading");
   }
 
-  async function reloadEnhancedDocument(name: string) {
+  async function reloadEnhancedDocument(name: string, signal?: AbortSignal) {
     if (activeDocumentRef.current !== name) throw new Error("Return to this document to reload it.");
     const requestId = ++layoutRequestIdRef.current;
     try {
-      const next = await taskLayoutService.fetchTaskLayout(name);
-      if (requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== name) throw new Error("Document changed.");
+      const next = await taskLayoutService.fetchTaskLayout(name, { signal });
+      if (signal?.aborted || requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== name) throw new Error("Document changed.");
       setLayout(next);
       layoutScopeRef.current = { docName: name, layout: next };
       setCurrentRepairMode(resolveLayoutParserMode(next));
       setLayoutStatus("success");
+      setLayoutError("");
+      closeNotification();
     } catch (error) {
-      if (requestId === layoutRequestIdRef.current) setLayoutStatus("error");
+      if (requestId === layoutRequestIdRef.current && activeDocumentRef.current === name) setLayoutStatus("error");
       throw error;
     }
   }
 
-  async function refreshEnhancedTitles(name: string) {
+  async function refreshEnhancedTitles(name: string, signal?: AbortSignal) {
     const requestId = ++layoutRequestIdRef.current;
-    const next = await taskLayoutService.fetchTaskLayout(name);
-    if (requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== name) throw new Error("Document changed.");
+    const next = await taskLayoutService.fetchTaskLayout(name, { signal });
+    if (signal?.aborted || requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== name) throw new Error("Document changed.");
     setLayout(next);
     layoutScopeRef.current = { docName: name, layout: next };
     refreshSelectionLabels(next);
     setCurrentRepairMode(resolveLayoutParserMode(next));
+    setLayoutStatus("success");
+    setLayoutError("");
+    closeNotification();
+  }
+
+  async function refreshReadyReading(name: string, contentChanged: boolean, signal?: AbortSignal, reconcile = false) {
+    if (signal?.aborted || activeDocumentRef.current !== name) throw new Error("Document changed.");
+    if (contentChanged || reconcile) {
+      resetInteractions();
+      setSummaryNoteSelection(current => current?.kind === "summary" ? null : current);
+      setReadingRefresh(value => value + 1);
+    }
+    if (reconcile) {
+      const requestId = ++layoutRequestIdRef.current;
+      const next = await taskLayoutService.fetchTaskLayout(name, { signal });
+      if (signal?.aborted || requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== name) throw new Error("Document changed.");
+      await refreshFromLayout(next, signal);
+      if (signal?.aborted || requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== name) throw new Error("Document changed.");
+      setLayout(next); layoutScopeRef.current = { docName: name, layout: next };
+      setCurrentRepairMode(resolveLayoutParserMode(next)); setLayoutStatus("success"); setLayoutError("");
+    }
+    else if (layoutStatus !== "success" || !layout) await reloadEnhancedDocument(name, signal);
+    else if (contentChanged) await refreshChangedContent(signal);
+    if (!signal?.aborted && activeDocumentRef.current === name) closeNotification();
   }
 
   function interactionLabel(kind: ReadingInteractionKind) {
@@ -1035,13 +1085,22 @@ export default function App() {
 
   return (
     <Box className="app-shell reader-app-shell">
+      <SmartCleanupDialog open={cleanupOpen} docName={docName} onClose={() => setCleanupOpen(false)}
+        onReadingReady={refreshReadyReading} />
       <EnhancementDialog open={enhancementOpen} docName={docName} tocHint={repairTocHint}
+        onSmartCleanup={() => { setEnhancementOpen(false); closeNotification(); setCleanupOpen(true); }}
+        onReadingReady={refreshReadyReading}
         onStructureChanged={clearEnhancedDocument} onTitlesChanged={refreshEnhancedTitles}
         onClose={() => setEnhancementOpen(false)} onCommitted={reloadEnhancedDocument}
         onPrepare={fileManagement.openLibrary}
-        onPrepareLayout={async (name) => {
+        onPrepareLayout={async (name, signal) => {
           if (activeDocumentRef.current !== name) throw new Error("Document changed.");
-          await taskLayoutService.prepareTaskLayout(name, { layoutOnly: true });
+          const requestId = layoutRequestIdRef.current;
+          try { await taskLayoutService.prepareTaskLayout(name, { layoutOnly: true, signal }); }
+          catch (error) {
+            if (signal?.aborted && requestId === layoutRequestIdRef.current && activeDocumentRef.current === name) setLayoutStatus("error");
+            throw error;
+          }
         }} />
       <Paper component="header" elevation={0} className="topbar reader-topbar">
         <BookSearchView
@@ -1069,7 +1128,7 @@ export default function App() {
             aria-controls={repairMenuOpen ? "repair-menu" : undefined}
             aria-haspopup="menu"
             aria-expanded={repairMenuOpen ? "true" : undefined}
-            disabled={!canRepair}
+            disabled={(!canRepair && !canCheckCleanup) || cleanupOpen || enhancementOpen}
             startIcon={
               activeRepairMode ? (
                 <CircularProgress color="inherit" size={16} />
@@ -1095,6 +1154,7 @@ export default function App() {
             <Box sx={{ px: 2, width: 280 }}><TocHintControl value={repairTocHint} disabled={!canRepair} onChange={setRepairTocHint} /></Box>
             <MenuItem
               className="structure-repair-option structure-repair-option-common"
+              disabled={!canRepair}
               selected={currentRepairMode === "common"}
               onClick={() => selectRepairMode("common")}
             >
@@ -1105,6 +1165,7 @@ export default function App() {
             </MenuItem>
             <MenuItem
               className="structure-repair-option structure-repair-option-llm"
+              disabled={!canRepair}
               selected={currentRepairMode === "llm_enhanced"}
               onClick={() => selectRepairMode("llm_enhanced")}
             >
@@ -1112,6 +1173,12 @@ export default function App() {
                 {currentRepairMode === "llm_enhanced" ? <CheckIcon fontSize="small" /> : null}
               </ListItemIcon>
               <ListItemText className="structure-repair-option-label">LLM enhance</ListItemText>
+            </MenuItem>
+            <MenuItem className="smart-cleanup-menu-item" disabled={!canCheckCleanup || Boolean(contentEditSelection)}
+              title={contentEditSelection ? "Finish editing the block before cleanup." : "Clean OCR text without changing chapter structure"}
+              onClick={() => { closeRepairMenu(); closeNotification(); setCleanupOpen(true); }}>
+              <ListItemIcon><CleaningServicesOutlinedIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Smart cleanup</ListItemText>
             </MenuItem>
           </Menu>
         </Box>
@@ -1179,9 +1246,10 @@ export default function App() {
         }}
       />
 
-      <Box component="main" className="reader-layout reader-workspace">
+      <ReaderWorkspace>
         <Paper
           component="aside"
+          id="document-hierarchy-pane"
           elevation={0}
           className="navigation-pane hierarchy-navigation-pane"
           aria-label="Document hierarchy"
@@ -1206,22 +1274,48 @@ export default function App() {
             onRefreshInlineInsight={refreshInlineInsight}
           />
         </Paper>
-        <Paper
-          component="section"
-          elevation={0}
-          className="content-pane reader-content-pane"
-          aria-label="Reading content"
-          aria-busy={contentStatus === "loading"}
-        >
-          {layoutStatus === "success" && <ReadingContentActions key={docName} docName={docName} selection={contentEditSelection} onReviewState={setSourceNeedsReview}
-            onCloseSelection={() => setContentEditSelection(null)} onChanged={() => {
-              resetInteractions(); setSummaryNoteSelection(null); void retryContent();
+        <ReaderContentPane busy={contentStatus === "loading"} scopeKey={docName}>
+          {layoutStatus === "success" && <ReadingContentActions key={docName} docName={docName} refreshKey={readingRefresh} selection={contentEditSelection} onReviewState={setSourceNeedsReview}
+            onNavigate={async (block, snapshot, signal, assertCurrent) => {
+              if (!confirmReadingNavigation() || !closeSummaryNote()) throw new Error("Navigation cancelled.");
+              await navigateToBlock(block, snapshot, signal, assertCurrent);
+              if (!signal.aborted && activeDocumentRef.current === docName) navigate(`/documents/${encodeURIComponent(docName)}`);
+            }}
+            onRefreshBlocks={async (refresh, signal) => {
+              if (signal.aborted || activeDocumentRef.current !== docName || layoutScopeRef.current?.layout !== layout) throw new Error("Document changed.");
+              if (refresh.generated_invalidated) resetInteractions();
+              translations.invalidate(refresh);
+              setSummaryNoteSelection(current => ((refresh.summaries_invalidated || refresh.generated_invalidated) && current?.kind === "summary")
+                || (refresh.cleared_block_id && current?.target.content_block_id === refresh.cleared_block_id)
+                || (current?.target.content_block_id && refresh.cleared_block_ids?.includes(current.target.content_block_id)) ? null : current);
+              await refreshAffectedBlocks(refresh, signal);
+              if (signal.aborted || activeDocumentRef.current !== docName || layoutScopeRef.current?.layout !== layout) throw new Error("Document changed.");
+              closeNotification();
+            }}
+            onCloseSelection={() => setContentEditSelection(null)} onChanged={async (signal, clearedBlockId) => {
+              if (signal?.aborted || activeDocumentRef.current !== docName) throw new Error("Document changed.");
+              resetInteractions(); setSummaryNoteSelection(current => current?.kind === "summary"
+                || (clearedBlockId && current?.target.content_block_id === clearedBlockId) ? null : current);
+              const requestId = ++layoutRequestIdRef.current;
+              const next = await taskLayoutService.fetchTaskLayout(docName, { signal });
+              if (signal?.aborted || requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== docName) throw new Error("Document changed.");
+              await refreshFromLayout(next, signal);
+              if (signal?.aborted || requestId !== layoutRequestIdRef.current || activeDocumentRef.current !== docName) throw new Error("Document changed.");
+              setLayout(next); layoutScopeRef.current = { docName, layout: next };
+              closeNotification();
             }} />}
           <Routes>
             <Route
               path="/"
               element={
                 <ReaderContentView
+                  getInlineTranslationState={translations.getInlineTranslationState}
+                  onVisibleTranslationBlocksChange={translations.onVisibleTranslationBlocksChange}
+                  navigationTarget={navigationTarget}
+                  onTranslateBlock={(block, mode, trigger) => {
+                    if (!confirmReadingNavigation() || !closeSummaryNote()) return;
+                    closeNotification(); translations.open(block, mode, trigger);
+                  }}
                   onEditContentBlock={(block,action) => setContentEditSelection({blockId: block.block_id,action})}
                   layoutStatus={layoutStatus}
                   contentStatus={contentStatus}
@@ -1244,6 +1338,13 @@ export default function App() {
               path="/documents/:routeDocName"
               element={
                 <ReaderContentView
+                  getInlineTranslationState={translations.getInlineTranslationState}
+                  onVisibleTranslationBlocksChange={translations.onVisibleTranslationBlocksChange}
+                  navigationTarget={navigationTarget}
+                  onTranslateBlock={(block, mode, trigger) => {
+                    if (!confirmReadingNavigation() || !closeSummaryNote()) return;
+                    closeNotification(); translations.open(block, mode, trigger);
+                  }}
                   onEditContentBlock={(block,action) => setContentEditSelection({blockId: block.block_id,action})}
                   layoutStatus={layoutStatus}
                   contentStatus={contentStatus}
@@ -1274,8 +1375,8 @@ export default function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </Paper>
-      </Box>
+        </ReaderContentPane>
+      </ReaderWorkspace>
       <ReadingInteractionsView
         drawerSelection={selectedInteraction?.surface === "drawer" ? selectedInteraction : null}
         commandSlot={
@@ -1316,7 +1417,8 @@ export default function App() {
       {summaryNoteSelection && <SummaryNoteDrawer
         key={`${summaryNoteSelection.kind}:${JSON.stringify(summaryNoteSelection.target)}`}
         selection={summaryNoteSelection} dirtyRef={noteDirtyRef} onClose={() => { closeSummaryNote(); }} />}
-      <AppNotification notification={notification} onClose={closeNotification} />
+      <BlockTranslationView controller={translations} />
+      <AppNotification notification={{ ...notification, open: notification.open && !enhancementOpen && !cleanupOpen && !translations.notification.open && !translations.surface }} onClose={closeNotification} />
     </Box>
   );
 }

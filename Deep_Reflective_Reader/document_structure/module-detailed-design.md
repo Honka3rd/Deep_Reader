@@ -1,5 +1,1775 @@
 # document_structure Detailed Design
 
+## Source-Dependent Interaction Lifecycle Plan (2026-10-26)
+
+**[Code-Confirmed]** TRUI-02/03 implement
+[persisted block translation](../section_tasks/module-detailed-design.md#persisted-block-translation-plan-2026-10-26).
+reading_content.mutate now validates and compares effective text inside the write
+boundary. Same-text edits store only neutral replay receipts, without body revision,
+flags, Undo/audit changes or SQL document timestamp changes. mutation_refresh exposes
+body_changed, summaries_invalidated and translation_block_ids. Actual body changes
+share clear_source_dependents across edits/repair/cleanup/Undo; summaries use the
+document-wide summary-kind fallback while translations use exact changed block IDs.
+Keep preserves other kinds; legacy saves preserve current retained artifacts and
+cannot resurrect cleared translations/summaries. Per-block content epochs are not
+rewound by Undo. File/SQL/real-App acceptance is included in 408 passing regressions
+and the TRUI private report linked from the shared design; no profile mutation.
+
+### Same-Text Gate
+
+After identity/ownership/authorization and expected revision/source checks, resolve
+current effective body inside the repository mutation lock/transaction and compare
+the submitted text in the same representation. The client may avoid redundant work
+but is not the authority. Use current overlay/cleanup-applied content, not original
+OCR or a previously loaded editor snapshot; reject stale requests before comparing.
+Do not trim/collapse punctuation/whitespace to invent equality. Byte-identical text
+must return a truthful no-change result without advancing reading revision, manual
+flag, Undo, change timestamps or interaction epochs and without artifact cleanup.
+Keep existing operation replay guarantees; an optional receipt must be content-neutral.
+Expose enough no-change information for targeted UI settlement without layout reload.
+
+Apply the comparison to main-reader/source-review block Edit and body-applying repair
+paths. Draft Save is not a body mutation. A repeated cleanup Restore or region Apply
+that yields the same effective body must not trigger body-dependent cleanup; draft/
+history acknowledgements can retain their separate existing semantics. Do not loosen
+manual-edit/source-review protections or permit deleted-block updates via equality.
+
+### Selective Atomic Cleanup
+
+**[Code-Confirmed clarification, 2026-10-26]** `reading_refresh.changed_blocks`
+compares effective projected content before/after the mutation. For every changed
+or deleted block, `reading_content_artifacts.clear_source_dependents` removes its
+entire `metadata.translations[block_id]` entry, including all target languages and
+replay receipts, in the persisted mutation. This is not merely stale marking or UI
+hiding. Unchanged blocks retain their translations; identical-text submission does
+not trigger this cleanup under either Keep or Clear.
+
+On actual change, always remove changed-block translations and affected summaries,
+even when Keep other metadata is selected. On block deletion remove all that block's
+interactions including Note, and affected ancestor summaries. Shared summary cleanup
+must cover public_summary, ancestor_summary_artifacts and derived TaskArtifacts.summary
+resources, without discarding TaskArtifacts.quiz or unrelated fields under Keep.
+Cover descendants that consumed invalidated ancestor summaries. Use precise verified
+dependencies where available; otherwise clear summary-kind resources document-wide,
+never the entire document's artifacts merely to clear summary fields. The fixed
+document profile and its summary remain untouched under the existing profile policy.
+
+Keep existing user-confirmed clearing scope for other kinds. Retention is not freshness
+certification: do not stamp retained outputs with new source provenance. Clear modes
+and source repair must share one policy helper rather than inventing per-UI variants.
+Any changed text produced by OCR cleanup/Restore or other body mutation obeys the same
+rule; unchanged review Keep/Ignore and draft saves do not invalidate translations.
+
+Commit body, revision/flags, cleanup and necessary audit/epochs together via existing
+repository boundaries. No model calls in the transaction, no read-time cleanup/write.
+Legacy saves and delayed generators must not resurrect purged records; test deletion
+followed by Undo and edit followed by restoring old text. Keep different-language
+translation records on unaffected blocks and preserve unrelated metadata.
+Return actual body-change and affected interaction scope to UI; frontend does not
+infer invalidation from HTTP success or a global refresh flag.
+
+In particular, `translation_block_ids` may be nonempty while
+`generated_invalidated=false` under Keep. The UI closes the affected translation
+surface and cancels its request using this explicit scope. A late generation also
+fails backend `translation_records.commit_translation` binding/revision checks;
+frontend cancellation alone is not the persistence safeguard. Undo or restoring
+earlier text does not restore purged translations, and no automatic retranslation
+runs on read. The user must explicitly request translation for the current body.
+
+Evidence: `reading_content.py` (same-text gate and atomic policy application),
+`reading_content_artifacts.py`, `reading_refresh.py`,
+`../section_tasks/translation_records.py`, and
+`../scripts/test_translation_persistence.py` (same-text, Keep/Clear/delete,
+unaffected-block retention and generation after change). This clarification records
+the existing implementation; the documentation update does not change runtime behavior.
+
+## Block-Level Source Review Correction (2026-10-26)
+
+Maintainer correction supersedes the region-wide editing boundary below. Source
+regions group related blocks; writes select exactly one verified current block.
+Do not reject a valid selected block because a sibling is protected, the full region
+is partially covered, or the concatenated region exceeds the human-edit limit.
+
+`source_review_block_repair` owns fresh region/block relation validation and
+per-block eligibility. Reading-content commands `review_block_edit`,
+`review_block_delete`, `review_block_keep` require region_id + block_id, source token,
+revision and mutation ID. Edit requires nonblank text <=10,000 Unicode code points
+and explicit discard_interactions. Delete/Keep forbid text and interaction choice.
+The repository revalidates everything under its existing lock/transaction.
+
+Reuse the existing block overlay and artifact/epoch/receipt transaction. Backend-only
+overlay origin `source_review` distinguishes these edits from main-reader edits;
+the client cannot supply it. Durable main-reader flags and delete/Undo audit still
+prohibit review Edit/Delete. Review edits remain repeatable and do not set that flag.
+Legacy source-span repair and cleanup Restore must not overwrite block overrides.
+Canonical hierarchy and source evidence remain unchanged; no schema migration.
+
+Keep it stores a durable `review_kept_blocks` decision outside Undo. It does not
+delete body text, source evidence, Notes or generated artifacts, and cannot be used
+to bypass an edit restriction. Exclude the block from all review groups; when every
+verified block in a region is confirmed, that region leaves pending review. Mapping
+and canonical evidence remain retained. The decision is scoped to current canonical
+block identity and does not disable ordinary main-reader Edit. Do not conflate Keep,
+Delete body text and Ignore region.
+
+Read DTOs carry per-block `review_repair` capabilities/reason. Mutation responses
+carry the selected block and existing targeted refresh/tombstone binding; Keep has
+no affected body blocks or generated invalidation. Source review reconciles kept
+membership without rebuilding layout. Replays include current capabilities.
+
+Tasks: backend SRBLOCK-01; UI/incident acceptance SRBLOCK-02 in the UI checklist.
+Historical SRREPAIR receipts do not count as this corrected acceptance.
+
+Validation: 400 backend tests pass without skips, including 15 new single-block
+file/API/SQL cases and post-write rollback checks. Four private book backups and
+the saved Madame Bovary snapshot remain unchanged. Actual App/API/SQL acceptance
+on Page 3 is owned by UI SRBLOCK-02; private final report is
+data/test-books/srrepair07/20261026T044959Z-7b1702d7. Current API was rebuilt through
+the existing Compose/env startup path, without restarting PostgreSQL or the UI.
+
+Governance receipt: inspected AGENTS, proposal, HLD, module index, progress, both
+standards, UI/document_structure design and checklists, and api_schemas design and
+checklist. Modified those two owned design/checklist pairs and api_schemas design
+to replace region-wide UI authority with single-block commands and Keep semantics;
+historical implementation evidence is retained and labelled superseded. Backend
+progress synchronization is separate and excludes UI completion. Checklists carry
+Timestamp: 2026-10-26; source, API, transaction/browser tests and live read-only
+inspection support the claims. No source/model/parser authority or hidden read
+mutation is introduced. Validation itself changes no files; unrelated edits remain.
+
+## Guarded Source Region Repair (2026-10-26)
+
+Historical region-wide implementation. Its public commands remain for compatibility;
+the active Source review UI uses the corrected block-only commands above.
+
+Maintainer-approved successor to the read-only SRMAP workflow. Execution order and
+owner checkboxes are in [SRREPAIR](module-checklist.md#guarded-source-region-repair-2026-10-26).
+This is a new seven-task track, not a reopening or re-count of completed SRMAP/RCR
+acceptance. SRREPAIR-02..06 now implement the guarded writes, typed API and UI;
+the mapping-only receipt below remains historical evidence for SRREPAIR-01.
+
+### Ownership And Coordinates
+
+Reuse the source-review resolver for exact canonical region/block intersections.
+Complete region coverage never means ownership of whole associated blocks. Return
+hierarchy IDs, canonical absolute half-open spans and block-relative **canonical**
+offsets; offsets count Python Unicode code points, not UTF-16 or normalized display
+characters. OCR whitespace normalization must not turn source offsets into DOM offsets.
+Validate extraction identity/hash, hierarchy and block source evidence. Ambiguous,
+partial, overlapping or unmaterialized block coverage is not writable. Verified
+whitespace separators between blocks may be included without inventing a block.
+
+The domain owns eligibility and repair planning; repositories own the transaction;
+routes expose only needed DTOs/actions; UI consumes authoritative state. Source
+evidence stays immutable and reads never backfill, prepare or regenerate profiles.
+No manually created blocks, loader-assigned block IDs or client-side text matching.
+
+### Editing, Application And Protection
+
+- Keep original OCR, saved repair draft and last applied replacement distinct.
+  Saving a draft does not change body text; explicit Apply changes the exact region
+  span. Reapplication replaces the same region's prior replacement, never appends.
+- Region repair never sets or clears durable body `block_edit_flags`. Any affected
+  block manually edited in the main reader prohibits region Apply/Delete, including
+  after Undo. Manual deletion also prohibits both operations and cannot recreate a
+  block; retain audit-based protection after a deletion is undone.
+- Delete means remove the region's mapped body text, not its evidence/history or
+  entire related blocks. Ignore remains a separate explicit review decision without
+  body deletion. Keep repair evidence for accidental deletion; no automatic Ignore.
+- A cross-block operation validates every affected block and commits all or none.
+  A whole block removed from reading also loses its interactions, including Note.
+  Edit asks whether to clear interactions; retained generated data must obey existing
+  stale/invalidation rules. Surviving-block Notes follow the explicit choice.
+- Store region-owned application proof separately from cleanup-history ownership.
+  Share low-level source/revision/manual-protection/overlap helpers where identical,
+  not a second implementation of cleanup policy or an untrusted caller-origin bypass.
+  Only an exact proven own prior replacement can be superseded. Foreign region,
+  cleanup-history and manual overlays conflict; no silent overwrite.
+- Use the existing repository mutation boundary: source token, reading revision,
+  idempotent command identity, current eligibility, overlays, audit, interaction
+  changes and receipt commit together. Check again under lock, not only in preflight.
+  Unknown outcomes require same-command reconciliation; abort is not rollback.
+- Cross-block replacement appears once at its canonical start using the existing
+  source-overlay projection. Do not distribute replacement prose heuristically or
+  create new IDs. Empty-block visibility and artifact removal require explicit tests.
+
+### Implemented Repair Contract
+
+`source_region_repair` owns fresh intersection resolution, eligibility, draft and
+owned-overlay staging. `reading_repair_guards` shares manual protection, overlap
+and exact span comparison with cleanup history; neither caller gains a bypass flag.
+`ReadingContentService.mutate` owns command orchestration and the existing repository
+port owns the lock/transaction. No OCR/LLM, new quota, migration or source rewrite.
+
+The existing reading-content POST accepts three explicit region-only commands:
+`region_edit` saves a nonblank draft; `region_apply` applies explicit text or the
+saved draft with mandatory boolean `discard_interactions`; `region_delete` removes
+the exact source range without text or interaction-choice fields. All require region
+identity, source token, expected reading revision and mutation ID. Block/cleanup IDs
+are forbidden. Explicit edited text is limited to 10,000 Unicode code points; this
+is an existing human-edit limit, not a new LLM cleanup quota.
+
+Reading-state JSONB stores `region_drafts` separately from `region_applications`.
+Applications bind canonical quote/hash, exact block intersections, replacement and
+UTC time; source overlays carry `source_region_id`. Reapplication replaces only the
+single exactly proven owned overlay, including an empty deletion or restoration of
+the original quote. Draft saves preserve body, artifacts and Undo. Applications join
+source overlays in Undo; drafts, manual flags and interaction epochs are not undone.
+Cleanup staging also includes region applications in its Undo snapshot.
+
+Under the same transaction, all affected targets are checked before projection and
+artifact changes. Removed blocks and explicit Clear choices purge hierarchy-owned
+interactions and advance each block's epoch, preventing late Note writes. PostgreSQL
+also purges physical artifact rows for the full cleared-ID set, not just one block.
+Metadata and structured snapshot persist together; projection or SQL failure rolls
+back all changes. Replay returns the durable receipt; stale replay cannot patch body.
+
+Region `repair` exposes only text/edit time, applied text/time, can_edit/can_apply/
+can_delete and blocked_reason. Internal offsets/proof remain server-side. Mutation
+`refresh` reuses the bounded 20-block DTO/tombstone contract and adds plural
+`cleared_block_ids`; all current region statuses are returned by the existing review
+snapshot. UI merges targeted body changes and region rows without rebuilding layout.
+Older servers without repair capabilities remain read-only. Navigation may remain
+available even when mutation is denied; Delete does not imply Ignore.
+
+SRREPAIR-07 uses hash-verified private backups under `data/test-books`, including
+`暗水幽灵_sample` and the available Madame Bovary OCR snapshot. Exercise mutations
+only in disposable storage, with real API/SQL/browser acceptance and supplemental
+fixtures for partial/cross-block/foreign-overlap cases absent from natural evidence.
+No production books are deleted or reparsed. Missing real coverage remains explicit.
+
+### SRREPAIR Final Acceptance And Governance Receipt
+
+SRREPAIR-01..07 complete, counted once in their owner checklists (backend 5/5,
+UI 2/2). The final combined suite passes 425 tests without skips, including 26
+new mutation tests with real disposable PostgreSQL. Supplemental repairs use four
+verified backup books and labelled accepted-page/subquote fixtures; no fabricated
+claim that the loader naturally flagged those fixtures. The noise backup SHA-256
+matches `暗水幽灵_sample.pdf` (3f047af95bc21a8dd370422769a2befb06c8c76f29985b5b55bec07863e42312).
+All 16 backup-file hashes remain unchanged. Tests cover foreign overlap, cross-block
+all-or-none/physical Note purge, rollback after SQL work, replay/concurrency, Undo,
+permanent manual edit/delete protections and source immutability.
+
+`Deep_Reader_UI/scripts/accept-source-region-repair.py` imports saved rows/profile
+from private backups into unique SQL schemas and exposes actual FastAPI routes to
+the actual App. It cannot proxy arbitrary routes or run preparation/model work.
+Desktop 1280 and mobile 390 workflows pass on natural eligible regions of both
+暗水幽灵 (101 regions, 38 eligible single-block regions) and Madame Bovary OCR
+(38/11). Both repeated replacements occur exactly once; draft Save leaves body
+untouched; Delete preserves recovery evidence; response-loss replay does not advance
+revision twice; body Edit disables region writes. Every commit checks canonical text,
+unchanged relational source rows, manual flags and matching persisted reading-state
+copies. All test schemas are removed and all backup hashes are unchanged.
+
+Private reports/screenshots/request counts:
+- `data/test-books/srrepair07/20261026T040032Z-963f487a/` (dark-water final).
+- `data/test-books/srrepair07/20261026T040631Z-ee8127e8/` (Madame Bovary final).
+
+Browser assertions prove stable connected region rows, scroll/focus retention,
+zero region-triggered task-layout/section reads, bounded related/region lists,
+targeted hidden-to-visible updates and lazy history revalidation. Editor, history,
+reading-refresh, source-review state/navigation suites also pass; desktop/mobile
+screenshots are inspected and npm run check passes with the pre-existing bundle-size
+warning. Earlier failures caught stale-read display and test selectors outside a
+nested modal's accessibility scope; both were corrected. A long acceptance run was
+interrupted by development hot reload, then passed against the fixed built preview.
+No production book changes, OCR/LLM calls, Docker restart or deployment are claimed.
+
+Inspected markdown: AGENTS.md, proposal.md, high-level-design.md, docs/modules/index.md,
+progress.md, both development standards, document_structure/UI/db design/checklists,
+api_schemas design/checklist and repository skill instructions. Modified markdown:
+this design and UI design replace planned-only behavior with implemented ownership,
+API/lifecycle details and acceptance; their checklists record only evidence-backed
+task completion; db design records plural atomic artifact purge; api_schemas design
+records minimal DTO/command rules; progress.md synchronizes backend-only 5/5 and the
+direct recount (84 checked/18 historical unchecked, fenced template excluded).
+Every changed checklist retains its final Timestamp: 2026-10-26 line. Global design,
+registry, standards and unrelated historical tasks are unchanged.
+
+Implementation validation: scope, architecture, boundaries, tests and memory pass;
+no hidden read mutation, parser authority change, new schema or UI-owned backend truth.
+git diff --check and task timestamp/count checks pass. Validation itself changes no
+files; governance updates modify only the seven markdown files listed above. Source
+changes belong to implementation (region domain/shared guards, reading-content and
+refresh integration, SQL purge/schema, typed UI service/review editor/hooks/refresh
+and App invalidation), with three new UI acceptance scripts and backend mutation
+tests. Unrelated dirty-worktree changes are preserved.
+
+### SRREPAIR-01 Delivery And Governance Receipt
+
+Implemented internal `source_region_repair.region_repair_targets(document)` and
+`source_review_blocks.region_source_intersections(document)`. Navigation and repair
+share `_verified_block_spans`/`_build_mapping`; the existing persisted v2 mapping and
+HTTP response are unchanged. Repairs resolve fresh source intersections rather than
+treating cached block IDs as write proof. The contract includes source token,
+structure/reading revision, canonical hash, offset basis, region spans, exact hierarchy
+targets and can_apply/can_delete/blocked_reason. It is not a mutation authorization.
+
+Reject projected documents, unverified/partial/ambiguous targets, manual edits and
+deletions (including retained Undo audit), inactive review and changed/overlapping
+reading overlays. Preserve navigation evidence when mutation is denied. Exact
+record-owned repeat application was pending at this mapping-only checkpoint;
+the implemented contract above supersedes that limitation.
+
+Validation: 22 new tests pass; the combined mapping/repository/API/history/refresh
+suite passes 399 tests without skips with disposable PostgreSQL enabled. Natural
+evidence read checks cover four private backup books/39 regions, with all 16 backup
+hashes unchanged. A separate saved incident snapshot contains 101 regions/60 exact
+mapped targets; its manifest/source/rows/profile hashes remain unchanged. One test
+initially assumed a raw_text mirror and was corrected to use the existing canonical
+text contract, with a dedicated no-raw-mirror regression. Missing SQL configuration
+in the initial broad run was resolved before the successful complete rerun.
+These are read-contract and existing-write regression checks, not new region-write
+or browser acceptance. No UI implementation, new API/schema, OCR/LLM execution,
+production book mutation or Docker deployment is claimed.
+
+Inspected memory: root AGENTS.md; proposal.md; high-level-design.md; docs/modules/index.md;
+progress.md; both document_structure and Deep_Reader_UI design/checklist files;
+docs/standards/frontend-development.md and backend-development.md. Governance edits:
+both module designs specify the accepted successor and mark read-only constraints
+historical; both owner checklists allocate seven nonduplicated tasks; backend progress
+records backend tasks only. Old completed receipts/timestamps remain unchanged.
+Evidence: code and scripts/test_source_region_repair.py; final regression output at
+`/tmp/deep-reader-srrepair-01-tests.log`. Checklist timestamp/ownership checks and
+`git diff --check` pass. Existing unrelated worktree changes are preserved.
+
+## Repeatable Cleanup Repair (2026-10-25)
+
+Maintainer-approved correction, tracked by RCR-01/03/04/05. Incident read-only evidence:
+document 68 / task unit 19652 / block 19652:content:2 has manually_edited=false.
+Revision 3 saved a cleanup draft, revision 4 restored it, revision 5 saved a newer
+draft. Body still has the earlier replacement; already_restored blocks reapplication.
+This is not a frontend cache-only issue or an accidentally set edit flag.
+
+### Record-Owned Application
+
+Draft text and applied text have separate lifecycles. cleanup_edit saves a draft;
+cleanup_restore explicitly applies it. First application removes that exact deletion;
+subsequent applications replace the same record's prior replacement, never append a
+second copy or overwrite the whole block. Unchanged repeat application is safe and
+uses existing mutation-ID replay rules. Original quote/source spans never change.
+
+Persist cleanup_record_applications keyed by record ID in existing reading-state
+JSONB, with canonical span, immutable quote and applied text. Tag owned source_edits
+with cleanup_record_id; an own replacement is exempt from overlap rejection only
+when ownership, span, quote and prior applied text all agree. Foreign overlaps,
+manual body edit/delete, source or mapping changes still reject. Original-quote
+restoration needs an application receipt even when no replacement overlay is needed.
+Draft saves must not erase application ownership. Undo snapshots include applications
+and overlays together, but saved drafts and permanent block_edit_flags remain outside
+Undo. File and PostgreSQL share the domain logic and existing atomic repository port.
+
+Only explicit body interactive Edit sets manually_edited. No history Save,
+Restore or reapply sets or clears it. Manual deletion is a separate protection.
+Legacy restored records without ownership are adopted only on an explicit write
+when the latest non-draft audit is that exact record's Restore and its Undo snapshot
+proves precisely which deletion was removed and replacement added. Reads can evaluate
+that proof without backfill; ambiguous legacy changes stay unavailable.
+
+### History Retention Unchanged
+
+The maintainer withdrew the proposed no-navigation/no-save/no-display rule before
+implementation: preserve recovery evidence for accidental deletion. RCR-02 is
+cancelled, excluded from progress, and introduces no pruning or filtering. Existing
+history remains available even when navigation is unavailable. Restore/navigation
+still require their respective exact server eligibility; cleanup-hidden blocks can
+be recovered, whereas stale/unmapped targets are never guessed. The earlier boundary
+question is resolved by withdrawal; no answer is needed.
+
+### Targeted Refresh Contract
+
+RCR-03 implements optional `refresh` on the existing reading-content mutation
+response. Legacy top-level blocks/review fields remain compatible. The first page
+contains at most 20 affected blocks; subsequent read-only pages use the same GET
+route with `refresh_mutation_id`, `expected_revision`, `source_token` and
+`block_offset`. Refresh queries cannot combine with review/history/block filters.
+The standalone refresh response contains no whole-document/layout/review payload.
+
+The server binds scope to the mutation audit, current source token and reading
+revision. It returns mutation/current revisions, document/structure identity,
+optional record ID, `scope_current`, `block_page` and affected block DTOs. Each
+block carries authoritative hierarchy IDs, canonical `block_order`, next visible
+unaffected `insert_before_block_id` (null means append), `manually_edited`,
+`unit_source_hash`, and either the shared reader `content_block` DTO or a
+`deleted=true` tombstone. These visibility tombstones also cover cleanup-hidden
+blocks; they do not imply permanent manual deletion. Cross-block records include
+all linked blocks; Undo compares projected text/visibility, including span overlays.
+No client-side text splicing or ID/offset inference is permitted.
+
+Generated invalidation is reported by `generated_invalidated`, matching the existing
+document-wide generated-artifact policy; `cleared_block_id` identifies explicit
+block interaction purging. Notes remain unless that block was explicitly purged.
+Lazy interaction availability/artifact references are not advertised in refreshed
+render DTOs. Their absence is unknown, not not_generated; RCR-04 must apply the
+invalidation flags and preserve unaffected state. `unit_source_hash` also updates
+the owner/hash of already cached sibling blocks without fetching their body text.
+
+Same-ID replay acknowledges a committed write. If a later revision/source change
+exists, it returns `scope_current=false` and no body patches, not stale content or
+a second write. Targeted GET rejects stale bindings with 409; legacy audit without
+the new source binding yields refresh unavailable rather than invented scope.
+Only successful explicit mutations record the binding. Reads never backfill it.
+
+The new GET loads one repository snapshot, indexes canonical hierarchy, then projects
+only units containing this page's blocks through the same helper as full reading
+projection. It never calls full review snapshot, profile, Prepare, layout or LLM.
+The hierarchy index is still document-wide; this is bounded response/unit projection,
+not an O(1) database block lookup. Existing mutation snapshot work remains compatible
+and is not claimed to be fully bounded by the refresh page size.
+
+RCR-04 frontend integration is implemented in its owning UI module: merge only
+affected reader DTOs, preserve order/focus and recalculate local pagination without
+full task-layout/section reload for cleanup Restore/Undo. RCR-05 now accepts the
+isolated real-incident workflow at desktop/mobile widths. Mutation
+success and refresh failure remain separate; retry reads, never repeat a committed
+write with a new mutation ID merely because UI refresh failed.
+
+Implementation status belongs to owner checklists. Prior CLEAN-RESTORE/CRUI results
+remain historical receipts, not acceptance of repeat application/local
+refresh. RCR-05 uses an isolated, hash-verified copy of the real incident state.
+
+RCR-05 acceptance receipt (2026-10-25): UI-owned accept-repeatable-cleanup.py and
+test-repeatable-cleanup-real.mjs preserve document 68 / block 19652:content:2 IDs,
+revision 5, legacy draft/application/Undo proof in disposable SQL. Actual API/App
+at 1280/390 prove three replacements, draft/body separation, unchanged manual flag,
+targeted reads without layout/section reload and retention of five non-navigable
+history records. Body Edit then makes Restore return 409 without any SQL change.
+Document/snapshot reading JSONB match; source/profile/backups and canonical rows
+remain unchanged; disposable schema removed. Private final evidence is under
+data/test-books/rcr05/20261025T150648Z-06b7c9e3. UI design holds full test/governance
+receipt and fixture limitations. This shared acceptance update changes no backend
+implementation or schema, introduces no deployment claim and completes RCR 4/4.
+
+### RCR-01 Delivery And Governance Receipt
+
+Implemented in cleanup_history, reading_content and the shared cleanup Undo snapshot.
+Application ownership is persisted alongside existing reading state; a successful
+legacy adoption also normalizes its Undo snapshot so Undo preserves the previous
+application's ownership and allows another explicit reapply. Reads do not mutate.
+Existing transport already consumes server can_restore; targeted refresh and improved
+applied/draft presentation remain RCR-03/04, not part of this delivery.
+
+Evidence: final regression `/tmp/rcr-regression.log` reports 281 tests passing with
+disposable PostgreSQL and backup-book shared-engine checks enabled; existing audit
+suite `/tmp/rcr-audit.log` reports 29 tests passing. test_cleanup_history adds repeated
+application, own/foreign overlap, original-quote restoration, legacy saved-after-restore,
+legacy Undo, cross-block reapplication, body-edit protection, concurrent reapply and
+post-SQL rollback checks. SQL verifies application and overlay ownership in document
+JSONB and structured snapshot with no manual block flag. Production document 68's
+snapshot was read in a read-only transaction; local projection of revision 5 makes
+record 7d588760645951da3c241c2a8f2d695e07b47d8d9a5ff432b2a55781e222d9b0
+restorable with no snapshot change. This is read-only compatibility evidence, not
+a production Restore or RCR-05 real-book end-to-end acceptance.
+
+Inspected markdown: AGENTS, proposal, high-level-design, module index/progress,
+both development standards, document_structure/UI/db/api_schemas/scripts module
+designs and checklists. Modified markdown: document_structure design/checklist to
+correct one-shot semantics, define the four-task queue and record RCR-01 evidence;
+UI design/checklist to replace full-layout refresh requirements with targeted refresh
+and separate pending acceptance; db design to document JSONB ownership and atomic
+Undo. The withdrawn no-navigation/no-retention proposal is explicitly cancelled,
+not implemented or counted complete. Validation: tests above and git diff --check
+pass; no frontend code/build/browser run, deployment, production mutation or progress.md
+edit in this task. Existing unrelated workspace changes are retained.
+
+### RCR-03 Delivery And Governance Receipt
+
+Implemented reading_refresh plus shared unit projection in reading_content, the
+existing main route variants and strict api_schemas models. Added
+scripts/test_reading_refresh.py for real HTTP serialization, file/disposable SQL
+storage, repeat apply, cross-block/hidden recovery, Undo, 25-block pagination, stale
+source and revision, legacy proof absence, schema contradictions and rollback.
+The source-change fixture uses a persisted source-binding epoch, since normal SQL
+save/mutation intentionally cannot change hierarchy titles. Tests assert that the
+binding really changed while reading revision stayed equal before testing rejection.
+
+Evidence: `/tmp/rcr03-regression.log` reports 354 tests OK with PostgreSQL and the
+backed-up cleanup corpus enabled; `/tmp/rcr03-audit.log` reports 29 tests OK.
+`/tmp/rcr03-endpoint.log` and `/tmp/rcr03-blocks.log` confirm both standalone
+task-unit-content/shared-block suites pass. These latter suites use script entry
+points, not unittest discovery. No live LLM/OCR, production mutation, Docker restart
+or frontend/browser acceptance was performed; RCR-04/05 remain unchecked.
+
+Inspected markdown: AGENTS, proposal, high-level-design, module index/progress,
+both development standards, document_structure/main/api_schemas/db/scripts/UI designs
+and checklists, and memory/validation skills. Modified markdown: document_structure
+design/checklist for implemented scope, evidence and RCR-03 completion; main and
+api_schemas designs for existing-route queries and typed DTO behavior; db design for
+atomic audit binding without DDL; UI design for the implemented integration contract
+and UI checklist shared progress only (owned UI tasks remain 0/2). No progress.md
+edit. The cancelled RCR-02 retention change remains unimplemented.
+
+Implementation-validation: scope, architecture, boundaries, documentation, tests
+and memory PASS against the evidence above; git diff --check passes. Validation
+itself modifies no files. Source additions are reading_refresh and its tests;
+source edits are reading_content, main and api_schemas; no removals. Unrelated
+pre-existing workspace changes are retained. This is source/test completion, not
+deployment or real-incident frontend acceptance.
+
+## Cleanup Record Recovery (2026-10-25)
+
+Maintainer policy supersedes numeric cleanup limits in historical CLEAN/SCLEAN
+receipts: no 4096-character, 10-percent, 128-item or 512-character quote cap, nor
+derived 64-character/schema allowance. Response-byte/model capacity and exact-source,
+manual-protection, overlap and nonempty-body guards remain. Prompt versions are
+canonical v3 / remaining v6; this does not assert improved model accuracy.
+
+CLEAN-RESTORE extends reading-content, not the LLM engine. A domain-owned helper
+resolves each immutable audit deletion into canonical block spans; IDs come from
+current authoritative hierarchy and are validated against canonical text identity.
+Opaque record identity derives from its cleanup operation/revision/item, never model
+output. Exact canonical char_start/end remain the insertion anchor; exposed char_from
+and char_to are block-relative Unicode code points before display normalization.
+Multiple overlapping block links are allowed; uncovered non-whitespace or ambiguous
+mapping disables restoration rather than guessing. Missing legacy evidence is unavailable.
+
+Explicit cleanup_edit stores restoration text separately from immutable quote;
+cleanup_restore removes only the selected active deletion and optionally adds a
+record-owned canonical-span replacement. RCR supersedes the original one-shot rule
+with reapplication of that record's own replacement. It never writes raw_text or creates new blocks.
+An original block hidden only by cleanup can reappear. A manually edited/deleted
+target, a later manual edit even if undone, stale source or foreign overlapping
+replacement cannot be automatically overwritten/reinserted.
+Restoring another cleanup record in the same block is not a whole-block edit.
+For a cross-block edited restoration, replacement appears at its canonical start,
+as in the existing source-edits projection; all original target links are retained.
+
+Both commands use source token, reading revision and mutation ID under the existing
+repository transaction. Record saves preserve Undo and generated data; Restore
+advances reading state, records audit, recomputes cleanup-resolved review regions,
+invalidates generated data but retains notes, and supports ordinary single-level Undo.
+Original deletion evidence and saved restoration text survive Undo. Record and
+navigation capabilities are read-only projections; no read-side repair/backfill.
+Current source/block checks are repeated inside the write transaction.
+
+The backend owns `manually_edited`: explicit body Edit persists
+`reading_content.block_edit_flags[block_id]=true` in the existing document JSONB
+and structured snapshot in the same database transaction as text/artifacts. This
+flag survives Undo. Legacy edit audit/current overlays provide a read-only fallback;
+no GET backfill, new table/column or frontend-derived edit flag. History draft edits
+and Restore do not mark a whole block edited or prevent restoring disjoint records.
+
+Final block links are pinned during explicit materialization/cleanup writes, including
+the PostgreSQL cleanup-only path using the committed hierarchy snapshot. Reads never
+backfill links. Legacy records can derive exact links only when canonical identity
+and complete coverage are verifiable; changed pinned links disable restoration.
+
+Delivery: `cleanup_history.py` owns this reusable domain behavior; repositories retain
+locking, CAS/idempotency and persistence. `test_cleanup_history.py` exercises file and
+PostgreSQL paths, API flags, hidden/cross-block recovery, repeated/concurrent writes,
+immutable evidence, stored flags after Undo and injected failure after SQL updates.
+The combined regression passes 266 tests and the existing cleanup audit suite passes
+29 tests. SQL checks confirm documents JSONB and structured snapshot agree; draft saves
+retain generated artifacts and Note, while Restore removes generated artifacts only.
+Read-only backup-book shared-engine checks are included, not live-book Restore or
+model-quality acceptance. UI CRUI-01..05 are separately counted in the UI checklist.
+
+## Source Review Mapping And Read-Only Workflow (2026-10-25)
+
+Historical delivered SRMAP scope. The guarded SRREPAIR design above supersedes the
+permanent read-only/single-editor restriction; until its UI tasks land, the running
+Source regions UI remains read-only. Mapping, evidence and explicit Ignore rules
+below remain applicable; old acceptance does not establish region-write safety.
+
+OCR-KEEP supersedes SRMAP's blanket hiding of proven never-in-body evidence:
+quality-rejected text and nonblank recognition gaps remain visible, including
+legacy records. New extraction retains nonempty OCR in canonical text with exact
+source spans. The shared resolver still owns block mapping; no guessed links,
+read-side recovery or second editor. Existing books need explicit re-extraction,
+not metadata backfill, to recover discarded body text. See loader OCR-KEEP design.
+
+**[Maintainer-Provided] + [Code-Confirmed, 2026-10-25]** This is the current contract
+for manual OCR source review. Implementation order and acceptance are tracked in
+[SRMAP-01..08](module-checklist.md#source-review-mapping-backlog-2026-10-25).
+Earlier CLEAN/SCLEAN acceptance is historical evidence, not completion of this track.
+
+### Observed Baseline And Superseded Behavior
+
+The pre-SRMAP implementation calculated only transient intersections, treated all
+pending regions as review-needed, automatically Ignored last-block deletions and
+offered an inline Source review editor. SRMAP replaces those behaviors with durable
+source-bound relations, shared conservative eligibility, manual-change audit and
+read-only navigation. Historical inline-editor acceptance is not current evidence.
+
+Incident evidence: the read-only investigation of `暗水幽灵` found 29 unresolved
+regions with no block mapping and zero-length canonical page ranges; 24 had empty
+candidates, and the other five candidates were absent from canonical text. This
+illustrates excluded OCR evidence, not permission to hide every unmapped region.
+Existing successful mapping fixtures do not establish real-book mapping coverage.
+
+Requirements superseded by SRMAP at that time: editing/deleting inside Source review; automatically
+Ignoring a region when its last associated block is manually deleted; showing every
+unmapped/textless region forever; treating a region as ownership of entire blocks;
+and adding character-range highlighting/live edit-position tracking. Manual block
+creation/insertion remains out of scope. Verified automatic smart-cleanup resolution
+is separate: existing exact-coverage, successful-commit and Undo rules still apply,
+and must never be labelled a manual Ignore or manual edit.
+
+### Mapping Authority And Persistence
+
+- `doc_loaders` owns immutable extraction identity, source page/region evidence and
+  whether OCR candidates actually entered canonical text. It never assigns block
+  IDs. Reuse accepted evidence; do not rerun extraction to populate a read response.
+- `document_structure` owns source-range resolution, mapping semantics and a single
+  reusable projection. A region may intersect several blocks and a block may
+  intersect several regions. Partial overlap is valid. `complete` means the region's
+  text is covered, not that every associated block belongs entirely to that region.
+- Bind internal records to document scope, extraction identity/canonical hash,
+  structure version, stable region ID, trusted half-open source spans, mapping
+  policy version and backend-assigned hierarchy/block IDs. Persist verified links
+  at explicit structure/task-unit materialization writes after final IDs exist.
+  Retain link evidence for manually deleted blocks within the current structure
+  epoch; no cross-reparse block aliases or new hierarchy level.
+- Before units/blocks exist, preserve canonical evidence with a pending mapping
+  state. An empty block list alone never proves exclusion. Reads may calculate a
+  conservative legacy projection, but cannot backfill, prepare or persist links.
+  Legacy backfill must be an explicit, revision-checked write with diagnostics;
+  ambiguous/missing evidence stays unresolved, never fuzzy-matched or guessed.
+- Manual edits retain source correspondence despite changed display text; manual
+  deletions retain tombstones/links. Hard structural replacement invalidates old
+  block links and builds new links from verified source evidence in its write flow;
+  no-op/title-only preserves still-valid links. Undo restores current visibility,
+  not obsolete hierarchy IDs or purged interaction data.
+- File and PostgreSQL repositories implement the same domain contract. Persist
+  mapping, overlays, revisions, audit and required artifact changes atomically;
+  validate source/version and expected reading revision under the existing lock.
+  No LLM/OCR/network work in a DB transaction. Physical storage representation stays
+  behind repositories; no new table is mandated merely to expose navigation.
+
+### Visibility, Resolution And Generation Are Separate
+
+The implemented domain distinctions are:
+
+| Evidence/state | Routine review | Navigation / generation policy |
+| --- | --- | --- |
+| Verified region intersects surviving body blocks | Visible while unresolved | Return exact surviving targets; retain applicable guards |
+| Quality-excluded legacy candidate or nonblank recognition gap | Visible while unresolved | No invented target; retain source preview and conservative guards; explicit re-extraction for recovery |
+| Source-bound confirmed blank render, empty candidate and verified empty page | Hidden | No target; omission alone never qualifies |
+| Missing, ambiguous, stale or not-yet-materialized mapping | Visible with safe reason | Do not guess a target or weaken existing guards |
+| Originally linked blocks later manually deleted, including all blocks | Visible until user Ignore | Show deletion/time; navigate only to surviving linked blocks |
+| Explicitly Ignored or verified fully resolved by committed cleanup | Not in active queue | Retain evidence and truthful audit; apply existing Undo policy |
+
+Hidden is not resolved, ignored or user-confirmed. Never fabricate audit entries or
+delete original image/evidence on a read. Distinguish mapping coverage from the
+region's body-inclusion history and from review disposition. For partial mappings,
+keep the row and expose only verified targets. Shared blocks update every affected
+region's manual-change projection without declaring the whole region corrected.
+Use the same backend eligibility policy for review lists/counts, Library/reader
+warnings and interaction guards; UI hiding alone is insufficient. Excluded raw
+candidates must not leak into analysis, quiz, thinking, summary or ancestor context.
+Existing safeguards for unresolved potentially included text remain conservative;
+this track does not introduce a broader target-specific generation policy.
+Explicit Ignore acknowledges the review item; it does not delete linked body text.
+Removing that text requires the existing Reading content block action. Confirmation
+copy must not promise exclusion from reading or generation merely because of Ignore.
+
+### Manual Changes, Audit And Minimal Read Contract
+
+Reading content's existing block actions are the only editor. Editing asks whether
+to clear that block's interactive data, including Note; Keep preserves saved data
+but cannot present old generated results as current for changed text. Delete clears
+the deleted block's interactive data, including Note, with confirmation. Other
+blocks' and hierarchy-level notes are not collateral deletions. Reuse existing
+hierarchy-aware generated-output invalidation and late-writer guards. Undo can
+restore text, not purged interactions. No product limit on manual edit/delete count;
+retain idempotency and bounded reads without silently dropping replay protection.
+
+Manual edit/delete/Undo audit carries server UTC time, affected block IDs, mutation
+identity and reading revision. Derive related-region manual modification/deletion
+status from verified links and audit, including all linked regions when a block is
+shared. Preserve latest manual-change time across reload/restart; automated cleanup,
+reparse and manual Ignore are not body edits. Undo shows the restored current state
+with its manual-change history, not a false claim that the region was never touched.
+Manual changes, even deletion of every related block, never auto-Ignore a region.
+
+Extend the existing read service narrowly, not a second editor or arbitrary mapping
+API. The projection contains region ID, mapping/visibility reason, ordered surviving
+chapter/section/unit/block targets, deleted-linked-block indication and latest manual
+change state/time, bound to source/structure/reading revision. Source coordinates and
+full internal provenance remain backend details. Page/limit block content separately;
+do not place full text or region images into task-layout. SRMAP-04's strict response
+schemas and existing region/block query parameters implement this contract.
+
+Source review reselect/reopen/explicit refresh reads current data. Successful body
+mutations trigger the existing read-only layout/content refresh; never prepare or
+reparse. Reader page is derived from current UI pagination and verified block IDs,
+not PDF page_index. If targets disappear, refresh/reconcile instead of navigating to
+another block or sending an empty ID. Browser design is owned by the
+[UI module](../../Deep_Reader_UI/module-detailed-design.md#read-only-source-review-navigation-2026-10-25).
+
+### Implementation And Recovery
+
+`source_review_blocks.py` owns the pure resolver and `source-review-blocks-v2`
+binding. `source_review_mapping` provenance binds canonical hash/length, extraction
+and review/page evidence, structure epoch and hierarchy identity/content/titles.
+Title changes matter because heading suppression can alter derived blocks. Custom
+block source hashes, quote offsets and display-normalization evidence must agree
+with the actual canonical slice. Duplicate quotes, corrupt bounds and stale proof
+remain unknown, not guessed. Loader rejection records may explicitly say
+`body_inclusion=excluded`; the loader still owns no block IDs or review decisions.
+
+Initial file save, artifact writes and final-ID PostgreSQL hierarchy writes stage
+the same mapping helper. Title-only SQL commits refresh mapping on the committed
+hierarchy in their existing transaction; snapshots and document metadata agree.
+Unchanged/replayed commits remain write-free. A failed mapping/snapshot write rolls
+back the whole write. Canonical hierarchy and original block evidence remain intact
+under reading overlays, so edits/deletions/Undo preserve source correspondence.
+
+Legacy exclusion requires affirmative blank-render evidence and a proof written
+from the actual canonical document. OCR-KEEP invalidates v1 exclusion classifications;
+quality-excluded candidates and empty recognition gaps stay visible after backfill.
+Without it, Library and reader both remain conservative; an empty block list or
+old zero-length page record alone never silently removes review guards. The internal
+`ReadingContentService.rebuild_review_mapping(doc_name, expected_revision,
+source_token)` is an explicit CAS-checked metadata-only recovery command, not an
+HTTP migration or a GET/task-layout side effect. It preserves reading revision,
+overlays, notes and generated artifacts. No production backfill was run in this task.
+
+Existing GET/POST `/documents/{doc_name}/reading-content` responses use strict
+`ReadingContentResponse` transport schemas. Region fields add `body_status`,
+`mapping_reason`, `related_deleted_count` and optional `manual_change={status,at}`;
+the snapshot adds optional `structure_version`. `block_ids` retains historical
+links, while region-scoped `blocks` contains ordered surviving targets with
+chapter/section/unit/block IDs and current text. `mapping_status` remains
+complete/partial/unavailable. Both general and region text queries return at most
+20 blocks with `block_page`; a block-ID query returns its target only. Internal
+canonical spans, geometry and mapping provenance are not exposed. Preview remains
+the existing image endpoint. No second mutation API or task-layout text payload.
+
+Manual events record UTC time, affected block IDs and mutation ID. Region badges
+derive modified/deleted/restored state from those events and current overlays;
+cleanup and Ignore alone do not create a manual badge. The existing block editor
+retains Keep/Clear Note policy, targeted deletion, replay/conflict protection and
+text-only Undo. Manual deletion never calls automatic region resolution.
+
+### SRMAP Acceptance
+
+`test_source_review_mapping`, `test_source_review_integrity`,
+`test_source_review_mapping_repository`, `test_source_review_blocks` and
+`test_source_review_api` cover exact many-to-many/partial mapping, exclusion proof,
+stale source/title/custom blocks, file/SQL parity, CAS/replay/rollback, atomic notes,
+bounded HTTP reads and guard consistency. The volume regression performs 1002
+actual manual edits without a quota or automatic Ignore. Existing cleanup,
+generation-target and reading regressions remain part of final validation.
+
+`scripts/accept_source_review_mapping.py --backend both` accepts four hash-verified
+backup corpora in temporary file storage and disposable PostgreSQL: eight storage
+runs, with all 16 backup files unchanged. Report:
+`data/test-books/srmap07/20261025T053519848970Z.json`. The full 176196-character
+dark-water backup has 39 original regions, unknown before an explicit proof write
+and excluded afterwards; it is not the earlier 29-region incident snapshot.
+
+There is no naturally linked pending region in these backups. Positive tests
+therefore construct review evidence from accepted real-page text and a strict
+subquote, without injected canonical spans; the report labels this distinction.
+Real-source shared/partial mappings, edit/delete/Undo, notes and explicit Ignore
+are verified. UI acceptance uses the same real-page fixture through actual
+App/API/disposable SQL at 1280/390; Original images are UI fixtures, not a new OCR
+preview acceptance. See the UI receipt for screenshots and lifecycle coverage.
+No live LLM/OCR, production document mutation, deployment or universal mapping
+accuracy claim is part of SRMAP acceptance.
+
+Final backend validation: 252 source-review/reading/notes/OCR/file/PostgreSQL tests
+pass without skips. A separate 120-case cleanup/API/SQL suite also passes without
+skips after enabling the immutable-book opt-in. Counts are separate suite runs,
+not a claim of 372 unique tests. Source/architecture/whitespace checks pass.
+
+### SRMAP Governance And Validation Receipt
+
+Task type: implementation plus authorized maintainer synchronization. Read AGENTS.md,
+proposal.md, high-level-design.md, docs/modules/index.md, progress.md, both root
+docs/standards development files, and design/checklists for document_structure,
+Deep_Reader_UI, db, scripts, doc_loaders, main.py and api_schemas.py. Earlier app/
+preparation/section_tasks memory remains the supporting boundary context.
+
+Markdown changed in this implementation pass:
+
+- document_structure/module-detailed-design.md: replace planned/baseline statements
+  with mapping/visibility/API/recovery implementation, acceptance and honest limits.
+- document_structure/module-checklist.md: close five backend owner items and the
+  shared 8/8 index using final evidence; timestamp changed items 2026-10-25.
+- Deep_Reader_UI/module-detailed-design.md: record read-only navigation, revision/
+  lifecycle guards, manual history and actual browser/real-source acceptance.
+- Deep_Reader_UI/module-checklist.md: close three UI owner items with current evidence
+  and timestamps; remove pending-SRMAP wording from the historical pointer.
+- api_schemas.module-detailed-design.md: replace obsolete untyped-response claim
+  with implemented filtered/strict additive DTO and bounded page contracts.
+- main.module-detailed-design.md: document existing routes' bounded reads and Ignore
+  semantics, without adding another editor or mapping-write HTTP endpoint.
+- doc_loaders/module-detailed-design.md: record rejected-candidate source evidence
+  and supersede old manual quota/Note/visibility statements with owner contract.
+- progress.md: synchronize backend five-task completion and recount only the target
+  module (74 checked/18 historical unchecked); do not aggregate UI work.
+
+Evidence: owner checklists, cited implementation/test paths, private srmap07/srmap08
+reports, final API/SQL/browser logs and inspected 1280/390 screenshots. Source files
+were modified by implementation; the checklist/progress synchronization and final
+implementation-validation phases made no source changes. Existing unrelated dirty
+work was retained; no commit, production data operation or deployment was performed.
+
+implementation-validation: scope, architecture, ownership, documentation, tests and
+memory PASS within SRMAP scope. No root-sections/structure_nodes authority, hidden
+task-layout writes, profile regeneration or loader format branching was introduced.
+Warnings/limits: pre-existing UI bundle-size warning, no naturally flagged positive
+review region in current backups, mocked preview images, no fresh OCR/LLM acceptance.
+Historical unchecked tasks are not closed or newly validated by this receipt.
+
+## Offline Counting Integration (2026-10-24)
+
+Supporting llm-owned [WAIT-02](../llm/module-checklist.md#offline-preflight-follow-up-2026-10-24),
+not an additional task: SemanticPlanProvider forwards the optional tokenizer identity;
+plan_prompt_budget includes it only with a successful precise count. Both split and
+cleanup already hash the complete budget decision, so a recipe/asset/library change
+or transition from conservative fallback invalidates previous capacity consent.
+Public capacity DTOs and prompts remain unchanged. Budget policy, schema/transport
+accounting, reserves and byte-upper-bound refusal stay here; local encoding assets,
+mapping, initialization and logging stay in llm. No request-path download or new
+parser/persistence authority. The 129-test WAIT-02 suite covers unchanged limits,
+complete schema accounting, fallback and no-dispatch identity rejection; packaging
+and full incident-book HTTP acceptance are separate pending tasks.
+
+## Independent Smart Cleanup (2026-10-23)
+
+**[Maintainer-Provided] + [Code-Confirmed: SCLEAN-01..10, 2026-10-24]**
+Backend and UI capability plus bounded final acceptance are delivered.
+SCLEAN-01..10 supersede the exclusive
+enhancement entry in CLEAN-01..10; the completed CLEAN work remains historical
+implementation/acceptance evidence. No runtime deployment is implied by this update.
+
+SCLEAN-10 uses all three immutable OCR backups, live gpt-4.1-mini, actual API/SQL
+and 1280/390 browser checks for standalone, combined and failed-auto retry. Sample2
+has a manually reviewed nonempty deletion and Undo; other unsafe proposals are
+rejected, not treated as perfect cleanup. Runtime prompt/policy and guards were not
+relaxed. Reproduction, exact attempts, isolated-image smoke, source preservation
+and semantic limitations are owned by the
+[scripts acceptance](../scripts/module-detailed-design.md#sclean-10-delivery-2026-10-24).
+This pointer does not duplicate task ownership or claim production deployment.
+
+### SCLEAN-01 Contract Delivery (2026-10-23)
+
+**[Code-Confirmed]** `cleanup_input.py` defines immutable `CleanupInput` and
+`CleanupViewPart`. Accepted extraction identity, exact canonical hierarchy coverage,
+snapshot fingerprint, reading revision, OCR/page evidence, protected ranges and
+prior-deletion gaps are bound together. The existing hierarchy DTO is frozen as
+canonical JSON internally; `document()` returns a detached copy. This is not a new
+persistence source or public payload. Common hierarchy without task units is valid;
+no new split, parser-mode switch or HTTP `accepted` boolean is required. Explicit
+OCR extraction identity remains sufficient evidence; Auto requires actual matching
+OCR spans. Missing/unknown/native eligibility never authorizes a commit command.
+
+`cleanup_operation.py` separates app-owned consent binding, pure `StagedCleanup`,
+content-only `CleanupCommitCommand`, receipt/result and phase/commit/retry state.
+Consent includes the complete input fingerprint plus prompt/policy/capacity identity;
+standalone consent cannot reuse structural discard permission. An unknown outcome
+requires reconciliation, layout recovery preserves the committed result, no-op
+receipts retain reading revision, and changed results advance it exactly once.
+The narrow `CleanupRepository` protocol declares commit and read-only receipt lookup;
+SCLEAN-04 implements storage/CAS/replay enforcement as documented below. Dataclass construction
+is not authorization or proof of semantic safety; SCLEAN-03/04 revalidate deletion
+safety and current state. Adapters must establish coherent accepted storage input.
+
+Compatibility: existing `prepare_enhancement_cleanup`, `CleanupBinding` and
+`CleanupApplication` remain unchanged. SCLEAN-02 adapts accepted snapshots and
+in-memory candidates; SCLEAN-03 provides the shared engine, SCLEAN-07 migrates runtime callers. Do not
+manufacture an enhancement candidate for standalone cleanup or commit twice.
+No new HTTP route, provider call, database mutation or UI capability is delivered here.
+
+Validation: 26 new contract tests, including an opt-in read-only test of all three
+hash-verified Common/OCR backups under `data/test-books/cleanup-20261023`; 120 tests
+pass in the contract/planner/validator/file-overlay suite, plus 21 explicitly selected
+preparation/evidence/layout tests. Run with `PYTHONPATH=.:scripts`; enable real input
+checks with `DEEP_READER_TEST_CLEANUP_INPUT_BOOKS=data/test-books/cleanup-20261023`.
+The initial broad runner encountered the existing script import-path requirement and
+missing `DEEP_READER_TEST_POSTGRES_DSN`; log suppression also invalidated assertLogs
+tests, so final passing runs retain logging. PostgreSQL acceptance is not claimed.
+No live generation or production-data change; full end-to-end acceptance remains SCLEAN-10.
+
+### SCLEAN-07 Combined Commit Integration (2026-10-24)
+
+Production enhancement now uses CleanupInput and remaining-view prompt v3, just like
+standalone cleanup. CleanupApplication optionally carries that immutable input plus
+accepted-baseline/candidate digests; legacy applications retain their existing command
+hash. Combined staging checks source/version/revision and both digests under the
+repository lock, revalidates through validate_cleanup_input and delegates to the SAME
+stage_validated_cleanup used by standalone commits. No copied matcher/overlay logic,
+model call in storage, second standalone commit or persisted-candidate cleanup pass.
+Protected edits, prior-deletion gaps and cumulative limits therefore apply to both
+entry paths. Compatibility canonical planning remains only for legacy direct callers.
+Implementation/test evidence and ownership are in preparation SCLEAN-07.
+
+### SCLEAN-03 Shared Engine Delivery (2026-10-23)
+
+**[Code-Confirmed]** `ocr_cleanup_planner.py` exposes `cleanup_input_prompt` and
+`plan_cleanup_input` for either adapter's immutable input. The remaining-view prompt
+is `ocr_cleanup_prompt_v3`; policy is `ocr_cleanup_remaining_policy_v1`. Each part
+is separate quoted data: active deletions are absent, manual replacements are
+context-only, protected/native Auto spans are ineligible. Quotes and adjacent
+disambiguation context cannot cross part boundaries. The complete effective view
+is budgeted, including schema/transport accounting, without truncation. Mixed-text
+retention, uncertainty and injection protections share the existing prompt body.
+Both new and legacy entry points use one provider dispatch/capacity/cancellation/
+transient-retry implementation. The legacy canonical v2 prompt remains byte-stable
+until runtime migration; it is not the new remaining-view policy.
+
+`validate_cleanup_input` checks the supplied input fingerprint, resolves exact
+quotes only within remaining parts, and calls the same item/overlap/boundary/size
+validation core as legacy enhancement. Deleted copies cannot cause false ambiguity;
+multiple remaining copies, including manual context, still require disambiguation.
+No fuzzy matching, joined gaps, manual edits or native Auto deletions are accepted.
+Existing source-origin heading protection remains; for Common without boundary
+origins, conservatively retain each section's first nonempty line. Malformed supplied
+boundary evidence is rejected, never treated as absent. This fallback may retain
+first-line noise and is not a new parser classification or hierarchy write.
+
+The active prior deletions plus new validated batch share the 4096-character and
+10% total/nonspace caps and all-content/all-main-body guards. A cumulative-limit
+violation rejects the new batch without undoing old state. Other invalid items can
+be rejected independently while safe items remain. Pure resolution reports counts
+and safe reasons, never commit success or semantic certainty. Consent/policy binding
+and under-lock revalidation remain app/repository responsibilities in SCLEAN-04/05.
+No source, hierarchy, reading revision, review queue or storage mutation occurs here.
+
+Validation: 20 new shared-engine tests; 160 contract/adapter/planner/validator/file
+overlay tests plus 21 selected preparation/evidence/layout regressions pass. Tests
+cover prompt snapshots, mixed-readable sentinels, manual/gap/ambiguity cases,
+cumulative limits, zero-call capacity/ineligibility, fingerprint mismatch and safe
+logs. Three hash-verified Common/OCR backups pass read-only prompt/mapping checks;
+Sample2's previously reviewed deletion replays at identical canonical/page offsets.
+No new live model requests, PostgreSQL acceptance or deployment is claimed.
+SCLEAN-07 still owns automatic enhance runtime wiring; SCLEAN-10 owns live acceptance.
+
+### SCLEAN-04 Shared Commit Support (2026-10-24)
+
+**[Code-Confirmed]** Structure-owned `cleanup_commit.py` provides locked-snapshot
+checks, shared-validator revalidation, minimal standalone receipts and pure staging
+to both storage adapters. It does not duplicate matching/deletion policy or call
+models. The existing overlay application is extracted to `stage_validated_cleanup`:
+legacy combined enhancement and independent cleanup call this same function for
+source-span application, audit, review resolution, Undo and generated invalidation.
+Existing combined commits still stage before their sole final write, never save and
+reload a candidate for cleanup. `reading_content.advance_layout_revision` shares
+revision-stamp handling with manual edits, without declaring a stale cache ready.
+
+File and SQL ports expose only commit and receipt lookup; SQL/file atomicity, replay,
+supersession and test evidence are owned by the [db delivery](../db/module-detailed-design.md#sclean-04-delivery-2026-10-24).
+Source-file checking reuses the bounded hash utility only, not preparation/extraction.
+The two cleanup entry paths must continue sharing these primitives: app coordinators
+must not acquire their own prompt, quote-resolution, overlay or invalidation rules.
+Public consent/operations remain SCLEAN-05/06, new enhancement-input wiring remains
+SCLEAN-07, and frontend entry/recovery remain SCLEAN-08/09. No standalone HTTP API
+or user-visible action is delivered by this storage task.
+
+### SCLEAN-05 Consent And Recovery Support (2026-10-24)
+
+**[Code-Confirmed]** `cleanup_input_capacity` budgets the same full remaining-view
+prompt and schema as dispatch, returning an internal fingerprint of prompt, policy
+and measured model limits. `plan_cleanup_input` can enforce that expected identity
+before provider dispatch and transient retry; legacy callers remain compatible.
+No app-owned prompt/budget formula or second cleanup engine is introduced.
+
+`CleanupInput.source_structure_fingerprint()` binds namespace/document, accepted
+extraction/text identity and structure version without including mutable reading
+overlays or task-layout metadata. Content-only receipts persist this digest alongside
+their existing revision-bound result. The app compares it to current accepted input
+before replay/readiness recovery. Older receipts lacking this field are readable but
+cannot authorize continuation. This additive receipt field requires no SQL migration.
+Shared quote validation and overlay application remain unchanged; source-level
+orchestration evidence is recorded in the [app delivery](../app/module-detailed-design.md#sclean-05-delivery-2026-10-24).
+
+### Scope And Superseded Decisions
+
+Smart cleanup is one reusable capability with two callers: explicit cleanup of an
+already Common-parsed document, and automatic cleanup after a valid LLM split plan
+has been applied in memory. Common parsing/import/read does not itself call an LLM
+cleanup operation. A failed/partial automatic cleanup may be retried independently
+by the user without generating a new split plan. Both paths use identical policies.
+
+Remove these old requirements from the active design: cleanup requires a newly
+successful LLM split; cleanup input must be an EnhancementCandidate; a user must
+re-enhance to obtain another cleanup attempt; and structural success is the sole
+operation result. The existing allow_ocr_cleanup-on-reparse wire contract may remain
+as a compatibility adapter, but must not define standalone cleanup eligibility.
+Do NOT remove the prior safeguards: precommit cleanup in the combined workflow,
+one final atomic save, immutable extraction, exact matching, source/revision binding,
+manual-edit protection, notes preservation, Undo and nonblocking optional failure.
+
+First release is document-scoped, OCR-only, delete-only. No text rewriting, missing
+character reconstruction, structural edits, web search, manual block insertion,
+new extraction or profile generation. Known OCR evidence enables cleanup; Auto
+requires actual recovered spans. Native TXT/Fast and unknown provenance skip with
+a safe reason and zero model calls. PDF type and profile language are not eligibility
+authority. Relaxing entry coupling does not relax semantic/deletion protections.
+Pending source-review regions must not reuse the interaction-generation block to
+disable this corrective action. Cleanup may operate on proven mapped OCR text;
+textless/unmapped regions remain pending and cannot be fabricated or auto-dismissed.
+
+### Ownership And Minimum Exposure
+
+| Owner | Sole responsibility | Must not own or expose |
+| --- | --- | --- |
+| document_structure | Cleanup input/proposal/outcome contracts, prompt/planner, exact resolution, pure overlay staging and repository mutation contract | HTTP, UI, loaders, SQL orchestration or fake enhancement creation |
+| document_preparation | Adapt an accepted stored snapshot or validated in-memory hierarchy to cleanup input; explicit layout readiness handoff | Cleanup consent/jobs/transactions; invoking split/OCR/profile to obtain cleanup input |
+| app | Two use-case coordinations, consent, operation identity, freshness, execution/reconciliation and postcommit readiness | Prompt rules, span matching, SQL details or duplicate provider implementation |
+| db / file repository | Owner-contracted atomic commit, compare-and-swap, receipts, invalidation and rollback | LLM requests or reading-triggered repair; hierarchy replacement for standalone cleanup |
+| main.py / api_schemas.py | Thin authenticated/namespace-scoped transport and strict public DTOs | Plan validation, storage access policy or raw executable plan endpoints |
+| Deep_Reader_UI | Explicit action/confirmation, typed service adapter, server-state rendering and recovery | Computing spans, inferring OCR, authoritative content or automatic regeneration on refresh |
+| scripts | Deterministic/fault/real-book acceptance and private evidence | Production library reset or runtime policy changes merely to pass tests |
+
+Reuse existing modules and extraction/provider/repository protocols. Introduce only
+the narrow cleanup input adapter and use-case boundary that remove real coupling;
+no generic job engine, plugin framework, provider inheritance hierarchy or public
+plan-edit/apply API. Shared provider DI belongs to composition, not a chain through
+the splitter's private fields. App invokes preparation/structure/repository ports;
+the planner never imports app/main or receives a repository. Do not expand the large
+SectionTaskCoordinator with prompt, mapping or persistence implementations.
+
+### Two Execution Paths
+
+Standalone: accepted stored hierarchy -> read-only eligibility/capacity preflight
+-> user confirmation -> coherent immutable cleanup snapshot -> cleanup plan ->
+exact validation/staging -> atomic reading-state commit -> automatic readiness/
+content refresh. Loading the existing document is legitimate here; it is not the
+forbidden intermediate save of an enhancement candidate. A validated Common body
+is sufficient even when task units have not yet been created; empty/invalid source
+is rejected without invoking full Prepare. Preparation may explicitly create missing
+layout after cleanup, reusing the existing profile, never rebuilding it.
+
+Combined: accepted source -> split plan -> validate/apply in memory -> adapt that
+same candidate to the shared cleanup capability -> stage accepted deletions -> one
+atomic hierarchy/overlay/receipt commit -> automatic layout. No candidate reload,
+HTTP self-call or second cleanup commit. Cleanup provider/plan/application failure
+retains the uncleaned valid split candidate, but final transaction failure rolls back
+the entire combined write. A source/revision conflict is not a harmless cleanup skip.
+No database transaction remains open during model calls in either path.
+
+### Internal Contracts And Repeated Cleanup
+
+Proposed immutable CleanupInput contains accepted extraction identity/canonical
+digest, hierarchy snapshot/fingerprint, reading revision, authoritative OCR/page
+evidence, protected manual regions and the current effective reading view with
+exact canonical mappings. It must not require parser_mode=llm_enhanced or a new
+split result. An enhancement adapter proves candidate readiness; a standalone
+adapter proves existing hierarchy readiness. A boolean asserted by HTTP is no proof.
+
+LLM sees eligible remaining source and necessary readable context, not prior deleted
+text offered as fresh work. Preserve protected manual replacement context without
+allowing its deletion. Keep disjoint mapped spans explicit; do not concatenate across
+deleted gaps into a falsely contiguous quote. Map exact quotes back to canonical
+coordinates and reject ambiguous, unmappable, cross-boundary or protected edits.
+Do not persist effective text over canonical hierarchy/source. Source/structure/
+reading revision, prompt/policy versions and consent are bound by the backend, not
+invented by the model. The plan remains delete quote plus optional adjacent context
+and allowlisted reason; IDs, offsets and execution authority stay internal.
+
+Prefer complete eligible remaining text; count the whole assembled prompt against
+the configured model capability before calling it. Overflow makes zero model calls
+and yields a concise reason, not hidden truncation. No cost/OCR quotas are added.
+Do not weaken exact matching or existing size/all-body/anchor guards. Policy must
+also check active prior deletions plus the proposed batch so repeated runs cannot
+bypass an aggregate safety limit. Freeze this behavior and prompt version in SCLEAN-03.
+Mixed readable/garbled fragments retain readable words, names and punctuation;
+uncertain meaning is retained. Prompt compliance alone is not a safety proof.
+
+### Writes, Readiness And Recovery
+
+Standalone commit changes reading state only: preserve chapter/section/unit/block
+IDs, labels, source slices, structure_version, extraction/page maps and profile.
+Only an actual effective-content change advances reading_revision and invalidates
+generated interactions/ancestor caches document-wide. Notes and manual edits remain;
+late generation saves at old revisions are rejected. A no-op/failed cleanup never
+clears interactions or increments content revision; a minimal operation receipt
+may still record its terminal outcome without claiming a content change.
+
+This note-preservation guarantee belongs to cleanup-only content changes. Combined
+enhancement with actual structural replacement still follows the existing separately
+confirmed all-interaction deletion policy; cleanup success/failure cannot alter it.
+
+For a ready layout, update the revision stamp within the explicit mutation while
+retaining canonical units. Missing/stale layout is recovered automatically by the
+explicit use case; no read endpoint persists or asks the user to click Prepare.
+Postcommit layout failure is distinct from cleanup failure: resume layout without
+calling either LLM planner. Audit/Undo remain the existing single-level model, not
+a new arbitrary rollback API. Undo restores reading/review state, not old structure
+or generated artifacts, and never overwrites a subsequent manual change.
+
+Keep operation phase, commit certainty and CleanupOutcome separate. Terminal
+cleanup statuses remain not_applicable/no_changes/completed/partial/skipped/failed;
+unknown outcome is reconciliation state, not completed or retry permission. Full
+source-review resolution still requires trusted exact coverage and commit; partial,
+unmapped and textless regions remain visible. Success is not perfect transcription.
+
+Repeat the same operation identity to reconcile/replay without another mutation or
+paid generation. Explicitly trying cleanup again obtains a fresh preflight/consent
+and operation identity against current content; it may generate a new cleanup plan
+but cannot trigger splitting. Retry transient provider failures within the owned
+operation; do not treat a capacity/semantic rejection as a transport failure. Do not
+lock the user's content during model work; recheck source/hierarchy/revision under
+the final short write lock. Concurrent cleanup/reparse/edit may invalidate the plan.
+Persist minimal committed receipts for refresh/worker restart; do not claim current
+process-local in-flight work is durable. Lost precommit state stays unknown until
+reconciliation establishes a safe new explicit attempt. No UI polling regenerates.
+
+### Public Surface And Acceptance
+
+Expose only preflight, execute/resume and read-only operation lookup; proposed wire
+contracts are owned by main.py/api_schemas.py. The UI submits document identity and
+opaque consent/operation handles, never raw source, provider credentials, plans,
+offsets, guard thresholds, parser mode or discard_interactions for standalone cleanup.
+Reuse reading-content audit/Undo instead of adding cleanup-specific history/mutation
+routes. Logs correlate origin, stage, prompt/policy, durations, counts, safe rejection
+reasons, commit/replay and layout; no raw book text, response or confirmation token.
+
+SCLEAN-01..10 are ordered in this module's checklist, counted once at their owners.
+Required end-to-end cases: Common -> standalone cleanup with no split; enhance ->
+same planner before single commit; failed automatic cleanup -> independent retry;
+repeated cleanup of remaining text; partial/no-op/over-capacity/unknown provenance;
+concurrent edits/reparse, lost responses/restart, rollback, layout-only retry and Undo.
+Backed-up Sample/Sample2/noise provide real OCR/model/API/SQL/browser acceptance;
+Madame Bovary TXT and Red-book Fast remain zero-call negative controls. Require at
+least one manually reviewed nonempty deletion and review all final applied spans;
+do not count all-skipped or mocked runs as live acceptance. Verify all five interaction
+content levels, preserved source/profile hashes and stable standalone identities.
+Deployment/version smoke checks are distinct from source-test completion; old
+running containers must not be described as having the new capability.
+
+### SCLEAN Documentation Governance Receipt
+
+Task type: documentation/governance only. Module-memory-loader inspected AGENTS.md,
+proposal.md, high-level-design.md, docs/modules/index.md and progress.md, plus
+design/checklist pairs for document_structure, document_preparation, app, db,
+main.py, api_schemas.py, scripts and Deep_Reader_UI. Source inspection confirmed
+the current reparse-only allow_ocr_cleanup validation and candidate-dependent
+prepare_enhancement_cleanup handoff; new route/service claims remain Future Direction.
+
+| Modified markdown (backend paths relative to Deep_Reflective_Reader) | Reason |
+| --- | --- |
+| document_structure/module-detailed-design.md | Canonical dual-entry design, single-responsibility boundaries, safety/failure contracts; replace exclusive-entry wording and outdated helper integration statement. |
+| document_structure/module-checklist.md | Shared dependency order and two owner tasks, no duplicate counts. |
+| document_preparation/module-detailed-design.md; module-checklist.md | Two adapters and combined-flow/layout integration, two owner tasks. |
+| app/module-detailed-design.md; module-checklist.md | Independent use-case/retry ownership, one owner task; distinguish new cleanup from replay of enhancement. |
+| db/module-detailed-design.md; module-checklist.md | Content-only transaction/file parity, one owner task; no hierarchy replacement. |
+| main.module-detailed-design.md; main.module-checklist.md | Three minimal proposed routes and one transport task. |
+| api_schemas.module-detailed-design.md | Strict minimal proposed DTOs, preserve legacy enhance adapter without claiming new exposure. |
+| scripts/module-detailed-design.md; module-checklist.md | Real-book/fault/browser/current-image acceptance and one final owner task. |
+| ../Deep_Reader_UI/module-detailed-design.md; module-checklist.md | Independent action/confirmation/recovery, two owner tasks; backend remains authoritative. |
+| progress.md | Add backend-only SCLEAN 0/8 without rewriting historical CLEAN completion. |
+
+All ten new checkboxes are unchecked and dated 2026-10-23. Historical completion
+receipts remain as evidence, not active exclusive-entry restrictions. No source,
+tests, API schema code, configuration, data or running service is changed. No new
+markdown files or deleted files. Validation checks unique task ownership, dependency
+order, date metadata, local links/anchors, backend-only counts, unchanged non-markdown
+diff and git diff --check. Runtime/live-book tests are intentionally not rerun for
+this documentation-only task; their future requirements are explicit in SCLEAN-10.
+Checklist-progress-sync owns only the progress/checklist phase; implementation-validation
+is read-only. Scope/architecture/boundary/documentation checks apply to this design,
+not unimplemented API behavior or production deployment.
+Validation result: PASS for documentation governance. Ten unique unchecked tasks,
+eight backend/two UI, owner counts/dependency order/date metadata and 25 new local
+links/anchors checked; non-markdown tracked diff unchanged and git diff --check
+clean. No implementation tests or deployment were performed or claimed.
+
+## Optional OCR Cleanup Plan (2026-10-22)
+
+Historical CLEAN delivery and invariants follow. Exclusive enhance-only entry and
+candidate-only input are superseded by Independent Smart Cleanup above; completed
+test receipts do not constitute SCLEAN implementation or deployment evidence.
+
+**[Maintainer-Provided] + [Code-Confirmed]** CLEAN-01..06 contracts, planner,
+validator, reversible overlay, atomic storage, preparation and public orchestration
+are implemented. UI CLEAN-07/08 and deterministic cross-stage CLEAN-09 are also
+complete as of 2026-10-23; CLEAN-10 live acceptance is now complete within the
+bounded corpus below. Delivery subsections
+below retain their original scoped evidence, not the current task status.
+App design records explicit consent, durable commit recovery and automatic layout;
+the current cross-stage acceptance matrix and limitations are recorded below.
+Authoritative scope (corrected 2026-10-22): LLM proposes a cleanup/fix plan; backend
+applies it to the validated in-memory split candidate BEFORE persistence. Commit
+the candidate and accepted cleanup together once, then prepare reading layout.
+Do not save, reload from the database to clean, and save again. Cleanup failure must
+preserve the usable uncleaned split candidate for that commit. This is not permission
+to rewrite canonical extraction or weaken structural validation.
+
+### CLEAN-10 Live Acceptance (2026-10-23)
+
+`scripts/accept_ocr_cleanup_books.py` uses immutable SHA-verified backups under
+`data/test-books/cleanup-20261023`, real OCR extraction in the pinned Docker image,
+the configured gpt-4.1-mini provider, actual split/cleanup planners, FastAPI,
+disposable PostgreSQL schemas and the production layout resolver. No production
+Library mutation, extraction during enhancement, profile rebuild or deployment.
+Structural prompt remains v17; cleanup prompt is now `ocr_cleanup_prompt_v2`.
+
+Initial live testing exposed a semantic false deletion: a proposal included readable
+Chinese beside corrupted Latin OCR in a parenthesis. That run is rejected evidence,
+not a pass. V2 explicitly preserves readable words, adjacent lines and enclosing
+punctuation, and narrows or omits mixed-content proposals. Exact-location and
+4096-character/10% deletion guards are unchanged; semantic certainty is not proven
+by a successful exact match or by these three samples.
+
+Actual SQL/layout acceptance also exposed stale generated block IDs: assigning a
+new unit ID without rebinding its compatibility block caused a full-unit block to
+be treated as custom content and appended beside segmented blocks. Shared
+`TaskUnit.with_unit_id`, both unit normalization paths and SQL ID allocation now
+rebind only exact generated IDs, within the existing explicit write transaction.
+Custom IDs/text remain unchanged. This is not a read-time repair or migration of
+old stored units. Unit tests and real SQL/Undo regression prevent duplicate body
+projection; all five interaction target levels read effective text consistently.
+
+Final private attempt directories and results:
+
+| Case | Attempt | Cleanup | Target checks | First reparse / cleanup provider |
+| --- | --- | --- | --- | --- |
+| Sample | sample/20261023T030348165685Z | skipped/no_safe_items; 0 deletions | 88 | 18.640s / 1.389s |
+| Sample2 | sample2/20261023T030347436965Z | partial; 1 applied, 2 skipped | 9 | 7.707s / 2.085s |
+| Dark-water garbage sample | noise/20261023T030459209503Z | skipped/no_safe_items; 0 deletions | 19 | 7.492s / 3.067s |
+
+Durations are server/provider log measurements, not OCR time or latency guarantees.
+Sample/Sample2 used two structural calls and one cleanup call each; noise used one
+of each. All preserve complete canonical split coverage, source hashes and page
+maps, commit once on replay and render/read/reload at 1280px/390px. Sample2 audit
+expansion/collapse and mobile Undo restore content without changing hierarchy;
+its persisted enhancement receipt becomes superseded after Undo.
+
+Manual inspection covers every applied deletion in final runs: one three-character
+corrupt OCR fragment on Sample2 page 1, without deleting surrounding readable text.
+The source image contains an acronym at that position; removing its corrupt OCR
+does NOT restore the missing acronym or guarantee faithful transcription. Sample
+keeps the previously endangered readable phrase because validation rejects the
+proposal, NOT because v2 reliably stopped the model proposing it. Prompt-only
+semantic protection remains imperfect; never bypass exact/scope safeguards or
+claim a general zero-false-deletion guarantee. Replaying exact validation of the
+saved responses reports quote_not_found for Sample and noise, and
+unsafe_text_boundary for Sample2's other two proposals. Heavy garbage remains
+in noise: a broad proposed span fails exact matching; it was not automatically
+cleaned. Aggregate deletion caps remain unchanged, but are not claimed as the
+reason this final attempt was rejected.
+No final sample has pending source-review regions, so automatically resolved/partial
+region semantics are covered by controlled API/SQL/browser tests, not claimed as a
+new live-region-resolution case. No new interaction answers are generated; the
+five-level check validates the actual content resolver feeding those actions.
+
+Madame Bovary TXT (652001 characters) and Red-book Fast (147401) backup controls
+both return not_applicable with zero cleanup capability/provider calls. These are
+real-content eligibility controls, not fresh full-book generation runs. Private
+reports retain requests/responses, source manifests, screenshots and manual review;
+do not check copyrighted text or model payloads into Git. Regression suite: 288 run,
+287 pass, one inherited private-source opt-in skip; explicit live runs are separate.
+
+### Current Evidence And Ownership
+
+- `doc_loaders/extraction_identity.py` records generic extraction identity;
+  `pdf_document_loader.py:open_source` carries OCR diagnostics and page spans.
+  `document_preparation_pipeline.py` persists extraction and source_page_spans.
+- `semantic_structure_plan.py` currently accepts boundaries only, with exact quotes
+  and backend-owned positions. It has no cleanup action contract.
+- `reading_content.py` provides explicit block overlays, revision checks, audit and
+  single-level undo. These are foundations, NOT an existing source-span cleanup API.
+- Structure owns cleanup semantics, resolution, effective-content projection and
+  repository mutation contract; preparation owns accepted-source handoff; app owns
+  operation sequencing/API; UI consumes server outcomes. Read supporting DB,
+  section_tasks, main/api_schemas and scripts memory before implementation there.
+- PDF native Outline/Bookmarks are source evidence, unlike profile classification.
+  Existing Outline-first validation remains intact; no separate TOC redesign is
+  authorized here. Cleanup cannot erase titles/bookmark anchors merely because
+  OCR recognition is uncertain.
+
+### Workflow And Failure Isolation
+
+Use separate requests initially: full-source structure planning -> validate/apply
+splits in memory and classify change -> optional OCR cleanup planning -> validate/
+apply reading overlay to the same candidate -> one atomic commit -> explicit
+layout-only preparation if required -> read. Splitting instructions may warn against
+using OCR garbage as semantic evidence, but splitting must retain every source character.
+Never make optional cleanup JSON a required part of the structure response/schema.
+
+Cleanup can be explicitly invoked on an accepted Common result, or chained inside
+the confirmed enhance workflow for proven OCR content. Common parsing/import/read
+alone does not start cleanup. Use stored extraction
+evidence, not filename, profile language or a guess from odd-looking text. Explicit
+OCR identity qualifies; Auto qualifies only with trustworthy actual recovered-page/
+span evidence. Missing legacy/Auto provenance means skip with a reason, not rerun
+extraction. Do not introduce PDF-type branches into preparation or generic consumers.
+
+Optional cleanup has its own complete-prompt capacity check, timeout and cancellation
+boundary. Full accepted text is preferred; no hidden truncation, OCR, web search or
+profile rebuild. Capacity overflow skips cleanup without invalidating a feasible
+structure request. A cleanup-only provider/JSON/validation/storage failure yields a
+warning and retains the uncleaned candidate for the final commit, then layout.
+Structural validation failure skips cleanup; failure of the final atomic commit
+remains an operation failure, not an optional-cleanup warning. Unknown commit outcomes require reconciliation,
+not fabricated success. Failure to prepare/read layout is a separate recoverable error.
+
+### Proposed Contracts And Exact Resolution
+
+Implemented internal envelope under CLEAN-01: `BoundCleanupProposal` separates
+`binding` (backend scope/source/version preconditions) from `proposal` (model
+`schema_version` and `items`). Backend binds these values; the model never invents
+IDs, hashes or offsets. Detailed field and limit definitions follow below.
+
+Model item: `action=delete`, exact `quote`, optional exact adjacent
+`prefix_quote`/`suffix_quote` for disambiguation, and allowlisted reason
+(`ocr_garbage` or `recognition_fragment`). No replace/insert/reorder, corrected
+transcription, arbitrary executable instructions, block IDs or occurrence counting.
+Empty item list is a legitimate no-op. Freeze numeric schema/quote/item limits and
+fixture-tested aggregate deletion safety limits in CLEAN-01/03 before enabling writes;
+real-book calibration/false-deletion review remains mandatory in CLEAN-10;
+do not silently truncate a plan or treat model confidence as proof.
+
+Resolve against the SAME immutable accepted source/readable mapping as splitting.
+Backend creates canonical half-open Unicode code-point spans, validates exact quote,
+adjacency, uniqueness and source hash, then maps spans to the in-memory candidate hierarchy.
+No fuzzy repair or guessing repeated occurrences. Page indexes are optional evidence,
+not unique text locators; cross-page spans retain both page mappings. Cross-section
+and ambiguous normalized-to-canonical spans are skipped in v1. Duplicates coalesce;
+overlapping nonidentical deletions reject the affected items rather than merging them.
+Protect structural heading anchors, meaningful multilingual quotes/names, poetry,
+formulas, lists and numbers. Unknown or disputed semantic meaning is retained.
+Exact matching proves location, not semantic uselessness; real-book review must
+measure false deletions, and uncertain candidates remain visible for manual review.
+
+### Persistence, Projection And Consistency
+
+Stage validated canonical deletion intervals as a versioned reading overlay, with
+operation/plan digest, source/structure/revision preconditions, per-item reason,
+original quote and page evidence where available; persist it together with the
+candidate hierarchy in one atomic commit. Original source, raw_text, hashes,
+section source slices and page offsets remain immutable. No alternate hierarchy.
+Backend-generated block identities must not be renumbered after cleanup. Overlay
+projection must also work before task units exist: preserve canonical-to-effective
+span mapping through unit construction, rather than guessing new block IDs from
+the pre-reparse document. This extends, not merely calls, current block-only overlays.
+
+Individually invalid instructions are skipped with reasons. Validate a complete
+accepted subset and stage it on a separate candidate copy; preparation/application
+failure discards that copy's cleanup, retaining the validated uncleaned split candidate.
+Atomically persist chosen hierarchy, overlay, audit/receipt, reading revision and
+dependent artifact invalidation once. Final storage failure rolls back the entire
+transaction, preserving the old database document; it must never claim split success.
+No partial per-item writes or independently committed cleanup transaction in this flow.
+Replaying the same operation/plan is idempotent. Source/structure/reading revision
+and consent are rechecked at final commit; concurrent changes reject the stale write.
+Transactional version checks are permitted, but not reloading the saved candidate
+as input to a second cleanup pass. All preconditions refer to the initial accepted
+snapshot, while cleanup targeting uses its derived split candidate. New IDs and
+the committed structure version are assigned by storage, not by the LLM.
+Previously edited/deleted user content wins; skip intersecting automatic deletions.
+Reject a subset that would erase all usable document text. Do not delete empty
+hierarchy containers or reconstruct deleted text through fallback aggregation.
+
+Cleanup-only changes leave structure_version unchanged, advance reading revision
+and invalidate generated insight/quiz/thinking/summary and ancestor contexts through
+the existing hierarchy-aware repository boundary. Notes remain with stale-source
+indication for automatic span cleanup; manual block deletion and edit-clear follow
+the separate targeted Note policy above. Structural reparse still
+clears ALL interactions at the final successful commit under existing consent,
+independently of cleanup success.
+Protect against late generation writes at the old reading revision. All five target
+levels use effective content; none may resurrect raw deleted spans. Existing profile
+stays reused. A review region may be automatically resolved only when trusted
+source-to-region mapping proves that accepted cleanup fully addresses its review
+content, and the final atomic commit succeeds. Remove that region from the active
+queue without requiring another Ignore Region action; retain evidence and audit.
+Do not infer resolution from the model's claim, a successful request, matching page
+number or disappearance of a block. Missing OCR text/mapping, partial coverage,
+rejected items and failed cleanup do not prove resolution. Routine visibility,
+pending counts and generation guards follow the planned Source Review Mapping
+policy above: only proven never-in-body evidence can be excluded without resolution.
+Unknown mapping and manually deleted linked blocks are not that exclusion case.
+The server owns review_required; the UI must not hide warnings independently.
+
+Provide batch audit and reversible cleanup using the existing single-level Undo
+model, extended for span overlays. Undo restores pre-cleanup reading state only,
+never the previous hierarchy or deleted generated artifacts; it advances reading
+revision and invalidates derived output again. Restore review states resolved by
+that cleanup batch too; never revert unrelated manual region decisions. A newer manual edit supersedes that
+undo slot, with an explicit conflict/unavailable result rather than lost user work.
+
+### Outcomes, Consent And Observability
+
+Keep structural `change_kind` unchanged/titles_only/structure_changed separate from
+`cleanup.status`: not_applicable, no_changes, completed, partial, skipped, failed.
+Proposed additive outcome includes proposed/applied/skipped item counts, safe reason,
+reading_content_changed and authoritative reading_revision. Zero applied items must
+not claim content changed. Success of cleanup does not certify perfect OCR accuracy.
+A structural no-op can still have a cleanup change; prior no-op statements describe
+structure only once this optional feature is enabled. Do not bypass cleanup just
+because change_kind=unchanged, or clear notes under structural cleanup semantics.
+
+Preflight confirmation explains automatic OCR noise removal, preserved original,
+restoration, generated-output invalidation and the existing separate all-interaction
+structural replacement condition. Bind policy/prompt and current reading revision
+to consent; old consent cannot silently authorize this new mutation. No cost quota.
+Log operation-correlated stage durations, eligibility, counts, reason codes,
+versions, capacity outcome, commit/rollback/replay and layout outcome. Never log raw
+source/quotes, full model responses, keys or confirmation tokens.
+
+### Ordered Implementation And Acceptance
+
+Canonical task IDs are counted once in their owner's checklist:
+CLEAN-01 contract (structure) -> CLEAN-02 prompt (structure) -> CLEAN-03 validator
+(structure) -> CLEAN-04 overlay/atomic mutation (structure) -> CLEAN-05 source and
+layout handoff (preparation) -> CLEAN-06 API/orchestration (app) -> CLEAN-07 flow
+(UI) -> CLEAN-08 audit/undo (UI) -> CLEAN-09 fault matrix (structure) ->
+CLEAN-10 real-book acceptance (structure, supporting scripts/UI).
+
+Use verified backups under ignored data/test-books; preserve original files and
+manifests. OCR positives: 中國文化的深層結構_Sample and Sample2, including known
+garbage and meaningful vertical/horizontal controls. Include 暗水幽灵_sample when
+available to reproduce the reported garbage analysis. Non-OCR regressions: Madame
+Bovary.txt and 红色赌盘_261014_145614.pdf Fast. Missing corpus is Needs Confirmation,
+never synthetic success. Live LLM tests plus actual file/PostgreSQL/API/layout/UI
+acceptance are required; scoped success is not a universal OCR quality claim.
+No production book deletion, OCR rerun or paid calls occur in contract delivery.
+
+### CLEAN-09 Cross-Stage Acceptance (2026-10-23)
+
+**[Code-Confirmed]** `scripts/test_cleanup_consistency.py` adds six test methods
+covering 18 isolated API/SQL scenarios. No production implementation changes were
+needed in this task. Tests compose the existing disposable PostgreSQL/API fixture,
+without importing its test class into discovery or counting fixture cases again.
+
+The end-to-end planner test removes the fixture's mocked candidate builder. Both
+production planners, exact semantic quote resolution, candidate validation, overlay
+staging, repository commit and automatic task layout execute. Only model transport
+returns deterministic schema-valid responses. It asserts the persisted document is
+still the original at BOTH model calls, then observes exactly:
+`split_model -> cleanup_model -> stage -> hierarchy_write -> commit_returned -> layout`.
+There is one hierarchy write inside the final transaction, one commit call, and no
+save/reload/clean/save pass. The later explicit layout-cache save is permitted and
+must follow commit; it is not counted as another hierarchy/cleanup commit.
+Source bytes, canonical text, extraction identity, page spans and review evidence
+remain unchanged. Hidden preparation/profile and subprocess extraction are forbidden.
+
+| Acceptance branch | Evidence |
+| --- | --- |
+| Missing/empty/malformed cleanup and valid empty plan | New matrix across unchanged, titles_only and structure_changed; unchanged reading revision/review queue, single commit, usable candidate retained. |
+| Optional overlay application failure | Inject projection conflict at staging for all three structural outcomes; discard staged deletion/audit, retain valid split/title update and automatically build layout. |
+| Final write failure | Inject failure after SQL receipt writes for all three outcomes; original snapshot/fingerprint remains identical, no layout call, reconciliation reports unknown. Existing file tests inject atomic-save failure. |
+| Lost acknowledgement plus process restart plus failed layout | Combined fault chain followed by successful POST retry and replay; one model cleanup, one candidate build, one commit, one revision/audit/receipt. Result lookup does not resume work. |
+| Legacy non-OCR opt-out | Native accepted source with omitted cleanup flag retains legacy response semantics and never invokes cleanup or writes its receipts. |
+| Timeout/retry, over-capacity, partial subset, concurrent edits | Existing `test_enhancement_cleanup_api.CleanupApiTests` exercises real routes and SQL, including zero dispatch on overflow and stale-commit rejection. |
+| Review resolution, Undo, no resurrection/late writers | Existing file/SQL overlay suites cover fully resolved versus partial/absent/unmapped regions, all five effective target levels, revision CAS, notes preservation, generated invalidation, Undo and stale artifact writes. Preparation suites cover canonical units and no hidden extraction/profile work. |
+
+Focused reproduction from the backend root, with a test-only PostgreSQL DSN:
+```sh
+PYTHONPATH=.:scripts DEEP_READER_LOG_DIR=/tmp/deep-reader-clean09-logs \
+  .venv/bin/python -m unittest scripts.test_cleanup_consistency.CleanupConsistencyTests
+```
+Set `DEEP_READER_TEST_POSTGRES_DSN` externally; the harness creates/drops isolated
+schemas. Never substitute a production book fixture. The focused run passes six
+methods. The combined run selects contract/planner/validator modules and explicit
+file/SQL overlay, preparation, API, consistency, reading-content, legacy outcome,
+operation and candidate classes: 279 tests run, 278 pass, one inherited opt-in source
+readback skipped because `ENHANCEMENT_SOURCE_DOCUMENT` is unset. These totals are
+not additive with earlier delivery runs. Logs: `/tmp/clean09-consistency.log` and
+`/tmp/clean09-regression.log`. An initial new planner fixture used a repeated opening
+quote and was correctly rejected; a unique fixture opening fixes the test, with no
+relaxation of production quote validation.
+
+Limits: deterministic responses do not establish semantic cleanup quality. No live
+model, real-book deletion review, browser run, OCR engine, production data mutation,
+Docker restart or deployment is claimed by CLEAN-09. CLEAN-10 remains unchecked.
+
+Governance receipt: inspected AGENTS.md, proposal.md, high-level-design.md,
+docs/modules/index.md, progress.md, structure and scripts design/checklist pairs,
+app design/checklist, preparation checklist and UI checklist. Modified this design
+to record the matrix and limits; modified the structure checklist to close only
+CLEAN-09 with dated evidence; synchronized backend progress from 6/8 to 7/8.
+The shared queue is 9/10 including the two already completed UI tasks; UI is not
+counted in backend progress. Production source files are unchanged in this task;
+one test file was added. Validation checks scoped diffs, checklist arithmetic and
+timestamps, test results and architecture boundaries; validation itself writes no
+files. Existing unrelated working-tree edits remain untouched.
+
+### CLEAN-01 Contract Delivery
+
+**[Code-Confirmed]** `ocr_cleanup_contract.py` provides strict frozen Pydantic
+models and pure helpers, with no API/provider/repository wiring. The model receives
+only `schema_version=ocr_cleanup_plan_v1` and deletion items. A quote is 1..512
+Unicode code points and must not be all whitespace; optional adjacent contexts
+are null or 1..128 code points, with exact whitespace preserved. At most 128 items;
+zero is a valid no-op. Item reasons are `ocr_garbage` / `recognition_fragment`.
+Unknown fields, replacement actions, malformed Unicode and duplicate JSON keys
+are rejected. Provider schema requires explicit null for unused contexts; the local
+parser also accepts omitted contexts. Parsing errors expose fixed codes, not input.
+
+The raw JSON response ceiling is 1 MiB UTF-8, an independent parsing resource
+guard, not a token allowance or OCR quota. These v1 limits bound proposal handling
+without truncation; they do not authorize deleting that much text. Actual prompt
+output reserves/dynamic model capacity are CLEAN-02; excessive-deletion safeguards
+and exact quote resolution are delivered separately in CLEAN-03 below. No semantic cleanup accuracy is claimed.
+
+`CleanupBinding` contains operation/document/namespace, existing ExtractionIdentity,
+canonical text digest/length, positive structure_version and structural fingerprint,
+nonnegative expected_reading_revision, explicit canonical/readable representation,
+prompt_version, policy_version=ocr_cleanup_policy_v1 and
+consent_scope=ocr_cleanup_reading_overlay_v1. `BoundCleanupProposal.bind` checks
+identity/text digest/length against the accepted ExtractionResult; no source is
+modified. It is not a consent verifier, locator validator or commit authorization.
+The binding never accepts model-generated technical identity or source positions.
+
+`cleanup_eligibility` is format-neutral: explicit ocr is eligible, fast/native is
+not_applicable, unknown modes skip. Auto requires `ActualOcrEvidence`, normalized
+by a future trusted extraction handoff, with matching full identity and text hash,
+ordered nonoverlapping canonical OCR spans within text bounds and optional physical
+page indexes. Empty verified spans mean native-only; missing, stale or invalid
+evidence skips. This contract does not yet read/normalize persisted Auto diagnostics;
+CLEAN-05 owns that handoff. A caller cannot infer eligibility from a filename,
+profile, garbled words or a requested Auto mode alone.
+
+`CleanupOutcome` fixes terminal status/count/reason consistency. Null proposed_count
+means no valid plan count is known; it is not reported as zero proposals. For known
+counts, proposed=applied+skipped, with duplicates/rejections counted as skipped by
+future validation. Only completed/partial may report content changed, and require
+positive applied count and reading revision. Partial requires skipped items; no_changes
+requires an empty plan. Failure/skip reasons are allowlisted. Structure change_kind
+is absent from this independent result. The executor must later verify revision
+advancement against the binding and supply authoritative storage state.
+
+Evidence: `scripts/test_ocr_cleanup_contract.py` has 19 passing tests, including
+schema ownership, byte/item/Unicode boundaries, exact text, duplicate keys,
+evidence/source mismatch, frozen binding/JSON round-trip and all terminal states.
+With semantic structure, generic extraction and change-comparator regressions:
+`PYTHONPATH=.:scripts .venv/bin/python -m unittest scripts.test_ocr_cleanup_contract
+scripts.test_semantic_structure_plan scripts.test_generic_extraction
+scripts.test_enhancement_change` passes 80 tests. Initial run without scripts in
+PYTHONPATH had a test import error; corrected invocation passes all. No live LLM,
+production writes, source extraction, API changes or UI behavior changes.
+
+### CLEAN-02 Prompt And Planner Delivery
+
+**[Code-Confirmed]** Structural prompt v17 adds conditional OCR-noise guidance:
+do not use unmistakable corruption for titles/themes/boundaries or interpret it as
+symbolism, but preserve ALL canonical text and semantic splitting autonomy. This
+general conditional warning does not classify a document as OCR and never emits
+cleanup items in the structural schema. Common parser behavior is unchanged.
+
+Historical CLEAN-02 delivered `ocr_cleanup_prompt_v1` and `plan_ocr_cleanup` with
+`structure_ready=True`; CLEAN-06 subsequently wired the enhance route and CLEAN-10
+updated the prompt to v2. This boolean/candidate coupling is not the new service
+contract: SCLEAN-01/02 replace it with validated cleanup input from either existing
+Common hierarchy or an in-memory split candidate. Until implemented, the runtime
+helper retains the old precondition; standalone API support must not be claimed.
+
+Cleanup v1 sends canonical text, not the whitespace-normalized structure view.
+The binding must explicitly use canonical_text_v1 and the current cleanup prompt
+version; mismatches skip instead of silently changing interpretation. Both plans
+still refer to the same immutable extraction. JSON-framed source parts concatenate
+to the complete source, without truncation: explicit OCR has one eligible part;
+Auto uses proven OCR intervals and marks native gaps as context-only. No model IDs,
+offsets or hashes are introduced. Exact coordinates/deletion permission still require
+CLEAN-03 validation; prompt instructions alone are not a source-quality guarantee.
+
+Instructions protect meaningful multilingual names/quotes, ancient text, formulas,
+poetry, lists, page labels and headings; uncertain fragments stay. Embedded source
+commands are untrusted data. Only minimal exact garbage quotes and adjacent context
+are requested, with no rewriting/repair/search and an explicit empty-plan option.
+A fixed fixture SHA-256 snapshots the complete v1 prompt/schema serialization.
+
+The existing SemanticPlanProvider now accepts an optional schema factory; default
+structural schema/output behavior is unchanged. Cleanup uses its own provider schema
+and complete-request capacity check, including prompt, schema transport, safety
+margin and output allowance. Output-override providers reserve their model maximum;
+legacy adapters retain their configured reserve. Missing tokenizer uses the existing
+labelled UTF-8 estimate. Overflow or unknown capacity skips with zero generation
+calls, without changing a structural result or shared provider defaults. No source
+truncation, cost quota or automatic retry loop is added.
+
+Provider/timeout failures and invalid cleanup JSON yield independent failed outcomes
+with zero applied items. Valid output, including an empty plan, is returned as a
+BoundCleanupProposal, never reported as applied/completed cleanup. Source/prompt
+changes, ineligible evidence and pre/post-call cancellation produce safe reasons.
+Cancellation is checked before dispatch and after return; in-flight transport timeout
+is provider-owned, not an interruptible job guarantee. No persistence/LLM workflow
+rollback, layout work, profile calls, extraction or OCR are performed by this helper.
+
+Logs correlate a hashed operation identifier with assembly/provider timing, total
+elapsed time, capacity measurement/reserve, proposal count and fixed reason codes.
+They omit source, response bodies, quotes, caller operation text and exception text.
+New skip reasons: structure_not_ready, cleanup_policy_changed, capacity_unavailable.
+Evidence: 19 planner tests plus existing contracts/semantic/budget/metrics/extraction/
+change/full-source/candidate/autonomy/preflight/repair tests pass as one 152-test run
+with PYTHONPATH=.:scripts. Actual model generation and real-book semantic acceptance
+remain CLEAN-10; only fake providers were used. No deployment or runtime API wiring.
+
+
+### CLEAN-03 Exact Resolution And Safety Delivery
+
+**[Code-Confirmed]** `ocr_cleanup_validation.py` is a pure pre-persistence helper.
+It consumes the bound proposal, accepted ExtractionResult, independently supplied
+expected binding and derived in-memory StructuredDocument. All binding fields must
+match the accepted snapshot, including namespace, operation, source identity/hash,
+existing structure fingerprint/version, reading revision and prompt/consent policy.
+The derived hierarchy is source-coverage validated; its ID and boundary-origin
+evidence must be coherent. The binding refers to the initial snapshot, not to an
+invented persisted version of the newly split candidate. No DB, provider, OCR,
+profile, artifact mutation or automatic review resolution occurs here.
+
+Exact quote plus adjacent prefix/suffix must have one occurrence, including
+overlapping occurrences. No fuzzy, case, whitespace or Unicode normalization.
+Canonical code-point intervals are mapped to one candidate section and chapter.
+Readable-view inputs must reproduce the trusted source-mapping builder exactly;
+if a deletion would include normalized-away characters it is skipped, not widened.
+Optional physical page mappings must be ordered/in-bounds and cover nonblank text;
+cross-page deletions retain clipped evidence for each page. Page metadata is not
+a quote disambiguator. Auto deletions require full actual-OCR span coverage, with
+no deletion across native gaps. Explicit OCR remains format-neutral.
+
+Source-origin heading lines, caller-supplied user-edit ranges and protected retention
+ranges cannot be deleted. Generated navigation titles do not create fake source
+anchors. Cross-section deletions and unsafe alphanumeric/CRLF/combining/joiner
+boundaries are skipped. Exact duplicate intervals coalesce, counting later items
+as rejected duplicates. Every participant in a nonidentical overlap is rejected,
+independently of item order; adjacent nonoverlapping spans remain independent.
+
+Policy v1 permits at most 4096 canonical code points per automatic batch, and at
+most 10% of BOTH all characters and non-whitespace characters. Equality is allowed;
+over-limit subsets are rejected together rather than truncated in proposal order.
+Whitespace/front-matter padding cannot authorize deletion of all document text or
+all main-body text. These are reversible-content safety guards, not OCR usage/cost
+quotas. Boundaries are calibrated against deterministic fixtures only; representative
+real-book suitability and meaningful-text false-deletion acceptance remain CLEAN-10.
+
+Result: immutable canonical deletions with backend section/chapter IDs, quote,
+reason and page evidence, plus one safe rejection code per rejected item. Counts
+sum to the proposal count; empty proposals are valid. Diagnostics expose counts
+and allowlisted reasons, not quotes/IDs. This is not a terminal CleanupOutcome,
+commit permission or evidence that any review region was fixed. CLEAN-04 must
+revalidate current candidate/source/revision at application and final CAS commit.
+Exact location does not establish semantic uselessness: meaningful-retention tests
+exercise explicit protected ranges, not an automatic multilingual semantic detector.
+An incorrect model proposal outside protected ranges remains a semantic risk;
+do not advertise perfect OCR repair or remove review entries based on this result.
+
+Evidence: 31 offline tests in `scripts/test_ocr_cleanup_validation.py`, covering
+immutable source/candidate, repeated/contextual quotes, Unicode/CRLF, readable
+mapping, pages, headings, manual edits, multilingual retention, overlaps, aggregate
+limits, stale scope, Auto evidence and privacy-safe diagnostics. Combined CLEAN-01/02,
+semantic/budget/metrics/extraction/change/full-source/candidate/autonomy/preflight/
+repair regression run passes 183 tests. No paid calls, production mutations or
+runtime integration. Next is CLEAN-04's reversible overlay and atomic commit.
+
+### CLEAN-03 Governance Receipt (2026-10-22)
+
+Inspected: AGENTS.md, proposal.md, high-level-design.md, docs/modules/index.md,
+progress.md; design/checklist pairs for document_structure, document_preparation,
+app, scripts and Deep_Reader_UI. Existing unrelated changes were preserved.
+Modified markdown in this task: structure design/checklist (verified CLEAN-03
+delivery and corrected per-region auto-resolution/Undo requirements); app design/
+checklist (future authoritative review-state handoff); UI design/checklist (future
+resolved-queue removal without redundant Ignore); progress.md (backend-only 3/8).
+No global architecture, preparation or scripts markdown edits in this task.
+Evidence: validator/tests above; auto-resolution is a confirmed design requirement,
+not implemented behavior. Validation: 183 tests pass, changed checklist timestamps
+are 2026-10-22; no hierarchy authority, hidden writes or UI truth introduced.
+
+### CLEAN-08 Review Projection Support (2026-10-23)
+
+Supporting the UI-owned task: ReadingContentService.read optionally includes a
+read-only cleanup_audit projection of applied batches, newest first, ten per page.
+It exposes counts, revision/time, exact retained quotes, allowlisted reason/page
+references, remaining span count and latest-action undoability. Internal operation
+IDs/bindings/canonical offsets are excluded. Audit remains after Undo, while current
+cleanup_spans determine whether deletions are still active. Non-applied proposals
+have no applied-batch history; skipped counts describe rejected proposals in an
+applied batch. Default reads omit this history; no LLM/OCR/profile or storage writes.
+
+Snapshot responses add undo_action from the existing single-level slot. Explicit
+edit/delete/discard/Undo transactions advance an existing task_layout.reading_revision
+only if it matched the prior reading revision. Other cache keys and all canonical
+units/IDs remain unchanged; an absent or already stale layout is never made ready.
+Projection validation still occurs before commit. This fixes post-Undo page reload
+without implicit read-time preparation or extra hierarchy saves. Current-state
+revision CAS/idempotency and generated-output invalidation/notes retention are unchanged.
+Evidence: UI test-cleanup-audit.py (five new plus 24 imported cases), 237 overlapping
+backend regression cases and desktop/mobile actual API/disposable SQL tests. Completion
+is UI CLEAN-08 only; CLEAN-09/10 remain open and no backend progress total is advanced.
+
+### CLEAN-04 Overlay And Atomic Storage Delivery (2026-10-23)
+
+**[Code-Confirmed]** `ocr_cleanup_overlay.py` implements CleanupApplication and
+pure staging against the locked authoritative baseline plus the already-built
+in-memory split candidate. It rechecks binding/source/version/revision/fingerprint,
+reruns exact validation with existing edits/deletions protected, and verifies the
+effective projection before writes. No LLM/extraction/profile work occurs under
+the transaction. Validation or new-overlay mapping failure yields a skipped cleanup
+and retains the uncleaned candidate; stale preconditions/manual-edit mapping conflicts
+reject the operation to preserve user work. Final storage errors roll back all writes.
+
+Reading state remains under parse_provenance.reading_content, extended with
+cleanup_spans (canonical half-open positions, exact quote, reason, item index and
+page evidence), cleanup_source_sha256, cleanup_receipts and source_edits. Temporary
+candidate chapter/section IDs are deliberately excluded from persisted span records;
+storage-assigned IDs cannot invalidate canonical targeting. Receipts bind the full
+proposal/candidate/evidence digest and store the historical outcome/change kind.
+Same-operation replay does not advance revision, duplicate audit or apply deletion
+again; changed commands conflict. Receipt history is bounded at 1000 operations,
+a correctness/storage guard rather than an OCR quota.
+
+File storage exposes internal commit_cleanup_enhancement: exclusive lock, one
+baseline read and one atomic file replacement. PostgreSQL commit_enhancement gains
+an optional internal cleanup argument, using its existing locks and transaction.
+Unchanged/title-only cleanup updates reading metadata and invalidates generated
+artifacts with stable hierarchy/version; structural replacement includes staged
+reading state in the single hierarchy save. The private preserve-reading-state flag
+is honored only with an existing transaction. Normal hard-reparse behavior remains
+unchanged. Core profile is reused; the existing structural branch still invalidates
+only its derived structure metadata. No public endpoint initiates cleanup yet.
+
+Reading projection now handles pre-unit canonical spans as well as explicit block
+edits. Original raw_text, canonical section content and page maps remain persisted
+unchanged. Exact ordered unit content maps to section coordinates; render block
+spans map within those units before display normalization. Surviving IDs are not
+renumbered. Fully deleted units/sections stay empty, without raw-text fallback.
+Unmappable existing units make automatic cleanup skip, never guess offsets or
+silently expose deleted text. CLEAN-05 still owns production preparation/cache
+handoff and canonical-to-effective unit construction, rather than assuming that
+the existing preparation pipeline already consumes this new state.
+
+Manual block edits win. Structural replacement carries them into canonical source
+edits because old block IDs will no longer exist; ambiguous/partially overlapping
+replacement mappings fail safely. Cleanup-only preserves notes and advances reading
+revision, clearing generated outputs/ancestor caches. Structural changes still
+clear all interactions under existing consent. File metadata writers reject old
+structure versions; existing PostgreSQL guards and generation-revision guards
+reject late writes. Cumulative effective document/main-body emptiness is checked,
+not just each new proposal's deletion ratio.
+
+Source review auto-resolution requires matching source-file SHA, canonical text
+SHA, an explicit trusted region canonical_span, exact nonempty raw_candidate, and
+full interval coverage by accepted cleanup. Missing/partial/stale mappings stay
+unresolved. Current loader regions generally do not carry this mapping yet; CLEAN-05
+must provide evidence, never manufacture it from a page number or model assertion.
+Resolved regions leave the active queue after commit but retain original evidence
+and audit. Existing Ignore remains available for unresolved regions. Single-level
+Undo restores the previous spans, manual reading state and region decisions,
+advances reading revision and invalidates generated data again; it does not restore
+old hierarchy or generated artifacts. A subsequent manual action supersedes the slot.
+
+Operation-hashed logs cover staging, application skip, commit preparation/completion,
+replay, lock conflict and rollback, with timing/counts and no quotes or source bodies.
+PostgreSQL unchanged/title-only logs commit_ready before context-manager commit,
+not fabricated committed success; final execution reconciliation is now delivered
+by app CLEAN-06 using the atomic operation receipt.
+
+Evidence: 24 file-backed and 27 disposable-PostgreSQL cases in
+test_ocr_cleanup_overlay.py / test_ocr_cleanup_overlay_postgres.py cover real storage
+reload, one-save boundaries, partial cleanup, all five target projections, empty
+sections/units, manual edits, note retention/generated invalidation, stale writes,
+replay/concurrency, fully/partly resolved review, Undo, source changes and injected
+post-write rollback. Combined regression: 304 cases, 303 passed, one existing
+private-source opt-in test skipped. This is storage acceptance on controlled text,
+not live-book/LLM semantic acceptance; CLEAN-10 remains open. No production books,
+Docker deployment or paid model requests were touched.
+
+Governance receipt: inspected global AGENTS/proposal/high-level-design/module index/
+progress and the design/checklist pairs for structure, DB, preparation, section_tasks
+and scripts. Modified structure design (implementation/limits), structure checklist
+(CLEAN-04 evidence/date), DB design (internal transaction contract) and progress
+(backend 4/8 only). Existing unrelated edits were retained. Validation checks
+architecture boundaries, checklist dates and diff whitespace; no UI documentation
+or code changes in this task.
+
 ## Reading Content Overlays (2026-10-21)
 
 OCR-REVIEW-03..06 implementation: reading_content.py owns explicit edit/delete,
@@ -9,11 +1779,16 @@ source_review evidence and reading_content overlays/audit/receipts. Pure reading
 projection preserves block IDs and tombstones; never persist the projected hierarchy.
 Commands require source token, expected revision and idempotent mutation ID. Edits
 accept 1..10000 Unicode code points; reject missing/deleted IDs, stale sources and
-conflicting receipts. Maximum 1000 mutations per source epoch is explicit.
-File writes use the artifact lock and atomic save; generated caches are cleared in
-the same commit. Late ordinary saves preserve overlays and cannot restore pre-edit
+conflicting receipts. Manual edit/delete has no product operation-count limit;
+the separate automatic-cleanup receipt guard is not a manual correction quota.
+File writes use the artifact lock and atomic save; required artifact clearing follows
+the explicit Keep/Clear/Delete policy in the same commit. Late ordinary saves preserve overlays and cannot restore pre-edit
 artifacts. Hard structural reparse clears overlays; no-op/title-only changes preserve
-them. Notes survive correction, and profile/raw text are not rewritten.
+them. Edit with Keep retains the block Note; edit with explicit interaction clearing
+and block deletion remove that block's Note. Other notes remain. Undo restores text,
+not purged interactions; profile/raw text are not rewritten. These targeted policies
+are implemented in reading_content_artifacts.py and the repositories. Durable review
+mapping and removal of manual-delete auto-Ignore remain pending in SRMAP-01..08.
 See doc_loaders Reviewable OCR Recovery for coverage policy, guards and acceptance.
 
 ## Common Multilingual Validation Mismatch (2026-10-21)
@@ -242,7 +2017,9 @@ db ENH-REV-02 and app ENH-REV-03 are also complete in their owner checklists.
 UI ENH-REV-05 is complete; integrated ENH-REV-06 engineering acceptance is complete.
 That historical engineering acceptance did not evaluate a live model. The later
 Real-Book Locator Recovery section records the explicitly scoped live acceptance.
-This is the current enhancement policy. Earlier FULL/ENH/NATIVE completion records
+This remains the structural enhancement policy. The planned Optional OCR Cleanup
+Plan section adds a separate pre-commit reading-overlay phase after split validation; it does not
+relax canonical conservation. Earlier FULL/ENH/NATIVE completion records
 remain historical engineering evidence, not acceptance of these new semantics.
 
 ### Confirmed Requirements
@@ -257,8 +2034,11 @@ remain historical engineering evidence, not acceptance of these new semantics.
   and coherent parent/child structure. Generated titles describe navigation, not
   fabricated source headings. Strict source-heading evidence applies only when a title
   claims source origin. Semantic planning is not Common heading detection.
-- An unchanged plan does not commit a new version, clear interactions, rebuild units
-  or trigger an automatic retry. Report "no structure change", not enhanced quality.
+- An unchanged structure plan does not itself commit a new version, clear interactions,
+  rebuild units or trigger an automatic retry. Report "no structure change", not
+  enhanced quality. Planned cleanup is separately evaluated; actual reading-content
+  changes have their own revision/invalidation/layout consequences, not a fake
+  structural change.
 - Navigation-title-only changes are effective changes, but preserve interactions.
 - Boundary, hierarchy level or parent/grouping changes are body-structure changes:
   clear ALL document interactions on successful atomic replacement. Partial reparse

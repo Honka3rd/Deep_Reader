@@ -2,6 +2,10 @@
 .codex
 .private-test-books
 .env.local
+**/.env
+**/.env.local
+**/.venv
+Deep_Reflective_Reader/llm/tokenizer_assets
 .DS_Store
 **/.DS_Store
 **/__pycache__

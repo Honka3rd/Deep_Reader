@@ -574,9 +574,14 @@ export function FileManagementView({
                       </TableCell>
                       <TableCell className="file-management-details-cell">
                         {item.reviewRequired && <Typography color="warning.main" variant="body2">OCR needs review</Typography>}
-                        <Typography variant="caption" color="text.secondary">
-                          {getDocumentManagementDetailLabel(item)}
+                        <Typography className="file-management-structure-status" variant="caption"
+                          role="status" color={item.preparationStatus === "failed" ? "error" : "text.secondary"}>
+                          {getDocumentPreparationStatusLabel(item.preparationStatus)}
                         </Typography>
+                        {getDocumentManagementDetailLabel(item) !== getDocumentPreparationStatusLabel(item.preparationStatus) &&
+                          <Typography className="file-management-profile-details" variant="caption" display="block" color="text.secondary">
+                            {getDocumentManagementDetailLabel(item)}
+                          </Typography>}
                       </TableCell>
                       <TableCell className="file-management-actions-cell" align="right">
                         <Stack
@@ -588,7 +593,7 @@ export function FileManagementView({
                           {item.sourceStatus === "available" && (
                             <Tooltip title={item.sourceType === "pdf" ? "Prepare PDF" : "Prepare document"}>
                               <span><IconButton aria-label={`Prepare ${item.sourceType === "pdf" ? "PDF" : "document"} ${item.docName}`} size="small"
-                                disabled={operationPending || renaming || deleting}
+                                disabled={operationPending || renaming || deleting || item.preparationStatus === "building"}
                                 onClick={() => onRequestPrepare(item)}><BuildOutlinedIcon fontSize="small" /></IconButton></span>
                             </Tooltip>
                           )}
@@ -604,7 +609,7 @@ export function FileManagementView({
                           </Button>
                           <Button
                             className="file-management-rename-action"
-                            disabled={renaming || operationPending}
+                            disabled={renaming || operationPending || item.preparationStatus === "building"}
                             size="small"
                             startIcon={<DriveFileRenameOutlineIcon />}
                             variant="outlined"
@@ -615,7 +620,7 @@ export function FileManagementView({
                           <Button
                             className="file-management-delete-action"
                             color="error"
-                            disabled={deleting || renaming || operationPending}
+                            disabled={deleting || renaming || operationPending || item.preparationStatus === "building"}
                             size="small"
                             startIcon={<DeleteOutlineIcon />}
                             variant="outlined"

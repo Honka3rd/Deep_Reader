@@ -19,7 +19,6 @@ try {
     const contentRequests = [];
     const unexpected = [];
     let listCalls = 0;
-    let slowReads = 0;
     let releaseSlow;
     let slowStarted;
     const slowSeen = new Promise((resolve) => { slowStarted = resolve; });
@@ -33,13 +32,16 @@ try {
         const names = staleOptions && listCalls === 1 ? ["Old"] : ["New", "Slow", "Next"];
         data = { items: names.map((name) => ({ doc_name: name, title: name, source: "structured", preparation_status: "ready" })), total: names.length };
       } else if (path === "/api/documents/task-layout") {
-        if (body.doc_name === "Slow" && ++slowReads > 1) {
+        if (body.doc_name === "Slow") {
           await new Promise((resolve) => { releaseSlow = resolve; slowStarted(); });
         }
         data = layout(body.doc_name);
       } else if (path.endsWith("/task-units/content")) {
         contentRequests.push({ path: decodeURIComponent(path), body });
         data = { contents: [] };
+      } else if (path.endsWith("/reading-content") && route.request().method() === "GET") {
+        data = { revision: 0, source_token: "fixture", disposition: "accepted", can_undo: false,
+          max_chars: 10000, regions: [], blocks: [] };
       } else {
         unexpected.push(path);
         return route.fulfill({ status: 500, json: { detail: "Unexpected API request" } });
@@ -69,7 +71,9 @@ try {
     assert.deepEqual(contentRequests.at(-1), {
       path: "/api/documents/New/task-units/content", body: { task_unit_ids: ["New-u"], segmented: true },
     });
-    await openLibrary("Slow");
+    // A selector load may remain pending while Library opens a different document.
+    await input.fill("Slow");
+    await page.getByRole("option", { name: "Slow", exact: true }).click();
     await slowSeen;
     await openLibrary("Next");
     await page.locator(".hierarchy-section-button").filter({ hasText: "Next section" }).waitFor();
@@ -122,6 +126,10 @@ try {
       if (path === "/api/documents/task-layout") {
         return route.fulfill(ready ? { json: layout("Book") } : { status: 409, json: { detail: guidance } });
       }
+      if (path.endsWith("/reading-content") && route.request().method() === "GET") return route.fulfill({ json: {
+        revision: 0, source_token: "fixture", disposition: "accepted", can_undo: false,
+        max_chars: 10000, regions: [], blocks: [],
+      } });
       if (path === "/api/documents/upload") {
         return route.fulfill({ json: { doc_name: "Book", source_filename: "Book.txt", source_type: "txt",
           source_size_bytes: 4, source_status: "uploaded", preparation_status: "not_prepared" } });

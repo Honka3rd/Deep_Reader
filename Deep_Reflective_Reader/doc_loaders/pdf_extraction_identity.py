@@ -52,7 +52,7 @@ def identity_for_loader(loader, *, source_sha256: str, mode) -> PdfExtractionIde
                 PdfExtractionMode.AUTO: "selective-pages-v1"}
     settings = {"pypdf": version("pypdf")}
     if selected != PdfExtractionMode.FAST:
-        from .ocr_review import enabled, REVIEW_POLICY
+        from .ocr_review import REVIEW_POLICY
         from .chinese_ocr_strategy import identity as chinese_ocr_identity
         def binary(command):
             path = shutil.which(command)
@@ -61,8 +61,7 @@ def identity_for_loader(loader, *, source_sha256: str, mode) -> PdfExtractionIde
                         quality=OCR_QUALITY_VERSION, engine=binary(loader.tesseract_cmd),
                         renderer=binary(loader.pdf_renderer_cmd), page_limit=loader.ocr_page_limit,
                         timeout=loader.ocr_timeout_seconds, budgets=asdict(loader.execution_limits))
-        if selected == PdfExtractionMode.OCR:
-            settings["review_policy"] = REVIEW_POLICY if enabled() else "strict"
+        settings["review_policy"] = REVIEW_POLICY
         if any(lang in {"chi_sim", "chi_sim_vert", "chi_tra", "chi_tra_vert"} for lang in loader.ocr_language.split("+")):
             settings["chinese_ocr"] = chinese_ocr_identity()
     if selected == PdfExtractionMode.AUTO:

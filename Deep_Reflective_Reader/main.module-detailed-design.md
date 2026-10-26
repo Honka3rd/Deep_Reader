@@ -1,10 +1,216 @@
 # main.py Detailed Design
 
+## Persisted Translation API Plan (2026-10-26)
+
+**[Code-Confirmed]** TRUI-05 implements the
+[shared plan](section_tasks/module-detailed-design.md#persisted-block-translation-plan-2026-10-26).
+Retain block-only generate input doc_name/content_block_id/target_language and optional
+source_language; a bounded mutation ID supports same-command replay. Never accept raw
+text, parent IDs, client plans, arbitrary model settings or namespace overrides.
+Constrain public language codes to the actual registry, not the first phase's wider
+syntactic tag set. For example, use zh when zh-Hant is not itself registered.
+
+Implemented read endpoint: POST /documents/reading-interactions/translate/read,
+body doc_name/content_block_id. Return resolved current block/source binding,
+language_codes, nullable default_source_language and bounded saved translations.
+One read supplies Modal options and saved sections; no separate broad language/profile
+API, whole-book fetch, model call or preparation is needed. Missing profile language
+is not a reason to hide saved translations. Distinguish absent profile from storage
+failure; never silently claim an empty saved list after a failed repository read.
+
+Generate first validates the language pair after resolving an omitted/null source
+from the existing profile. Equal source/target returns HTTP 422 with detail
+`translation_same_language`, including saved-target hits and replay attempts, with
+no model call or write. Then an existing source-valid target-language record returns without LLM
+or writes; source_language and mutation_id in that record remain its original values.
+Only a missing target language generates. New generation returns success only after durable commit, with language-keyed record
+identity, resolved codes/text/status, timestamps/revision and source binding. Preserve
+the existing envelope/payload pattern where practical; do not equate HTTP 200 with a
+saved translation for untranslatable. The TRUI-01/05 payload/schema contract is
+implemented. Saved result reads permit recovery after response loss without claiming
+to report the status of an in-flight operation.
+Retain sanitized 404/409/413/422/502/503 semantics and no-store responses. Backend
+must validate registry membership again; UI combo-box restrictions are insufficient.
+
+No translation delete/edit endpoint is requested; source-dependent cleanup uses the
+existing body mutation transaction. Add only necessary no-change/invalidation fields
+to body update responses so UI does not refresh layout or infer destructive scope.
+Generate adds envelope.persisted and record (null for untranslatable); successful
+records expose source/target language, status/text, timestamps, revision, mutation_id
+and effective_content_hash. Same-language CAS/replay conflicts return 409. Read is
+POST with no-store for private content, not a mutation. Pydantic rejects extra fields
+and unregistered codes; response validation checks committed-record/payload parity.
+The recorded route/container/OpenAPI and real SQL/browser acceptance passed without
+restarting production Docker. The stateless contract below is historical phase evidence.
+
+Recovery clarification (2026-10-26): `translation_routes.py` maps
+`translation_provider_failed`/`translation_invalid_output` to 502, and capacity/profile
+unavailability to 503. These recognized failures are distinct from a gateway's generic
+502/504 or a network interruption. `translation_service_unavailable` can also cover
+an unexpected action/commit exception, so HTTP 503 alone does not prove rollback.
+The UI distinguishes these outcomes and offers explicit retry without locking
+language selection; no new endpoint, automatic generation or operation-status API
+is introduced by that correction.
+
+## Block Translation API (2026-10-26)
+
+**Historical TRANS-API-02 contract, superseded by the persisted API above.**
+The generate-only/no-persistence scope and `zh-Hant` example below belong to the
+initial phase. Current interactive requests use exact registry codes (for example
+`zh` when `zh-Hant` is unregistered), and current routes include saved reads and writes.
+
+`translation_routes.py` registers POST `/documents/reading-interactions/translate/generate`
+(browser proxy prefix: `/api`). Main installs the container's TranslationAction in
+app.state; the dependency is replaceable for isolated tests. No provider/domain
+policy is implemented in the router. This phase exposes only block translation,
+not a general text-translation, parent-target, read/cache or persistence endpoint.
+
+Request example:
+
+```json
+{
+  "doc_name": "Madame Bovary",
+  "content_block_id": "20303:content:2",
+  "target_language": "zh-Hant"
+}
+```
+
+IDs above are illustrative; use the current server-returned block identity.
+Optional `source_language` is Translate from: omitted/null uses the existing
+profile language; explicit supported code overrides it. No source text, target
+hierarchy object, parent IDs, model settings or raw prompt accepted. Unknown
+request fields fail validation. Source language is never inferred from browser UI.
+
+Response has envelope (resolved target, interaction_type=translate,
+status=completed/partial/untranslatable, source_structure_version, reading_revision,
+effective_content_hash, schema/prompt versions) and payload (resolved source_language,
+target_language, translated_text). Untranslatable is HTTP 200 with null text;
+partial remains explicitly partial. No fabricated artifact/session IDs or success
+on malformed model output. effective_content_hash is SHA-256 of translated source
+block text, not the existing task-unit source_hash field.
+
+Errors are sanitized `{ "detail": "translation_..." }`: 404 document/block missing;
+409 source changed during translation; 413 capacity exceeded without completion;
+422 invalid request/target/text or source_language_required; 502 provider failure
+or invalid output; 503 profile/capacity/service unavailable. All responses are
+no-store. No automatic retry, new persistent state or frontend delivery is implied.
+
+## Cleanup Record Transport (2026-10-25)
+
+RCR-03 adds optional nested `refresh` to POST and a minimal GET variant on the same
+route. Supply `refresh_mutation_id`, `expected_revision`, `source_token`, and optional
+`block_offset`; this variant rejects review/history/block-filter combinations.
+Transport forwards to `ReadingContentService.read_refresh`, without assembling
+scope or loading layout. Stale/missing mutation binding returns 409; malformed query
+types/ranges return 422. Successful same-ID POST replay may report stale refresh
+scope while still acknowledging the original commit. Domain design is authoritative;
+this supporting transport work is counted only under document_structure RCR-03.
+
+CLEAN-RESTORE reuses GET/POST `/documents/{doc_name}/reading-content`; no new
+route or route-owned mapping logic. GET projects cleanup records and backend block
+edit flags without writes. POST forwards `cleanup_edit` or `cleanup_restore` with
+opaque cleanup_record_id through the existing revision/source/mutation-ID guarded
+repository service. Clients cannot supply insertion offsets or replacement block IDs.
+Actual FastAPI contract tests in `scripts/test_cleanup_history.py` pass; source-domain
+and persistence semantics belong to document_structure/db, not this transport layer.
+This supporting change is counted once under CLEAN-RESTORE, not a new main task.
+
+## Standalone Cleanup Transport Plan (2026-10-23)
+
+**[Code-Confirmed: SCLEAN-06, 2026-10-24]** These three routes and their strict
+schemas are registered in source. SCLEAN-07 now supplies production service composition;
+an unconfigured service reports unavailable, not executable cleanup. Canonical
+[service design](document_structure/module-detailed-design.md#independent-smart-cleanup-2026-10-23).
+
+| Implemented route, relative to existing API mount | Purpose |
+| --- | --- |
+| POST /documents/{doc_name}/smart-cleanup/preflight | Read-only eligibility/capacity/impact and bound operation/consent handles; zero LLM calls |
+| POST /documents/{doc_name}/smart-cleanup | Explicit execute or resume for the same confirmed operation |
+| GET /documents/{doc_name}/smart-cleanup/{operation_id} | Read-only reconciliation of operation outcome; never resumes work |
+
+Routes validate/forward to the app cleanup service and use existing namespace/access
+resolution. They do not load raw source, match quotes, run transactions or choose a
+model. No public generate-plan/apply-plan endpoints, provider tuning, raw prompt,
+canonical offsets or hierarchy payload. Existing reading-content audit and single
+Undo suffice; no duplicate cleanup history/Undo API. Add narrow DI at composition
+without changing provider settings or import-time model execution.
+
+Preflight creates a fresh opaque operation handle/confirmation binding without
+persisting content. Execute submits only those handles; replay reconciles, while
+an explicit new attempt obtains a fresh preflight. Unknown outcomes never imply
+safe re-execution. Consistent 404/409/422/503 transport errors are distinct from
+typed cleanup no-op/partial/failed outcomes and postcommit layout failure. Preserve
+existing enhance routes and their structural success fields; do not turn Common
+reparse into a disguised cleanup action. Old deployed servers remain unsupported,
+not silently routed to reparse by the frontend.
+
+### SCLEAN-06 Delivery (2026-10-24)
+
+`main.py` registers the small `smart_cleanup_routes.py` router, owned by this API
+module. Its dependency reads a server-configured namespace-scoped service from
+`app.state.smart_cleanup_service`; tests inject the actual SCLEAN-05 use case.
+No public namespace selector, new auth scheme, import-time model request or unlocked
+fallback is introduced. SCLEAN-07 wires accepted-input/readiness ports and the shared
+enhancement lease through container.smart_cleanup_service into app.state. Missing
+ports/unsupported storage still return 503 with execution_available=false and
+reason=cleanup_service_unavailable; execute/lookup return sanitized errors. Production
+composition and the default route dependency are tested on disposable SQL; source
+registration is not deployment. Frontend entry remains SCLEAN-08/09.
+
+Preflight accepts no body or an empty object. Execute accepts only operation_id and
+confirmation_token; submitting these is explicit consent. Same-operation POST calls
+the app service, which can resume committed layout under its existing lease, without
+regenerating cleanup. GET never executes or resumes. New attempts require new
+preflight handles. App verifies a one-way token commitment even after restart;
+the token itself is not persisted in receipts. Pending review counts come from the
+app/domain snapshot, not another route-level document load or UI inference.
+
+Transport mapping: 404 missing document; 409 stale/invalid/expired consent, busy
+operation, source/revision/policy conflict or an unknown POST outcome; 422 invalid
+body/path/query; 503 unavailable service/capacity measurement/storage reconciliation.
+Unknown GET is 200 with phase=unknown, commit=unknown and retry_action=reconcile;
+it is not permission to regenerate. Capacity overflow/ineligibility preflight is
+200 with execution_available=false and no handles. Provider/plan failure, no-op,
+partial cleanup and postcommit layout failure remain typed operation outcomes:
+HTTP 200 alone never proves content changed or reading is ready. OpenAPI declares
+the typed state/error unions for non-2xx responses. A missing outcome is never
+filled with zero counts or success. Historic superseded results cannot claim ready.
+
+All three routes reject unknown query parameters; GET also rejects a body. A scoped
+route wrapper sanitizes validation/exception details and applies Cache-Control:
+no-store on success and failure, without changing legacy route error behavior.
+Plans, source text, private bindings, model limits and provider errors are excluded
+from output. Existing enhance, audit, review and Undo APIs remain unchanged.
+
+Validation: `test_smart_cleanup_api.py` adds 28 temporary-file and 28 isolated SQL
+cases against the actual FastAPI application. Total 276 local plus 174 disposable
+SQL/API/enhancement regressions pass. Includes strict unknown/coercion rejection,
+OpenAPI route/schema inventory, namespace/document isolation, readonly preflight/GET,
+source/edit conflicts, no-op/partial/failure, concurrent POST, restart/lost response,
+token validation after restart, layout-only repeat POST and current review counts
+after Undo. Three hash-verified Common/OCR backups pass the full transport/service/
+storage path with deterministic provider responses; originals remain unchanged.
+No live LLM, production-data mutation, deployment or frontend completion is claimed.
+
+## Optional Cleanup Transport (2026-10-23)
+
+Supporting app CLEAN-06: the existing preflight/reparse/result routes forward the
+strict allow_ocr_cleanup flag (default false). Opted-in execution reconciles an
+atomic commit receipt before generation and invokes coordinator-owned automatic
+layout after commit. Result polling never invokes layout or model work and returns
+sanitized 503 enhancement_result_unavailable on storage-read failure. Existing
+non-opted-in requests retain legacy behavior; the UI opts in under CLEAN-07.
+Responses preserve structural fields and forward typed cleanup, phase, retry_stage,
+layout_error and authoritative review state. success=true with phase=layout means
+committed but not reading-ready; repeat POST resumes layout only. No orchestration,
+prompt construction or persistence policy moves into route handlers. Tests and
+completion count belong to app CLEAN-06, not another checkbox here.
+
 ## Reading Content Routes (2026-10-21)
 
 GET /documents/{doc_name}/reading-content returns revision/source token, review
 regions/disposition and undo availability. Blocks are omitted by default; block_id
-selects one, include_blocks=true opts into the inventory. POST accepts only edit,
+selects one, include_blocks=true opts into a bounded inventory page. POST accepts only edit,
 delete, undo or discard_region. No add endpoint exists. The service, not the route,
 owns atomic mutation/invalidation; 404 missing document/region, 409 conflict, 422
 invalid request, 503 bounded infrastructure error. PNG original-region preview at
@@ -12,6 +218,23 @@ invalid request, 503 bounded infrastructure error. PNG original-region preview a
 and source-hash checked. Existing local namespace routing applies; no new auth layer.
 Library exposes review_required; note responses expose source_stale. Neither reads
 nor preview invoke OCR/profile/LLM. API tests run against isolated file/SQL storage.
+
+SRMAP-04 (2026-10-25): typed ReadingContentResponse filters the existing GET/POST
+responses. region_id scopes related surviving blocks; block_offset pages either
+that set or the general include_blocks inventory in fixed pages of 20. Region
+coverage/body status, reason, deleted count, manual-change time and structure
+version support read-only UI navigation. Eligibility/counts/guards remain domain
+policy, not route filtering. discard_region acknowledges review; it does not delete
+linked body text. No public mapping-write endpoint, hidden GET backfill or expanded
+task-layout payload. Five focused API tests cover shape/internal-field omission,
+manual deletion/Ignore, unknown IDs, all-level guards and a 25-block paging fixture.
+
+CLEAN-08 supporting projection (2026-10-23): GET reading-content optionally accepts
+include_cleanup_audit=true and cleanup_offset (0..1000), returning a service-owned
+ten-batch history page. Default reads omit history. Snapshot responses add undo_action
+for the existing single Undo slot; no new mutation action or arbitrary batch undo.
+The route only validates/forwards query parameters. Test evidence and completion
+are owned by the UI CLEAN-08 checklist, not another backend task count.
 
 ## Summary And Note Routes (2026-10-21)
 

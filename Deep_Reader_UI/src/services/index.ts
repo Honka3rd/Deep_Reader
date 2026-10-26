@@ -7,6 +7,7 @@ import { ManualStructureService } from "./ManualStructureService";
 import { ReadingInteractionService } from "./ReadingInteractionService";
 import { RestClient } from "./RestClient";
 import { StructureRepairService } from "./StructureRepairService";
+import { SmartCleanupService } from "./SmartCleanupService";
 import { TaskLayoutService } from "./TaskLayoutService";
 import { TaskUnitContentService } from "./TaskUnitContentService";
 
@@ -22,6 +23,7 @@ export const readingInteractionService = new ReadingInteractionService(restClien
 export const taskLayoutService = new TaskLayoutService(restClient);
 export const taskUnitContentService = new TaskUnitContentService(restClient);
 export const structureRepairService = new StructureRepairService(restClient);
+export const smartCleanupService = new SmartCleanupService(restClient);
 
 export {
   DocumentCatalogService,

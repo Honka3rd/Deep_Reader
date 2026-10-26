@@ -10,6 +10,13 @@ from .extraction_identity import ExtractionIdentity, ExtractionResult
 
 
 @dataclass(frozen=True)
+class SourceTextSpan:
+    char_start: int
+    char_end: int
+    page_index: int | None = None
+
+
+@dataclass(frozen=True)
 class SourceArtifact:
     result: ExtractionResult
     page_boundaries: tuple = ()
@@ -17,6 +24,8 @@ class SourceArtifact:
     layout_provider: Callable | None = None
     storage_metadata: dict = field(default_factory=dict)
     ocr_run: dict | None = None
+    # None means unknown; an empty tuple proves no OCR text in this extraction.
+    ocr_spans: tuple[SourceTextSpan, ...] | None = None
 
 
 class SourceSession:

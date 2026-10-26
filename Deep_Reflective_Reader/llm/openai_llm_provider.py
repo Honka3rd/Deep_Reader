@@ -9,6 +9,7 @@ from llm.llm_model_capabilities import (
     LLMModelCapabilities,
 )
 from llm.llm_provider import LLMProvider
+from llm.offline_token_counter import TOKEN_COUNTER
 
 
 class OpenAIModelName(StrEnum):
@@ -190,9 +191,8 @@ Returns:
         return self.model_capabilities
 
     def count_input_tokens(self, text: str) -> int | None:
-        try:
-            import tiktoken
-            encoding = tiktoken.encoding_for_model(self.model_capabilities.model_name)
-            return len(encoding.encode(text, disallowed_special=()))
-        except Exception:
-            return None
+        return TOKEN_COUNTER.count(self.model_capabilities.model_name, text)
+
+    @property
+    def tokenizer_identity(self) -> str | None:
+        return TOKEN_COUNTER.identity(self.model_capabilities.model_name)

@@ -11,10 +11,11 @@ try {
     const fits = { status: "fits", full_source: true, model: "fixture-model",
       required_input_tokens: 12000, available_input_tokens: 24000,
       output_reserve_tokens: 4000, max_output_tokens: 8000, count_method: "conservative_estimate" };
-    let capacity = { ...fits }, preflightFails = false;
+    let capacity = { ...fits }, preflightFails = false, holdPreflight = false, releasePreflight;
     let mode = "stale", reloadFails = false, layoutMissing = false, prepareFails = false, preparations = 0, release;
     let holdPreparation = false, releasePreparation;
     let confirmed = false;
+    let activity = "idle";
     const success = name => ({ success: true, doc_name: name, parser_mode: "llm_enhanced",
       change_kind: "structure_changed", committed: true, interactions_cleared: true, reading_layout_required: true });
     const calls = [], errors = [], unexpected = [];
@@ -22,6 +23,12 @@ try {
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
       const body = route.request().postDataJSON();
+      if (path.endsWith("/reparse-structure/status")) return route.fulfill({ json: {
+        doc_name: new URL(route.request().url()).searchParams.get("doc_name"), status: activity,
+      } });
+      if (path.endsWith("/reading-content")) return route.fulfill({ json: {
+        revision: 0, source_token: "fixture", disposition: "ready", can_undo: false, max_chars: 10000, regions: [], blocks: [],
+      } });
       if (["/api/documents", "/api/documents/management"].includes(path)) return route.fulfill({ json: { items: [], total: 0 } });
       if (path === "/api/documents/task-layout") {
         if (layoutMissing) return route.fulfill({ status: 409, json: { detail: "Task layout is not ready (missing_task_units)." } });
@@ -44,6 +51,7 @@ try {
         document_id: "Book", task_unit_id: `u${version}`, chapter_id: `c${version}`, section_id: `s${version}`,
         content_blocks: [{ block_id: `u${version}:content:0`, block_type: "content", content: `Source ${version}` }],
       }] } });
+      if (path.endsWith("/preflight") && holdPreflight) await new Promise(resolve => { releasePreflight = resolve; });
       if (path.endsWith("/preflight") && preflightFails) return route.abort();
       if (path.endsWith("/preflight")) return route.fulfill({ json: {
         capacity,
@@ -62,7 +70,7 @@ try {
         } });
         if (mode === "stale") return route.fulfill({ status: 409, json: { detail: "confirmation_stale" } });
         if (mode === "reject") return route.fulfill({ status: 502, json: { success: false, retryable: false, error: "candidate_rejected", doc_name: body.doc_name } });
-        if (mode === "lost") return route.abort();
+        if (mode === "lost") { activity = "running"; return route.abort(); }
         if (mode === "pending") await new Promise(resolve => { release = resolve; });
         version++;
         confirmed = true;
@@ -80,7 +88,9 @@ try {
       assert.equal(await dialog.locator('[aria-label="Model capacity"]').count(), 0);
       assert.doesNotMatch(await dialog.innerHTML(),
         /fixture-model|LongModelName|Required input tokens|Available input tokens|Reserved output tokens|Maximum supported output tokens|12,000|24,000|4,000|8,000/);
-      assert.doesNotMatch(await dialog.ariaSnapshot(), /Model capacity|input tokens|output tokens|fixture-model/);
+      const accessible = dialog.ariaSnapshot ? await dialog.ariaSnapshot()
+        : JSON.stringify(await page.accessibility.snapshot());
+      assert.doesNotMatch(accessible, /Model capacity|input tokens|output tokens|fixture-model/);
     }
     async function open() {
       await page.locator("#repair-menu-button").click();
@@ -207,10 +217,11 @@ try {
     await open();
     assert.equal(await submit.isDisabled(), true);
     await page.getByRole("button", { name: "Check stored state" }).click();
-    await page.getByText(/earlier outcome cannot be confirmed/).waitFor();
+    await page.getByText(/still running/).waitFor();
     assert.equal(calls.length, 3);
     version++;
     confirmed = true;
+    activity = "idle";
     prepareFails = true;
     await page.getByRole("button", { name: "Check stored state" }).click();
     await page.getByText(/Structure saved, but reading preparation failed/).waitFor();
@@ -230,7 +241,7 @@ try {
     await submit.evaluate(el => { el.click(); el.click(); });
     await page.getByLabel("Enhancing", { exact: true }).waitFor();
     assert.equal(calls.length, 4);
-    assert.equal(await page.getByRole("button", { name: "Cancel", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Cancel", exact: true }).isDisabled(), false);
     // Navigate without reloading the app while a server response is pending.
     await page.evaluate(() => { history.pushState({}, "", "/documents/Other"); dispatchEvent(new PopStateEvent("popstate")); });
     await dialog.waitFor({ state: "hidden" });
@@ -239,22 +250,40 @@ try {
     assert.equal(await page.locator(".document-search-input input").inputValue(), "Other");
     await page.evaluate(() => { history.pushState({}, "", "/documents/Book"); dispatchEvent(new PopStateEvent("popstate")); });
     await open();
-    await page.getByRole("button", { name: "Reload document" }).click();
     await dialog.waitFor({ state: "hidden" });
     assert.equal(calls.length, 4);
     await page.clock.install();
+    holdPreflight = true;
+    const opening = open();
+    await page.getByLabel("Checking readiness").waitFor();
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]'));
+    for (let n = 0; n < 100 && !releasePreflight; n++) await page.waitForTimeout(20);
+    assert.ok(releasePreflight);
+    await page.clock.fastForward(120_001);
+    assert.equal(await page.getByLabel("Checking readiness").isVisible(), true);
+    holdPreflight = false; releasePreflight(); await opening;
+    await cancel();
     await open();
     await submit.click();
     await page.getByLabel("Enhancing", { exact: true }).waitFor();
     await page.clock.fastForward(120_001);
-    await page.getByText(/Connection lost or timed out/).waitFor();
+    assert.equal(await page.getByLabel("Enhancing", { exact: true }).isVisible(), true);
     assert.equal(calls.length, 5);
     assert.equal(await submit.isDisabled(), true);
+    await page.screenshot({ path: `/tmp/enhancement-long-wait-${width}.png`, animations: "disabled" });
     release();
-    await page.waitForTimeout(150);
-    await page.getByRole("button", { name: "Check stored state" }).click();
     await dialog.waitFor({ state: "hidden" });
     assert.equal(calls.length, 5);
+    // Closing a submitted request retains its handle; late completion cannot update the closed view.
+    await open(); await submit.click();
+    await page.getByLabel("Enhancing", { exact: true }).waitFor();
+    await cancel(); release();
+    await page.waitForTimeout(150);
+    assert.equal(await dialog.count(), 0);
+    await page.reload(); await open();
+    await dialog.getByText("Ready for smart structuring.", { exact: true }).waitFor();
+    assert.equal(calls.length, 6, "Reload checks activity without another mutation or stored token");
+    await cancel();
     mode = "success";
     holdPreparation = true;
     const previousPreparations = preparations;
@@ -262,7 +291,7 @@ try {
     await submit.click();
     await page.getByLabel("Preparing reading layout", { exact: true }).waitFor();
     assert.equal(await submit.isDisabled(), true);
-    assert.equal(await page.getByRole("button", { name: "Cancel", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Cancel", exact: true }).isDisabled(), false);
     await page.screenshot({ path: `/tmp/enhancement-preparing-${width}.png`, animations: "disabled" });
     await page.evaluate(() => { history.pushState({}, "", "/documents/Other"); dispatchEvent(new PopStateEvent("popstate")); });
     await dialog.waitFor({ state: "hidden" });
@@ -274,8 +303,8 @@ try {
     await open();
     await page.getByRole("button", { name: "Reload document" }).click();
     await dialog.waitFor({ state: "hidden" });
-    assert.equal(preparations, previousPreparations + 1, "Returning to document must reuse completed preparation");
-    assert.equal(calls.length, 6, "Reading recovery must not regenerate");
+    assert.equal(preparations, previousPreparations + 2, "Cancelled legacy preparation is explicitly resumed, never treated as acknowledged");
+    assert.equal(calls.length, 7, "Reading recovery must not regenerate");
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     console.log(`PASS ${width}px: readiness-only UI, no model/token DOM or accessibility output, capacity/legacy/network gates, changed policy, consent, focus/cancel, stale/rejected, uncertainty, reload-only recovery, duplicate submit, document switch`);

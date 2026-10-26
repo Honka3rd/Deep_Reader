@@ -1,5 +1,6 @@
 """Consent and transport regressions; no user documents or providers."""
 from dataclasses import replace
+from contextlib import contextmanager
 import base64
 from pathlib import Path
 import sys
@@ -128,6 +129,65 @@ class PreflightTests(unittest.TestCase):
         response = client.post("/documents/reparse-structure/preflight", json={
             "doc_name": "doc", "parser_mode": "common"})
         self.assertEqual(response.status_code, 422)
+
+
+class ActivityTests(unittest.TestCase):
+    def setUp(self):
+        self.held = set()
+        self.observed = []
+
+        @contextmanager
+        def lease(name):
+            if name in self.held:
+                raise BlockingIOError("busy")
+            self.held.add(name)
+            self.observed.append(name)
+            try:
+                yield
+            finally:
+                self.held.remove(name)
+
+        self.reader = Mock(side_effect=AssertionError("Status must not load source"))
+        self.service = EnhancementPreflightService(self.reader, lease=lease)
+
+    def test_live_lease_only_and_no_persistence(self):
+        self.assertEqual(self.service.activity("book"), "idle")
+        self.assertEqual(self.held, set())
+        self.held.add("book")
+        self.assertEqual(self.service.activity("book"), "running")
+        self.assertEqual(self.service.activity("other"), "idle")
+        self.held.clear()
+        self.assertEqual(self.service.activity("book"), "idle")
+        self.reader.assert_not_called()
+        self.assertEqual(self.service.operations._entries, {})
+
+    def test_unavailable_is_not_idle(self):
+        with self.assertRaises(EnhancementConflict):
+            EnhancementPreflightService().activity("book")
+
+    def test_route_requires_no_old_token_and_respects_prepare_activity(self):
+        from app.preparation_operations import PreparationOperations
+        activity = PreparationOperations()
+        with patch.object(main, "enhancement_preflight_service", self.service), \
+                patch.object(main, "preparation_operations", activity):
+            client = TestClient(main.app)
+            url = "/documents/reparse-structure/status"
+            response = client.get(url, params={"doc_name": "book"})
+            self.assertEqual(response.json(), {"doc_name": "book", "status": "idle"})
+            self.assertEqual(response.headers["cache-control"], "no-store")
+            with activity.track("book"):
+                self.assertEqual(client.get(url, params={"doc_name": "book"}).json()["status"], "running")
+            # A failed/old operation is not a live worker and cannot block new consent.
+            self.assertEqual(client.get(url, params={"doc_name": "book"}).json()["status"], "idle")
+            self.held.add("book")
+            self.assertEqual(client.get(url, params={"doc_name": "book"}).json()["status"], "running")
+            self.service.lease = Mock(side_effect=RuntimeError("private storage details"))
+            response = client.get(url, params={"doc_name": "book"})
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn("private", response.text)
+            for name in ("", "  ", "x" * 256):
+                self.assertEqual(client.get(url, params={"doc_name": name}).status_code, 422)
+            self.reader.assert_not_called()
 
 
 if __name__ == "__main__":

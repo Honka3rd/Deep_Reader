@@ -21,6 +21,19 @@ For `Deep_Reader_UI` tasks, the target module documents are:
 - `Deep_Reader_UI/module-detailed-design.md`
 - `Deep_Reader_UI/module-checklist.md`
 
+## Required development standards
+
+Before every implementation task, read both files from the repository, even if
+they were read in an earlier task or summarized in conversation:
+
+- [Frontend development standards](docs/standards/frontend-development.md)
+- [Backend development standards](docs/standards/backend-development.md)
+
+Apply each standard to its respective frontend or backend scope and check the
+implementation against the applicable standards before reporting completion.
+If a standards file is empty, do not invent missing rules.
+Existing architecture and governance rules still apply.
+
 ## Global architecture rules
 
 Do not reintroduce:

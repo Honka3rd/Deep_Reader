@@ -4,7 +4,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright")
 const browser = await chromium.launch({ headless: true,
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
 const base = process.env.UI_URL || "http://127.0.0.1:5173";
-const layout = name => ({ document_id: name, title: name, chapters: [{ chapter_id: "c", title: name,
+const layout = name => ({ document_id: `opaque:${name}`, title: name, chapters: [{ chapter_id: "c", title: name,
   sections: [{ section_id: "s", title: `${name} section`, task_units: [{ unit_id: "u" }] }] }] });
 try {
   for (const width of [1280, 390]) {
@@ -14,6 +14,14 @@ try {
     page.on("pageerror", e => errors.push(e.message));
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/api/documents/reparse-structure/status") return route.fulfill({ json: {
+        doc_name: new URL(route.request().url()).searchParams.get("doc_name"), status: "idle",
+      } });
+      if (["/api/documents/Ready/reading-content", "/api/documents/Missing/reading-content"].includes(path)
+        && route.request().method() === "GET") return route.fulfill({ json: {
+        revision: 0, source_token: "fixture", disposition: "accepted", can_undo: false,
+        max_chars: 10000, regions: [], blocks: [],
+      } });
       if (["/api/documents", "/api/documents/management"].includes(path)) {
         return route.fulfill({ json: { items: [
           ["Ready", readyStatus], ["Raw", "not_prepared"], ["Failed", "failed"],
@@ -57,6 +65,12 @@ try {
     assert.equal(reads.length, 0, "Catalog reads must not probe or generate layouts");
     await openRow("Ready").click();
     await page.locator(".hierarchy-section-button").filter({ hasText: "Ready section" }).waitFor();
+    assert.equal(reads.length, 1, "Library Open must install the validated layout without fetching it twice");
+    await page.getByRole("button", { name: "Library", exact: true }).click();
+    await page.locator(".file-management-recent-action").click();
+    await library.waitFor({ state: "hidden" });
+    await page.locator(".hierarchy-section-button").filter({ hasText: "Ready section" }).waitFor();
+    assert.equal(reads.length, 2, "Recent Open must fetch once again, not reuse a previous Open snapshot");
     readyStatus = "failed";
     await page.getByRole("button", { name: "Library", exact: true }).click();
     await page.waitForFunction(() => document.querySelector(".file-management-row .file-management-open-action")?.disabled);
@@ -66,12 +80,17 @@ try {
     await page.locator(".file-management-refresh-action").click();
     await page.waitForFunction(() => !document.querySelector(".file-management-recent-action")?.disabled);
     hold = true;
-    await page.locator(".file-management-recent-action").click();
+    const beforeCancelledOpen = reads.length;
+    await page.locator(".file-management-recent-action").evaluate(button => { button.click(); button.click(); });
     await page.getByRole("status").filter({ hasText: "Checking reader readiness." }).waitFor();
     while (!deferred) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(reads.length, beforeCancelledOpen + 1, "Duplicate Open clicks must share one active validation");
     await library.getByRole("button", { name: "Close", exact: true }).click();
     hold = false;
     await deferred.fulfill({ json: layout("Ready") }).catch(() => {});
+    await page.waitForTimeout(100);
+    assert.equal(reads.length, beforeCancelledOpen + 1, "Cancelled validation must not dispatch a reader fetch");
+    assert.match(page.url(), /documents\/Ready$/);
     await page.getByRole("button", { name: "Library", exact: true }).click();
     await openRow("Missing").click();
     const dialog = page.getByRole("dialog", { name: "Prepare document", exact: true });
@@ -80,8 +99,10 @@ try {
     assert.equal(await dialog.locator(".pdf-mode-control").count(), 0);
     await dialog.getByRole("button", { name: "Prepare", exact: true }).click();
     await dialog.getByText("Document prepared.", { exact: true }).waitFor();
+    const beforePreparedOpen = reads.length;
     await dialog.getByRole("button", { name: "Open", exact: true }).click();
     await page.locator(".hierarchy-section-button").filter({ hasText: "Missing section" }).waitFor();
+    assert.equal(reads.length, beforePreparedOpen + 1, "Prepare-dialog Open must use its one validated layout");
     assert.equal(writes.length, 1);
     await page.getByRole("button", { name: "Library", exact: true }).click();
     await openRow("Malformed").click();

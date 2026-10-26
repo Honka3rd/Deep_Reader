@@ -22,6 +22,7 @@ venv/
 .private-test-books/
 
 # Data / Index / Cache
+Deep_Reflective_Reader/llm/tokenizer_assets/
 data/
 storage/
 *.faiss

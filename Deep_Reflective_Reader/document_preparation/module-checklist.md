@@ -1,5 +1,39 @@
 # document_preparation Checklist
 
+## Independent Smart Cleanup Backlog (2026-10-23)
+
+Owned tasks 2/2. [Shared order](../document_structure/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23).
+
+- [x] SCLEAN-02: Adapt accepted Common hierarchy and in-memory split candidate to one cleanup input.
+  Priority: P0. Depends on: SCLEAN-01. Owner: document_preparation.
+  Acceptance: Reuse accepted-source identity/OCR/page evidence, coherent hierarchy/revision/effective mapping and manual protections. Existing Common body may have no task units. Do not construct a fake EnhancementCandidate, call a splitter/loader/profile or infer OCR from format/language. Narrow adapters only; planning/storage/consent stay outside preparation. Provider supplied by composition, not splitter internals.
+  Evidence required: Both adapters produce equivalent input for equivalent content; missing/stale evidence, manual edits, native/Auto and before-unit cases. Pending review does not block corrective cleanup of proven mapped text; textless/unmapped regions remain. Poisoned split/OCR/profile/save dependencies prove zero calls.
+  Evidence: cleanup_input_adapter.py validates accepted source/hierarchy/revision/evidence and converts both paths without extraction, planning or storage. Structure-owned cleanup_reading_view.py maps manual replacements and prior deletions exactly, preserving gaps and pending review; candidate input normalizes old block edits to canonical ranges without changing either original object. Correlated logs contain safe counts/reasons/timing only. Runtime integration remains SCLEAN-07.
+  Validation: 20 new adapter tests; combined 140 contract/planner/validator/file-overlay tests plus 21 preparation/evidence/layout tests pass. Three hash-verified Common/OCR backups pass the real accepted-source adapter path read-only; no source/profile mutation, live LLM/OCR, PostgreSQL execution or API/UI availability claimed.
+  Timestamp: 2026-10-23
+
+- [x] SCLEAN-07: Integrate shared cleanup into enhance and automatic reading readiness.
+  Priority: P1. Depends on: SCLEAN-02/03/04/05/06. Owner: document_preparation; app supports orchestration.
+  Acceptance: Enhance runs shared planning after applying split in memory and before one combined commit; no self-HTTP or standalone second commit. Optional failure retains candidate, final write failure rolls back. Standalone keeps ready canonical units/IDs; absent/stale layout is explicitly prepared with existing profile. Committed layout recovery never regenerates either plan. Manual independent retry after failed/partial automatic cleanup never resplits or extracts.
+  Evidence required: Actual app/preparation/file/SQL call-order tests for success, partial, failure, missing units, no-op, stale revisions, layout retry and failed-auto-then-standalone retry; no hidden GET mutation or manual Prepare requirement.
+  Evidence: Production DI injects the same configured provider into preparation and the standalone service, using the enhancement document lease. Enhance adapts the unsaved candidate plus coherent accepted baseline into remaining-view engine v3; combined commit rechecks input/candidate digests and uses the shared validator/application before its sole final write. Public readiness/guarded continuation ports explicitly prepare missing layouts, retain ready canonical IDs, and reject changed source/revisions before layout writes. Independent retry does not split/extract/rebuild profiles. File runtime without cross-process enhancement ports stays explicitly unavailable, not unlocked.
+  Validation: 30 new runtime cases (14 file/shared plus 16 isolated SQL), included in 308 local and 190 SQL/API regressions; 16 additional consent/operation/cache regressions pass. Three hash-verified backup books complete actual layout with deterministic cleanup responses, including Sample2's reviewed deletion; originals remain unchanged. Covers single combined commit/rollback, default API dependency, DI/shared lease, failed/partial-auto-then-standalone, no-op, no units, stale source/Undo during layout, restart and generation-free recovery. No live LLM/OCR, production data mutation, deployment or UI completion claimed; SCLEAN-10 remains pending.
+  Timestamp: 2026-10-24
+
+## Optional OCR Cleanup Handoff Backlog (2026-10-22)
+
+Shared track: [structure checklist](../document_structure/module-checklist.md#optional-ocr-cleanup-plan-backlog-2026-10-22).
+This module's handoff task is implemented; public orchestration is delivered separately by app CLEAN-06 (2026-10-23).
+
+- [x] CLEAN-05: Hand accepted OCR evidence and effective source mappings into explicit preparation.
+  Depends on: CLEAN-04.
+  Acceptance: Generic identity/actual OCR eligibility and existing page-span handoff without concrete loader branches, re-extraction or profile rebuild. Build/reuse layout against effective reading revision and preserve canonical-to-unit/block mappings for span overlays, including empty units. Cleanup failure still allows explicit layout-only recovery; content/task-layout reads never mutate.
+  Sequencing: Pass accepted snapshot and in-memory split candidate through cleanup before one final save; automatic layout follows commit. No database reload as cleanup input.
+  Evidence required: Third-format/source capability controls, absent/Auto evidence, pre-unit cleanup, no-op reuse, content-only invalidation, all-empty section and failed-cleanup preparation tests. Unit IDs stay backend-owned.
+  Evidence: Generic SourceArtifact OCR spans and accepted snapshot context, pure candidate/planner handoff, canonical-unit layout mapping and cleanup-dependent reading revision checks. 35 new file/PostgreSQL/capability/cache cases; combined 308 cases, 307 passed and one existing private-source opt-in skipped. Actual explicit layout coordinator and both storage adapters tested, including failed cleanup, empty-section Undo, manual replacement, stable IDs, no repeat writes and stale writer rejection. No source/profile regeneration, public cleanup API, deployment or live-book acceptance claimed.
+  Timestamp: 2026-10-23
+
+
 ## Loader Boundary Governance
 
 - [x] LOADER-03: Consume sessions in preparation/cache/save and remove concrete loader dispatch from persisted-evidence reads.

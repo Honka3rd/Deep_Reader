@@ -1,0 +1,7 @@
+# Reuse an explicitly selected local dependency image; never replace production.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+WORKDIR /app/Deep_Reflective_Reader
+COPY Deep_Reflective_Reader/ ./
+ENV PYTHONPATH=/app/Deep_Reflective_Reader:/app/Deep_Reflective_Reader/scripts
+CMD ["python", "-m", "unittest", "scripts.test_smart_cleanup_api.PostgresSmartCleanupApiTests", "scripts.test_cleanup_runtime.PostgresCleanupRuntimeTests"]

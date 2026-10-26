@@ -46,9 +46,11 @@ try {
     await field.fill(`Reviewed text ${width}`);
     failNext = true;
     await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Keep and save", exact: true }).click();
     await page.getByRole("alert").last().waitFor();
     assert.equal(await field.inputValue(), `Reviewed text ${width}`);
     await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Keep and save", exact: true }).click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.evaluate(() => window.selectBlock("edit"));
     await field.waitFor();
@@ -62,13 +64,14 @@ try {
       expected_revision: concurrent.revision, mutation_id: `concurrent-${width}-${Date.now()}`,
     } })).status(), 200);
     await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Keep and save", exact: true }).click();
     await page.getByRole("alert").last().waitFor();
     assert.equal(await field.inputValue(), "Uncommitted draft");
     page.once("dialog", dialog => dialog.accept());
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.evaluate(() => window.selectBlock("delete"));
-    await page.getByText("Delete this block from the reading content?", { exact: false }).waitFor();
+    await page.getByText("Delete this block and its interactions", { exact: false }).waitFor();
     await page.screenshot({ path: `/tmp/reading-delete-${width}.png`, animations: "disabled" });
     await page.getByRole("button", { name: "Delete block", exact: true }).click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
@@ -80,12 +83,26 @@ try {
     await page.getByRole("button", { name: "Original", exact: true }).first().click();
     await page.getByRole("img").waitFor();
     await page.waitForFunction(() => [...document.images].some(i => i.complete && i.naturalWidth > 0));
+    const expanded = page.getByRole("button", { name: "Hide original", exact: true });
+    assert.equal(await expanded.getAttribute("aria-expanded"), "true");
+    await expanded.click();
+    assert.equal(await page.getByRole("img").count(), 0);
+    await page.screenshot({ path: `/tmp/reading-review-collapsed-${width}.png`, animations: "disabled" });
+    assert.equal(await page.getByRole("button", { name: "Original", exact: true }).first().getAttribute("aria-expanded"), "false");
+    await page.getByRole("button", { name: "Original", exact: true }).first().click();
+    await page.waitForFunction(() => [...document.images].some(i => i.complete && i.naturalWidth > 0));
     await page.screenshot({ path: `/tmp/reading-review-${width}.png`, animations: "disabled" });
     const unresolved = page.getByRole("button", { name: "Ignore region", exact: true }).first();
     if (await unresolved.count()) {
       await unresolved.click();
       await page.getByRole("dialog").last().getByRole("button", { name: "Ignore region", exact: true }).click();
-      await page.getByRole("dialog").last().getByText("Ignored", { exact: false }).waitFor();
+      await page.getByText("No unresolved OCR regions recorded.", { exact: true }).waitFor();
+      assert.equal(await page.getByRole("img").count(), 0);
+      assert.equal(await page.getByRole("button", { name: "Original", exact: true }).count(), 0);
+      const afterIgnore = await (await page.request.get(api + "/documents/book/reading-content")).json();
+      assert.deepEqual(afterIgnore.regions, []);
+      assert.equal((await page.request.get(api + `/documents/book/source-review/${initial.regions[0].id}/image`)).status(), 404);
+      await page.screenshot({ path: `/tmp/reading-review-empty-${width}.png`, animations: "disabled" });
     }
     await page.getByRole("button", { name: "Close content editor" }).click();
     // Undo restores the unresolved review state for the next viewport.

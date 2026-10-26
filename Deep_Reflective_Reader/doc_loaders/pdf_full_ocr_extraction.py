@@ -11,7 +11,7 @@ from .pdf_execution_pass import PdfBudgetExceeded
 from .pdf_extraction_contract import PdfExtractionError, PdfExtractionFailureReason as Reason, PdfExtractionMode
 from .pdf_extraction_result import PdfExtractionResult
 from .pdf_page_evidence import PdfPageBoundaryEvidenceResult, PdfPageTextBoundary, PdfPageLayoutEvidence
-from .ocr_review import enabled, region_record, review_record
+from .ocr_review import page_review_regions, bind_review_spans, review_record
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -51,8 +51,6 @@ def _extract(reader, *, loader, source, quality_version, doc_name, source_file_n
     if languages.returncode or not set(loader.ocr_language.split("+")).issubset(installed):
         raise PdfExtractionError(Reason.ENGINE_UNAVAILABLE, "Requested OCR language packs are unavailable.")
     pages, quality, unresolved = [], [], []
-    readable_area = uncertain_area = 0
-    review_enabled = enabled()
     with tempfile.TemporaryDirectory(prefix="deep-reader-full-ocr-") as directory:
         root = Path(directory)
         snapshot = root / "source.pdf"
@@ -70,7 +68,7 @@ def _extract(reader, *, loader, source, quality_version, doc_name, source_file_n
             try:
                 text, candidates = loader._ocr_image_text_with_quality(
                     image_path=images[0], doc_name=doc_name, page_index=index,
-                    **({"allow_review":True} if review_enabled else {}),
+                    allow_review=True,
                 )
             except RawTextOcrFailedError as error:
                 # Only stable internal codes are public; never return subprocess/source text.
@@ -81,49 +79,28 @@ def _extract(reader, *, loader, source, quality_version, doc_name, source_file_n
                 logger.warning("full_ocr_page_failed page=%s reason=%s region=%s",
                                index+1, reason if reason in CHINESE_QUALITY_REASONS else "execution_failed", region)
                 if reason in CHINESE_QUALITY_REASONS:
-                    if review_enabled:
-                        text, candidates = "", []
-                    else:
-                        detail = f"OCR quality rejected page {index+1}: {reason}"
-                        if region:
-                            detail += f" ({region})."
-                        raise PdfExtractionError(Reason.QUALITY_FAILED, detail) from error
+                    # A legacy strategy supplied no transcription, not proof of a blank page.
+                    text, candidates = "", []
                 else:
                     raise PdfExtractionError(Reason.EXTRACTION_FAILED,
                                              f"OCR execution failed on page {index+1}.") from error
             summary = loader._summarize_page_ocr_quality(page_index=index, candidates=candidates)
-            if not text.strip() or not summary["selected_passed"]:
-                if not review_enabled:
-                    raise PdfExtractionError(Reason.QUALITY_FAILED, f"OCR quality rejected page {index + 1}.")
-                with Image.open(images[0]) as rendered:
-                    bbox = [0,0,*rendered.size]
-                uncertain_area += bbox[2]*bbox[3]
-                unresolved.append(region_record(index,0,bbox,loader.pdf_render_dpi,
-                    "page_quality_rejected", candidates[0].text if candidates else ""))
-                text = ""
-            elif review_enabled:
-                regions = summary.get("regions",[])
-                if regions:
-                    for i, region in enumerate(regions):
-                        x0,y0,x1,y1 = region["bbox"]
-                        area = (x1-x0)*(y1-y0)
-                        if region.get("accepted") is False:
-                            uncertain_area += area
-                            unresolved.append(region_record(index,i,region["bbox"],loader.pdf_render_dpi,
-                                "recognition_uncertain",region.get("raw_candidate") or ""))
-                        else:
-                            readable_area += area
-                else:
-                    with Image.open(images[0]) as rendered:
-                        readable_area += rendered.width*rendered.height
-            pages.append(text.strip())
+            if not text.strip():
+                selected = loader._select_ocr_candidate(candidates)
+                text = selected.text if selected is not None else ""
+            text = text if text.strip() else ""
+            with Image.open(images[0]) as rendered:
+                bbox = [0, 0, *rendered.size]
+            page_regions = page_review_regions(index, text, summary, bbox, loader.pdf_render_dpi)
+            unresolved.extend(page_regions)
+            logger.info("full_ocr_page_retained page=%s chars=%s quality_passed=%s review_regions=%s gap=%s",
+                        index + 1, len(text), summary["selected_passed"], len(page_regions), not bool(text))
+            pages.append(text)
             quality.append(summary)
             images[0].unlink(missing_ok=True)
     if not any(pages):
-        raise PdfExtractionError(Reason.QUALITY_FAILED if unresolved else Reason.NO_TEXT,
-                                 "No readable OCR text." if unresolved else "All rendered PDF pages are blank.")
-    if unresolved and (sum(len(p.strip()) for p in pages) < 40 or readable_area < uncertain_area):
-        raise PdfExtractionError(Reason.QUALITY_FAILED,"Insufficient readable coverage for reviewable OCR import.")
+        raise PdfExtractionError(Reason.NO_TEXT,
+                                 "No OCR text recognized." if unresolved else "All rendered PDF pages are blank.")
     try:
         labels = reader.page_labels or []
     except Exception:
@@ -149,8 +126,10 @@ def _extract(reader, *, loader, source, quality_version, doc_name, source_file_n
             evidence=["full_page_ocr_text_inventory", "image_count_unknown", "coordinates_unavailable"],
         ) for index, text in enumerate(pages)]
 
+    canonical = "\n".join(text for text in pages if text)
+    unresolved = bind_review_spans(unresolved, canonical, boundaries)
     return PdfExtractionResult(
-        text="\n".join(text for text in pages if text), pages=tuple(pages),
+        text=canonical, pages=tuple(pages),
         boundary_evidence=PdfPageBoundaryEvidenceResult(
             doc_name, source_file_name, source_sha256, count, boundaries,
         ), effective_mode=PdfExtractionMode.OCR, extraction_version="full-page-ocr-v1",

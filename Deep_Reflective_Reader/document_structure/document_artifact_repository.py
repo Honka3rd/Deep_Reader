@@ -16,11 +16,22 @@ def preserve_explicit_annotations(current, incoming):
     current_revision = current.parse_provenance.get("reading_content", {}).get("revision", 0)
     incoming_revision = incoming.parse_provenance.get("reading_content", {}).get("revision", 0)
     if current_revision != incoming_revision:
+        current_units = [(s.section_id, [(u.unit_id, u.content) for u in s.task_units])
+                         for c in current.chapters for s in c.sections]
+        incoming_units = [(s.section_id, [(u.unit_id, u.content) for u in s.task_units])
+                          for c in incoming.chapters for s in c.sections]
+        if current_units != incoming_units:
+            from document_structure.reading_content import ReadingContentConflict
+            raise ReadingContentConflict("reading_revision_changed")
         # A pre-edit worker must not restore invalidated generated artifacts.
+        chapters = {c.chapter_id: c for c in current.chapters}
+        sections = {s.section_id: s for c in current.chapters for s in c.sections}
+        units = {u.unit_id: u for c in current.chapters for s in c.sections for u in s.task_units}
         incoming = replace(incoming, document_task_artifacts=current.document_task_artifacts,
-            chapters=[replace(c, task_artifacts=None, sections=[replace(s, task_artifacts=None,
-                task_units=[replace(u, task_artifacts=None) for u in s.task_units]) for s in c.sections])
-                for c in incoming.chapters])
+            chapters=[replace(c, task_artifacts=chapters[c.chapter_id].task_artifacts, sections=[
+                replace(s, task_artifacts=sections[s.section_id].task_artifacts, task_units=[
+                    replace(u, task_artifacts=units[u.unit_id].task_artifacts) for u in s.task_units])
+                for s in c.sections]) for c in incoming.chapters])
     provenance = dict(incoming.parse_provenance)
     provenance.pop("reading_projected",None)
     if "reading_content" in current.parse_provenance:
@@ -31,7 +42,7 @@ def preserve_explicit_annotations(current, incoming):
     previous = current.document_task_artifacts
     updated = incoming.document_task_artifacts or DocumentTaskArtifacts()
     metadata = dict(updated.metadata)
-    for key in ("note", "public_summary"):
+    for key in ("note", "public_summary", "translations"):
         if previous is not None and key in previous.metadata:
             metadata[key] = previous.metadata[key]
         else:

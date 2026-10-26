@@ -21,6 +21,7 @@ class EnhancementOperations:
             request["doc_name"], request.get("toc_hint", "auto"),
             request.get("enhancement_intent", "restore_source"),
             request.get("confirmation_token"),
+            request.get("allow_ocr_cleanup", False),
         ]).encode()).hexdigest()
 
     def _prune(self):
@@ -38,7 +39,11 @@ class EnhancementOperations:
                 status="not_started", result=None, reason=None, retryable=False,
                 updated=self.clock())
 
-    def lookup(self, request):
+    def lookup(self, request, durable_reader=None):
+        durable = durable_reader(request) if durable_reader else None
+        if durable is not None:
+            return dict(status="completed", result=asdict(durable), reason=durable.layout_error,
+                        retryable=durable.retryable, durability="persisted_commit")
         with self._lock:
             self._prune()
             entry = self._entries.get(self._key(request))
@@ -49,10 +54,13 @@ class EnhancementOperations:
             return dict(status=entry["status"], result=asdict(entry["result"]) if entry["result"] else None,
                         reason=entry["reason"], retryable=entry["retryable"], durability="process_local")
 
-    def execute(self, request, callback):
+    def execute(self, request, callback, durable_reader=None):
         from app.enhancement_preflight import EnhancementConflict
         if request.get("discard_interactions") is not True or not request.get("confirmation_token"):
             raise EnhancementConflict("confirmation_required")
+        durable = durable_reader(request) if durable_reader else None
+        if durable is not None:
+            return durable
         key = self._key(request)
         with self._lock:
             self._prune()

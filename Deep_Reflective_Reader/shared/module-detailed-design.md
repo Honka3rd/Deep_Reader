@@ -1,5 +1,16 @@
 # shared Detailed Design
 
+## Generated Unit Identity Binding (2026-10-23)
+
+Supporting CLEAN-10: pure `TaskUnit.with_unit_id` rebinds exact generated
+`old_unit:content:<nonnegative integer>` block IDs when allocating a new unit ID.
+Existing block metadata identity keys follow that assignment; custom block IDs,
+text and source coordinates are preserved. The same-ID call is a no-op. This is
+allocation support, not artifact migration, cleanup renumbering or persistence.
+Normalizer and SQL writers use it explicitly; no reader mutates stored identities.
+`test_cleanup_identity.py` covers generated/custom blocks, immutability, both
+normalizers and real SQL projection/Undo after allocation.
+
 ## 1. Module Purpose
 
 `shared/` 提供跨模組共用 DTO/抽象結果契約，包含 task artifacts、task units 與通用 result 基類。 **[Code-Confirmed]**

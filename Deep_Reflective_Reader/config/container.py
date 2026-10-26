@@ -67,6 +67,8 @@ from section_tasks.analysis_interaction_orchestrator import (
 )
 from section_tasks.analysis_interaction_service import AnalysisInteractionService
 from section_tasks.summary_interaction_service import SummaryInteractionService
+from section_tasks.translation_service import TranslationService
+from app.translation_action import TranslationAction
 from section_tasks.critical_thinking_llm_generator import (
     CriticalThinkingLLMGenerator,
 )
@@ -102,6 +104,7 @@ from section_tasks.reading_interaction_artifact_store import (
     DocumentReadingInteractionArtifactStore,
 )
 from app.section_task_coordinator import SectionTaskCoordinator
+from app.cleanup_runtime import build_cleanup_service
 from question.standardized.question_standardizer import QuestionStandardizer
 from config.faiss_storage_config import FaissStorageConfig
 from llama_index.core.node_parser import SentenceSplitter
@@ -336,6 +339,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         profile_store=document_profile_store,
         bundle_provider=bundle_provider,
         post_structure_enricher=post_structure_metadata_enricher,
+        cleanup_provider=llm_provider,
     )
 
     session_manager = providers.Singleton(
@@ -484,6 +488,13 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         repository=structured_document_artifact_repository,
         llm_provider=llm_provider,
     )
+    translation_service = providers.Singleton(TranslationService, llm_provider=llm_provider)
+    translation_action = providers.Singleton(
+        TranslationAction,
+        repository=structured_document_artifact_repository,
+        profile_store=document_profile_store,
+        translator=translation_service,
+    )
     reading_interaction_artifact_store = providers.Singleton(
         DocumentReadingInteractionArtifactStore,
         document_artifact_repository=structured_document_artifact_repository,
@@ -550,6 +561,13 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         critical_thinking_session_service=critical_thinking_session_service,
         critical_thinking_session_store=reading_interaction_artifact_store,
         summary_interaction_service=summary_interaction_service,
+    )
+
+    smart_cleanup_service = providers.Singleton(
+        build_cleanup_service,
+        namespace=config.postgres_namespace,
+        coordinator=section_task_coordinator,
+        provider=llm_provider,
     )
 
     @classmethod

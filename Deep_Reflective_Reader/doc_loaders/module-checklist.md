@@ -1,5 +1,35 @@
 # doc_loaders Checklist
 
+## Preserve Recognized OCR Text (2026-10-25)
+
+Current policy replaces quality-based text exclusion, strict-quality rollback and
+readable-area quotas below. Historical receipts describe prior behavior only.
+Execute OCR-KEEP-01..06 in order; 05 is owned by document_structure, counted once.
+Completed: **6/6 (100%)**, including five loader-owned items and one structure-owned
+item. Acceptance is source implementation plus isolated tests, not deployment or
+automatic restoration of existing production books.
+
+- [x] OCR-KEEP-01: Define preservation, failure, evidence and legacy recovery contracts.
+  Acceptance: Quality is diagnostic, nonempty recognized text stays in body; genuine empty/execution failures are explicit. No read-side reparse, automatic recovery or new editor.
+  Evidence: Current loader/structure/UI designs supersede quality deletion, area quotas and blanket excluded-region hiding; legacy recovery remains explicit re-extraction. Owned checklist entries and governance receipt updated.
+  Timestamp: 2026-10-25
+- [x] OCR-KEEP-02: Preserve nonempty candidate output in shared OCR and Auto recovery.
+  Acceptance: Prefer usable nonempty candidates without enforcing semantic quality as a persistence gate; retain diagnostics, native-preservation checks and Fast isolation; version OCR policy identity.
+  Evidence: Shared nonempty selection plus Chinese-local observed-script consensus rejects cross-formula ranking outliers; v6 quality identity and mandatory non-Fast review policy. Typed geometry fallback retains uncertainty. Auto records gaps/retained uncertainty and binds spans after canonical assembly. Final 214 PDF tests pass in isolated Docker; real page 80 OCR and Auto both preserve the complete incident paragraph. English/minority-CJK/bilingual/empty controls and privacy-safe selection logs pass.
+  Timestamp: 2026-10-25
+- [x] OCR-KEEP-03: Preserve Chinese regional text and exact order with uncertainty evidence.
+  Acceptance: Low-confidence columns/labels remain in text with page-local spans; Chinese rules remain local, missing models/execution failures are not success.
+  Evidence: chinese-columns-v3-preserve-text retains uncertain columns, margin components and mixed-band output; empty regions do not add phantom separators, whitespace-only retries cannot replace meaningful labels. 39 focused tests pass; original Sample and mixed-image real-engine acceptance retain 12/17 columns and scoped CER 4.82%/1.85%; Sample2 remains 450/0/644 characters.
+  Timestamp: 2026-10-25
+- [x] OCR-KEEP-04: Assemble full OCR without quality-based page/area exclusion.
+  Acceptance: Nonempty page/region text persists with exact canonical spans and review-needed status; empty recognition is an explicit gap, all-empty fails; execution failures remain atomic failures. No invented words or blanket whitespace stripping.
+  Evidence: Shared page_review_regions/bind_review_spans, full OCR retained-text path and source-review-v2-preserve-text. Seventeen full-OCR tests cover quality/area removal, disabled legacy flag, empty/all-empty/blank, execution/model failures, whitespace, separators, empty child components and regional gaps hidden by failed page scores. Included in final PDF suite; all-empty uses NO_TEXT.
+  Timestamp: 2026-10-25
+- [x] OCR-KEEP-06: Accept preservation and review mapping against real backed-up sources.
+  Acceptance: Re-run the missing 暗水幽灵 physical-page-80 passage using the actual OCR engine; verify body inclusion, page/region/block mapping, source immutability, Chinese sample regressions and failure controls. Record scoped coverage honestly; no production overwrite.
+  Evidence: scripts/accept_ocr_preservation.py final report data/test-books/ocr-keep-20261025/20261025T065923190316Z/report.json passes OCR/Auto incident page plus all Sample2 pages, actual Tesseract/Poppler, Common/unit/block coverage, natural review mapping and legacy-gap visibility. Incident output 984 characters/8 blocks; the 162-character paragraph is preserved at all four layers. Runtime and nine backup files unchanged. Separate 146 backend/API/file/PostgreSQL and 144 interaction/cleanup/real-backup tests pass without skips; eight corpus file/SQL runs preserve 16 backups. Full 261-page OCR, transcription perfection, browser/deployment and production reparse are not claimed.
+  Timestamp: 2026-10-25
+
 ## Reviewable OCR Recovery
 
 Ordered cross-module queue; design: module-detailed-design.md Reviewable OCR Recovery.

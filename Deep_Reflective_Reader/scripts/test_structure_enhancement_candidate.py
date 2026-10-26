@@ -17,6 +17,7 @@ from test_structure_plan_application import Provider
 
 def candidate_pipeline(provider):
     pipeline = object.__new__(DocumentPreparationPipeline)
+    pipeline.cleanup_provider = provider
     pipeline.structured_document_builder = StructuredDocumentBuilder(
         section_splitter_selector=SectionSplitterSelector(llm_splitter=LLMSectionSplitter(llm_provider=provider)))
     return pipeline

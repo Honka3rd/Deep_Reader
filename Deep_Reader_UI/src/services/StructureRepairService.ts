@@ -12,12 +12,24 @@ import { RestClient } from "./RestClient";
 export class StructureRepairService {
   constructor(private readonly restClient: RestClient) {}
 
-  enhancementResult(docName: string, tocHint: TocHint, confirmationToken: string, signal?: AbortSignal) {
+  async enhancementActivity(docName: string, signal?: AbortSignal): Promise<"idle" | "running"> {
+    if (!docName.trim()) throw new Error("Document name is required.");
+    const query = new URLSearchParams({ doc_name: docName });
+    const result = await this.restClient.requestJson<{ doc_name: string; status: unknown }>(
+      `/documents/reparse-structure/status?${query}`, { method: "GET", signal, cache: "no-store" });
+    if (result.doc_name !== docName || (result.status !== "idle" && result.status !== "running")) {
+      throw new Error("Invalid enhancement activity response.");
+    }
+    return result.status;
+  }
+
+  enhancementResult(docName: string, tocHint: TocHint, confirmationToken: string, signal?: AbortSignal, allowCleanup = false) {
     return this.restClient.requestJson<EnhancementOperationResponse>(
       "/documents/reparse-structure/result", {
         method: "POST", signal,
         body: JSON.stringify({ doc_name: docName, toc_hint: tocHint,
-          enhancement_intent: "restore_source", confirmation_token: confirmationToken }),
+          enhancement_intent: "restore_source", confirmation_token: confirmationToken,
+          ...(allowCleanup ? { allow_ocr_cleanup: true } : {}) }),
       });
   }
 
@@ -26,11 +38,11 @@ export class StructureRepairService {
       "/documents/reparse-structure/preflight", {
         method: "POST", signal,
         body: JSON.stringify({ doc_name: docName, parser_mode: "llm_enhanced",
-          toc_hint: tocHint, enhancement_intent: "restore_source" }),
+          toc_hint: tocHint, enhancement_intent: "restore_source", allow_ocr_cleanup: true }),
       });
   }
 
-  async enhance(docName: string, tocHint: TocHint, confirmationToken: string, signal: AbortSignal) {
+  async enhance(docName: string, tocHint: TocHint, confirmationToken: string, signal: AbortSignal, allowCleanup = false) {
     const response = await this.restClient.requestJsonWithStatus<Partial<ReparseDocumentStructureResponse> & {
       detail?: string; capacity?: EnhancementCapacity | null;
     }>(
@@ -38,7 +50,8 @@ export class StructureRepairService {
         method: "POST", signal,
         body: JSON.stringify({ doc_name: docName, parser_mode: "llm_enhanced",
           toc_hint: tocHint, enhancement_intent: "restore_source",
-          discard_interactions: true, confirmation_token: confirmationToken }),
+          discard_interactions: true, confirmation_token: confirmationToken,
+          ...(allowCleanup ? { allow_ocr_cleanup: true } : {}) }),
       });
     return response;
   }

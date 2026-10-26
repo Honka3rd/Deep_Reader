@@ -13,14 +13,31 @@ import tempfile
 import numpy as np
 from PIL import Image
 
-from .document_load_errors import RawTextOcrFailedError
 from .pdf_extraction_contract import PdfExtractionError, PdfExtractionFailureReason
 
 logger = logging.getLogger(__name__)
-POLICY_VERSION = "chinese-columns-v2"
+POLICY_VERSION = "chinese-columns-v3-preserve-text"
 MODEL = "chi_tra_vert"
 MODEL_SHA256 = "1df02a4b210e5c217b783819538b63e9dfe6904e2b5e53b62664f1b9f7a989d0"
 SIMPLIFIED_SHA256 = "20590de84725bab69cde93bd6e8ed360a13cc5421a7e7364ddeb93e9af53d6da"
+
+
+def prefer_cjk_consensus(candidates):
+    """Keep cross-script score outliers outside a strong observed CJK consensus."""
+    nonempty = [candidate for candidate in candidates if candidate.text.strip()]
+    # Match the scorer's CJK branch; tiny CJK labels cannot establish page script.
+    supported = [candidate for candidate in nonempty
+                 if candidate.cjk_ratio >= 0.35
+                 and len(re.findall(r"[\u3400-\u9fff]", candidate.text)) >= 20]
+    if len(supported) >= 2 and len(supported) * 3 >= len(nonempty) * 2:
+        if len(supported) < len(nonempty):
+            logger.info(
+                "ocr_candidate_consensus candidate_count=%s nonempty_candidate_count=%s "
+                "consensus_pool_count=%s rule=strong_cjk_consensus",
+                len(candidates), len(nonempty), len(supported),
+            )
+        return supported
+    return nonempty
 
 
 def model_path():
@@ -43,6 +60,14 @@ def identity():
 class ChineseOcrResult:
     text: str
     regions: tuple
+
+
+@dataclass(frozen=True)
+class ChineseOcrFallback:
+    """Request bounded fallback with uncertainty in input-image coordinates."""
+
+    reason: str
+    bbox: tuple[int, int, int, int]
 
 
 @dataclass(frozen=True)
@@ -94,7 +119,7 @@ def read_region(loader, image, path, *, language, psm, page_index):
         raise PdfExtractionError(PdfExtractionFailureReason.EXTRACTION_FAILED,
                                  f"OCR engine failed on page {page_index + 1} (exit {result.returncode}).")
     words = [r for r in csv.DictReader(io.StringIO(result.stdout), delimiter="\t")
-             if r.get("level") == "5" and r.get("text", "").strip()]
+             if r.get("level") == "5" and r.get("text", "")]
     tokens = []
     previous = None
     for word in words:
@@ -102,7 +127,8 @@ def read_region(loader, image, path, *, language, psm, page_index):
         text = word["text"]
         if previous and key != previous and not language.endswith("_vert"):
             tokens.append("\n")
-        elif tokens and tokens[-1][-1:].isascii() and text[:1].isascii():
+        elif (tokens and tokens[-1][-1:].isascii() and text[:1].isascii()
+              and not tokens[-1][-1:].isspace() and not text[:1].isspace()):
             tokens.append(" ")
         tokens.append(text)
         previous = key
@@ -155,33 +181,42 @@ def read_margin(loader, image, column, path, *, language, page_index):
     crop, start, end, suffix, leader = parts
     title, confidence = read_region(loader, crop.crop((0,start,crop.width,end)), path,
                                     language=language, psm="5", page_index=page_index)
+    title = title if title.strip() else ""
+    accepted = confidence >= 40 and bool(re.search(r"[\u3400-\u9fff]", title))
+    components = [{"role":"title","bbox":[column.left,column.top+start,column.right,column.top+end],
+                   "char_start":0,"char_end":len(title),"accepted":accepted,"confidence":confidence}]
     digits = []
     for top,bottom in suffix:
         glyph = crop.crop((0,top,crop.width,bottom))
         padded = Image.new("L", (glyph.width+20,glyph.height+20),255)
         padded.paste(glyph,(10,10))
         digit, score = read_region(loader,padded,path,language="eng",psm="10",page_index=page_index)
-        digit = digit.strip()
-        if not re.fullmatch(r"[0-9]",digit) or score < 40:
-            digit, score = read_region(loader,padded,path,language="eng",psm="13",page_index=page_index)
-            digit = digit.strip()
-        if not re.fullmatch(r"[0-9]",digit) or score < 40:
-            return None
+        if not re.fullmatch(r"[0-9]",digit.strip()) or score < 40:
+            retry = read_region(loader,padded,path,language="eng",psm="13",page_index=page_index)
+            if retry[0].strip():
+                digit, score = retry
+        digit = digit if digit.strip() else ""
+        digit_accepted = bool(re.fullmatch(r"[0-9]",digit.strip())) and score >= 40
+        offset = len(title) + (1 if title and (any(digits) or digit) else 0) + sum(map(len,digits))
+        components.append({"role":"page_digit","bbox":[column.left,column.top+top,column.right,column.top+bottom],
+                           "char_start":offset,"char_end":offset+len(digit),
+                           "accepted":digit_accepted,"confidence":score})
+        accepted = accepted and digit_accepted
         confidence = min(confidence,score)
         digits.append(digit)
-    if confidence < 40 or not re.search(r"[\u3400-\u9fff]",title):
-        return None
-    return title + " " + "".join(digits), confidence, {
+    number = "".join(digits)
+    text = title + (" " if title and number else "") + number
+    return text, confidence, {
         "region_role":"margin_label",
+        "accepted":accepted,"raw_candidate":text if not accepted else None,
+        "quality_flags":["recognition_uncertain"] if not accepted else [],
         "leader_bbox":[column.left,column.top+leader[0],column.right,column.top+leader[1]],
-        "components":[{"role":"title","bbox":[column.left,column.top+start,column.right,column.top+end]},
-                      *[{"role":"page_digit","bbox":[column.left,column.top+a,column.right,column.top+b]}
-                        for a,b in suffix]],
+        "components":components,
     }
 
 
 def recognize(loader, image_path, *, doc_name, page_index, _split=True, allow_review=False):
-    """Return None when no confident vertical geometry exists; never route other languages."""
+    """Preserve recognized text with advisory quality; allow_review is compatibility-only."""
     languages = set(loader.ocr_language.split("+"))
     if not languages & {"chi_sim", "chi_sim_vert", "chi_tra", MODEL}:
         return None
@@ -207,9 +242,8 @@ def recognize(loader, image_path, *, doc_name, page_index, _split=True, allow_re
             mixed = recognize_mixed_bands(loader,image,doc_name=doc_name,page_index=page_index)
             if mixed is not None:
                 return mixed
-        if horizontal_lines(ink):
-            return None
-        raise RawTextOcrFailedError(doc_name=doc_name,detail="chinese_layout_coverage_uncertain")
+        # Let the caller's bounded full-image candidates cover unsupported geometry.
+        return ChineseOcrFallback("chinese_layout_coverage_uncertain", (0, 0, image.width, image.height))
     fingerprint = identity()
     model_hash = fingerprint.get("simplified_sha256") if simplified else fingerprint["sha256"]
     logger.info("chinese_ocr_direction doc=%s page=%s direction=vertical columns=%s policy=%s model=%s sha256=%s",
@@ -228,35 +262,42 @@ def recognize(loader, image_path, *, doc_name, page_index, _split=True, allow_re
             margin = read_margin(loader,image,column,path,language=selected_model,page_index=page_index)
             if margin is not None:
                 text,confidence,evidence = margin
-                offset = sum(len(t)+1 for t in texts)
+                offset = sum(len(t)+1 for t in texts) if text else len("\n".join(texts))
+                evidence["components"] = [{**component,
+                    "char_start":offset+component["char_start"],
+                    "char_end":offset+component["char_end"]} for component in evidence["components"]]
                 regions.append({"region_index":index,"bbox":[column.left,column.top,column.right,column.bottom],
                                 "char_start":offset,"char_end":offset+len(text),
                                 "writing_mode":"vertical","column_order":"right_to_left",
                                 "model":selected_model,"policy_version":POLICY_VERSION,
                                 "confidence":confidence,"confidence_calibrated":False,
                                 "quality_flags":[],**evidence})
-                texts.append(text)
+                if text:
+                    texts.append(text)
                 total_chars += len(text)
-                logger.info("chinese_ocr_margin doc=%s page=%s region=%s confidence=%.2f accepted=True",
-                            doc_name,page_index+1,index,confidence)
+                if not evidence["accepted"]:
+                    uncertain_chars += len(text)
+                logger.info("chinese_ocr_margin doc=%s page=%s region=%s confidence=%.2f accepted=%s",
+                            doc_name,page_index+1,index,confidence,evidence["accepted"])
                 continue
             bands = list(column.glyph_bands)
             number = ""
+            number_accepted = True
             if len(bands) > 1 and bands[-1][0] > image.height*.75 and bands[-1][0]-bands[-2][1] > crop.width*3:
                 a,b = bands.pop()
                 number, number_confidence = read_region(loader,
                     image.crop((column.left,a,column.right,b)), path,
                     language="eng", psm="7", page_index=page_index)
-                number = re.sub(r"\s+", "", number)
-                if not re.fullmatch(r"\d{1,4}", number) or number_confidence < 40:
-                    number, number_confidence = read_region(loader,
+                if not re.fullmatch(r"\d{1,4}", number.strip()) or number_confidence < 40:
+                    retry = read_region(loader,
                         image.crop((column.left,a,column.right,b)),path,
                         language="eng",psm="13",page_index=page_index)
-                    number = re.sub(r"\s+", "", number)
+                    if retry[0].strip():
+                        number, number_confidence = retry
+                number = number if number.strip() else ""
+                number_accepted = bool(re.fullmatch(r"\d{1,4}", number.strip())) and number_confidence >= 40
                 logger.info("chinese_ocr_label doc=%s page=%s region=%s confidence=%.2f numeric=%s",
                             doc_name,page_index+1,index,number_confidence,bool(re.fullmatch(r"\d{1,4}",number)))
-                if not re.fullmatch(r"\d{1,4}", number) or number_confidence < 40:
-                    raise RawTextOcrFailedError(doc_name=doc_name, detail=f"chinese_column_label_uncertain:page={page_index+1}:region={index}")
             body = image.crop((column.left,bands[0][0],column.right,bands[-1][1]))
             cleaned = Image.new("L", (body.width+20,body.height+20),255)
             cleaned.paste(body,(10,10))
@@ -267,22 +308,29 @@ def recognize(loader, image_path, *, doc_name, page_index, _split=True, allow_re
                     parts = [read_region(loader, crop.crop((0,a,crop.width,b)), path,
                                          language="chi_sim" if simplified else "chi_tra", psm="13", page_index=page_index)
                              for a,b in glyphs]
-                    text = "".join(t for t,c in parts)
-                    confidence = min(c for t,c in parts)
+                    replacement = "".join(t for t,c in parts if t.strip())
+                    if replacement.strip() and (not text.strip() or all(t.strip() for t,c in parts)):
+                        text = replacement
+                        confidence = min(c for t,c in parts)
+            text = text if text.strip() else ""
             cjk = len(re.findall(r"[\u3400-\u9fff]", text))
             coverage = len(re.sub(r"\s", "", text)) / max(1, sum(b-a for a,b in bands)/(column.right-column.left))
             short_label = len(text) <= 4 and crop.height < crop.width*4
             accepted = cjk >= 1 and .65 <= coverage <= 2.5 and (confidence >= 40 or short_label)
-            total_chars += len(text)
-            if confidence < 40:
-                uncertain_chars += len(text)
             logger.info("chinese_ocr_region doc=%s page=%s region=%s bbox=%s psm=5 confidence=%.2f coverage=%.2f accepted=%s",
                         doc_name, page_index+1, index,
                         (column.left, column.top, column.right, column.bottom), confidence, coverage, accepted)
-            if not accepted and not allow_review:
-                raise RawTextOcrFailedError(doc_name=doc_name, detail=f"chinese_vertical_region_quality_failed:page={page_index+1}:region={index}")
-            logical = (text + (" " + number if number else "")) if accepted else ""
-            offset = sum(len(t)+1 for t in texts)
+            logical = text + (" " if text and number else "") + number
+            offset = sum(len(t)+1 for t in texts) if logical else len("\n".join(texts))
+            quality_flags = [] if accepted else ["recognition_uncertain"]
+            if confidence < 40 and accepted:
+                quality_flags.append("low_confidence_short_label")
+            if not number_accepted:
+                quality_flags.extend(["recognition_uncertain", "chinese_column_label_uncertain"])
+            accepted = not quality_flags
+            total_chars += len(logical)
+            if quality_flags:
+                uncertain_chars += len(logical)
             regions.append({"region_index":index,"bbox":[column.left,column.top,column.right,column.bottom],
                             "char_start":offset,"char_end":offset+len(logical),
                             "writing_mode":"vertical","column_order":"right_to_left",
@@ -292,11 +340,18 @@ def recognize(loader, image_path, *, doc_name, page_index, _split=True, allow_re
                             "confidence_calibrated":False,
                             "confidence":confidence,"coverage":coverage,
                             "accepted":accepted,
-                            "raw_candidate":text if not accepted else None,
-                            "quality_flags":["recognition_uncertain"] if not accepted else (["low_confidence_short_label"] if confidence < 40 else [])})
-            texts.append(logical)
-    if uncertain_chars > total_chars * .05 and not allow_review:
-        raise RawTextOcrFailedError(doc_name=doc_name, detail="chinese_page_confidence_insufficient")
+                            "raw_candidate":logical if quality_flags else None,
+                            "quality_flags":list(dict.fromkeys(quality_flags))})
+            if len(bands) < len(column.glyph_bands):
+                number_start = offset+len(text)+(1 if text and number else 0)
+                regions[-1]["components"] = [
+                    {"role":"body","bbox":[column.left,bands[0][0],column.right,bands[-1][1]],
+                     "char_start":offset,"char_end":offset+len(text),"confidence":confidence},
+                    {"role":"page_label","bbox":[column.left,a,column.right,b],
+                     "char_start":number_start,"char_end":number_start+len(number),
+                     "accepted":number_accepted,"confidence":number_confidence}]
+            if logical:
+                texts.append(logical)
     logger.info("chinese_ocr_page doc=%s page=%s uncertain_chars=%s total_chars=%s",
                 doc_name, page_index+1, uncertain_chars,total_chars)
     return ChineseOcrResult("\n".join(texts),tuple(regions))
@@ -318,23 +373,45 @@ def recognize_mixed_bands(loader,image,*,doc_name,page_index):
             path = Path(directory)/f"band-{index}.png"
             part.save(path)
             result = recognize(loader,path,doc_name=doc_name,page_index=page_index,_split=False)
-            offset = sum(len(t)+1 for t in texts)
-            if result is not None:
+            if isinstance(result, ChineseOcrResult):
+                offset = sum(len(t)+1 for t in texts) if result.text else len("\n".join(texts))
                 for region in result.regions:
                     box = list(region["bbox"])
                     box[1] += max(0,a-8)
                     box[3] += max(0,a-8)
-                    regions.append({**region,"region_index":len(regions),"bbox":box,"char_start":offset+region["char_start"],
-                                    "char_end":offset+region["char_end"]})
-                texts.append(result.text)
+                    translated = {**region,"region_index":len(regions),"bbox":box,
+                                  "char_start":offset+region["char_start"],"char_end":offset+region["char_end"]}
+                    if "components" in region:
+                        translated["components"] = [{**component,
+                            "bbox":[component["bbox"][0],component["bbox"][1]+max(0,a-8),
+                                    component["bbox"][2],component["bbox"][3]+max(0,a-8)],
+                            "char_start":offset+component["char_start"],
+                            "char_end":offset+component["char_end"]} for component in region["components"]]
+                    if "leader_bbox" in region:
+                        leader = region["leader_bbox"]
+                        translated["leader_bbox"] = [leader[0],leader[1]+max(0,a-8),leader[2],leader[3]+max(0,a-8)]
+                    regions.append(translated)
+                if result.text:
+                    texts.append(result.text)
             else:
                 text,confidence = read_region(loader,part,path,language=loader.ocr_language,
                                                psm="6",page_index=page_index)
-                if confidence < 40 or not loader._score_ocr_candidate(psm="6",text=text).passed:
-                    raise RawTextOcrFailedError(doc_name=doc_name,detail="chinese_mixed_region_uncertain")
+                text = text if text.strip() else ""
+                layout_uncertain = (isinstance(result, ChineseOcrFallback)
+                                    or any(c.bottom-c.top > (c.right-c.left)*5 for c in evidence[index]))
+                accepted = (not layout_uncertain and confidence >= 40
+                            and loader._score_ocr_candidate(psm="6",text=text).passed)
+                quality_flags = [] if accepted else ["recognition_uncertain", "chinese_mixed_region_uncertain"]
+                if layout_uncertain:
+                    quality_flags.append(result.reason if isinstance(result, ChineseOcrFallback)
+                                         else "chinese_layout_coverage_uncertain")
+                offset = sum(len(t)+1 for t in texts) if text else len("\n".join(texts))
                 regions.append({"region_index":len(regions),"bbox":[0,max(0,a-8),image.width,min(image.height,b+8)],
                                 "char_start":offset,"char_end":offset+len(text),
                                 "writing_mode":"horizontal","line_order":"top_to_bottom",
-                                "confidence":confidence,"policy_version":POLICY_VERSION})
-                texts.append(text)
+                                "confidence":confidence,"confidence_calibrated":False,"policy_version":POLICY_VERSION,
+                                "accepted":accepted,"raw_candidate":text if not accepted else None,
+                                "quality_flags":quality_flags})
+                if text:
+                    texts.append(text)
     return ChineseOcrResult("\n".join(texts),tuple(regions))

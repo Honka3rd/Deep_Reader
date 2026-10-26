@@ -1,12 +1,175 @@
 # doc_loaders Detailed Design
 
+## Preserve Recognized OCR Text (2026-10-25)
+
+**[Maintainer-Provided]** OCR extraction preserves recognized content; quality
+assessment diagnoses uncertainty, never deletes nonempty text. This replaces the
+old quality-rejected page/region exclusion, minimum 40-character/area-ratio import
+gate, strict-quality rollback flag and quality-only whole-document rejection.
+It does not guarantee perfect transcription or relax actual engine/model/render
+failures. Tasks: OCR-KEEP-01..06 in the loader and structure checklists.
+
+Incident: 暗水幽灵 physical page 80 (zero-based 79) produced nonempty OCR in all
+four PSM candidates, but fragmented_latin rejected the page. Its 988-character
+default candidate contains the reported 裕之 paragraph; canonical page span was
+50856..50856. Page-quality heuristics erased readable material, not a parser/LLM
+loss. Historical selected PSM5 score 0.6659 and saved default candidate differ;
+do not conflate their diagnostics. The original PDF also confirms OCR numeral
+errors, so preservation is not proof of accuracy.
+
+Real-engine replay also exposed cross-formula ranking: three candidates have
+approximately 88% CJK signal while the PSM5 outlier has about 12% CJK, yet its
+Latin-formula score wins. Candidate selection must respect strong observed-script
+agreement before comparing within-script scores; installed language packs alone
+cannot declare a document Chinese. Preserve English/bilingual/minority-CJK controls.
+The missing paragraph must reach blocks, not merely a nonempty replacement page.
+
+### Responsibility And Data Flow
+
+1. Loader strategies recognize in supported reading order and select a nonempty
+   candidate. Quality signals remain candidate-selection evidence, not permission
+   to return empty text when recognition produced text. Do not concatenate competing
+   whole-page candidates or invent repairs. Chinese-specific routing stays local.
+2. Assemble all selected nonempty page/region text; retain raw source identity,
+   page bounds and exact half-open canonical spans for uncertain included regions.
+   Preserve region-relative whitespace so offsets cannot shift; renderer display
+   normalization is not an extraction rewrite. No LLM cleanup inside the loader.
+3. Persist review-needed evidence with text inclusion status. A successful engine
+   returning no text on a nonblank region is an explicit gap, not a synthetic block.
+   An entirely empty extraction fails; confirmed blank pages are not defects.
+   Execution/render/missing-model errors remain failures, preserving accepted data.
+4. Common parsing and reading blocks consume the same preserved canonical text.
+   The existing exact resolver owns region/block IDs and many-to-many relations;
+   loaders supply source spans only. Review is inspection/navigation, not quarantine.
+5. Existing manual edit/delete/Undo and independent Smart cleanup remain the only
+   content-changing actions. Quality warnings do not authorize automatic deletion.
+   Interaction safeguards still reject meaningless/unresolved sources; retaining
+   text is not approval for invented insight, quiz, thinking or summary.
+
+Regional uncertainty/gaps take precedence over a whole-page review fallback; a
+failed page score cannot conceal an empty region behind a nonempty page warning.
+Whole-page diagnostics remain in page_quality. All review offsets are bound after
+canonical page separators and native/Auto merging have been finalized.
+
+Fast stays native-only. Auto retains native-text integrity checks, but quality-only
+rejection of recovered nonempty OCR is retired. Non-Fast extraction fingerprints
+change; reads reuse accepted artifacts and do not migrate books. Legacy quality
+exclusions/gaps remain visible even when verified absent from body; explicit
+Ignore is still acknowledgment, not body recovery or deletion. Only affirmative
+source-bound blank-render evidence plus an empty candidate and verified empty page
+may exempt a legacy row; body_inclusion=excluded by itself proves no such thing.
+
+### Existing Books And Acceptance
+
+Existing discarded text cannot be restored by a threshold change or metadata
+backfill. Recovery uses the existing explicit source re-extraction/reparse workflow,
+including change confirmation, revision/source checks and atomic hierarchy/artifact
+handling. Do not splice legacy candidates into production blocks during reads,
+overwrite manual edits, invent absent text or add a second recovery editor.
+This implementation tests disposable copies of immutable backups, not production
+book replacement. Verify actual missing passage inclusion, uncertain-region exact
+mapping, empty/engine failures, supported Chinese orders and unchanged backups.
+Record OCR accuracy limits independently of preservation success.
+
+### Delivery And Validation
+
+OCR-KEEP-01..06 are complete. Runtime policy versions are
+`observed-script-v6-geometry-fallback`, `chinese-columns-v3-preserve-text`,
+`source-review-v2-preserve-text` and structure-owned `source-review-blocks-v2`.
+Both OCR and Auto fingerprint the mandatory review policy; Fast identity is unchanged.
+The legacy review-disable flag no longer enables destructive quality rejection.
+Chinese-local candidate consensus requires at least two nonempty candidates, at
+least two-thirds support and at least 20 observed CJK characters per supporter;
+installed language packs do not establish script. Existing passed/score ranking
+applies within the selected pool. Logs expose counts/rule, not source text.
+Typed ChineseOcrFallback keeps geometry uncertainty when using generic candidates;
+ordinary horizontal routing is unchanged. Whitespace-only retries cannot replace
+meaningful labels. Empty child components retain their own image-backed review
+gap, even when the parent column has text. All-empty recognition is NO_TEXT,
+not a quality-only rejection.
+
+Final actual-engine acceptance:
+`data/test-books/ocr-keep-20261025/20261025T065923190316Z/report.json`.
+Reproduce from the backend root with
+`.venv/bin/python scripts/accept_ocr_preservation.py` (requires existing runtime
+Docker image and private backups). The harness mounts sources/backups read-only,
+disables network, writes only temporary storage/new private reports, and verifies
+runtime/backup hashes. It does not call production APIs, DB, profile or LLM.
+
+- Physical page 80 extracted from the immutable 261-page 暗水幽灵 backup passes
+  both OCR and Auto: PSM6, 984 characters, eight blocks, one naturally uncertain
+  review region mapped completely to those blocks. The incident paragraph occupies
+  [80,242), 162 characters including OCR whitespace; opening, middle and ending
+  anchors plus the entire paragraph survive canonical/Common/units/reading blocks.
+- Sample2 all three pages remain 450/0/644 characters; physical page 2 is confirmed
+  blank and the exact margin title/page digits remain. No natural uncertain region
+  occurs in this sample, so it is a regression rather than positive mapping evidence.
+- Nine backup files and 142 runtime/harness files remain hash-identical during
+  final acceptance. The old page-79 zero-length extraction remains visible without
+  invented links or body recovery. Production books and running Docker are unchanged.
+- Final suites: 214 PDF tests in isolated Docker, 39 Chinese tests, 146 backend
+  mapping/API/file/PostgreSQL/Note tests and 144 interaction/cleanup/real-backup tests
+  pass without skips. Counts are separate suites, not a claim of unique cases.
+  Existing corpus file/SQL harness passes eight runs and preserves 16 backups:
+  `data/test-books/srmap07/20261025T064942546267Z.json`.
+
+The first real replay exposed the PSM5 ranking defect and failed paragraph checks;
+the fix was accepted only after unchanged-runtime replay. Display checks allow
+only the existing explicit `ocr_whitespace_v1` normalization and separately prove
+exact original-source range coverage, rather than equating normalized display
+bytes with canonical bytes. Host full PDF discovery lacks fontTools; the final
+full suite runs in Docker with that dependency. No full-book OCR, automatic numeral
+correction, universal transcription accuracy or browser/deployment acceptance is
+claimed. Existing books need explicit re-extraction after deployment; Smart cleanup
+or LLM structuring over old accepted text cannot restore absent source text.
+
+### Governance Receipt
+
+Inspected AGENTS.md, proposal.md, high-level-design.md, docs/modules/index.md,
+progress.md, both docs/standards development files, and loader/structure/UI/scripts
+designs and checklists. module-memory-loader was read-only; this maintainer update
+is explicitly authorized. implementation-validation is read-only verification.
+
+Modified markdown and reasons:
+
+- doc_loaders design/checklist: replace destructive quality/area/strict-flag
+  requirements, define six scoped tasks, record selection defect and real evidence.
+- document_structure design/checklist: supersede blanket excluded-region hiding,
+  version eligibility proof and close the single mapping task with file/SQL evidence.
+- UI design/checklist: correct server-visibility requirements and historical
+  references only; no new UI state authority, editor, API or frontend task claimed.
+- progress.md: checklist-progress-sync of these two backend owners only; no UI
+  tasks included and no historical unfinished tasks closed.
+
+Validation: exact-source/identity/mapping and real-engine tests above, existing
+interaction/cleanup guards, read-purity and atomic-storage regressions pass;
+checklist timestamps are 2026-10-25 and whitespace checks pass. No root sections
+authority, hidden task-layout writes, profile regeneration or cross-module Chinese
+policy leakage introduced. Runtime source changes remain loader/mapping scoped;
+the large preexisting worktree is preserved rather than included in this claim.
+
+## Cleanup Source Capability (2026-10-23)
+
+Supporting preparation CLEAN-05, no duplicate completion count. SourceArtifact
+adds optional immutable SourceTextSpan OCR ranges: None is unknown, empty means
+known native-only, nonempty ranges reference exact accepted canonical characters.
+PDF open_source supplies full OCR page ranges or Auto recovery_page_indexes from
+the same extraction pass; empty Auto provenance is native-only for this adapter's
+known implementation, while unknown nonempty provenance remains unknown. No text
+classification, second OCR pass or change to Fast/OCR/Auto extraction policy.
+Preparation persists generic identity-bound evidence; loaders never import cleanup
+planner/storage policy. Existing uncertain review regions get no invented offsets.
+Tests cover all mode/evidence cases and single session extraction; real OCR accuracy
+acceptance remains the existing loader track, not a new CLEAN-05 claim.
+
 ## Reviewable OCR Recovery (2026-10-21)
 
 **[Code-Confirmed]** Partial recognition defects must not
 automatically invalidate an otherwise readable document. Target outcomes are
 `completed`, `needs_review`, and extraction failure. The reading-content projection
 exposes the first two; extraction errors retain their existing contract. Engine/render/budget errors remain failures, not
-quality warnings. All-unreadable input remains a failure. Fast stays native-only;
+quality warnings. All-empty input remains a failure; recognized low-quality text
+is retained under OCR-KEEP. Fast stays native-only;
 Auto native-preservation rules are not relaxed. Chinese geometry stays loader-local.
 
 Sample2 evidence: two requests fail at physical page 3, region 18, bbox
@@ -29,7 +192,7 @@ explicit and requires those modules' memory before implementation):
    trustworthy char spans where available, and policy version. Empty recognition
    has no fabricated text/span; retain an image-backed unresolved region instead.
    Aggregate evidence across every page; no early quality abort hiding later pages.
-   Calibrate usable-body coverage on real fixtures, not a global confidence reduction.
+   Preserve nonempty recognition and annotate uncertainty, without an area quota.
    Enable only with the review exposure and interaction guards described below.
 4. OCR-REVIEW-04: read-only review projection and source-region image endpoint.
    Owners: main/api_schemas/document_structure and UI. Use the existing repository namespace,
@@ -54,26 +217,26 @@ explicit and requires those modules' memory before implementation):
    blank, engine-failure, mixed-layout and non-Chinese controls. No production-book
    deletion or silent reparse is authorized by these tests.
 
-This delivery supersedes the old unconditional any-region-rejects-document product
-requirement for explicit OCR only. Never ship silent missing text as completed reading.
+This historical delivery first relaxed any-region-rejects-document behavior.
+OCR-KEEP now supersedes its remaining quality-based text exclusion and area quota.
+Never ship silent missing text as completed reading.
 Historical OCR-DIR completion covers its original fixtures only, not this new track.
 
 ### Delivered Review Contract
 
 `ocr_review.py` owns format-neutral region records; Chinese orientation/model rules
-remain in the Chinese loader strategy. Explicit OCR defaults to review policy v1;
-`DEEP_READER_OCR_REVIEW_ENABLED=0` restores strict rejection. The flag participates
-in OCR extraction identity, not Fast identity. Auto retains its strict recovery policy.
+remain in the Chinese loader strategy. OCR-KEEP makes quality review mandatory
+for uncertain retained text; the old review-disable flag cannot restore destructive
+quality filtering. Non-Fast extraction identity includes the preservation policy.
 Every physical page is accounted for, including confirmed blank pages. Failed
 regions retain source SHA-256, zero-based page index, pixel bbox, DPI, reason and
 raw candidate when available; empty output gets no fabricated span or content block.
 Evidence flows through SourceArtifact.storage_metadata into parse_provenance.source_review.
 
-Partial acceptance requires at least 40 readable characters and accepted region
-rectangle area no smaller than uncertain area. A page without region evidence uses
-its full rendered rectangle. This is a conservative fixture-tested coverage heuristic,
-not calibrated semantic confidence or a guarantee for arbitrary scans. Entirely
-unreadable input fails. Execution/render/model/budget failures are never downgraded.
+Nonempty OCR text is retained regardless of quality score or uncertain-area ratio.
+Whole-page warnings use the rendered rectangle; regional warnings retain exact
+text spans when present. Entirely empty recognition fails. Execution/render/model
+failures are never downgraded. Quality is not calibrated semantic confidence.
 
 Reading mutations are explicit, versioned overlays in parse_provenance.reading_content.
 Edit and Delete are content-block interactive actions in the existing three-dot menu.
@@ -81,15 +244,28 @@ There is NO manual add/insert action, API or synthesized block for an empty regi
 Source review permits inspecting the original and explicitly ignoring a region;
 it does not claim to recover its missing text. An ignored region remains auditable.
 Undo restores the immediately preceding edit/delete/review decision, not a multilevel
-history. Receipts/audit are bounded to 1000 mutations per structural source epoch;
-the limit rejects further writes rather than losing idempotency history silently.
+history. SRMAP-03 removes the former 1000-mutation quota without evicting manual
+replay receipts. Source review is read-only for body text; all body edits/deletions
+stay in Reading content. Deleting the last mapped block does not automatically
+Ignore its region. Manual changes carry server UTC timestamps; cleanup and Ignore
+are not manual body edits.
 
 All generated interactions are conservatively invalidated document-wide in the
-same mutation transaction because ancestors can affect descendants. Notes survive
-with a stale-source notice. Original source, hierarchy IDs and profile are unchanged.
-Any unresolved region blocks analysis, quiz, thinking and summary generation for
-the document and descendants before context/LLM calls. UI warns before opening
+same mutation transaction because ancestors can affect descendants. Edit Keep/Clear
+includes the edited block's Note; deletion removes that block's Note and interactions,
+not unrelated notes. Undo restores text, not purged interactions. Original source,
+hierarchy IDs and profile are unchanged.
+Unresolved potentially included regions block analysis, quiz, thinking and summary
+generation before context/LLM calls. The shared domain policy keeps quality-excluded
+legacy text and extraction gaps visible even when absent from body; only genuinely
+non-body evidence can be excluded. Unknown evidence remains conservative. UI warns before opening
 generation; backend guards are authoritative. Review reads never prepare or OCR.
+
+Historical SRMAP-01 rejection records used body_inclusion=excluded. OCR-KEEP retains
+nonempty text and records included canonical spans instead; empty recognition has
+no invented span. Inclusion is source evidence, not a review decision, block ID or
+parser authority. document_structure verifies identity/hash/page bounds and stages
+durable proof at explicit writes. Old exclusion records remain truthful history.
 
 The image endpoint resolves server-owned regions through a loader capability,
 verifies current source bytes against the recorded hash, validates bbox/DPI/area,
@@ -157,13 +333,13 @@ retained in page-quality provenance, including mixed-band offset translation.
 OCR-run metadata receives these diagnostics through existing SourceArtifact storage;
 they do not authorize hierarchy splits or enter task-layout payloads.
 
-Guard thresholds are heuristic: unexplained ink above 5% rejects or enters bounded
-mixed-band analysis; at most 64 columns/16 bands; body OCR confidence at least 40;
-transcription-size/glyph-height proxy between 0.65 and 2.5. CJK evidence is required
-for selected Chinese vertical regions, preventing the reproduced Latin garbage
-from winning. Short labels of at most four characters may retain low-confidence
-transcription only when their aggregate share is at most 5% of page text, with
-explicit low_confidence_short_label flags. This does not certify those labels.
+Diagnostic thresholds are heuristic: unexplained ink above 5% enters bounded
+mixed-band analysis or full-image fallback; at most 64 columns/16 bands;
+body OCR confidence below 40 and transcription-size/glyph-height proxy outside
+0.65..2.5 flag uncertainty. CJK evidence contributes to regional diagnostics.
+Low-confidence text and short labels remain with explicit flags, without a 5%
+page quota. Strong observed CJK candidate agreement prevents cross-formula Latin
+outliers from winning; this does not certify labels or transcription accuracy.
 No claim of perfect recognition, arbitrary artistic layout or reliable 180-degree
 orientation detection is made. Existing subprocess/time/page budgets still apply.
 
@@ -484,14 +660,14 @@ Observed OCR quality failure（`國富論lite.pdf`）：
 4. Container spot check 顯示同一頁在不同 Tesseract PSM 下品質差異明顯：default PSM 產生大量 Latin-like garbage，`--psm 6` 產生較多中文但仍存在順序與噪聲問題，`--psm 11` 產生碎字。 **[Code-Confirmed]**
 5. `_ocr_image_text()` 目前是 default PSM 先行，只要 default PSM 有非空文字就停止；因此直排/混排頁面可能被低品質 default PSM 輸出截斷後續候選。 **[Code-Confirmed] + [Inferred]**
 
-Implemented OCR quality remediation：
+OCR quality remediation (updated by OCR-KEEP)：
 
-1. OCR raw-text handoff 不再只以「非空」作成功標準；low-quality OCR gate 會阻止 corrupted OCR 成為 canonical raw text。 **[Code-Confirmed]**
+1. 非空 OCR 文字保留為 canonical raw text；品質訊號只用於候選選擇、review 提示與下游防護，不得因分數低而丟棄正文。 **[Maintainer-Provided]**
 2. `_ocr_image_text()` 會比較多個候選，而不是 default PSM 非空即接受；目前候選包含 default、`--psm 5`、`--psm 6`、`--psm 11`。 **[Code-Confirmed]**
 3. 候選選擇使用 deterministic quality scoring：CJK ratio、Latin-like garbage ratio、符號/括號/重複碎片密度、字數下限與 OCR candidate score。 **[Code-Confirmed]**
 4. OCR quality scoring 是 loader-level raw-text quality decision，不是 parser authority；不決定 chapter/section split，也不把 OCR/profile/LLM metadata 升格為 hierarchy truth。 **[Code-Confirmed] + [From HLD]**
 5. 已實作多 PSM 分數比較，但不保證直排閱讀順序或正確選出候選；2026-10-21 真實樣本證實 default PSM 亂碼仍會勝出。方向感知模型路由、region-first canonical ordering 與品質修正由 OCR-DIR track 處理。 **[Code-Confirmed] + [Future Direction]**
-6. 當 OCR 產生文字但低於 quality gate 時，prepare 會收到明確 raw-load failure：`load_raw_text_ocr_low_quality:<doc_name>:<reason>`，並跳過 language/profile/structured build。 **[Code-Confirmed]**
+6. 低品質但非空的 OCR 保留並標記 needs_review；非空白頁完全無輸出時保留缺漏證據，全文件無文字或執行失敗才拒絕產物。 **[Maintainer-Provided]**
 7. 已被 corrupted OCR 產物污染的文件（例如 `國富論lite`）需要 explicit `force_rebuild=true` 重新產生 structured artifacts；task-layout read path 不承擔修復持久化資料的責任。 **[Code-Confirmed]**
 
 Suggested implementation shape（future）：
@@ -502,9 +678,9 @@ PdfDocumentLoader
   -> pdf inspection metrics
   -> if native text exists: return text
   -> if scanned-image signature and OCR enabled: render pages and run bounded OCR candidates
-  -> score candidates and reject low-quality OCR before raw-text handoff
-  -> if OCR quality passes: expose text/pages/provenance for structured-store OCR run persistence
-  -> if OCR is low quality: fail with explicit low-quality OCR reason
+  -> score candidates and preserve selected nonempty recognition
+  -> expose text/pages/provenance; uncertain text has review evidence and exact source spans
+  -> empty recognition is an explicit gap; all-empty or execution failure remains a failure
   -> if scanned-image signature and OCR disabled: fail with requires_ocr reason
 ```
 
@@ -540,7 +716,7 @@ Container/runtime implication：2026-10-21 runtime 已有 Tesseract、Poppler �
 
 6. risk：OCR non-empty output 被誤當作 trusted raw text
 - why：直排/混排掃描頁可能在 default Tesseract PSM 下產生大量亂碼；非空亂碼會污染 language/profile/structured hierarchy，並在 task-layout/content read path 中被投影
-- guardrail：比較多 PSM OCR candidates，加入 deterministic quality scoring 與 low-quality raw-load failure，低品質 OCR 不得進入 structured persistence **[Code-Confirmed]**
+- guardrail：比較多 PSM 候選、保留品質證據與正文；互動防護拒絕無意義輸入，修補只走顯式人工／智慧清理流程 **[Maintainer-Provided]**
 
 7. risk：直排中文閱讀順序未被 raw OCR path 正確處理
 - why：頁面可能需要 vertical/right-to-left column ordering 或 region-first OCR；單一線性 OCR output 無法可靠代表 canonical body text
@@ -659,7 +835,8 @@ of perfect classification or fixed millisecond latency is made. **[Future Direct
   first 30 pages. Preserve useful cheap evidence for every page.
 - Raw extraction remains `load(doc_name) -> str`; mixed PDFs preserve native
   pages and merge accepted OCR regions without duplicated text, changed page
-  order or broken raw-text offsets. Existing low-quality OCR rejection stays.
+  order or broken raw-text offsets. OCR-KEEP replaces quality-only rejection with
+  retained text and review evidence; native-text integrity remains enforced.
 - OCR-disabled behavior remains explicit; do not turn `required` into enabled.
   Existing force rebuild is not a new force-OCR switch.
 - Reuse is bounded to one preparation pass initially. Match PDF hash, page,
@@ -1324,11 +1501,13 @@ snapshot even if the original file changes. No user artifacts are written.
 
 Every physical page is rendered. Uniform rendered blank pages retain empty spans;
 other pages run the existing bounded four-PSM recognition and observed-script-v2
-quality scoring. Only accepted OCR supplies canonical text, never native fallback.
+quality scoring. Under OCR-KEEP all selected nonempty OCR supplies canonical text,
+with uncertainty evidence, never native fallback.
 Missing executable/language packs fail as engine_unavailable before rendering;
 page limits or execution budgets fail as budget_exceeded. Invalid render/process
-output fails as extraction_failed, rejected nonblank recognition as quality_failed,
-and all-blank output as no_text. Errors never return a partial result. Required
+output fails as extraction_failed; nonblank empty recognition produces a review gap,
+all-empty recognition fails, and all-blank output is no_text. Execution errors never
+return a partial result. Required
 render/OCR/metadata subprocesses use existing request-local attempt/time budgets.
 
 Result provenance records mode, source hash, page count, OCR language, DPI and

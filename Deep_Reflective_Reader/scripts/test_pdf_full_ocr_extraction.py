@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from dataclasses import replace
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pypdf import PageObject, PdfWriter
@@ -53,7 +55,7 @@ class FullOcrTests(unittest.TestCase):
     def render_page(self, *, file_path, page_index, output_dir):
         self.assertEqual(file_path.read_bytes(), self.source)
         image = output_dir / f"page{page_index}.png"
-        image.write_bytes(b"fixture")
+        Image.new("RGB", (100, 100), "white").save(image)
         return [image]
 
     def recognize_page(self, *, page_index, **kwargs):
@@ -103,13 +105,16 @@ class FullOcrTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "budget_exceeded")
         self.render.assert_not_called()
 
-    def test_mid_document_quality_failure_never_publishes_partial_result(self):
-        self.recognize.side_effect = [self.recognize_page(page_index=0), ("", [])]
-        with self.assertRaises(PdfExtractionError) as caught:
-            self.extract()
-        self.assertEqual(caught.exception.reason, "quality_failed")
-        self.assertEqual(self.render.call_count, 2)
-        self.assertFalse(self.loader.last_ocr_pages)
+    def test_mid_document_empty_recognition_is_an_explicit_gap(self):
+        self.recognize.side_effect = [self.recognize_page(page_index=0), ("", []),
+                                      self.recognize_page(page_index=2)]
+        result = self.extract()
+        self.assertEqual(self.render.call_count, 3)
+        self.assertEqual(result.pages[1], "")
+        region = result.provenance["source_review"]["regions"][0]
+        self.assertEqual(region["reason"], "recognition_empty")
+        self.assertNotIn("canonical_span", region)
+        self.assertIn("source_needs_review", result.warnings)
 
     def test_budget_failure_is_typed_without_fallback(self):
         self.render.side_effect = PdfBudgetExceeded("render_attempts")
@@ -127,15 +132,102 @@ class FullOcrTests(unittest.TestCase):
         self.assertEqual(len(result.pages), 3)
         self.assertFalse(result.outline_provider().usable)
 
-    def test_chinese_rejection_exposes_page_region_without_source(self):
+    def test_legacy_chinese_quality_error_retains_an_explicit_gap(self):
         self.recognize.side_effect = [self.recognize_page(page_index=0),
-            RawTextOcrFailedError("private name", "chinese_vertical_region_quality_failed:page=2:region=18:private source")]
-        with self.assertRaises(PdfExtractionError) as caught:
-            self.extract()
-        self.assertEqual(caught.exception.reason,"quality_failed")
-        self.assertIn("page 2",str(caught.exception))
-        self.assertIn("region=18",str(caught.exception))
-        self.assertNotIn("private",str(caught.exception))
+            RawTextOcrFailedError("private name", "chinese_vertical_region_quality_failed:page=2:region=18:private source"),
+            self.recognize_page(page_index=2)]
+        result = self.extract()
+        region = result.provenance["source_review"]["regions"][0]
+        self.assertEqual(region["page_index"], 1)
+        self.assertEqual(region["reason"], "recognition_empty")
+        self.assertNotIn("private", str(result.provenance))
+
+    def test_quality_does_not_discard_nonempty_text_or_require_area_quota(self):
+        text = "@@ x ?"
+        candidate = self.loader._score_ocr_candidate(psm="default", text=text)
+        self.assertFalse(candidate.passed)
+        self.recognize.side_effect = lambda **kwargs: (text, [candidate])
+        result = self.extract()
+        self.assertEqual(result.pages, (text, text, text))
+        self.assertEqual(result.provenance["source_review"]["disposition"], "needs_review")
+        for region in result.provenance["source_review"]["regions"]:
+            self.assertEqual(region["body_inclusion"], "included")
+            span = region["canonical_span"]
+            self.assertEqual(result.text[span["char_start"]:span["char_end"]], text)
+            self.assertNotIn("page_span", region)
+
+    def test_legacy_empty_selection_recovers_best_nonempty_candidate(self):
+        text = "@@ x ?"
+        candidate = self.loader._score_ocr_candidate(psm="default", text=text)
+        self.recognize.side_effect = lambda **kwargs: ("", [candidate])
+        self.assertEqual(self.extract().pages, (text, text, text))
+
+    def test_uncertain_region_spans_follow_page_separators_and_blank_pages(self):
+        text = "Clear readable paragraph with enough ordinary words.\nuncertain"
+        candidate = replace(self.loader._score_ocr_candidate(psm="default", text=text),
+                            region_evidence=({"bbox": [0, 0, 20, 50], "accepted": False,
+                                              "char_start": text.index("uncertain"),
+                                              "char_end": len(text)},))
+        self.assertTrue(candidate.passed)
+        self.blank.side_effect = [False, True, False]
+        self.recognize.side_effect = lambda **kwargs: (text, [candidate])
+        result = self.extract()
+        regions = result.provenance["source_review"]["regions"]
+        self.assertEqual([region["page_index"] for region in regions], [0, 2])
+        for region in regions:
+            span = region["canonical_span"]
+            self.assertEqual(result.text[span["char_start"]:span["char_end"]], "uncertain")
+
+    def test_directed_region_offsets_preserve_boundary_whitespace(self):
+        text = "  uncertain region  "
+        candidate = replace(self.loader._score_ocr_candidate(psm="directed", text=text),
+                            passed=True, region_evidence=({"bbox": [0, 0, 20, 50], "accepted": False,
+                                                          "char_start": 2, "char_end": 18},))
+        self.recognize.side_effect = lambda **kwargs: (text, [candidate])
+        result = self.extract()
+        self.assertEqual(result.pages, (text, text, text))
+        for region in result.provenance["source_review"]["regions"]:
+            span = region["canonical_span"]
+            self.assertEqual(region["raw_candidate"], "uncertain region")
+            self.assertEqual(result.text[span["char_start"]:span["char_end"]], region["raw_candidate"])
+
+    def test_page_score_cannot_mask_empty_regional_gap(self):
+        text = "@@ x ?"
+        candidate = replace(self.loader._score_ocr_candidate(psm="directed", text=text),
+                            region_evidence=(
+                                {"bbox": [0, 0, 20, 50], "accepted": False,
+                                 "char_start": 0, "char_end": len(text)},
+                                {"bbox": [20, 0, 40, 50], "accepted": False,
+                                 "char_start": len(text), "char_end": len(text), "raw_candidate": ""},
+                            ))
+        self.recognize.side_effect = lambda **kwargs: (text, [candidate])
+        result = self.extract()
+        regions = result.provenance["source_review"]["regions"]
+        self.assertEqual(len(regions), 6)
+        self.assertEqual(len({r["id"] for r in regions}), 6)
+        self.assertEqual([r["reason"] for r in regions[:2]], ["recognition_uncertain", "recognition_empty"])
+        self.assertIn("canonical_span", regions[0])
+        self.assertNotIn("canonical_span", regions[1])
+        self.assertEqual(result.pages, (text, text, text))
+
+    def test_retained_parent_does_not_conceal_empty_component(self):
+        text = "A retained body with a missing printed page number."
+        candidate = replace(self.loader._score_ocr_candidate(psm="directed", text=text),
+                            region_evidence=({"bbox": [0, 0, 40, 90], "accepted": False,
+                                              "char_start": 0, "char_end": len(text),
+                                              "components": [{"bbox": [0, 80, 40, 90],
+                                                              "char_start": len(text),
+                                                              "char_end": len(text)}]},))
+        self.recognize.side_effect = lambda **kwargs: (text, [candidate])
+        result = self.extract()
+        regions = result.provenance["source_review"]["regions"]
+        self.assertEqual(len(regions), 6)
+        self.assertEqual(len({r["id"] for r in regions}), 6)
+        self.assertEqual(regions[0]["body_inclusion"], "included")
+        self.assertEqual(regions[1]["reason"], "recognition_empty")
+        self.assertEqual(regions[1]["bbox"], [0, 80, 40, 90])
+        self.assertNotIn("canonical_span", regions[1])
+        self.assertEqual(result.pages, (text, text, text))
 
     def test_unknown_execution_error_is_not_a_quality_warning(self):
         self.recognize.side_effect = RawTextOcrFailedError("private name","private process output")
@@ -174,7 +266,7 @@ class FullOcrTests(unittest.TestCase):
         with patch.dict(os.environ,{"DEEP_READER_OCR_REVIEW_ENABLED":"1"}):
             with self.assertRaises(PdfExtractionError) as caught:
                 self.extract()
-        self.assertEqual(caught.exception.reason,"quality_failed")
+        self.assertEqual(caught.exception.reason,"no_text")
         self.assertEqual(self.render.call_count,3)
 
 

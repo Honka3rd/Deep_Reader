@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from document_structure.section_role import SectionRole
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import StructuredChapter, StructuredDocument, StructuredSection
 from section_tasks.task_unit_id_normalizer import TaskUnitIdNormalizer
 from shared.task_artifacts import QuizArtifact, SummaryArtifact, TaskArtifacts
 from shared.task_unit_model import TaskUnit
@@ -25,7 +25,8 @@ def _build_duplicate_id_document() -> StructuredDocument:
         source_path=None,
         language="zh",
         raw_text="S0\nS1\nS2",
-        sections=[
+        chapters=[StructuredChapter(chapter_id="chapter-0", title="Chapter", level=1,
+                                    chapter_role=SectionRole.MAIN_BODY, sections=[
             StructuredSection(
                 section_id="section-0",
                 section_index=0,
@@ -100,7 +101,7 @@ def _build_duplicate_id_document() -> StructuredDocument:
                     )
                 ],
             ),
-        ],
+        ])],
     )
 
 
@@ -117,7 +118,8 @@ def test_normalizer_basic_and_artifact_preservation() -> None:
     normalized = normalizer.normalize_document_task_unit_ids(document=document)
     ids = [
         task_unit.unit_id
-        for section in normalized.sections
+        for chapter in normalized.chapters
+        for section in chapter.sections
         for task_unit in section.task_units
     ]
     _assert(ids == ["task-unit-0", "task-unit-1", "task-unit-2"], f"unexpected ids={ids}")
@@ -127,8 +129,10 @@ def test_normalizer_basic_and_artifact_preservation() -> None:
     )
 
     # Ensure artifacts stay on original unit positions; no merging by old duplicate id.
-    s0_u0 = normalized.sections[0].task_units[0]
-    s1_u0 = normalized.sections[1].task_units[0]
+    s0_u0 = normalized.chapters[0].sections[0].task_units[0]
+    s1_u0 = normalized.chapters[0].sections[1].task_units[0]
+    _assert(s1_u0.content_blocks[0].block_id == "task-unit-1:content:0",
+            "generated block identity should follow its assigned unit")
     _assert(
         s0_u0.task_artifacts is not None
         and s0_u0.task_artifacts.summary is not None
@@ -163,7 +167,7 @@ def test_real_document_regression_snapshot() -> dict[str, int | bool]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     document = StructuredDocument.from_dict(payload)
     normalizer = TaskUnitIdNormalizer()
-    total = sum(len(section.task_units) for section in document.sections)
+    total = sum(len(section.task_units) for chapter in document.chapters for section in chapter.sections)
     unique_before = len(normalizer.collect_task_unit_id_counts(document))
     normalized = normalizer.normalize_document_task_unit_ids(document=document)
     unique_after = len(normalizer.collect_task_unit_id_counts(normalized))
@@ -196,4 +200,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

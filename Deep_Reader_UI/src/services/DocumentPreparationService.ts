@@ -1,4 +1,4 @@
-import type { PdfExtractionMode, PreparedTaskLayout, PrepareDocumentResponse, StructureParserMode } from "../types/api";
+import type { DocumentTaskLayout, PdfExtractionMode, PreparedTaskLayout, PrepareDocumentResponse, StructureParserMode } from "../types/api";
 import { RestClient } from "./RestClient";
 import { TaskLayoutService } from "./TaskLayoutService";
 import type { TocHint } from "../types/api";
@@ -19,11 +19,16 @@ export class DocumentPreparationService {
   }
 
   async isReaderReady(docName: string, signal?: AbortSignal): Promise<boolean> {
+    return Boolean(await this.fetchReadyLayout(docName, signal));
+  }
+
+  async fetchReadyLayout(docName: string, signal?: AbortSignal): Promise<DocumentTaskLayout | null> {
     try {
       const layout = await new TaskLayoutService(this.restClient).fetchTaskLayout(docName, { signal });
-      return Boolean(layout.document_id && Array.isArray(layout.chapters));
+      return !signal?.aborted && typeof layout?.document_id === "string" &&
+        layout.document_id.trim() && Array.isArray(layout.chapters) ? layout : null;
     } catch {
-      return false;
+      return null;
     }
   }
 

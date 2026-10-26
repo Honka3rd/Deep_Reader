@@ -21,7 +21,6 @@ from doc_loaders.document_loader_factory import DocumentLoaderFactory  # noqa: E
 from doc_loaders.raw_data_paths import DEFAULT_RAW_DATA_DIR  # noqa: E402
 from doc_loaders.text_document_loader import TextDocumentLoader  # noqa: E402
 from doc_loaders.document_load_errors import RawTextRequiresOcrError  # noqa: E402
-from doc_loaders.document_load_errors import RawTextOcrLowQualityError  # noqa: E402
 from doc_loaders.pdf_ocr_language_policy import (  # noqa: E402
     DEFAULT_TESSERACT_OCR_LANGUAGE,
     get_tesseract_language_for_document_language,
@@ -440,7 +439,7 @@ def test_ocr_candidate_selection_does_not_accept_first_non_empty_output() -> Non
             base_dir=str(temp_path),
             ocr_enabled=True,
             tesseract_cmd=str(fake_tesseract),
-            ocr_language="chi_tra+eng",
+            ocr_language="eng",
         )
 
         text = loader._ocr_image_text(
@@ -453,7 +452,7 @@ def test_ocr_candidate_selection_does_not_accept_first_non_empty_output() -> Non
         _assert("UAE RG" not in text, "default garbage should not be accepted just because it is non-empty")
 
 
-def test_ocr_candidate_selection_suppresses_rejected_text() -> None:
+def test_ocr_candidate_selection_preserves_rejected_text() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         image_path = temp_path / "page.png"
@@ -471,7 +470,7 @@ def test_ocr_candidate_selection_suppresses_rejected_text() -> None:
             base_dir=str(temp_path),
             ocr_enabled=True,
             tesseract_cmd=str(fake_tesseract),
-            ocr_language="chi_tra+eng",
+            ocr_language="eng",
         )
 
         text = loader._ocr_image_text(
@@ -480,10 +479,11 @@ def test_ocr_candidate_selection_suppresses_rejected_text() -> None:
             page_index=0,
         )
 
-        _assert(text == "", "rejected OCR candidate text must not enter raw-text handoff")
+        _assert(text == "UAE RG Rl Qo JOGA ol 8 TAN ts SS NS RS ot HEME RRKSERRRERM",
+                "nonempty OCR must survive a low quality score")
 
 
-def test_ocr_quality_gate_rejects_non_empty_garbage_pages() -> None:
+def test_ocr_quality_annotates_non_empty_garbage_pages() -> None:
     class _Reader:
         pages = [{}, {}, {}]
 
@@ -508,21 +508,21 @@ def test_ocr_quality_gate_rejects_non_empty_garbage_pages() -> None:
             ocr_page_limit=3,
         )
         loader._render_page_images = lambda **kwargs: [temp_path / "page.png"]
-
-        try:
-            loader._load_pages_with_ocr(
-                doc_name="國富論lite",
-                file_path=pdf_path,
-                reader=_Reader(),
-            )
-        except RawTextOcrLowQualityError as error:
-            _assert(error.doc_name == "國富論lite", "low-quality OCR error should preserve doc_name")
-            _assert(
-                (error.detail or "").startswith("page_quality_gate_failed:"),
-                f"unexpected low-quality detail: {error.detail}",
-            )
-            return
-        raise AssertionError("non-empty garbage OCR should fail the document quality gate")
+        with pdf_loader_module.Image.new("RGB", (30, 40), "white") as rendered:
+            rendered.putpixel((1, 1), (0, 0, 0))
+            rendered.save(temp_path / "page.png")
+        # Exercise the generic candidate path, independently of Chinese routing.
+        loader.ocr_language = "eng"
+        pages = loader._load_pages_with_ocr(
+            doc_name="國富論lite", file_path=pdf_path, reader=_Reader(),
+        )
+        _assert(len(pages) == 3 and all(pages), "every nonempty page must be retained")
+        _assert(all(not page["selected_passed"] for page in loader.last_ocr_quality),
+                "quality diagnostics must remain rejected")
+        review = loader.last_ocr_provenance["source_review"]
+        _assert(len(review["regions"]) == 3, "every uncertain page needs source review evidence")
+        _assert([region["raw_candidate"] for region in review["regions"]] == pages,
+                "review quotes must reference retained page text")
 
 
 def test_ocr_language_policy_uses_project_language_codes() -> None:
@@ -564,8 +564,8 @@ if __name__ == "__main__":
     test_real_scanned_pdf_limit_cannot_publish_partial_text()
     test_ocr_uses_memory_pages_without_file_cache()
     test_ocr_candidate_selection_does_not_accept_first_non_empty_output()
-    test_ocr_candidate_selection_suppresses_rejected_text()
-    test_ocr_quality_gate_rejects_non_empty_garbage_pages()
+    test_ocr_candidate_selection_preserves_rejected_text()
+    test_ocr_quality_annotates_non_empty_garbage_pages()
     test_ocr_language_policy_uses_project_language_codes()
     test_pdf_loader_defaults_to_multilingual_ocr_language()
     print("OK: PDF document loader inspection tests passed")

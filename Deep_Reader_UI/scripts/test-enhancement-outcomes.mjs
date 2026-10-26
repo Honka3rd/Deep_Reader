@@ -17,6 +17,12 @@ try {
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
       const body = route.request().postDataJSON();
+      if (path.endsWith("/reparse-structure/status")) return route.fulfill({ json: {
+        doc_name: new URL(route.request().url()).searchParams.get("doc_name"), status: "idle",
+      } });
+      if (path.endsWith("/reading-content")) return route.fulfill({ json: {
+        revision: 0, source_token: "fixture", disposition: "ready", can_undo: false, max_chars: 10000, regions: [], blocks: [],
+      } });
       if (["/api/documents", "/api/documents/management"].includes(path)) return route.fulfill({ json: { items: [], total: 0 } });
       if (path.endsWith("/task-layout")) {
         reads++;
@@ -158,9 +164,6 @@ try {
       const count = calls.length;
       await reconcile.click();
       await dialog.getByText(/still running/).waitFor();
-      lookup = "unknown";
-      await reconcile.click();
-      await dialog.getByText(/earlier outcome cannot be confirmed/).waitFor();
       assert.equal(await enhance().isDisabled(), true);
       lookup = "completed";
       await reconcile.click();
@@ -170,6 +173,13 @@ try {
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
       await retained();
     }
+    // Unknown history plus an idle backend permits fresh consent, never automatic execution.
+    transport = "lost"; lookup = "unknown";
+    await open(); await enhance().click();
+    await page.getByRole("button", { name: "Check stored state" }).click();
+    await dialog.getByText("Ready for smart structuring.", { exact: true }).waitFor();
+    assert.equal(await enhance().isEnabled(), true);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
     expired = true;
     await open();
     assert.equal(await enhance().isDisabled(), true);

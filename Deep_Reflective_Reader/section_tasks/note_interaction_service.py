@@ -29,7 +29,25 @@ class NoteInteractionService:
         supplied = target_options.get("source_structure_version")
         if supplied is not None and supplied != document.parse_provenance.get("storage_structure_version"):
             raise NoteConflict("note_target_stale")
-        target = self.resolver.resolve(document=document, apply_edits=False, **target_options)
+        identity_options = dict(target_options)
+        if target_options.get("target_level") == "content_block":
+            identity_options["source_hash"] = None
+        target = self.resolver.resolve(document=document, apply_edits=False, **identity_options)
+        block_epoch = ""
+        if target.target_level == "content_block":
+            from document_structure.reading_content import state_for
+            # Check the current overlay too; a canonical ID alone cannot authorize writes.
+            try:
+                current = self.resolver.resolve(document=document, **identity_options)
+            except ValueError as error:
+                raise NoteConflict("note_target_deleted") from error
+            # A retained note keeps canonical identity, while freshly opened readers
+            # send the overlay hash. Accept either verified view, not arbitrary hashes.
+            supplied_hash = target_options.get("source_hash")
+            hashes = {(value.content_block.metadata or {}).get("source_hash") for value in (target, current)}
+            if supplied_hash is not None and supplied_hash not in hashes:
+                raise NoteConflict("note_target_stale")
+            block_epoch = state_for(document).get("block_interaction_epochs", {}).get(target.content_block_id, "")
         key = hashlib.sha256(json.dumps(self._identity(target)).encode()).hexdigest()
         artifacts = document.document_task_artifacts or DocumentTaskArtifacts()
         notes = dict(artifacts.metadata.get("note", {}))
@@ -43,7 +61,7 @@ class NoteInteractionService:
             document.parse_provenance.get("interaction_epoch"), structure,
             self._identity(target), target.content,
         ], ensure_ascii=False).encode()).hexdigest()
-        token = hashlib.sha256((source + entry.get("epoch", "")).encode()).hexdigest()
+        token = hashlib.sha256((source + entry.get("epoch", "") + block_epoch).encode()).hexdigest()
         if entry.get("note") and entry.get("source") != source:
             raise NoteConflict("note_target_stale")
         return target, key, artifacts, notes, entry, source, token

@@ -17,6 +17,12 @@ class ReparseDocumentStructureResult:
     interactions_cleared: bool | None = None
     reading_layout_required: bool | None = None
     retryable: bool = False
+    cleanup: dict | None = None
+    phase: str | None = None
+    retry_stage: str | None = None
+    layout_error: str | None = None
+    review_required: bool | None = None
+    pending_review_count: int | None = None
 
     @classmethod
     def ok(
@@ -53,6 +59,7 @@ class ReparseDocumentStructureResult:
         error: str,
         structured_document_path: str | None = None,
         retryable: bool = False,
+        retry_stage: str | None = None,
     ) -> "ReparseDocumentStructureResult":
         """Build failure reparse result with explicit reason."""
         normalized_error = error.strip() or "reparse_document_structure_failed"
@@ -64,4 +71,5 @@ class ReparseDocumentStructureResult:
             error=normalized_error,
             section_count=None,
             retryable=retryable,
+            retry_stage=retry_stage,
         )

@@ -1,5 +1,495 @@
 # scripts Detailed Design
 
+## Persisted Translation Acceptance Plan (2026-10-26)
+
+**[Code-Confirmed]** TRUI-06 owns backend acceptance for the
+[translation queue](../section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).
+Existing test_translation_action/service and accept_translation_action_books prove
+the earlier foundation; action tests now follow the persistent contract. New tests assert persistence after new
+service instances/reload, same/different-language concurrency, replay after lost
+response, rollback after SQL write and delayed generation after edit/delete/reparse.
+Use real file and disposable PostgreSQL adapters, not mocks to certify atomicity.
+
+Exercise all registry entries plus rejected arbitrary/unknown/subtag codes; both
+profile-default and explicit source; completed/partial/untranslatable/provider and
+commit failures. No-op and actual edit Keep/Clear must follow the full matrix:
+same effective body preserves all state; changed text purges translations/summary
+dependencies while retaining other kinds on Keep; deleted block purges its Notes
+and all other interactions. Verify draft-only changes/Ignore/Keep-review, same-text
+repair application, Undo/rename/reparse, hidden cleanup blocks and legacy-save races.
+Document-profile source/summary remains unchanged; do not count regenerated profiles
+as reuse or fallback reads as success.
+
+Use immutable Madame Bovary/Red Roulette backups already in data/test-books, verify
+hashes first/last, and mutate only disposable copies. Live model block calls must
+produce at least two stored target languages and prove repeat selection reuses the
+saved record without a model call, while failed generation of a missing language
+preserves old results. Existing variant-code live scripts require alignment to registry-only
+interactive selection without weakening generic-service language tests. Record private
+reports without committing book text or credentials. UI TRUI-11 separately proves
+actual browser flow, keyboard/focus, lifecycle races and 1280/390 screenshots.
+
+Delivery evidence: test_translation_persistence and its PostgreSQL subclass cover
+real storage reload, same/different-language and same-command concurrency, post-write
+SQL rollback, unchanged document timestamps, source races, no-op/Keep/Clear, selective
+summary cleanup, rename and legacy writers. Combined command runs 408 tests with
+zero skips, including opt-in cleanup fixtures from data/test-books/cleanup-20261023.
+accept_persisted_translation_books --live --browser calls the configured provider
+against bounded immutable book excerpts, actual App/API and disposable SQL, with
+no production mutation. Report/screenshots: data/test-books/persisted-translation/
+20261026T070158Z-06e6f6e0. Profiles/backups are unchanged and schemas removed.
+Frontend model/controller, refresh and pagination tests and production build pass;
+literary accuracy and Docker deployment are not certified by these checks.
+
+Reuse follow-up (2026-10-26): 80 focused tests pass on file/disposable SQL, including
+new-ID/different-From reuse, no profile/model/write on hit, partial reuse and new
+generation after actual body change. Mounted controller/DTO and build pass. Updated
+real App/API/model/SQL acceptance at 1280/390 verifies zero generate requests on repeat
+To selection, unchanged records, direct generate-API reuse and missing-language
+generation: data/test-books/persisted-translation/20261026T113558Z-5d5c71b0.
+Backups unchanged, schemas removed; no production deployment or book mutation.
+
+## Offline Preflight Follow-up (2026-10-24)
+
+Scripts owns WAIT-03 packaging/setup and WAIT-05
+acceptance; token counting stays in llm and use-case timing stays in app.
+[Canonical design](../llm/module-detailed-design.md#offline-preflight-follow-up-2026-10-24)
+and [ordered tasks](../llm/module-checklist.md#offline-preflight-follow-up-2026-10-24).
+
+WAIT-03 supplies a small explicit tokenizer-asset preparation/verification command
+used by the root Dockerfile and local-dev setup. Reuse the model/encoding mapping
+owned by WAIT-02, not a second hardcoded selection. Acquire only supported required
+assets, verify known encoding hashes/version, fail clearly on acquisition/corruption,
+and apply bounded network timeouts in this setup path. No private API key needed.
+Install data in a reproducible runtime-readable location outside ephemeral `/tmp`,
+without baking books, keys or host-specific paths into the image. Startup verifies
+offline availability; it must not download during import/preflight or silently fix
+missing files. Missing dev assets get an explicit setup action plus the provider's
+documented unavailable/fallback behavior. Merely warming a running container is not
+acceptance: recreated containers must work without the previous cache. Image build
+and production service restart/deployment remain distinct operations.
+
+### WAIT-03 Implementation (2026-10-24)
+
+`scripts.prepare_tokenizer_assets` consumes the llm-owned manifest, deduplicates
+the five supported models to their required encoding, and verifies exact size and
+SHA-256. Valid existing assets require no network. Explicit acquisition uses HTTPS,
+a 15-second socket timeout and a 180-second total-transfer check between reads
+(an in-flight socket operation may add up to its timeout). Oversized, truncated or
+wrong-hash content is rejected. Same-directory staging, fsync and atomic replacement
+avoid publishing partial files; failed acquisition preserves the previous destination
+and removes temporary files. Files are installed mode 0644. No credentials are used.
+
+`--verify-only` never acquires or repairs assets: it checks the file and exercises
+the actual offline counter for every supported model. Recipe, encoding hash and
+installed tiktoken version are reported; no books, keys or raw network errors are
+logged. Unsupported installed-library mappings or unavailable tokenizer dependencies
+fail explicitly. Existing runtime counting still has its labelled conservative
+fallback if an application deliberately bypasses the supported startup wrapper.
+
+Root Dockerfile runs acquisition before copying the full application, installing
+assets at `/opt/deep-reader/tokenizer-assets` through the existing
+`DEEP_READER_TOKENIZER_ASSET_DIR` contract. This is image content, not a data-volume
+or `/tmp` cache. The entrypoint `python -m scripts.tokenizer_startup` performs
+offline verification before exec-ing the supplied command, preserving signals and
+exit status. Missing/corrupt assets prevent API startup; no startup network repair.
+`scripts/start_local_dev.sh` builds this image and waits for API health before
+launching the UI. No DI/provider/domain policies or model limits change.
+
+For direct host Python development, from the repository root:
+
+```bash
+bash scripts/prepare_local_tokenizer.sh
+bash scripts/prepare_local_tokenizer.sh --verify-only
+```
+
+The helper uses `Deep_Reflective_Reader/.venv/bin/python` (or the explicit executable
+path `DEEP_READER_PYTHON`). Dependencies must already be installed. Its default
+asset directory is the counter's `llm/tokenizer_assets/`, ignored by git and Docker;
+`--asset-dir` or the existing environment variable can select a different directory.
+Use that same environment variable for subsequent runtime commands. From the
+backend root, a direct API launch with the gate is:
+
+```bash
+.venv/bin/python -m scripts.tokenizer_startup .venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+Preparation is explicit setup; imports, preflight and normal startup cannot download.
+Docker context excludes nested private env files, host venvs, books and local assets.
+Existing dependency layers can be reused; tokenizer acquisition is independently
+verified. Tests live in `test_tokenizer_asset_setup.py`; real asset and recreated-image
+checks require `DEEP_READER_TEST_TOKENIZER_ASSETS` and
+`DEEP_READER_TEST_TOKENIZER_IMAGE`. No production restart is part of this task.
+
+Validation: 145 tests pass with actual local assets, immutable-book opt-ins and the
+rebuilt image enabled, including 16 new packaging/setup/container cases. Root
+Dockerfile build produced `deep-reader-tokenizer:wait03` (`62776af533ea`), acquiring
+fresh verified encoding bytes while reusing unchanged dependency layers. Local
+tiktoken 0.12.0 and image tiktoken 0.14.0 both pass actual offline counting/parity;
+their distinct library versions remain in capacity identity. Two earlier container
+downloads failed integrity checks and were rejected; an explicit build retry
+succeeded. The initial 60-second local setup deadline was insufficient on this
+network; the implemented 180-second setup-only deadline completed and passed.
+
+New/recreated non-root containers run with `--network none`, read-only root and
+empty tmpfs, and count all supported models without ephemeral cache. Missing/corrupt
+asset containers refuse child execution. Actual default-entrypoint Uvicorn boots
+offline and returns HTTP 200 `/health` with a dummy, noncredential key and no mounted
+production data; the disposable container was removed. A separate image counter/
+budget suite passes 20/21 (one private-book opt-in skipped, covered on host). Host
+shell integration tests are not image tests because root development scripts are
+deliberately not shipped in the API image. Unit faults cover truncation, wrong hash,
+oversize, network/deadline/replace errors, cleanup, idempotence and private-safe
+errors. Local-dev harness proves failed API startup does not launch UI. No model,
+OCR/profile generation, production data mutation or production service restart.
+Full incident-book HTTP timing and browser waiting remain WAIT-05.
+
+Reproduce the scoped setup suite from the backend root after building the image:
+
+```bash
+PYTHONPATH=.:scripts DEEP_READER_TEST_TOKENIZER_ASSETS=llm/tokenizer_assets DEEP_READER_TEST_TOKENIZER_IMAGE=deep-reader-tokenizer:wait03 .venv/bin/python -m unittest test_tokenizer_asset_setup
+```
+
+### WAIT-05 Acceptance Contract
+
+WAIT-05 extends existing private-book and browser harnesses, not a parallel test
+platform. Before acceptance, preserve immutable raw PDF AND accepted OCR snapshot,
+page/evidence/hierarchy/reading state needed to reproduce the full `暗水幽灵` case
+(176196 characters at incident time), under `data/test-books/` with hash manifest.
+Do not substitute `暗水幽灵_sample` or the smaller SCLEAN noise fixture for this
+full-book incident. Reports contain hashes/counts/timings, never public full text.
+Use backups and disposable storage; no production deletion, reparse, extraction,
+cleanup commit or profile regeneration is authorized by this follow-up.
+
+Required acceptance matrix:
+
+- New image/container, empty ephemeral tokenizer cache, external network egress denied
+  after image setup (allow the isolated database connection): first and warm full-book preflight complete using packaged data.
+  Observe actual tokenizer and HTTP behavior, not a stubbed counter; repeat after
+  container recreation. Prove zero tokenizer HTTP/completion/OCR/profile calls.
+- Isolate asset-missing/corrupt/unsupported-model cases: deterministic unavailable
+  or documented conservative fallback, never an implicit download or false ready.
+  Cover concurrent initialization and capacity identity changes before execution.
+- Record input/adaptation/initialization/count/overall timing, image/dependency and
+  encoding identities. Initial test-environment gate: five fresh-process cold and
+  five same-process warm full preflights each under 10 seconds; label hardware/load
+  and observed distribution.
+  This test-harness deadline is not a frontend/API timeout or a production SLA.
+  The prior 0.304-second capacity probe is baseline evidence, not a promised bound.
+- App at 1280/390: hold responses and advance virtual time beyond 120 seconds,
+  then release success; independently verify lifecycle abort, late results, duplicate
+  clicks, external failures, expired consent and refresh/reconciliation. No model
+  calls/commits merely to test browser waiting; retain existing cleanup fault suites.
+
+Keep byte-for-byte source/profile and semantic hierarchy/reading-state preservation
+checks. This performance fix requires actual full-book preflight, not paid cleanup
+generation or a changed semantic cleanup prompt. Existing SCLEAN live-model results
+remain separate. Store scoped test results privately, report missing prerequisites
+as Needs Confirmation, and never equate removing the UI timer with fixing cold start.
+
+### WAIT-05 Delivery (2026-10-24)
+
+`accept_wait_preflight.py` reuses `private_book_corpus`, the production cleanup
+route/use case, accepted-source resolver, cleanup adapter and actual
+OpenAILLMProvider token-count/capability methods. It does not generate a cleanup
+plan or instantiate a credentialed SDK client. The immutable full incident-book
+case is `data/test-books/7270c4d2c581f525`: 176196 characters, 261 page mappings,
+221 actual OCR spans, original PDF/snapshot/hierarchy, and a separately hash-backed
+`profile.json`. Existing manual edits and cleanup exclusions remain in reading state.
+The existing corpus serializer needed one scoped fix: dataclass serialization alone
+cannot encode typed Pydantic OCR evidence. Explicit `model_dump(mode="json")` now
+round-trips it and validates restored context without weakening immutable hashes;
+the six-case corpus suite covers the new typed-evidence round trip.
+
+Each worker copies the accepted hierarchy/profile into disposable file storage,
+reads the source only from the backup, and runs the actual Uvicorn HTTP route on
+loopback. This deliberately uses a test-local lease, not the production SQL lease;
+it measures the read/adaptation/counting incident path, not production database
+latency or cross-process locking. Separate actual API/SQL tests cover that composition.
+Forbidden completion, OCR/extraction, preparation, profile building/saving, cleanup
+commit, repository saving and tokenizer registry/download methods are counted and
+must remain zero. External socket connections are denied and counted. All source,
+profile and hierarchy bytes and semantic reading state must be unchanged afterward.
+
+Image `deep-reader-wait:wait05` (`9c0a3963e9ff`) reuses WAIT-03's verified assets and
+the existing acceptance Dockerfile with current source. Five independently recreated
+containers run with `--network none`, a read-only root and fresh empty `/tmp` cache.
+The first performs one cold plus five warm requests; four more perform one cold
+request each. The test asserts actual cold/memory tokenizer events, precise counting,
+HTTP 200 readiness, one accepted-input read/count per request and zero forbidden calls.
+Startup verification execs a new worker, so each first request initializes its own
+counter; merely warming an earlier process cannot satisfy this gate.
+
+Measured HTTP times (five samples each, milliseconds):
+
+| State | Minimum | Median | Maximum |
+| --- | --- | --- | --- |
+| Cold | 413.7 | 543.4 | 664.6 |
+| Warm | 125.2 | 136.3 | 380.2 |
+
+All are below the 10000-ms test gate, not an API deadline or production SLA. The
+Docker Linux/aarch64 worker uses Python 3.11/tiktoken 0.14.0; the macOS ARM host
+uses Python 3.12.2/tiktoken 0.12.0. Reports record exact platform/CPU/encoding/image
+identity and stage distributions plus correlated adapter/asset/init/count logs.
+Cold initialization is 235.1-407.9 ms; warm counting is 18.8-23.9 ms. Full private
+evidence is `data/test-books/7270c4d2c581f525/wait05-20261024/offline.json` and
+`browser.json`, with copied regression logs and inspected 1280/390 screenshots.
+
+The extended existing `test-cleanup-books.mjs` preflight-only mode renders the
+backup navigation fixture and sends readiness to the actual local HTTP service.
+At both viewports a response held past 120001 ms stays pending/cancellable, then
+succeeds; closing a second held request prevents late reopening. No cleanup is
+executed. This is real-book preflight acceptance, not a claim of production layout
+API coverage. Five existing suites (cleanup, recovery, combined cleanup, enhancement
+confirmation and enhancement outcomes) separately pass desktop/mobile long waits,
+expiry, transport failures, duplicate submission, unmount/switch/late responses and
+unknown-outcome reconciliation. They use controlled providers/disposable SQL or
+explicit transport fixtures, not live models. The 36-case malformed transport suite
+and `npm run check` pass; the existing large-bundle warning remains.
+
+Final backend suite: 227 tests pass with no skips, with actual assets/image, private
+book and disposable SQL opt-ins enabled. Missing/corrupt assets, concurrency,
+capacity identity changes and rollback/reconciliation guards remain enforced.
+An early harness assertion used `warm` where the counter logs `memory`; corrected
+to the implemented event contract, then all ten container requests reran successfully.
+The unrelated legacy prepare-cache failure documented in WAIT-04 remains outside
+this suite; no parser assertion was relaxed. Test DB `wait05_acceptance_20261024`
+and all disposable containers were removed. Original source/profile/hierarchy checks
+remain unchanged. No original-book mutation, live LLM request, production restart
+or acceptance-image deployment occurred.
+
+Reproduce from the backend root after building the existing acceptance Dockerfile
+against WAIT-03 (or a current asset-packaged image):
+
+```bash
+PYTHONPATH=.:scripts .venv/bin/python -m scripts.accept_wait_preflight \
+  --case-id 7270c4d2c581f525 --image deep-reader-wait:wait05 \
+  --report data/test-books/7270c4d2c581f525/wait05-repeat/offline.json
+```
+
+For the host browser mode use `--browser` instead of `--image`, set an empty
+`TIKTOKEN_CACHE_DIR`, and supply `UI_URL`, `PLAYWRIGHT_MODULE` and `CHROMIUM_PATH`
+as required by the existing browser harness. Reports must remain under the private
+corpus. No case can silently substitute a sample or a different accepted-text length.
+
+Governance/validation record: `module-memory-loader` ran in module-specific
+implementation mode with scripts as owner and app/llm/UI as supporting modules.
+Inspected `AGENTS.md`, both `docs/standards` development standards, proposal,
+high-level-design, module index, progress, and scripts/app/llm/UI design/checklist
+pairs. That loading phase modified no files and found no conflicting authority.
+Updated scripts design/checklist for implementation evidence and completed WAIT-05;
+llm design/checklist for the accepted shared track; UI design for supporting browser
+scope; progress for backend-only 4/4 and scripts 63 actual completed items (excluding
+the literal checklist template). No other markdown is changed by WAIT-05.
+`checklist-progress-sync` changed only the relevant checklist/progress fields during
+its synchronization phase. `implementation-validation` is read-only: source/test
+scope (one new acceptance script, corpus helper/regression and existing UI harness),
+architecture, module boundaries, memory, timestamps, tests and diff checks pass.
+No files were removed; unrelated existing worktree edits were retained. Runtime
+API/domain/DB semantics are unchanged. The documented legacy regression/build
+warning and lack of production deployment remain explicit limitations.
+
+## Independent Cleanup Acceptance Plan (2026-10-23)
+
+**[Code-Confirmed 2026-10-24]** SCLEAN-10 supplies bounded final acceptance of the
+[new capability](../document_structure/module-detailed-design.md#independent-smart-cleanup-2026-10-23).
+Extend existing backup-only helpers and private reports; do not rebuild a parallel
+test platform. Hash-check original backup and extracted canonical/page artifacts
+before/after. Use disposable file/SQL storage and explicit opt-in live credentials;
+no Library deletion, profile rebuild or production reparse is authorized by this plan.
+
+Required matrix: real Common -> standalone cleanup (splitter poisoned to fail if
+called); enhance split -> same cleanup engine before one commit; deliberately failed
+automatic cleanup -> fresh standalone retry against the resulting stored hierarchy;
+second cleanup sees only remaining eligible text; raw/canonical/page/profile hashes
+and standalone hierarchy/unit/block IDs unchanged. Compare all five target content
+projections and generated-output invalidation versus saved notes/manual edits.
+Fault cases include transport failure, malformed/unsafe plan, capacity zero-call,
+native/unknown provenance, commit rollback, source/edit/reparse race, duplicate
+request/lost acknowledgement/restart, stale consent, layout-only recovery and Undo.
+Task-local tests accompany SCLEAN-01..09; the final task does not defer their coverage.
+
+Reuse immutable Sample/Sample2/dark-water backups under data/test-books, including
+the known mixed-readable/garbled fragment as a false-deletion sentinel. Real model
+runs must include at least one reviewed nonempty safe deletion; all skipped is not
+positive acceptance. Manually inspect every applied span against original pages,
+record retained garbage and reject meaningful-text loss rather than weaken guards.
+Madame Bovary TXT/Red-book Fast backups are zero-cleanup-call controls, not proof
+of another full-book generation run. Preserve failed attempt evidence privately.
+
+Actual frontend/API at 1280/390 must verify independent entry/retry, collapsible
+audit, review queue, reading after refresh and Undo with screenshots. Record code/
+prompt/policy/model versions, stage latency, plan/applied/rejected counts and reasons,
+provider/splitter/OCR/profile call counts, one-commit evidence and hash checks.
+Smoke the proposed routes against an isolated image built from current code so an
+old Docker image cannot be mistaken for acceptance of new source. Production
+rebuild/restart is a separate explicitly authorized operation. Never claim existing
+CLEAN-10 combined-flow passes demonstrate the standalone entry without separate evidence.
+
+### SCLEAN-10 Delivery (2026-10-24)
+
+`accept_ocr_cleanup_books.py` now accepts `--entry standalone|combined|retry` while
+retaining backup-only extraction/control helpers. Standalone uses actual runtime
+composition, FastAPI and disposable PostgreSQL, poisons the structural builder,
+executes two fresh consents and checks replay/restart without another commit.
+It verifies prior-deletion gaps do not reenter the cleanup input, stable hierarchy/
+unit/block IDs, exact canonical/page preservation and five-level effective content.
+`retry` performs a real split, injects one automatic cleanup failure, commits the
+usable split and then invokes the same independent service with live cleanup output.
+No second split occurs. Combined cleanup still has one final enhancement commit.
+
+The existing real-book browser helper now restores standalone handles, checks
+current results, obtains fresh consent and actually executes one desktop cleanup;
+mobile verifies recovery, review, collapsed audit, reload and Undo. Every fresh
+operation has one receipt commit, including no-op receipts; GET/replay adds none.
+Private request/response/result/deletion evidence includes stage latency, model,
+prompt/policy versions and runtime-source hashes. Preparation/profile entry points
+are poisoned; no extraction/profile regeneration or production Library writes occur.
+The fixture documents have no persisted profile: actual profile-row preservation
+is covered by SQL regressions, not claimed as a live-book profile hash comparison.
+
+Final private evidence: `data/test-books/cleanup-20261023/sclean10-review-20261024.json`.
+All seven runs use gpt-4.1-mini, structure prompt v17 and cleanup prompt v3:
+
+| Case / entry | Final private attempt | Applied result |
+| --- | --- | --- |
+| Sample / standalone | sample/20261024T051716227798Z-standalone | No safe deletion; three fresh calls including browser execution |
+| Sample2 / standalone | sample2/20261024T051647129042Z-standalone | One deletion; subsequent API/browser cleanup applies none |
+| Dark-water / standalone | noise/20261024T051736708300Z-standalone | No safe deletion; three fresh calls including browser execution |
+| Sample / combined | sample/20261024T051315612333Z-combined | Safe rejection, one final commit |
+| Sample2 / combined | sample2/20261024T051250640995Z-combined | One reviewed deletion, one final commit |
+| Dark-water / combined | noise/20261024T051346020445Z-combined | Safe rejection, one final commit |
+| Sample2 / failed auto then standalone | sample2/20261024T051759848215Z-retry | Usable split preserved, independent retry removes one span without resplitting |
+
+Every applied span was manually checked against Sample2 original page 1: offsets
+[386,389) contain corrupt recognition at the printed SARS acronym; neighboring
+readable Chinese remains. The same span is removed once per isolated flow and Undo
+restores the previous projection. Supplemental final Sample2 run
+`sample2/20261024T052734641917Z-standalone` also passes an explicit equality assertion
+against the deletion state before the latest applied cleanup, not merely an Undo
+success response. Its only applied span is the same reviewed range. This does not
+reconstruct the missing acronym.
+Sample's mixed-readable sentinel and dark-water noise are retained; quote_not_found
+and unsafe_text_boundary reject proposals rather than weakening guards. No observed
+meaningful-text loss in these cases is not a general semantic guarantee. Final live
+review queues are empty; unresolved/textless regions and Ignore use controlled tests.
+Original backup/document hashes and page maps remain unchanged. TXT Madame Bovary
+(652001 chars) and Fast PDF Red-book (147401 chars) remain zero-cleanup-call controls,
+not fresh full-book generation acceptance. Standalone first-call provider times were
+3.485 / 5.341 / 5.291 seconds for Sample / Sample2 / dark-water; all timings remain
+per-stage evidence, not a performance SLA. Structural planning may retry validation;
+the reports retain those calls without treating them as repeated cleanup/commit.
+
+`scripts/Dockerfile.cleanup-acceptance` reuses an explicitly selected local dependency
+image and copies current source without private books or keys. Build from repository
+root with:
+
+```bash
+docker build --pull=false --build-arg BASE_IMAGE=deep_reader-api \
+  -f Deep_Reflective_Reader/scripts/Dockerfile.cleanup-acceptance \
+  -t deep-reader-cleanup-acceptance:sclean10 .
+```
+
+Run only with a disposable test DSN and a
+dummy OPENAI_API_KEY; the image's default suite uses deterministic providers.
+Isolated image 83cead1c68d3 passed 39/41 tests with two private-source opt-in skips;
+separate actual Uvicorn HTTP smoke on temporary port 18001 verified the three
+routes and unavailable-storage 503 without consent. The production container was
+not restarted or rebuilt. An initial image run exposed test-state pollution:
+`patch.object(State, ..., create=True)` deleted the original dynamic attribute on
+exit. Removing create=True and asserting identity restoration fixes test isolation,
+not runtime cleanup behavior. Another initial run lacked the dummy import-time key;
+this was a harness prerequisite, not a provider request failure.
+
+Regression: 387 tests pass with the private-source opt-in enabled, including
+file/SQL atomicity, notes/profile preservation, manual edits, capacity/provenance,
+source races and recovery. The image suite overlaps these tests and is not added
+to that count. Type/build and 36 malformed-adapter response checks pass; the existing
+bundle warning remains. Real-book screenshots at 1280/390 were inspected, including
+final Sample2 desktop execution and mobile audit, without modal clipping. Detailed
+browser fault regression evidence is recorded in the owning checklist.
+
+Governance receipt: inspected AGENTS.md, proposal.md, high-level-design.md, module
+index, progress.md, both development standards and scripts/document_structure/UI
+design-checklist pairs. Modified markdown: this scripts design (reproduction,
+evidence and limitations), scripts checklist (SCLEAN-10 evidence/date), shared
+structure design/checklist (final acceptance pointer/10-of-10 index), backend
+progress (8-of-8 backend-only aggregate), UI design/checklist (shared completion
+reference, no new frontend task). No API/domain/runtime policy was changed; no
+duplicate cleanup engine was introduced. Validation is read-only after these edits.
+
+## Optional Cleanup Real-Book Acceptance (2026-10-23)
+
+Supporting CLEAN-10, counted once in document_structure/module-checklist.md.
+`accept_ocr_cleanup_books.py` separates immutable backup/extraction from enhancement:
+`--backup-noise <source>` preserves the reported optional fixture; `--extract` runs
+real OCR into hash-bound artifacts; `--controls` checks TXT/Fast cleanup exclusion;
+`--case sample|sample2|noise --allow-live-model --browser` requires an explicit
+DEEP_READER_TEST_POSTGRES_DSN and uses isolated SQL, actual planners/provider/API
+and the production layout resolver. No production document name is exposed to the
+temporary browser API. UI_URL selects a separate Vite instance; PLAYWRIGHT_MODULE
+and CHROMIUM_PATH may point to installed browser tooling. Temporary SQL schemas,
+API server and browser are closed by the harness. Start/stop Vite separately.
+
+Run with PYTHONPATH=Deep_Reflective_Reader:Deep_Reflective_Reader/scripts and the
+project venv from repository root; inject secrets with scripts/load_local_env.sh.
+Use the existing OCR image with network disabled for extraction when the host has
+no renderer/OCR. The repository source mount is read-only except the private corpus
+output directory. Never overwrite an immutable backup to make a test pass.
+Private reports under data/test-books/cleanup-20261023 include source/document
+hashes, full model requests/responses, result/deletion records and 1280/390 screenshots.
+`accepted` proves automated assertions only; CLEAN-10 completion additionally
+requires manual review of every final applied deletion and at least one safe nonempty
+case. See the structure design for exact attempts, timing, failures and limitations.
+
+private_book_corpus.load_book now reconstructs typed cleanup evidence from the
+hash-verified document for legacy snapshots without cleanup_context. All preexisting
+identity/structure comparisons remain; stored non-null context must exactly match
+the reconstructed value. No fixture rewrite or production source access is allowed.
+Regression fixtures cover missing legacy context, immutable backup survival and
+corruption rejection. `test_cleanup_identity.py` covers the actual SQL block-ID bug
+discovered by live cleanup, rather than relying on JSON roundtrips that omit blocks.
+
+### CLEAN-10 Governance Receipt
+
+Inspected: AGENTS.md, proposal.md, high-level-design.md, docs/modules/index.md,
+progress.md; design/checklist pairs for document_structure, scripts, shared,
+section_tasks, db and Deep_Reader_UI. Scope is the next existing CLEAN-10 task,
+including fixes found during its acceptance, not a new product backlog.
+
+Markdown modified in this task:
+
+| File (backend paths relative to Deep_Reflective_Reader) | Reason and evidence |
+| --- | --- |
+| document_structure/module-detailed-design.md | Final live attempts, prompt v2, semantic limitations, SQL identity defect and exact validation reasons. |
+| document_structure/module-checklist.md | Close CLEAN-10 against reviewed final evidence; date 2026-10-23. |
+| shared/module-detailed-design.md | Pure generated identity rebinding contract verified by focused tests. |
+| section_tasks/module-detailed-design.md | Both explicit normalization paths use that contract, preserving hierarchy authority. |
+| db/module-detailed-design.md | Generated block IDs follow allocated SQL unit IDs in the same transaction. |
+| scripts/module-detailed-design.md | Reproduction, private immutable corpus, scope and this governance receipt. |
+| ../Deep_Reader_UI/module-detailed-design.md | Actual-book 1280/390 reading/audit/Undo evidence, without new runtime UI semantics. |
+| ../Deep_Reader_UI/module-checklist.md | Refresh shared-track reference only; UI remains 2/2 and is not counted again. |
+| progress.md | Backend-only CLEAN aggregate 7/8 to 8/8; no UI aggregation. |
+
+Validation evidence: 288 unittest cases, 287 pass/one inherited opt-in skip; 28
+focused cases overlap that suite except prompt coverage, so counts are not summed.
+Shared block (19 assertions), normalizer and hierarchy resolver standalone scripts
+pass. The old normalizer fixture was updated from obsolete root sections to chapters;
+its optional old Library snapshot is absent and is NOT a real-book pass. The separate
+immutable live corpus supplies real-book acceptance. Both controlled consent/flow
+and audit/review browser suites pass at 1280/390, as do all three live-book browser
+runs. npm run check passes with the existing large-bundle warning. Private
+manual-review.json distinguishes rejected development attempts from final outcomes.
+No files removed, source/profile changes to production, Git commit or deployment.
+
+Implementation-validation scope: document_structure with supporting shared,
+section_tasks, db, scripts and UI acceptance. Architecture/boundary checks retain
+hierarchy-first authority, explicit writes, immutable canonical source and no
+profile regeneration. Overall result is WARNING for bounded model-semantic
+accuracy and retained noise, not failed acceptance assertions. Governance sync
+changes only checklist/progress; implementation edits occurred outside that skill.
+Final read-only validation modifies no files; unrelated preexisting work is retained.
+
 ## Reading Review Acceptance (2026-10-21)
 
 OCR-REVIEW-03..06: test_reading_content.py and test_reading_content_postgres.py

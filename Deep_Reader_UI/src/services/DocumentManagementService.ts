@@ -16,7 +16,7 @@ interface ManagementRow extends DocumentListItem {
 export class DocumentManagementService {
   constructor(private readonly restClient: RestClient) {}
 
-  async listDocuments(query: string, limit = 200): Promise<DocumentManagementListResult> {
+  async listDocuments(query: string, limit = 200, signal?: AbortSignal): Promise<DocumentManagementListResult> {
     const params = new URLSearchParams();
     const normalizedQuery = query.trim();
     if (normalizedQuery) {
@@ -28,7 +28,7 @@ export class DocumentManagementService {
       items: ManagementRow[];
       query?: string | null;
       total: number;
-    }>(`/documents/management?${params.toString()}`, { method: "GET" });
+    }>(`/documents/management?${params.toString()}`, { method: "GET", signal, cache: "no-store" });
 
     return {
       items: response.items.map(toDocumentManagementItem),

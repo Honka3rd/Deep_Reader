@@ -1,5 +1,190 @@
 # api_schemas.py Detailed Design
 
+## Persisted Translation DTO Plan (2026-10-26)
+
+**[Code-Confirmed]** Supporting TRUI-01/05, not another counted task.
+[Minimal transport plan](main.module-detailed-design.md#persisted-translation-api-plan-2026-10-26).
+Read input has document/block identity only; output has backend registry codes,
+nullable existing-profile source default, checked source identity and bounded saved
+language sections. Generate retains optional source_language, rejects unregistered
+source/target codes and accepts a bounded replay ID, never original text/parent IDs.
+Saved entries expose target-code grouping, resolved source, text/status, timestamps
+and revision/commit binding. Invalid model/commit outcomes cannot claim persisted.
+No-change/changed-body response fields must separate mandatory translation/summary
+invalidation from the user's Keep/Clear choice for other metadata. Do not widen all
+existing interaction envelopes or reuse a blanket generated-invalidated flag to
+claim unrelated retained data was deleted. TranslationReadRequest/Response and
+TranslationSavedRecord are implemented; generate supports optional bounded mutation_id
+and persisted/record evidence. Public request codes use the actual registry while
+the standalone service retains broader language tags. ReadingContentRefreshResponse
+adds body_changed, summaries_invalidated and translation_block_ids without widening
+other interaction status enums. Route/schema and frontend DTO tests pass.
+
+Reuse correction (2026-10-26): generate may return an already committed record for
+the selected target language. Its source_language and mutation_id are original
+provenance, not necessarily the new request values. Preserve payload/record parity,
+target identity and effective hash checks; do not reject valid reuse as a mismatched
+new mutation. No new fields or force-regeneration parameter are required.
+
+## Block Translation Contract (2026-10-26)
+
+**Historical TRANS-API-02 schema scope, superseded by the persisted DTOs above.**
+The script/region-tag statement below describes the initial contract. Current public
+read/generate schemas use exact registered language codes; the standalone text service
+retains its broader tag support. Current generation also accepts `mutation_id` and
+returns `envelope.persisted` plus a saved record or null. The UI retry/highlight fixes
+do not add fields or change backend storage identity.
+
+TRANS-API-02 supporting schemas: TranslationInteractionRequest requires doc_name,
+content_block_id and target_language; source_language defaults to None. Reject extra
+fields/source text/parent IDs, empty or malformed language codes, missing identities
+and unsafe document path names. Preserve supported script/region language tags.
+Dedicated translation envelope keeps partial/untranslatable local to this action,
+without widening analysis/quiz/session artifact statuses. Response validates nonempty
+text for completed/partial and null text for untranslatable. See the main module's
+Block Translation API for the minimal response binding and error statuses.
+
+## Source Review Block Commands (2026-10-26)
+
+SRBLOCK corrects the UI mutation target to one block. ReadingContentMutationRequest
+accepts review_block_edit/delete/keep with mandatory block_id and region_id. Edit
+requires nonblank bounded text and explicit boolean discard_interactions; Delete
+and Keep reject text/consent fields. Cleanup-record IDs and unknown fields are
+forbidden. No caller origin flag or offsets. ReadingBlockResponse optionally adds
+review_repair with can_edit/can_delete/can_keep/blocked_reason; older servers remain
+read-only in the UI. The existing reading-content route/refresh schema is reused.
+The old region commands below remain compatible but are no longer UI entry points.
+
+## Source Region Repair DTOs (2026-10-26)
+
+Implemented support for domain-owned SRREPAIR-04, counted only in its checklist.
+ReadingContentMutationRequest adds region_edit, region_apply and region_delete with
+required region_id, source_token, expected_revision and mutation_id. Region commands
+reject block/cleanup target IDs. Edited text must be nonblank and at most 10,000
+Unicode code points; Apply requires an explicit boolean discard_interactions. Draft
+Save/Delete forbid that field, and Delete forbids text. Domain validates again under
+the write lock; no caller-supplied offsets, application proof or manual-edit bypass.
+
+SourceReviewRegionResponse optionally includes strict RegionRepairResponse with
+text/edited_at, applied_text/applied_at and can_edit/can_apply/can_delete/blocked_reason.
+Missing optional fields remain compatible with older clients/servers. Internal
+canonical spans and ownership never enter public DTOs. ReadingContentRefreshResponse
+adds cleared_block_ids (default empty) for cross-block artifact/Note invalidation;
+the existing paged reader block/tombstone and source/revision binding remain unchanged.
+The existing reading-content routes handle transport without a second repair endpoint.
+
+## Cleanup Record DTOs (2026-10-25)
+
+RCR-03 adds strict `ReadingContentRefreshResponse` / `ReadingRefreshBlockResponse`
+and optional `ReadingContentResponse.refresh`. GET can return the standalone minimal
+refresh shape. Reuse `TaskUnitContentBlockResponse` for visible body content and the
+existing fixed-20 page model; do not expose internal ownership/audit payloads.
+Validate unique block IDs, block/body identity, visible-versus-tombstone consistency,
+current/mutation revision agreement, complete page size and no stale-scope body data.
+Include hierarchy/order/next-unaffected anchor, unit hash, backend manual flag and
+the actual interaction invalidation flags. Null fields may be omitted on the wire;
+missing lazy artifact/availability fields do not assert not_generated. Full contract
+and behavior belong to document_structure RCR-03, not a second schema-owned task.
+
+CLEAN-RESTORE extends ReadingContentMutationRequest with cleanup_edit/cleanup_restore
+and an optional 64-hex cleanup_record_id, required by the service for those actions.
+Existing source_token, expected_revision and mutation_id remain mandatory. Body/region
+targets and discard_interactions are not accepted for record mutations. Explicit
+restoration-text edits retain the manual 10,000-character limit; this is independent
+of the removed LLM cleanup proposal/quote limits. Original long quotes can restore
+without resubmitting edited text.
+
+ReadingBlockResponse includes server-owned manually_edited. Cleanup audit records
+expose immutable quote, saved text/time, record_id, status, can_restore/restore_reason
+and verified block links with Unicode char_from/char_to and can_navigate. No client
+offset authority or UI-derived permission. Legacy UI capability fields are optional
+only for read-only compatibility with older servers. Actual API serialization and
+mutation validation are covered by test_cleanup_history.py; owner task CLEAN-RESTORE.
+
+## Standalone Cleanup DTO Plan (2026-10-23)
+
+**[Code-Confirmed: SCLEAN-06, 2026-10-24]** Supporting main SCLEAN-06, counted once
+there. Three routes are implemented in [transport plan](main.module-detailed-design.md#standalone-cleanup-transport-plan-2026-10-23);
+SCLEAN-07 supplies the namespace-scoped runtime service for supported storage.
+Unsupported/missing runtime ports remain unavailable; no DTO change or deployment
+is implied by composition.
+Use dedicated cleanup DTOs, not ReparseDocumentStructureRequest/Response with
+invented parser_mode, structure_changed or discard_interactions values.
+
+Preflight needs only the route document identity. Response exposes execution_available,
+allowlisted reason, cleanup impact (generated invalidation only on actual change;
+notes/original retained), and opaque operation_id/confirmation_token when available.
+Bind revisions, source, policy/prompt and capacity server-side; keep raw hashes,
+budgets, provider configuration and executable plans off this public response.
+The availability response is also the UI capability check; no general introspection
+API or duplicated task-layout payload is required.
+
+Execute request accepts only bounded strict operation_id/confirmation_token. The
+result and lookup projection separate operation state/phase and commit certainty
+from CleanupOutcome (status/counts/safe reason/content-change/revision), current
+reading readiness, remaining review count and the allowed recovery action. Failed
+planning is not successful content mutation; unknown commit is not failed planning.
+Replay, superseded state, stale consent, zero-applied count and no-change revision
+invariants need schema/route tests. No raw exceptions, source text, plans, arbitrary
+thresholds, offsets or provider details. Exact DTO enum/limits are frozen by SCLEAN-01/06.
+Unknown fields are forbidden. Legacy enhance responses remain compatible and keep
+their structural committed/success meanings; cleanup-only DTOs must not inherit
+those ambiguous semantics.
+
+### Implemented Contract
+
+`SmartCleanupPreflightRequest` is an empty strict object; the body may be omitted.
+`SmartCleanupExecuteRequest` requires only a 32-character lowercase hexadecimal
+operation_id and 43-character URL-safe confirmation_token, both strict strings.
+No action/confirmed/parser/discard/namespace/provider fields are accepted. Repeat
+POST uses these same handles for backend-directed layout continuation; a fresh
+preflight creates a new attempt. GET accepts the operation ID in its route only.
+
+`SmartCleanupPreflightResponse` exposes execution_available, allowlisted reason,
+fixed impact (generated invalidation only on content change; notes/manual edits/
+original/structure preserved), nullable operation_id/confirmation_token and
+expires_in_seconds (1..300). Unavailable responses cannot carry handles; available
+responses require all handles and no failure reason. No model/capacity hash or
+prompt/budget fields are exposed.
+
+`SmartCleanupOperationResponse` contains operation_id, phase, commit, nullable typed
+CleanupOutcome, allowlisted reason, retry_action, nullable reading_ready and
+pending_review_count, plus durability. Phase/commit/retry vocabulary follows the
+existing domain operation; bindings are never serialized. reading_ready is true
+only for finished+committed, false for layout, otherwise null. Review count is null
+when no trustworthy current review snapshot is available, not zero. Unknown state
+requires unknown commit, null outcome and reconcile; changed content requires a
+confirmed commit. CleanupOutcome retains its strict count/status/revision guards.
+No structural success/change_kind fields are invented for cleanup-only work.
+
+`SmartCleanupErrorResponse` has only an allowlisted detail. OpenAPI declares typed
+state-or-error unions on 404/409/503 and a sanitized error on 422. The scoped route
+wrapper never echoes invalid input/token/source or raw exception payloads. All new
+DTOs forbid extras and coercion; existing enhance DTO behavior is unchanged.
+Evidence and the 56 file/SQL HTTP cases are counted in main SCLEAN-06, not a second
+schema checklist task. Live/browser acceptance remains SCLEAN-10.
+
+## Optional Cleanup Contracts (2026-10-23)
+
+Supporting app CLEAN-06: preflight/reparse/result requests forbid unknown fields.
+allow_ocr_cleanup is a strict boolean default false; the existing reparse adapter
+rejects true outside llm_enhanced. This remains compatibility behavior, not the
+planned standalone capability's eligibility rule. Preflight ocr_cleanup is nullable for legacy/failed readiness and
+otherwise exposes enabled, eligibility/reason, fixed scope/policy, reading_revision,
+conditional generated-output invalidation and note-preservation facts. Existing
+cleanup_scope/cleanup_condition still describe structural interaction deletion.
+
+Reparse adds nullable typed CleanupOutcome plus phase (layout/complete/superseded),
+retry_stage (generation/layout), safe layout_error, review_required and nonnegative
+pending_review_count. Structural change_kind/committed/interactions_cleared retain
+their old meaning; cleanup-only content change is not a structural commit.
+Operation durability now allows persisted_commit as well as process_local.
+status=completed proves receipt commit; consumers must inspect phase before opening.
+After Undo/newer edits, phase=superseded has historical cleanup outcome but current
+review counts; it does not authorize recovery writes. Missing optional fields never
+mean cleanup succeeded. App CLEAN-06 tests strict request coercion rejection,
+legacy defaults, actual routes and restart/rollback semantics.
+
 ## Reading Content Contract (2026-10-21)
 
 ReadingContentMutationRequest forbids unknown fields and restricts action to edit,
@@ -7,8 +192,16 @@ delete, undo, discard_region. It requires a nonnegative strict integer revision,
 64-hex source token and bounded mutation ID; text is limited to 10000 code points
 and service validation rejects blank edits. There is no manual block insertion.
 Additive management review_required and note source_stale flags default false.
-The reading-content read projection is currently a service-owned dictionary,
-not a claim of a generated response DTO. Source preview returns bounded PNG bytes.
+SRMAP-04 (2026-10-25) adds strict ReadingContentResponse, SourceReviewRegionResponse,
+ReadingBlockResponse, ReviewManualChangeResponse and ReadingBlockPageResponse.
+GET and POST serialize through the same response contract; internal source geometry,
+canonical spans and persistent mapping records are excluded. Optional structure
+version and manual-change timestamp remain absent when unavailable. Region fields
+separate coverage, body inclusion, mapping reason and related deletion count;
+historical block IDs are not a claim that all blocks survive. Current navigation
+targets carry chapter/section/unit/block IDs in bounded 20-block pages. Existing
+mutation fields/actions remain unchanged. Source preview returns bounded PNG bytes.
+Evidence and task ownership: document_structure SRMAP-04 and test_source_review_api.
 
 ## Summary And Note Contracts (2026-10-21)
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import os
 import tempfile
 
@@ -15,9 +16,15 @@ class StructuredDocumentStore:
         target: str | StructuredDocumentStorageConfig,
     ) -> None:
         """Save structured document to UTF-8 JSON file."""
+        from document_structure.source_review_blocks import persist_region_mapping
+        document = persist_region_mapping(document)
         path = StructuredDocumentStore._resolve_path(target)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = document.to_json()
+        data = document.to_dict()
+        for chapter, chapter_data in zip(document.chapters, data["chapters"]):
+            for section, section_data in zip(chapter.sections, chapter_data["sections"]):
+                section_data["task_units"] = [unit.to_dict(include_content_blocks=True) for unit in section.task_units]
+        payload = json.dumps(data, ensure_ascii=False, indent=2)
         temp_file = None
         temp_path = None
         try:

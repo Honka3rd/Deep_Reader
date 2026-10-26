@@ -1,5 +1,244 @@
 # Deep_Reader_UI Checklist
 
+## Chapter / Section Tree Navigation (2026-10-26)
+
+- [x] UI-NAV-TREE-01: Replace the chapter list presentation with an accessible MUI tree and readable long titles.
+  Acceptance: At most chapter/section levels, existing single-section merge and action targets, controlled reading selection, keyboard expansion/navigation, fixed action width and fully wrapped titles. Local document-scoped expansion only; no task-unit nodes, backend mutation or eager content reads. Preserve bounded scrolling and verify narrow/large layouts.
+  Evidence: @mui/x-tree-view 8.29.3, NavigationTreeItem and hierarchy-navigation/view.tsx; npm run check and test-hierarchy-tree.mjs pass at 1280/390/320px. Header, real-layout interaction-menu and pane-resize regressions pass; screenshots inspected. The 1,100-node fixture mounts 100 chapters initially and 110 nodes after one expansion, with no expansion API/storage writes. Existing 451-unit merged row still selects the correct section and retains its chapter menu.
+  Timestamp: 2026-10-26
+
+## Inline Translation Display (2026-10-26)
+
+- [x] UI-TRINLINE-01: Select saved translation languages for display below the current block.
+  Historical scope: Initial per-block/current-section selection is superseded by UI-TRINLINE-02; retain this item as initial delivery evidence.
+  Acceptance: Saved drawer has accessible Translations/Reading display tabs and multiple language checkboxes. Render original body, optional block Insight, then selected translations; preserve paragraphs, partial status and narrow-screen wrapping. Per-block reading-session state survives drawer close and same-section pagination, resets on scope/source changes and responds to server invalidation even with the drawer closed. No hidden generation, persistence or whole-book reads.
+  Evidence: useInlineTranslations and InlineTranslations remain feature-owned; App only supplies the getter to the reader. npm run check and mounted controller tests pass, including closed-drawer invalidation and edit/Undo non-resurrection. test-translation-inline.mjs passes actual App/reader/DTO with controlled HTTP at 1280/390 for multiselect, body/Insight order and dismissal, page retention, block isolation, authoritative saved-read updates/removal and scope reset with zero generate calls. Existing focus/recovery suites pass at both widths. Desktop/mobile screenshots inspected; backend contracts unchanged, no live books mutated.
+  Timestamp: 2026-10-26
+
+- [x] UI-TRINLINE-02: Make Reading display language selection application-session scoped.
+  Acceptance: One language preference survives drawer/block/page/section/book changes and applies to existing read results and future persisted translations; full reload/unmount resets it. Separate source-bound current-scope cache from preference. Read only rendered-page blocks, at most two background requests, no automatic generation or preference writes. Preserve preferences through missing/invalidation/errors, offer read retry, prevent stale cross-source/book results, and allow clearing any selected language.
+  Additional acceptance: Selected languages appear exclusively inline; unchecked ones remain in Translations. Highlight follows the selected target between locations, including generation/reuse, checkbox changes and reload. Explain an all-inline drawer and avoid focusing behind an open modal.
+  Evidence required: Type/build, mounted lifecycle/session regression, actual-App 1280/390 tests for scope transitions, future generation, global deselection, source invalidation, failed/stale reads, bounded reads and reload reset; inspect screenshots. Update the superseded per-block/current-section lifetime only with passing evidence.
+  Evidence: Design/checklist updated before code; session preference, current-scope snapshot/read queue and exclusive focus destinations are implemented in block-translation. npm run check and controller/session-lifecycle/inline/focus/recovery suites pass. Actual-App 1280/390 controlled-HTTP checks cover cross-book same-ID isolation, future explicit generation, global deselection, reload reset, retry, exclusive placement and focus transfer; held reads prove at most two background requests and stale source/scope suppression. Settings/highlight screenshots inspected; no backend or live-book writes.
+  Timestamp: 2026-10-26
+
+## Persisted Block Translation (2026-10-26)
+
+Implemented and verified: **5/5 UI tasks (100%)**; shared track 11/11.
+Backend 6/6 is tracked by its owners, not counted as UI completion.
+[Shared order](../Deep_Reflective_Reader/section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).
+[UI design](module-detailed-design.md#persisted-block-translation-plan-2026-10-26).
+
+- [x] TRUI-07: Add typed translation services and feature model.
+  Depends on: TRUI-05/06. Acceptance: RestClient read/options/generate, block-only identity, optional profile-default source, registry authority, target-code grouping and explicit saved/partial/failure states. No raw source, local persistence, independent allowlist or hidden generation on read.
+  Evidence required: DTO/model tests for minimal payloads, unsupported/malformed data, grouping, missing profiles, registry changes, HTTP/business errors and AbortSignal forwarding.
+  Evidence: TranslationService and block-translation/model provide strict target/result checks, minimal payloads, registry-driven selectors, partial/untranslatable distinction and language-key replacement. Mounted model/DTO tests and TypeScript build pass; no browser persistence or hidden generation.
+  Timestamp: 2026-10-26
+- [x] TRUI-08: Add block Translate menu action and searchable language Modal.
+  Depends on: TRUI-07. Acceptance: Normal block menu only; profile-default From, required To, selection-only searchable combos from registry codes, disabled invalid submit, Cancel and View translations. Stable classes/labels and existing MUI/notification conventions; no parent-level/review-menu leakage.
+  Evidence required: Defaults, search by name/code, arbitrary text rejection, empty/unknown language, loading/failure/cancel, keyboard/focus and desktop/mobile fit.
+  Evidence: Normal block menu owns Translate/View translations; MUI Autocomplete is selection-only with backend profile defaults and no To default. Real App checks reject free-form input, exercise cancel and capture fitted Modal screenshots at 1280/390; parent/review menus are unchanged.
+  Distinct-language correction: To excludes From; changing From clears a conflicting To. Controller/model/DTO guards block equal-code submission before saved reuse or HTTP. Mounted controller tests and actual MUI recovery tests at 1280/390 pass, including disabled submission and restored options; npm run check passes.
+  Timestamp: 2026-10-26
+- [x] TRUI-09: Implement request ownership and lifecycle-safe result delivery.
+  Depends on: TRUI-08. Acceptance: Submit immediately closes Modal and transfers request to feature controller; prevent duplicates and open drawer only on persisted success. Abort/generation/target/source guards on close/unmount/switch. Reconcile saved results after unknown outcomes; no stale updates, timeout, storage or polling.
+  Evidence required: Held requests, double clicks, close/reopen, unmount, block/document switch, source mutation, reordered responses, provider/commit failure and response loss; no stale drawer or unhandled promise.
+  Evidence: feature controller explicitly owns submitted generation, aborts obsolete work and guards generation/target/source. test-translation-controller covers StrictMode, cancellation, reordered reads, duplicates, unknown-outcome same-ID retry, partial/untranslatable, definitive rejection, edit and unmount. Real held-request navigation produces no stale drawer or page errors.
+  Timestamp: 2026-10-26
+- [x] TRUI-10: Render persisted multi-language drawer and source-change invalidation.
+  Depends on: TRUI-07/09 and backend TRUI-03. Acceptance: Stable target-code sections, source/time/status/text, DB reload/reopen, same-language reuse without generation or sibling loss, Add translation and bounded long content. Honor no-op versus real changes: mandatory translation/summary clear, optional other metadata. Update edit confirmation and consume server invalidation scope without full layout refresh.
+  Evidence required: Multiple languages, regeneration success/failure, partial/untranslatable, saved-read retry, unchanged edit preserving records, changed Keep/Clear and block deletion, sibling preservation, long-text/keyboard screenshots.
+  Evidence: bounded scrollable drawer reads saved language sections, replaces one language and retains siblings. App consumes summary/translation invalidation separately from other metadata; same-text editor avoids refresh, real changes use bounded block refresh. Two-language reload/regeneration and no-op/change Keep pass on real SQL at 1280/390; backend retention matrix and frontend failure/lifecycle tests pass.
+  Superseding evidence: Same To submission now displays saved data without generate, including changed/missing From when no equal pair is selected; backend handles cache hits from direct API calls. Controller/DTO/build and real-book desktop/mobile acceptance 20261026T113558Z-5d5c71b0 pass. Earlier regeneration semantics are historical, not current behavior.
+  Distinct-language boundary: Selected From must differ from To even for saved-target reuse. View translations preserves access to historical records; controller regression verifies zero generate calls on rejected equal pairs.
+  Timestamp: 2026-10-26
+- [x] TRUI-11: Accept integrated translation/editing workflows using backed-up real books.
+  Depends on: TRUI-06/08/09/10. Acceptance: Actual App/current API/disposable PostgreSQL and configured LLM block tests using immutable Madame Bovary/Red Roulette backups. Prove two persisted target languages after reload, same-language reuse without generation, registry/profile controls and no-op/change/delete retention matrix. Run lifecycle regressions, build, accessibility and 1280/390 screenshots.
+  Evidence required: Private hashes/API/SQL/browser reports, bounded request counts, unchanged production books/profiles and removal of disposable resources. No skipped gate claimed as pass; distinguish response validity from literary accuracy and deployment from implementation.
+  Evidence: accept_persisted_translation_books --live --browser plus test-translation-real.mjs passes actual App/current API/configured model/disposable SQL on both immutable backup excerpts. Evidence: backend data/test-books/persisted-translation/20261026T070158Z-06e6f6e0; profile/backup hashes unchanged, schemas removed. Build, controller/DTO, bounded-refresh and 1280/390/320 pagination regressions pass. Existing Vite is running at 127.0.0.1:5173; production Docker was not restarted and translation semantics are not literary-quality certification.
+  Reuse acceptance: 20261026T113558Z-5d5c71b0 passes both backup excerpts at 1280/390 with no repeat-language generate request, unchanged saved records and direct API reuse. Source-change invalidation remains covered; no production data modified.
+  Timestamp: 2026-10-26
+
+## Block-Level Source Review Correction (2026-10-26)
+
+- [x] SRBLOCK-02: Put Edit/Delete/Keep it on each source-review-block and accept the incident workflow.
+  Acceptance: No region-level mutation menu; independently editable blocks; server-authorized main-edit protection; Keep confirmation removes review entries but preserves body/Notes. Stable keyed DOM, bounded paging, targeted refresh, same-command replay and lifecycle guards. Actual Madame Bovary Page 3 backup/API/SQL/browser checks at desktop/mobile plus regression/build.
+  Evidence: Actual App/FastAPI/disposable PostgreSQL passes at 1280/390 on the natural Page 3 region with 20 canonical related blocks. Repeat edits change only the selected block, keep manual flags false and preserve sibling DOM/content; Keep cancel/replay/reopen and scoped Delete pass without layout/section reloads. Editor lifecycle/Unicode/duplicate-submit, source-review state/navigation and reading-refresh suites pass; build passes with existing bundle warning. Final private report: data/test-books/srrepair07/20261026T044959Z-7b1702d7 under the backend; backup hashes unchanged, schema removed. Current API rebuilt/healthy; read-only live browser confirms 18 visible block menus (two pre-existing hidden blocks), zero region menus and the Keep confirmation; no live book mutations.
+  Timestamp: 2026-10-26
+
+## Guarded Source Region Repair (2026-10-26)
+
+Historical acceptance of region-wide behavior, superseded by SRBLOCK. It must not
+be reported as acceptance of the corrected block-level workflow.
+
+UI tasks in the shared seven-task
+[SRREPAIR queue](../Deep_Reflective_Reader/document_structure/module-checklist.md#guarded-source-region-repair-2026-10-26).
+Backend owns 01..04/07; no duplicate checkboxes or completion inferred from SRMAP/RCR.
+UI-owned implementation: 2/2 complete (100%); shared SRREPAIR track 7/7 accepted.
+Integrated real-state receipt is owned by backend 07, not counted again here.
+[Design](module-detailed-design.md#guarded-source-region-repair-2026-10-26).
+
+- [x] SRREPAIR-05: Add guarded region draft editing, Apply and Delete text controls.
+  Depends on: backend SRREPAIR-04. Acceptance: Typed services and existing MVC/editor/confirmation components; original/draft/applied text remain distinct. Render authoritative eligibility/reasons, block IDs, explicit interaction Keep/Clear and destructive confirmation. Older servers remain read-only; preserve Ignore/navigation and do not set manual flags or infer writable ranges.
+  Evidence required: Component/browser tests for draft versus Apply, repeat repair, prohibited body-edited/deleted targets, multiple related blocks, failures, duplicate clicks, confirmation, legacy responses and centralized notifications.
+  Evidence: SourceRegionRepair provides server-authorized Edit/Delete menus, independent Save draft/Apply, Keep/Clear and destructive confirmation. Typed ReadingContentService owns transport and definite-versus-unknown failures. Mounted editor tests pass at 1280/390 for Unicode limits, dirty cancellation, double submission, consent, late target switch and unmount; actual App/API/disposable SQL acceptance on the dark-water backup verifies repeat repair, delete/recover, unchanged flags and disabled controls after reader Edit. npm run check passes with the existing bundle-size warning.
+  Timestamp: 2026-10-26
+- [x] SRREPAIR-06: Preserve review position with targeted updates and lifecycle-safe requests.
+  Depends on: SRREPAIR-05. Acceptance: Merge authoritative target blocks and affected related rows only; no whole layout fetch/modal remount. Preserve tab/expansion/scroll/drafts/focus and current navigation highlights. Abort/generation guards, source/revision binding, unknown-outcome reconciliation and committed-read retry; bounded lists and no browser persistence or polling.
+  Evidence required: Actual App/browser tests at 1280/390 for long lists, late responses, close/reopen/switch, cross-block updates, hidden recovery, shared-region changes, scroll/focus and zero unnecessary layout reads. Build passes; real API/SQL acceptance remains backend-owned SRREPAIR-07 with UI support.
+  Evidence: Existing keyed rows/expansion are retained; editor exit restores trigger focus and scroll. Regions render 20 rows, with bounded related/refresh paging. Draft Save performs no GET; region body changes publish only affected reader DTOs and lazily invalidate history. Actual dark-water desktop/mobile flow verifies connected row identity, scroll/focus, no region-triggered layout/section fetch, same-ID response-loss retry and local delete/recovery. Reading-refresh, cleanup-history, source-review-navigation/state and editor browser suites pass, including stale reads, abort/switch/unmount and legacy contracts. No persistence or polling added.
+  Timestamp: 2026-10-26
+
+## Repeatable Cleanup Repair (2026-10-25)
+
+UI follow-up 2/2; shared RCR track 4/4 (100%, RCR-01/03/04/05). Execution order and backend tasks are in
+[the owner checklist](../Deep_Reflective_Reader/document_structure/module-checklist.md#repeatable-cleanup-repair-2026-10-25).
+Do not count the earlier CRUI acceptance as these corrections.
+
+- [x] RCR-04: Reapply a cleanup record and refresh only affected body blocks.
+  Acceptance: Keep draft Save separate from explicit Restore/apply. Consume backend eligibility even for restored records; never set manually_edited locally. Replace authoritative target blocks in the existing reader controller, recompute local pagination and retain focus/selection. Refresh history and affected interaction states; no task-layout request, whole-section reload or content concatenation. Preserve history even when navigation is unavailable, including recoverable cleanup-hidden blocks. Preserve cancellation, dirty drafts, same-ID retry and read-only refresh retry after committed success.
+  Evidence required: Actual component/browser tests for repeat edits, targeted read/request counts, no duplicate insertion, own/foreign changes, cross-block restoration, stale responses, close/switch, failure/retry and long histories at 1280/390.
+  Evidence: ReadingContentService/readingRefreshModel/reader controller consume revision-bound pages and atomically merge server DTOs/tombstones, sibling hashes and generated-state invalidation. Cleanup Restore/Undo do not fetch layout/whole-section content; Save only updates history. Same-ID response-loss recovery and read-only refresh retry remain separate. Actual App controlled-transport tests pass at 1280/390: three repeated applications, no duplicated text, zero layout/section reloads on restore, preserved page/expansion/focus/unsaved Note, backend edit-protection presentation, retained non-navigable history, 23-item pagination, conflicts and legacy behavior. Mounted controller tests pass 25-block pagination, six failure/lifecycle cases and 13 merge/contract checks including cross-unit/hidden recovery. Source-review navigation/state and reading-request regression suites pass. Build and diff checks pass; screenshots reviewed. These controlled fixtures did not themselves establish isolated incident-book acceptance; the subsequent RCR-05 evidence is recorded below. No backend code, live book mutation or deployment in RCR-04.
+  Timestamp: 2026-10-25
+- [x] RCR-05: Accept the corrected flow against an isolated copy of the incident data.
+  Acceptance: Back up and read-verify the current document containing 19652:content:2; exercise edits/restores only in disposable storage, not the production book. Prove saved draft versus applied body, multiple replacements, false body-edit flag, block-specific refresh, subsequent body Edit protection and retained non-navigable history. Run real API/SQL and desktop/mobile browser acceptance; preserve source/backup hashes. Supplement with fixtures for absent natural cases and report them honestly.
+  Evidence required: Source fingerprints/private report, API/SQL state assertions, UI target content and request counters, screenshots, build and regressions. No live LLM/OCR or production deletion is needed.
+  Evidence: accept-repeatable-cleanup.py and test-repeatable-cleanup-real.mjs pass actual App/FastAPI/disposable PostgreSQL at 1280/390 using a byte-verified backup of document 68, retaining original IDs, revision 5 and legacy Restore/Undo evidence. Each viewport proves three replacements, Save without body mutation, false backend manual-edit flags, exactly three targeted reads with zero layout/section reloads, and five naturally non-navigable records retained. Body interactive Edit sets the durable flag; direct Restore returns 409 with identical SQL fingerprint. Document/snapshot reading JSONB agree; canonical hierarchy, source/profile and backups remain unchanged; temporary schema removed. Private evidence: data/test-books/rcr05/20261025T150648Z-06b7c9e3 under the backend. 264 file/SQL regression tests, cleanup-history/reading-refresh/reading-content-requests browser suites and build pass; desktop/mobile screenshots reviewed. Library/status and disabled generated availability are isolated test boundaries; supplemental fixtures cover absent failure/cross-block/Note cases. No production writes, LLM/OCR, deployment or new product behavior in this task.
+  Timestamp: 2026-10-25
+
+## Per-Item Cleanup Recovery (2026-10-25)
+
+Historical CRUI delivery; RCR above supersedes one-shot Restore and full-layout
+refresh. The old test results do not establish the new acceptance criteria.
+
+Ordered UI tasks depend on backend CLEAN-RESTORE support. This track does not
+reopen SCLEAN or claim model accuracy. Progress: 5/5 (100%).
+
+- [x] CRUI-01: Define typed cleanup record IDs, canonical block links and server restore eligibility; older servers remain read-only.
+  Evidence: ReadingContentService models record IDs, canonical links, eligibility and backend manually_edited; browser legacy responses remain read-only without runtime errors.
+  Timestamp: 2026-10-25
+- [x] CRUI-02: Add bounded per-record restoration-text editing with explicit save, immutable original quote and dirty-close protection; no browser persistence.
+  Evidence: CleanupAudit/useCleanupHistory separate saved restoration text from original quote, paginate 10 records, preserve dirty drafts and use only component state. Desktop/mobile tests cover save, restored-record editing, discard and pagination.
+  Timestamp: 2026-10-25
+- [x] CRUI-03: Restore through the existing mutation service with CAS/idempotency, truthful errors and one authoritative reading refresh; never concatenate body text in UI.
+  Evidence: Existing reading-content mutation port handles cleanup_edit/cleanup_restore. Browser tests verify lost-response same-ID replay, duplicate-click protection, conflict draft retention, one restore refresh and no layout refresh for draft saves; backend file/SQL tests verify transactional guards.
+  Timestamp: 2026-10-25
+- [x] CRUI-04: Navigate using verified current block identities and existing measured reader pagination, with abort/generation guards and no guessed targets.
+  Evidence: Specific-block read and snapshot/hierarchy checks precede existing reader navigation. Tests cover actual reader focus, pending navigation cancellation and unavailable/legacy targets at 1280/390.
+  Timestamp: 2026-10-25
+- [x] CRUI-05: Verify desktop/mobile editor, restore, navigation, conflicts, duplicate clicks, lifecycle, legacy fallback and long histories; run build and backend support tests.
+  Evidence: test-cleanup-history.mjs, test-source-review-navigation.mjs and test-reading-content-requests.mjs pass at 1280/390; screenshots inspected. Backend regression 266 tests plus existing audit suite 29 tests pass, including disposable PostgreSQL and read-only backup-book shared-engine checks. npm run check passes with the existing bundle-size warning. Browser HTTP fixtures are not live-book/model acceptance; no production book writes or deployment.
+  Timestamp: 2026-10-25
+
+## OCR Preservation Policy Reference (2026-10-25)
+
+Backend OCR-KEEP supersedes earlier SRMAP/CLEAN claims that every proven
+never-in-body region should be hidden. Quality-excluded legacy text and nonblank
+recognition gaps remain server-visible; new low-quality text stays in body with
+review links. UI consumes server eligibility without empty-block filtering or a
+second editor. This is a requirements correction, not another completed UI task.
+Historical browser receipts below retain their tested scope, not the old policy.
+Timestamp: 2026-10-25
+
+## Read-Only Source Review Backlog (2026-10-25)
+
+Completed: **3/3 UI tasks accepted (100%)**. Shared SRMAP track: 8/8, with
+five backend-owned tasks and three UI-owned tasks; no remaining task in this track.
+Historical review/cleanup completion is not substituted for this acceptance.
+[Shared execution order](../Deep_Reflective_Reader/document_structure/module-checklist.md#source-review-mapping-backlog-2026-10-25).
+[UI design](module-detailed-design.md#read-only-source-review-navigation-2026-10-25).
+
+- [x] SRMAP-05: Replace Source review inline editing with verified body navigation.
+  Priority: P1. Depends on: backend SRMAP-04. Owner: Deep_Reader_UI.
+  Acceptance: Remove review block Edit/Delete menus; retain read-only current text, block IDs, collapsible Original and confirmed Ignore. Consume implemented typed server targets only; one/multiple related blocks navigate through existing chapter/section/content selection and reader pagination, not PDF page_index. Existing body three-dot actions are the sole editor. No insertion, substring editing, fuzzy quote search, whole-book prefetch, Prepare or hidden task-layout mutation. Unknown/all-deleted targets cannot navigate to guessed or empty IDs.
+  Evidence required: Actual component tests for one/multiple/partial/shared blocks, reader page differing from PDF page, resize/re-pagination, stale target, all-deleted links and conservative old-server handling. Existing inline-review tests must be revised, not retained as current acceptance.
+  Evidence: Read-only SourceReviewBlocks and sourceReviewModel consume verified targets; controller/view navigation uses section selection and measured pagination, with block focus maintained through resize. Snapshot identity and target text are revalidated after content fetch before publication/focus. No inline review editor, insertion, fuzzy navigation or Prepare. Actual App/StrictMode navigation tests pass at 1280/390 for shared/partial/unknown/deleted/legacy targets, long/shrinking lists, stale IDs/text and cancellation.
+  Timestamp: 2026-10-25
+
+- [x] SRMAP-06: Refresh authoritative review state and display manual modification history.
+  Priority: P1. Depends on: SRMAP-05. Owner: Deep_Reader_UI.
+  Acceptance: Reselect/reopen/explicit refresh loads current text and backend manual-change state/time; body mutation uses the existing single read-only layout/content refresh path. Never equate modified/deleted with resolved; last-block deletion remains visible until user Ignore. Render server-filtered queue/count/guard truth, not local empty-block filtering. Edit Keep/Clear explicitly names Note; Delete/Undo explain irreversible interaction removal. Preserve dirty drafts, selection/focus, lazy lists and collapsible previews; central notifications, stable DOM identity, abort/generation guards on close/switch and no manual mutation-count limit.
+  Evidence required: Same-row reselection, edit/delete/Undo/restart, timestamps unaffected by cleanup/Ignore, duplicate-read/mutation counters, failed refresh, conflict, rapid switching, unmount, stale responses, long-list scroll and no uncaught rejection. No optimistic success after unknown commit.
+  Evidence: useSourceReviewBlocks refreshes on activation/reselection, guards dispatch and latest snapshots, aborts superseded work and clamps pagination. Server manual-change timestamps/deleted counts survive reload; all-deleted rows retain explicit Ignore. Stale cleanup audit is discarded on identity/revision change. Ignore confirmation describes acknowledgment, not body removal. Twelve delayed-response cases, nine display-normalization comparisons, 42 identity guards and existing request/pagination regressions pass; body drafts, Keep/Clear Note, text-only Undo and one layout refresh are preserved.
+  Timestamp: 2026-10-25
+
+- [x] SRMAP-08: Accept the read-only review workflow against real books and backend state.
+  Priority: P1. Depends on: SRMAP-05/06 and backend SRMAP-07. Owner: Deep_Reader_UI; backend/scripts support real-source acceptance.
+  Acceptance: Actual App/API/disposable PostgreSQL at desktop 1280 and mobile 390, using verified backups from backend acceptance. Select region -> navigate to actual body page -> edit/save or delete -> reopen/reselect -> inspect current text/manual time -> explicit Ignore. Verify proven excluded regions hidden without fabricated audit, unknown/partial mappings retained, all-deleted row retained, Note policies, one layout refresh, Undo and source immutability. Test no inline review editor/manual block insertion and no automatic Ignore from body mutation.
+  Evidence required: Source hashes/private reports, reviewed region-block correspondence, screenshots/focus/scroll checks, request counts, regression and type/build results. Controlled fixtures supplement but cannot replace a real included-region case. Missing corpus or mapping evidence stays Needs Confirmation; do not count earlier injected-span browser success as this acceptance. No production data deletion or deployment implied.
+  Evidence: Updated accept-source-review.py/test-source-review.mjs pass actual App/FastAPI/disposable SQL at 1280/390 in synthetic and hash-verified sample2 modes. Real-page text/subquote evidence has no injected canonical_span; no naturally flagged positive link exists in the corpus, and Original preview is a UI fixture. Tests prove navigation, body edit/save/delete, current text/time, Keep/Clear physical Note, retained deletion, explicit Ignore, text-only Undo, retry and one layout refresh per mutation. Twelve screenshots inspected; source/canonical/backup hashes unchanged. Private manifest/logs/screenshots: Deep_Reflective_Reader/data/test-books/srmap08/. npm run check passes with existing bundle warning; independent review findings resolved and controller/type checks pass. No production changes or deployment.
+  Timestamp: 2026-10-25
+
+## Request Wait Policy Follow-up (2026-10-24)
+
+New UI follow-up 1/1 (100%), separate from completed SCLEAN-08/09.
+[Shared WAIT order](../Deep_Reflective_Reader/llm/module-checklist.md#offline-preflight-follow-up-2026-10-24):
+current combined progress is maintained in that owner index, not duplicated here.
+Backend aggregate must not count this UI task.
+Timestamp: 2026-10-24
+
+- [x] WAIT-01: Remove frontend fixed API request deadlines without weakening lifecycle safety.
+  Priority: P0; first implementation task. Owner: Deep_Reader_UI.
+  Acceptance: Remove both current 120-second abort timers in Smart cleanup and Smart structuring; audit other app request paths for equivalent deadlines. Pending preflight/execute/lookup/resume/read-refresh must not fail or retry merely due to elapsed time. Retain owner-scoped AbortController, cancellation/close, generation/identity guards, busy locks, drafts/recovery handles, actual transport-error reconciliation and backend consent expiry. Do not remove polling/debounce/queue timers or change backend/provider timeouts.
+  Evidence required: Desktop/mobile controlled-time tests past 120 seconds for pending then successful responses, cancellation/unmount/switch and late response isolation; actual network/gateway failures, expired consent, reload/reopen and zero duplicate mutations. Update old timeout tests to retain recovery coverage; build/type checks pass. No claim that backend cold-start latency is fixed by this task.
+  Evidence: Removed both timer-triggered aborts; source audit finds only the unrelated zero-delay upload queue timeout. Cleanup retains lifecycle controllers, consent expiry and opaque recovery handles. Structuring execution/read-refresh now share dialog-owned cancellation with generation/identity guards; Cancel remains available while waiting. Cancelled submission becomes unknown and requires authoritative reconciliation; cancelled reading refresh retains its handle without treating an unacknowledged legacy preparation as success. App forwards AbortSignal to existing services without a new timeout or backend policy.
+  Validation: npm run check passes (existing bundle-size warning). test-smart-cleanup-contract.mjs passes 36 malformed response cases. test-enhancement-confirmation.mjs, test-enhancement-outcomes.mjs, test-smart-cleanup.mjs, test-smart-cleanup-recovery.mjs and test-cleanup-flow.mjs pass at 1280/390; held responses past 120 seconds cover preflight/execute/read refresh/lookup, alongside later success, close/switch/reload recovery, consent expiry, network/503 faults, duplicate-submit and draft preservation. Long-wait screenshots inspected. Cleanup suites use actual App/FastAPI/disposable PostgreSQL with a deterministic provider; enhancement transport faults are fixtures. No live-book/model latency acceptance, production writes, Docker restart or backend progress update; WAIT-02..05 remain open.
+  Timestamp: 2026-10-24
+
+## Independent Smart Cleanup Backlog (2026-10-23)
+
+New UI tasks 2/2 (100%); shared SCLEAN track 10/10 (100%). Backend-owned tasks are
+8/8 after scripts-owned SCLEAN-10 final real-book/API/SQL/browser and isolated-image
+acceptance. UI tasks are not counted again; WAIT-01 above is a separate new follow-up.
+Unsupported storage stays unavailable. Source acceptance is not production deployment.
+Seven final live-book flows and final reviewed-span evidence are recorded in the
+[scripts acceptance](../Deep_Reflective_Reader/scripts/module-detailed-design.md#sclean-10-delivery-2026-10-24).
+[Shared order](../Deep_Reflective_Reader/document_structure/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23).
+Timestamp: 2026-10-24
+
+- [x] SCLEAN-08: Add the independent document Smart cleanup entry and confirmation.
+  Priority: P1. Depends on: backend SCLEAN-06/07. Owner: Deep_Reader_UI.
+  Acceptance: Existing action surface alongside Smart structuring, dedicated narrow controller/service and strict typed adapter. Accepted Common documents can invoke backend eligibility preflight, including before units exist; no local OCR inference. Confirm content-only impact, retain notes/drafts and distinguish unavailable/over-capacity/old-server states. One user action runs cleanup/readiness; no plan editor, arbitrary scope/provider controls, fallback reparse or manual Prepare.
+  Evidence required: 1280/390 actual component/API tests for Common readiness, unavailable native/unknown/capacity/unsupported server, consent, draft protection, duplicate-click prevention, progress/outcomes and automatic reading. Backend contract claims require implemented route evidence.
+  Evidence: SmartCleanupService strict runtime adapters and dedicated smart-cleanup MVC feature use the implemented preflight/execute routes only. Repairs exposes independent cleanup even without units; server preflight gates consent. Shared outcome validation/messages and reading refresh avoid duplicating enhancement or cleanup policy. Manual block editing disables cleanup; mounted Note drafts survive. Abort/generation guards, consent expiry, synchronous duplicate-submit lock and per-document opaque pending handles prevent stale updates and blind regeneration. Unknown/layout/reload recovery remains SCLEAN-09, not complete here.
+  Validation: npm run check passes (existing bundle warning); test-smart-cleanup-contract.mjs rejects 31 malformed responses and verifies narrow payloads/identity/safe errors. test-smart-cleanup.mjs passes actual App/FastAPI/disposable PostgreSQL at 1280/390 with accepted Common fixtures, pre-unit layout handoff, completed/partial/no-op/skipped/provider-failed outcomes, unavailable/native/unknown/capacity/legacy gates, cancellation/expiry, notes/manual drafts, duplicate clicks, response loss/reopen/refresh blocking and late response after document switch. Zero split calls and no Prepare/reparse requests. Screenshots inspected; existing enhancement confirmation regression passes. Controlled provider and note-read fixture, not live-book/model quality acceptance; SCLEAN-10 stays open. No production document changes or Docker restart.
+  Timestamp: 2026-10-24
+
+- [x] SCLEAN-09: Add independent retry/reconciliation and reuse audit/review/Undo.
+  Priority: P1. Depends on: SCLEAN-08. Owner: Deep_Reader_UI.
+  Acceptance: Failed/partial automatic cleanup can start a new confirmed standalone cleanup without splitting. Same-operation lost response/refresh uses lookup, backend-directed layout continuation only; unknown/stale/superseded states never auto-regenerate. Content/review/availability reload follows authoritative revision, preserves selection and drafts, and reuses existing collapsible audit, remaining-region actions and latest Undo. No independent UI content truth or hide-all-review shortcut.
+  Evidence required: Actual App/API/SQL at 1280/390 for failed-auto-then-retry, response loss, switch/refresh/restart, concurrent edits, committed layout failure, no-op/partial, review resolution/retention, Undo conflicts and stable IDs. Assert no duplicate model calls/commits and no split/OCR/profile/Prepare fallback; inspect screenshots. Final real-book evidence is counted once in SCLEAN-10.
+  Evidence: Dedicated cleanup controller owns document-scoped opaque recovery handles, read-only lookup and explicit backend-directed layout resume. Failed/partial automatic cleanup opens the same standalone feature with fresh consent. Strict transport retains authoritative operation DTOs on 409/503. Lost responses, refresh/restart and unknown results cannot bypass reconciliation; terminal/current-revision refresh precedes handle removal. Existing review/audit/Undo and Note drafts are reused, not duplicated.
+  Validation: npm run check passes with the existing bundle warning; test-smart-cleanup-contract.mjs rejects 36 malformed response variants. Actual App/FastAPI/disposable PostgreSQL suites test-smart-cleanup-recovery.mjs, test-smart-cleanup.mjs, test-cleanup-flow.mjs and test-cleanup-review.mjs all pass at 1280/390. Coverage includes failed/partial automatic cleanup retry, lost acknowledgement, process recreation, reading timeout/failure, layout-only resume, concurrent edit, supersession after Undo, stable IDs, draft preservation, remaining regions, collapsible Original, Ignore deletion and Undo conflicts. Counters reject duplicate model calls/commits; no hidden split/Prepare fallback. Mobile audit and desktop conflict screenshots inspected. Deterministic provider, Note-read fixture and synthetic preview image are not live-book/model/OCR-image acceptance; SCLEAN-10 remains open. No production data changes or Docker restart.
+  Timestamp: 2026-10-24
+
+## Optional OCR Cleanup Experience Backlog (2026-10-22)
+
+Historical foundation only; its completion does not close SCLEAN-08/09 above.
+
+CLEAN-07/08 delivered; UI 2/2 (100%). Combined track 10/10 (100%) as of 2026-10-23;
+backend CLEAN-09/10 evidence is recorded once in the shared ordered track:
+[backend checklist](../Deep_Reflective_Reader/document_structure/module-checklist.md#optional-ocr-cleanup-plan-backlog-2026-10-22).
+No duplicate UI acceptance task is added. Historical per-item delivery evidence
+below retains its original scope; final real-book browser evidence is in the design.
+Timestamp: 2026-10-23
+
+- [x] CLEAN-07: Integrate consent and nonblocking cleanup status into the enhancement flow.
+  Depends on: backend CLEAN-06.
+  Acceptance: Typed additive adapter with legacy compatibility; one confirm -> split in memory -> optional cleanup -> single final commit -> automatic layout/open. Never show saved success before commit; final storage failure retains the old document. Concise partial/failure/no-change messages and phase-aware retry; no raw model budgets or mandatory manual Prepare. Refresh/document switch/late responses reconcile backend operation and reading revision. Distinguish structural all-interaction deletion from cleanup generated-output invalidation with notes preserved.
+  Evidence required: Desktop/mobile actual component/API tests for successful, skipped, partial, failed, stale and unknown outcomes; changed-only content reload, dirty-draft safety and no duplicate operation.
+  Evidence: Typed adapters and outcome validation, bound cleanup consent, per-document session recovery locator, phase-aware resume/reconciliation, changed-only content/review refresh and Note-draft preservation. npm run check and 1280px/390px confirmation/outcomes/actual-API-disposable-SQL browser suites pass; screenshots checked. Cases include partial/skipped/failed cleanup, rollback, duplicate submit, stale/unknown/lost responses, refresh/worker restart, resume conflicts, successful reading after layout recovery and read-only retry without another LLM call. Legacy draft/document-switch regressions pass. Controlled provider/candidate and UI-only note-read fixture are not live-book or saved-note storage acceptance; CLEAN-10 remains open. No production mutation/deployment or backend progress edit.
+  Timestamp: 2026-10-23
+
+- [x] CLEAN-08: Present cleanup audit and reversible batch changes in the existing review panel.
+  Depends on: CLEAN-07 and backend CLEAN-04/06.
+  Acceptance: Server-owned counts, safe reasons, original text/page reference where available, collapsible details and single-level Undo. Failed/conflicting Undo preserves current content and drafts; later manual edits are not overwritten. Unresolved OCR regions remain visible with Original/Ignore flow; no new block insertion, independent UI truth or heavy task-layout payload.
+  Review resolution: Remove server-confirmed fully resolved entries after final commit without redundant Ignore; warning state remains server-owned. Preserve evidence and reload restored states after Undo. Routine visibility/count policy is superseded by delivered SRMAP-04/05/06: hide only backend-proven never-in-body evidence, not all unknown mappings or manually deleted linked blocks. Historical evidence below does not validate the new policy.
+  Evidence required: 1280px/390px browser checks for long/empty audit, collapse/expand, resolved/remaining queues, Undo/reload/conflict, source preservation and all-level interaction refresh. Backend CLEAN-10 owns final real-book acceptance once, not duplicate completion here.
+  Evidence: CleanupAudit.tsx and existing ReadingContentActions panel consume an implemented opt-in, ten-batch reading-content projection; original quote/page/reason, remaining/undone status, pagination and latest-action Undo. Pure API/file tests pass 29 cases (five new plus 24 imported regressions); broader reading/overlay/API/preparation suites pass 237 cases, with overlapping fixtures. Actual App/FastAPI/disposable-SQL browser suite passes 1280px/390px for empty/long/collapsed history, resolved/textless/unmapped queue retention, lost-ack idempotent Undo, conflict, reload, restored content and read-only recovery. Mounted Note draft/declined discard use an explicit note-read fixture; backend tests independently prove saved-note/source preservation and generated-output invalidation. CLEAN-07 browser regression and npm run check pass; screenshots inspected. Existing valid layout stamps now advance inside explicit overlay mutations, fixing Undo then page-refresh 409 without hidden read writes. Extra real-PDF OCR review regression could not start locally (OCR/renderer unavailable); live corpus/preview acceptance remains CLEAN-10, not claimed here. No production mutation, Docker restart or backend progress edit.
+  Timestamp: 2026-10-25
+
+
 ## OCR Review And Content Correction Queue Reference
 
 Delivered UI work is tracked once in backend doc_loaders/module-checklist.md:

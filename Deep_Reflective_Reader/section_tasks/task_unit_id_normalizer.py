@@ -33,8 +33,7 @@ class TaskUnitIdNormalizer:
             for task_unit in section_units:
                 normalized_units.append(
                     replace(
-                        task_unit,
-                        unit_id=f"{self._UNIT_ID_PREFIX}{global_index}",
+                        task_unit.with_unit_id(f"{self._UNIT_ID_PREFIX}{global_index}"),
                         parent_section_id=section.section_id,
                     )
                 )
@@ -55,8 +54,7 @@ class TaskUnitIdNormalizer:
             for task_unit in section.task_units:
                 updated_units.append(
                     replace(
-                        task_unit,
-                        unit_id=f"{self._UNIT_ID_PREFIX}{global_index}",
+                        task_unit.with_unit_id(f"{self._UNIT_ID_PREFIX}{global_index}"),
                         parent_section_id=section.section_id,
                     )
                 )

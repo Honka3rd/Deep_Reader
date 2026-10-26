@@ -32,6 +32,32 @@ from document_structure.structured_document_builder import StructuredDocumentBui
 
 
 class ExecutionPassTests(unittest.TestCase):
+    def test_default_text_recovery_has_no_document_quota(self):
+        now = [0.0]
+        state = PdfExecutionPass(PdfExecutionLimits(), clock=lambda: now[0])
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, "", ""))
+        with patch("doc_loaders.pdf_execution_pass.logger"):
+            for stage, count in (("ocr", 4097), ("render", 1025)):
+                for index in range(count):
+                    state.run(runner, [], purpose="text_recovery", stage=stage, page=index, timeout=60)
+                    now[0] += 1
+                self.assertEqual(state.counters[("text_recovery", stage)], count)
+        self.assertGreater(now[0], 1800)
+        self.assertTrue(all(call.kwargs["timeout"] == 60 for call in runner.call_args_list))
+
+    def test_unlimited_text_still_propagates_command_timeout(self):
+        state = PdfExecutionPass(PdfExecutionLimits())
+        runner = Mock(side_effect=subprocess.TimeoutExpired("ocr", 60))
+        with self.assertRaises(subprocess.TimeoutExpired):
+            state.run(runner, [], purpose="text_recovery", stage="ocr", page=0, timeout=60)
+        self.assertEqual(state.counters[("text_recovery", "ocr")], 1)
+
+    def test_none_only_disables_text_document_limits(self):
+        for name in PdfExecutionLimits.__dataclass_fields__:
+            if name not in {"text_render_attempts", "text_ocr_attempts", "text_seconds"}:
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    PdfExecutionLimits(**{name: None})
+
     def test_limits_validate_negative_bool_and_nonfinite_values(self):
         for name in PdfExecutionLimits.__dataclass_fields__:
             for value in (-1, True, float("inf"), float("nan")):

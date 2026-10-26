@@ -1,5 +1,318 @@
 # Deep Reflective Reader Progress
 
+## Persisted Block Translation Delivery (2026-10-26)
+
+**Backend implementation and acceptance: 6/6 (100%)**.
+Canonical [queue](section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26)
+and [design](section_tasks/module-detailed-design.md#persisted-block-translation-plan-2026-10-26).
+TRUI-01 registry/contracts -> 02 same-text no-op -> 03 mandatory translation/summary
+cleanup with optional other-metadata retention -> 04 persistent orchestration ->
+05 saved-read/generate API -> 06 SQL/file/real-book acceptance.
+Frontend tasks are governed separately in Deep_Reader_UI, not aggregated here.
+
+Confirmed rules: compare with stored effective text atomically; unchanged submissions
+preserve state. Actual changes delete affected translations and summaries even under
+Keep; other metadata may remain. Deleted blocks lose all owned interactions. Registry
+codes bound both language selectors; source defaults to the existing profile without
+rebuilding it. Persist one translation per block/target code. This supersedes the
+historical stateless delivery scope below; current read/generate routes persist and
+return committed results with source/concurrency/replay guards.
+
+All six backend items are checked. Direct owner unchecked counts: section_tasks 0,
+app 11, document_structure 18, main 1, scripts 0; historical unresolved work remains.
+408 backend regressions pass without skips, including disposable PostgreSQL
+atomicity/rollback and file parity. Current API/configured LLM acceptance uses bounded
+real excerpts from immutable Madame Bovary/Red Roulette backups, not full-book reparse
+or literary accuracy certification. Evidence:
+data/test-books/persisted-translation/20261026T070158Z-06e6f6e0/report.json and
+browser-report.json. Production books/profile/backups are unchanged; the Docker
+backend has not been rebuilt/restarted by this task. UI acceptance is recorded only
+in its own module checklist, not counted in this backend percentage.
+Timestamp: 2026-10-26
+
+## Block Translation API (2026-10-26)
+
+Backend TRANS-API-01/02: **2/2 complete (100%)**.
+Owners: [app checklist](app/module-checklist.md#translation-action-2026-10-26)
+and [main checklist](main.module-checklist.md#translation-action-2026-10-26).
+POST /documents/reading-interactions/translate/generate accepts only document name,
+block ID, target language and optional source language. No client source text or
+parent IDs; backend resolves effective content and defaults from the existing profile.
+No profile regeneration or translation persistence. Reject stale in-flight results.
+
+92 regressions pass, plus existing API-schema/container executable suites. Two live
+backed-up book block calls pass with unchanged source/profile/backups; evidence:
+data/test-books/translation-api/20261026T054907Z-c7b0d961/report.json.
+These are response-contract checks, not literary accuracy certification. Frontend,
+production deployment/restart and persisted translation history are not included.
+Direct owner recount: app 49 checked / 11 historical unchecked; main 42 checked /
+1 historical unchecked. Only these two new tasks closed; no historical re-audit.
+Timestamp: 2026-10-26
+
+## Translation Service Foundation (2026-10-26)
+
+Backend foundation TRANS-01..04: **4/4 implemented and technically verified (100%)**.
+Owner: [section_tasks checklist](section_tasks/module-checklist.md#translation-service-foundation-2026-10-26).
+Provider-injected text/source/target translation, variant-preserving language tags,
+versioned prompt, full-input/output-capacity checks and strict safe response parsing.
+Translate from defaults to the existing profile language at the future caller,
+with explicit user override; no profile access belongs in this standalone service.
+No API/UI/persistence/DI activation or deployment is included in this foundation
+percentage; the subsequent block-only API/DI delivery is recorded above.
+
+50 regression tests pass without skips, including 16 new translation tests and
+real offline tokenizer/book checks. Final live gpt-4.1-mini evidence:
+data/test-books/translation/20261026T053241Z-6a232d39/report.json.
+Five response-contract checks pass; immutable backups remain unchanged.
+Semantic review flags an archaic Bovary clause mistranslated into Chinese.
+**Literary accuracy is not accepted by these technical checks**; the issue is
+recorded in the owner design and private semantic-review.json, not hidden behind
+a successful JSON/provider status. UI and quality follow-up remain; API is above.
+
+Direct owner recount: 96 checked / 0 unchecked; historical items not re-audited.
+Synchronization changes only this aggregate after owner checklist evidence review.
+Timestamp: 2026-10-26
+
+## Block-Level Source Review Correction (2026-10-26)
+
+Backend SRBLOCK-01: **1/1 complete (100%)**. Owner:
+[document_structure](document_structure/module-checklist.md#block-level-source-review-correction-2026-10-26).
+Single-block review Edit/Delete/Keep replaces region-wide UI commands. Reuse the
+existing transaction, backend manual protection, artifact/Note policy and targeted
+refresh; Keep durably removes review membership without deleting body/artifacts.
+400 backend tests pass without skips, including 15 new file/API/SQL tests. UI-owned
+SRBLOCK-02 and its actual Madame Bovary Page 3 acceptance are excluded from this
+backend aggregate. Current API rebuilt and healthy; live verification was read-only.
+
+Direct recount: document_structure 85 checked / 18 historical unchecked, excluding
+the fenced template. Only the new backend correction was closed; no unrelated
+backlog changes. Inspected owner design/checklist, global memory, standards and
+progress; this synchronization changes progress only, no source/test files.
+Timestamp: 2026-10-26
+
+## Guarded Source Region Repair (2026-10-26)
+
+Historical region-wide delivery; the correction above supersedes its UI targeting.
+
+Backend SRREPAIR: **5/5 complete (100%)**. Owner checklist:
+[document_structure](document_structure/module-checklist.md#guarded-source-region-repair-2026-10-26).
+Completed: 01 exact canonical intersections; 02 owned drafts/applications/shared guards;
+03 atomic apply/delete; 04 minimal API/targeted refresh; 07 real-state acceptance.
+No remaining backend tasks in this track. UI-owned 05/06
+are excluded from this backend aggregate. Historical SRMAP/RCR remain accepted in
+their original scope; they do not complete the new region-write requirements.
+
+Evidence: combined regression 425 tests passes without skips, including 26 new
+file/API/disposable PostgreSQL mutation tests and four backup-book repair cases.
+Read-only checks preserve four private backups (39 regions, 16 hashes) and one
+incident snapshot (101 regions, 60 mapped targets). Actual App/API/disposable SQL
+acceptance passes on both 暗水幽灵 and Madame Bovary OCR backups at 1280/390;
+source/backup hashes remain unchanged and test schemas are removed. Receipts are in
+the owner checklist. No production deployment claimed.
+
+The document_structure checklist has 84 checked and 18 historical unchecked items
+(excluding the fenced template). Historical items were not re-audited or closed.
+Governance synchronization only; no source/test changes in this sync step.
+Timestamp: 2026-10-26
+
+## Preserve Recognized OCR Text (2026-10-25)
+
+OCR-KEEP: **6/6 complete (100%)**. Owner checkboxes: doc_loaders 01/02/03/04/06
+(5/5) and document_structure 05 (1/1); no duplicate UI task or backend aggregate.
+Quality-only page/region deletion, area quotas and strict-quality rollback are
+retired. Nonempty OCR survives with exact source spans/review; real execution
+failures and empty recognition remain explicit. Old quality exclusions no longer
+disappear from review; reads never restore text or reparse. Chinese-local observed
+candidate agreement fixes the real PSM5 cross-formula ranking defect.
+
+Final real-engine report:
+`data/test-books/ocr-keep-20261025/20261025T065923190316Z/report.json`.
+Incident physical page 80 passes OCR/Auto: 984 characters, eight blocks, complete
+162-character paragraph at every reading layer and a natural exact review mapping.
+Sample2 all pages remain 450/0/644; nine backup and 142 runtime/harness hashes
+unchanged. Final suites pass: 214 PDF (Docker), 39 Chinese, 146 mapping/API/file/SQL/
+Note and 144 interaction/cleanup/real-backup tests, without skips. Separate corpus
+acceptance passes eight file/SQL runs with 16 backups unchanged. Counts are separate
+suite runs, not unique-test totals.
+
+Recount: doc_loaders 61 checked/0 unchecked; document_structure 75 checked/18
+historical unchecked, excluding the literal template. No historical tasks closed.
+Scope: no full 261-page OCR, numeral correction, browser acceptance, production
+reparse or Docker deployment. Existing books require explicit re-extraction after
+deployment; cleanup over old accepted text cannot recover previously discarded text.
+Timestamp: 2026-10-25
+
+## Source Review Mapping (2026-10-25)
+
+Backend SRMAP tasks **5/5 implemented and accepted (100%)**: SRMAP-01/02/03/04/07
+in the [owner checklist](document_structure/module-checklist.md#source-review-mapping-backlog-2026-10-25).
+Frontend SRMAP-05/06/08 are excluded from this backend aggregate. Durable exact
+relations, explicit CAS backfill, conservative shared eligibility, manual audit/
+tombstones and bounded typed reads are delivered. Manual last-block deletion keeps
+review until explicit Ignore; no second editor, manual block insertion or read-side
+Prepare/profile/persistence mutation.
+
+252 focused backend tests and a separate 120-case cleanup/API/SQL regression suite
+pass with no skips. Eight real-corpus file/SQL runs preserve all 16 backup files.
+No natural positive region exists in the backups: accepted real-page/subquote
+fixtures supplement original excluded/unknown evidence without injected canonical
+spans. Full limitations and private reports are recorded in the owner design.
+No production backfill, book mutation, Docker restart or deployment is claimed.
+Owner checklist recount: 74 checked, 18 unchecked historical items, excluding the
+literal completed-task template; those older items are not re-audited or closed.
+Timestamp: 2026-10-25
+
+## Offline Preflight Follow-up (2026-10-24)
+
+Backend WAIT track: **4/4 implemented and accepted (100%)**, zero pending. Owner checkboxes:
+[llm WAIT-02](llm/module-checklist.md#offline-preflight-follow-up-2026-10-24),
+[scripts WAIT-03/05](scripts/module-checklist.md#offline-preflight-follow-up-2026-10-24),
+[app WAIT-04](app/module-checklist.md#offline-preflight-follow-up-2026-10-24).
+The shared execution index lives in llm; frontend WAIT-01 is excluded from this
+backend aggregate. WAIT-02's shared offline counter/capacity identity, WAIT-03's
+verified asset packaging/offline startup and WAIT-04's correlated preflight stage
+timings are delivered; historical SCLEAN evidence remains unchanged.
+
+Plan: shared offline-only counting, verified build/local-setup encoding assets,
+correlated preflight stage logs, and full incident-book cold/offline acceptance.
+WAIT-03 passes 145 tests, including 16 new packaging cases, verified real assets under
+denied network and hash-preserving complete accepted-text counts for two backed-up
+books. Root image 62776af533ea packages freshly acquired assets, reuses unchanged
+dependency layers and passes recreated non-root/read-only/offline container checks.
+Missing/corrupt assets block startup; actual isolated API health returns 200. An
+overlapping image counter/budget suite passes 20/21 (private-book opt-in skipped,
+covered on host). Local setup and failure-path tests pass. No production reparse,
+cleanup, image deployment or restart occurred.
+WAIT-04 adds scoped lease/reconciliation/input/capacity/consent/overall logging with
+safe outcomes and best-effort sinks, without extra reads/counts or API changes.
+208 scoped tests pass (14 new), including actual HTTP/worker request correlation,
+isolated SQL and immutable-book regressions. Disposable test DB removed. An unrelated
+legacy prepare-cache assertion fails identically in pre-WAIT-04 image 62776af533ea;
+it is documented in app design and excluded from the passing count, not relaxed.
+WAIT-05 closes the incident-book HTTP/browser gate: immutable full 176196-character
+source/profile/evidence, five recreated offline containers, five cold and five warm
+actual preflights. Cold 413.7-664.6 ms; warm 125.2-380.2 ms, all under the 10-second
+test-environment gate, not a production SLA. Zero external network/model/OCR/profile
+or cleanup mutation calls; source/profile/hierarchy/reading state hashes unchanged.
+227 backend regressions pass without skips. Full-book App waiting/cancellation,
+five existing desktop/mobile browser suites, transport contracts and build pass.
+Private evidence and exact storage/fixture limitations are in scripts design.
+Disposable SQL database/containers removed; no production deployment or restart.
+Module summary counts below are recounted from the three affected owner checklists,
+excluding the literal completed-task template: llm 5 checked/2 unchecked, app
+48 checked/11 unchecked, scripts 63 checked/0 unchecked. Their older unchecked
+items remain unchanged; this is not a fresh audit of historical completion claims.
+Timestamp: 2026-10-24
+
+## Independent Smart Cleanup Plan (2026-10-23)
+
+New backend track SCLEAN: 8/8 implemented and accepted (100%), zero pending. This is a
+successor to the completed CLEAN foundation, not a rollback of its evidence.
+Source: [ordered owner checklist](document_structure/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23)
+and [active design](document_structure/module-detailed-design.md#independent-smart-cleanup-2026-10-23).
+Owners: structure SCLEAN-01/03 (2/2), preparation SCLEAN-02/07 (2/2), db SCLEAN-04
+(1/1), app SCLEAN-05 (1/1), main.py SCLEAN-06 with schema support (1/1), scripts
+SCLEAN-10 (1/1). Frontend SCLEAN-08/09 stay only in the UI checklist and are excluded
+from this aggregate. The shared ordered track is complete; no next SCLEAN task remains.
+Supported PostgreSQL
+service composition, standalone routes and automatic readiness are implemented in
+source; unsupported storage stays unavailable. Source acceptance is not production deployment.
+
+Target: standalone cleanup after accepted Common parse, plus the same cleanup
+capability applied in memory after LLM splitting and before one combined commit.
+Independent retry must not re-split/extract/rebuild profile; failed optional cleanup
+does not invalidate a good split, while final commit failure rolls back. Keep module
+responsibilities narrow, strict minimum HTTP exposure, notes/manual-edit protections
+for cleanup-only changes, atomic revision/receipt semantics and real-book acceptance.
+SCLEAN-01 delivers immutable input, consent/staging/operation and repository contracts;
+SCLEAN-02 adds accepted-document and in-memory candidate adapters with protected manual
+content, explicit prior-deletion gaps and no hidden generation/storage. SCLEAN-03 adds
+remaining-view prompt v3, shared provider/validator cores, exact gap/manual protection
+and cumulative deletion guards. SCLEAN-04 implements atomic content-only file/SQL
+commit and historical receipt lookup, sharing validation/overlay/invalidation logic
+with combined enhancement. SCLEAN-05 adds a narrow standalone consent/operation/
+reconciliation service using the same engine and injected shared document lease and
+readiness ports. Source/structure-bound receipts, model-capacity checks, unknown-read
+handling and explicit layout-only recovery prevent implicit generation/repeated commits.
+SCLEAN-06 registers three minimal routes, strict DTOs and sanitized/no-store responses,
+delegating all execution/resume/lookup to the app service. Unknown reads, stale consent,
+cross-document handles and unconfigured service fail closed without fallback reparse.
+SCLEAN-06 validation: 276 local regressions and 174 isolated SQL/
+API/enhancement regressions pass, including three hash-verified backups in temporary
+file storage and disposable SQL. Sample2's reviewed deletion commits/reloads/replays/
+undoes with original source and backups unchanged; 64 use-case and 56 new HTTP tests
+use actual file/SQL storage and deterministic provider responses. No schema migration or live LLM
+request. Existing Docker PostgreSQL was used only for disposable test schemas;
+production library and services were not changed.
+SCLEAN-07 now injects shared provider/lease/accepted input and actual readiness ports,
+uses the same remaining-view engine after an in-memory split before its sole combined
+commit, and explicitly prepares missing layout without source/profile regeneration.
+Ready/no-op canonical IDs persist; source/revision checks guard late layout writes.
+Fresh standalone retry after failed/partial automatic cleanup never resplits; committed
+layout recovery never regenerates. Thirty new cases are included in 308 local and
+190 isolated SQL/API regressions, all passing, plus 16 existing consent/operation/cache
+regressions. Three hash-verified backups complete actual layout with deterministic
+model output and unchanged originals. No live LLM/OCR or deployment occurred in SCLEAN-07;
+its final model/browser gate is closed by SCLEAN-10 below. Existing CLEAN source/test completion is not evidence
+that a running Docker image includes it; deployment is checked separately.
+
+SCLEAN-10: seven final live gpt-4.1-mini runs over hash-verified Sample/Sample2/dark-water
+backups cover standalone, combined and deliberately failed automatic cleanup followed
+by independent retry. Sample2 has one manually reviewed safe deletion in each isolated
+flow, unchanged source/page/hierarchy evidence and working Undo; unsafe proposals in
+the other books are rejected and noise remains. TXT/Fast controls make zero cleanup
+calls. 387 backend regressions, four actual API/SQL browser fault suites at 1280/390,
+real-book browser flows and type/build/adapter checks pass. Isolated image tests pass
+39/41 (two private-source opt-in skips); separate HTTP smoke confirms three routes and
+safe unavailable-storage behavior. Tests exposed and fixed only App-state fixture
+restoration; no runtime cleanup policy change or guard relaxation. Private evidence
+and limitations: data/test-books/cleanup-20261023/sclean10-review-20261024.json and
+scripts design. Production data/services untouched; no production deployment claimed.
+Timestamp: 2026-10-24
+
+## Optional OCR Cleanup Plan (2026-10-22)
+
+Historical foundation scope; independent-entry requirements are tracked above.
+
+Contract, planner, validator, atomic storage, preparation, public orchestration,
+cross-stage validation and bounded live-book acceptance delivered; backend track
+8/8 (100%), zero pending in this track. Canonical requirements:
+[structure design](document_structure/module-detailed-design.md#optional-ocr-cleanup-plan-2026-10-22).
+Structure owns CLEAN-01/02/03/04/09/10 (6/6), preparation CLEAN-05 (1/1),
+app CLEAN-06 (1/1). CLEAN-09 adds six test methods covering 18 isolated API/SQL
+scenarios, including real planner execution with deterministic model transport.
+Current targeted regression: 288 cases, 287 passed and one existing private-source opt-in skipped.
+This scoped sync leaves historical totals
+and unrelated backlogs unchanged. Frontend CLEAN-07/08 are tracked only in the UI
+checklist and are excluded from this backend aggregate.
+
+No UI completion is aggregated here. CLEAN-10 uses three immutable OCR backups,
+live gpt-4.1-mini and isolated API/SQL/layout; final cases preserve source/page maps,
+single-commit replay and effective content at all five target levels. Sample2 has
+one manually reviewed applied deletion and successful Undo. TXT/Fast controls make
+zero cleanup calls. Private evidence: data/test-books/cleanup-20261023.
+Splitting remains source-preserving; subsequent delete-only reading overlays are
+optional and reversible. Corrected sequence: split in memory -> optional cleanup/fix
+plan -> one final atomic hierarchy/overlay commit -> automatic layout. No saved
+candidate reload for cleanup. Cleanup failure retains the uncleaned split candidate;
+final commit failure remains an operation failure and preserves the old database state.
+Internal staging/storage now supports source-proven review resolution
+and Undo; absent/partial/unmapped regions remain. Accepted-source OCR/page evidence
+and canonical-unit layout handoff are implemented, without invented region mappings.
+Structural prompt v17, cleanup planner/validator, reversible projection and atomic
+storage/preparation and explicitly opted-in public API are implemented. Durable commit
+receipts support restart reconciliation; automatic layout retries never repeat cleanup.
+Precommit jobs remain process-local. CLEAN-09 validates staged failure fallback,
+final-transaction rollback and lost-ack/restart/layout recovery without repeat commit.
+No production code change, UI work, paid requests, deployment or corpus mutations in CLEAN-09.
+CLEAN-10 adds cleanup prompt v2 and fixes generated block identity rebinding during
+explicit unit allocation; no source mutation, hidden read repair or production deploy.
+Exact/scope validation remains mandatory: the model can still propose deleting
+readable text, and final Sample/noise proposals were rejected, not silently repaired.
+Retained noise and bounded semantic accuracy are documented limitations, not a claim
+of perfect cleanup. Final acceptance details and timings are in the structure design.
+Timestamp: 2026-10-23
+
 ## Reviewable OCR Recovery (2026-10-21)
 
 Backend-owned shared queue: OCR-REVIEW-01..06 complete: 6/6 (100%), zero pending.
@@ -106,31 +419,31 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 45 | 0 | Format-Neutral Enhancement Accepted |
+| `app/` | package | `app/module-checklist.md` | 50 | 0 | Persisted translation delivered; 11 historical unchecked |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 57 | 0 | Reviewable OCR Recovery 6/6 (2026-10-22) |
+| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 61 | 0 | OCR-KEEP owner 5/5; no unchecked items |
 | `db/` | package + design module | `db/module-checklist.md` | 55 | 0 | Generic Extraction Commit Accepted |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 25 | 0 | Generic Accepted Sources Delivered |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 60 | 0 | ID-Free Semantic Plan Accepted On Real Book |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 87 | 0 | TRUI-02/03 complete; 18 historical unchecked |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `llm/` | package | `llm/module-checklist.md` | 4 | 0 | Full-Source FULL-01 Capacity Migration Delivered |
+| `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
 | `profile/` | package | `profile/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `scripts/` | package | `scripts/module-checklist.md` | 59 | 0 | Real TXT/PDF Enhancement Accepted |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 92 | 0 | Summary And Note Real-Book Acceptance Complete |
+| `scripts/` | package | `scripts/module-checklist.md` | 65 | 0 | TRUI-06 accepted; no unchecked items |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 97 | 0 | TRUI-01 complete; quality caveat retained |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 34 | 0 | Summary And Note Schemas Delivered |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 4 | 0 | Runtime Profile Reuse Only |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 40 | 0 | Summary And Note Routes Exposed |
+| `main.py` | root-python-module | `main.module-checklist.md` | 43 | 0 | Persisted read/generate API exposed; 1 historical unchecked |
 
 ## 5. Package Module Progress
 
@@ -198,10 +511,10 @@ Evidence and dependencies are in owner designs/checklists.
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `ENH-REV-03 Outcome Contract And Process-Local Recovery Delivered`
-- Completed item count: `41` (including FULL-03 and ENH-REV-03).
+- Status: `Persisted Block Translation Action Delivered`
+- Completed item count: `50` (direct owner recount including TRUI-04).
 - Needs confirmation count: `0`
-- Unchecked item count: `13` (historical items; ENH-REV-03 complete).
+- Unchecked item count: `11` (historical items; TRUI-04 accepted).
 - 2026-10-21 ENH-REV-03: typed outcome/cleanup/layout flags, conditional preflight,
   result lookup/replay and transient provider retry. 124 tests: 123 pass, one private
   opt-in skip. Process-local registry explicitly returns unknown after restart/expiry;
@@ -582,10 +895,10 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `ENH-REF-01/02 Real-Book Locator Recovery Accepted`
-- Completed item count: `56`
+- Status: `SRREPAIR-01/02/03/04/07 Guarded Source Region Repair Accepted`
+- Completed item count: `87` (direct owner recount including TRUI-02/03).
 - Needs confirmation count: `0`
-- Unchecked item count: `18` (historical items; ENH-REV-06 and ENH-REF-01/02 complete).
+- Unchecked item count: `18` (historical items; TRUI-02/03 accepted).
 - 2026-10-21 ENH-REF: final real-model implementation passes twice on the reported
   private 147401-character book, each after one validator-guided correction. Exact
   source is preserved; real API/disposable PostgreSQL/layout replay yields 106 units.
@@ -876,10 +1189,10 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `Selective OCR Acceptance Complete; Accuracy Limits Recorded`
-- Completed item count: `56`
+- Status: `Persisted Translation Acceptance Complete; Accuracy Limits Recorded`
+- Completed item count: `65` (direct owner recount including TRUI-06).
 - Needs confirmation count: `0`
-- Unchecked item count: `0` (OCR-08 complete).
+- Unchecked item count: `0` (TRUI-06 accepted; earlier completion evidence unchanged).
 
 #### Completed Work
 
@@ -923,10 +1236,10 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
-- Status: `Interaction Policy Recovery Delivered`
-- Completed item count: `82`
+- Status: `Translation Foundation Technically Verified; Literary Quality Follow-up`
+- Completed item count: `97` (direct owner recount including TRUI-01).
 - Needs confirmation count: `0`
-- Unchecked item count: `7` (historical items; INTERACT-01..03 complete).
+- Unchecked item count: `0` (TRUI-01 accepted; technical delivery does not certify literary accuracy).
 - 2026-10-19 INTERACT-03 delivery: `3/3` of this module's new track complete.
   Server-owned prompt/language/guard/source identity gates analysis/quiz reuse and
   exposes stale thinking sessions without deleting history or generating on read.
@@ -1140,10 +1453,10 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
-- Status: `PDF Mode Contract And Execution Integrated`
-- Completed item count: `38` (direct checklist recount corrects the stale 18-item aggregate).
+- Status: `Persisted Block Translation Read/Generate API Exposed`
+- Completed item count: `43` (direct owner recount including TRUI-05).
 - Needs confirmation count: `0`
-- Unchecked item count: `3` (historical items unchanged).
+- Unchecked item count: `1` (historical item; TRUI-05 accepted).
 - 2026-10-15 PDF-MODE-01: `1/1`; enum/default, route pass-through, typed failures
   and provenance contract verified by 11 tests. PDF-MODE-05 removes the staged
   501 gate through execution/reuse integration; TXT fast and internal legacy paths

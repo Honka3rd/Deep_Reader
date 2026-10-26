@@ -1567,6 +1567,7 @@ class SectionTaskCoordinator:
         refresh_task_units: bool = False,
         task_unit_split_mode: TaskUnitSplitMode | str | None = None,
         semantic_top_k_candidates: int | None = None,
+        *, cleanup_snapshot=None,
     ) -> None:
         """Explicitly persist layout for an already-prepared structured document."""
         options = self._resolve_task_unit_request_options(
@@ -1575,11 +1576,19 @@ class SectionTaskCoordinator:
         )
         with log_stage(logging.getLogger(__name__), "task_layout.repository_read"):
             document = self.document_artifact_repository.load_document(doc_name)
+        def guard():
+            if cleanup_snapshot is not None:
+                from document_structure.reading_content import ReadingContentConflict
+                current = self.read_cleanup_input(doc_name)
+                if current.fingerprint() != cleanup_snapshot.fingerprint():
+                    raise ReadingContentConflict("cleanup_confirmation_stale")
+        guard()
         self._get_or_refresh_task_layout_document(
             doc_name=doc_name,
             structured_document=document,
             resolve_options=options,
             refresh_task_units=refresh_task_units,
+            before_write=guard,
         )
         # Validate persisted state, not the in-memory write result (DB may assign IDs).
         self._load_ready_task_layout_document(doc_name, options)
@@ -2486,7 +2495,7 @@ class SectionTaskCoordinator:
     @contextmanager
     def enhancement_candidate(self, *, doc_name: str, discard_interactions=False,
                               confirmation_token=None, toc_hint="auto",
-                              enhancement_intent="restore_source"):
+                              enhancement_intent="restore_source", allow_ocr_cleanup=False):
         """Candidate handoff retaining consent and lease through atomic commit.
 
         Keep the lease through the caller's future commit, not just generation.
@@ -2496,7 +2505,7 @@ class SectionTaskCoordinator:
         with enhancement_preflight_service.authorize_execution(
             doc_name=doc_name, discard_interactions=discard_interactions,
             confirmation_token=confirmation_token, toc_hint=toc_hint,
-            enhancement_intent=enhancement_intent,
+            enhancement_intent=enhancement_intent, allow_ocr_cleanup=allow_ocr_cleanup,
         ) as state:
             candidate = self.document_preparation_pipeline.build_enhancement_candidate(
                 snapshot=state.source, toc_hint=toc_hint,
@@ -2538,8 +2547,48 @@ class SectionTaskCoordinator:
             expected_document_id=name, structure_version=stored.structure_version,
             source_path=source_path, accepted=stored.accepted,
         )
+        from document_structure.reading_content import state_for
         return EnhancementState(source, stored.interaction_revision,
-                                stored.interaction_count, stored.includes_user_notes)
+                                stored.interaction_count, stored.includes_user_notes,
+                                state_for(stored.document).get("revision", 0), stored.document,
+                                str(source_path))
+
+    def read_committed_enhancement(self, request):
+        from app.enhancement_cleanup import read_committed_operation
+        return read_committed_operation(self, request)
+
+    def read_cleanup_input(self, doc_name):
+        """Read one accepted storage snapshot; no prepare/extraction/profile work."""
+        from document_preparation.cleanup_input_adapter import adapt_document_cleanup_input
+        from document_preparation.accepted_source_snapshot import SourceNotReady
+        try:
+            state = self.read_enhancement_state(doc_name)
+        except SourceNotReady as error:
+            if error.reason == "document_missing":
+                raise FileNotFoundError(doc_name) from None
+            raise
+        return adapt_document_cleanup_input(document=state.document, snapshot=state.source,
+            expected_reading_revision=state.reading_revision,
+            accepted_source_path=state.accepted_source_path)
+
+    def cleanup_layout_ready(self, snapshot):
+        return self.reading_layout_ready(snapshot.document())
+
+    def reading_layout_ready(self, document):
+        """Project actual cache readiness without repairing it or generating a profile."""
+        options = self._resolve_task_unit_request_options(
+            task_unit_split_mode="progressive", semantic_top_k_candidates=None)
+        return (self._task_layout_cache_reason(document=document, resolve_options=options) == "valid"
+                and not self.task_unit_id_normalizer.find_duplicate_task_unit_ids(document=document))
+
+    def prepare_cleanup_layout(self, snapshot):
+        """Explicit continuation under the caller's shared document lease."""
+        self.ensure_document_task_layout(snapshot.document_id, task_unit_split_mode="progressive",
+                                         cleanup_snapshot=snapshot)
+
+    def finish_enhancement_layout(self, request):
+        from app.enhancement_cleanup import finish_layout
+        return finish_layout(self, request)
 
     def enhancement_lease(self, doc_name: str):
         from app.enhancement_preflight import EnhancementConflict
@@ -2567,6 +2616,7 @@ class SectionTaskCoordinator:
         parser_mode: SectionParserMode | str,
         *, toc_hint: str | None = None, enhancement_intent: str = "restore_source",
         discard_interactions: bool = False, confirmation_token: str | None = None,
+        allow_ocr_cleanup: bool = False,
     ) -> ReparseDocumentStructureResult:
         """Explicitly reparse one document structure with selected parser mode."""
         normalized_doc_name = doc_name.strip()
@@ -2583,16 +2633,25 @@ class SectionTaskCoordinator:
             from app.enhancement_preflight import enhancement_preflight_service, EnhancementConflict
             from db.postgres_structured_document_store import EnhancementCommitConflict
             from document_preparation.structure_enhancement_candidate import EnhancementCandidateRejected
+            from document_structure.reading_content import ReadingContentConflict
             from pathlib import Path
             request = dict(doc_name=normalized_doc_name, toc_hint=toc_hint or "auto",
                            enhancement_intent=enhancement_intent, discard_interactions=discard_interactions,
-                           confirmation_token=confirmation_token)
+                           confirmation_token=confirmation_token, allow_ocr_cleanup=allow_ocr_cleanup)
             enhancement_preflight_service.verify_consent(**request)
             unavailable = enhancement_preflight_service.execution_unavailable_reason(normalized_doc_name)
             if unavailable:
                 raise EnhancementConflict(unavailable, 503)
             try:
                 with self.enhancement_candidate(**request) as (state, candidate):
+                    cleanup_args = {}
+                    if allow_ocr_cleanup:
+                        from app.enhancement_cleanup import prepare_cleanup
+                        from app.enhancement_operations import EnhancementOperations
+                        prepared = prepare_cleanup(self, request, state, candidate)
+                        cleanup_args = dict(cleanup=prepared.application, operation={
+                            "id": EnhancementOperations._key(request),
+                            "cleanup": prepared.outcome.model_dump(mode="json") if prepared.outcome else None})
                     root = Path(self.document_preparation_pipeline.loader_factory.base_dir).resolve()
                     paths = [root / f"{state.source.document_id}{suffix}" for suffix in (".pdf", ".txt")]
                     present = [path for path in paths if path.is_file() and path.resolve().parent == root]
@@ -2600,7 +2659,9 @@ class SectionTaskCoordinator:
                         raise EnhancementConflict("source_changed")
                     committed = self.document_artifact_repository.commit_enhancement(
                         normalized_doc_name, candidate=candidate,
-                        interaction_revision=state.interaction_revision, source_path=present[0])
+                        interaction_revision=state.interaction_revision, source_path=present[0], **cleanup_args)
+                if allow_ocr_cleanup:
+                    return self.read_committed_enhancement(request)
                 return ReparseDocumentStructureResult.ok(
                     doc_name=normalized_doc_name, parser_mode="llm_enhanced",
                     structured_document_path=None,
@@ -2611,9 +2672,12 @@ class SectionTaskCoordinator:
                 return ReparseDocumentStructureResult.fail(doc_name=normalized_doc_name,
                     parser_mode="llm_enhanced",
                     error=f"prepare_structured_document_llm_enhanced_rejected:{error}",
-                    retryable=str(error) == "enhancement_provider_transient")
+                    retryable=str(error) == "enhancement_provider_transient",
+                    retry_stage="generation" if allow_ocr_cleanup and str(error) == "enhancement_provider_transient" else None)
             except EnhancementCommitConflict as error:
                 raise EnhancementConflict(str(error), 503 if "unavailable" in str(error) else 409) from error
+            except ReadingContentConflict as error:
+                raise EnhancementConflict(str(error)) from error
         print(
             "SectionTaskCoordinator#reparse_document_structure:",
             f"doc_name={normalized_doc_name}",
@@ -3125,11 +3189,13 @@ class SectionTaskCoordinator:
         resolve_options: TaskUnitResolveOptions,
     ) -> dict[str, str | int | None]:
         """Build deterministic task-layout cache metadata."""
+        from document_structure.reading_content import state_for
         return {
             "source_hash": self._compute_source_hash(document),
             "task_unit_split_mode": resolve_options.split_mode.value,
             "semantic_top_k_candidates": resolve_options.semantic_top_k_candidates,
             "resolver_version": self._TASK_LAYOUT_RESOLVER_VERSION,
+            "reading_revision": state_for(document).get("revision", 0),
         }
 
     def _is_task_layout_cache_valid(
@@ -3168,6 +3234,11 @@ class SectionTaskCoordinator:
         for key in ("source_hash", "task_unit_split_mode", "semantic_top_k_candidates", "resolver_version"):
             if raw_task_layout.get(key) != expected[key]:
                 return key + "_mismatch"
+        from document_structure.reading_content import state_for
+        state = state_for(document)
+        cleanup_dependent = any(state.get(key) for key in ("cleanup_spans", "source_edits", "cleanup_receipts"))
+        if cleanup_dependent and raw_task_layout.get("reading_revision", 0) != expected["reading_revision"]:
+            return "reading_revision_mismatch"
         return "valid"
 
     @log_stage(logging.getLogger(__name__), "task_layout.cache")
@@ -3178,6 +3249,7 @@ class SectionTaskCoordinator:
         structured_document: StructuredDocument,
         resolve_options: TaskUnitResolveOptions,
         refresh_task_units: bool,
+        before_write=None,
     ) -> _TaskLayoutDocumentResult:
         """Return document with valid persisted section.task_units, recomputing when needed."""
         reason = "explicit_refresh" if refresh_task_units else self._task_layout_cache_reason(
@@ -3193,6 +3265,8 @@ class SectionTaskCoordinator:
                     document=structured_document
                 )
                 with log_stage(logging.getLogger(__name__), "task_layout.repository_repair"):
+                    if before_write is not None:
+                        before_write()
                     self.document_artifact_repository.save_document(
                         repaired_document,
                         doc_name=doc_name,
@@ -3231,7 +3305,9 @@ class SectionTaskCoordinator:
         )
         with log_stage(logging.getLogger(__name__), "task_layout.resolve_units") as metrics:
             resolver = layout_resolver if callable(layout_resolver) else self.task_unit_resolver.resolve_with_options
-            resolved_task_units = resolver(
+            from document_preparation.reading_layout_handoff import resolve_reading_layout
+            resolved_task_units = resolve_reading_layout(
+                resolver=resolver,
                 document=task_layout_document,
                 split_mode=resolve_options.split_mode,
                 semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
@@ -3254,6 +3330,8 @@ class SectionTaskCoordinator:
             resolve_options=resolve_options,
         )
         with log_stage(logging.getLogger(__name__), "task_layout.repository_update"):
+            if before_write is not None:
+                before_write()
             updated_document = self.document_artifact_repository.update_task_layout(
                 doc_name=doc_name,
                 task_units_by_section_id=task_units_by_section_id,

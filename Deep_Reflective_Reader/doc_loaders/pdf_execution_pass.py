@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PdfExecutionLimits:
-    text_render_attempts: int = 1024
-    text_ocr_attempts: int = 4096
-    text_seconds: float = 1800.0
+    # No document-wide OCR quota during development; per-command timeouts remain.
+    text_render_attempts: int | None = None
+    text_ocr_attempts: int | None = None
+    text_seconds: float | None = None
     layout_render_attempts: int = 30
     layout_ocr_attempts: int = 120
     layout_seconds: float = 60.0
@@ -31,6 +32,8 @@ class PdfExecutionLimits:
 
     def __post_init__(self):
         for name, value in vars(self).items():
+            if value is None and name in {"text_render_attempts", "text_ocr_attempts", "text_seconds"}:
+                continue
             if name.endswith("seconds"):
                 valid = type(value) in (int, float) and math.isfinite(value) and value >= 0
             else:
@@ -113,6 +116,8 @@ class PdfExecutionPass:
     def remaining(self, purpose):
         prefix = "text" if purpose == "text_recovery" else "layout"
         limit = getattr(self.limits, f"{prefix}_seconds")
+        if limit is None:
+            return math.inf
         now = self.clock()
         return limit - (now - self.started.setdefault(purpose, now))
 
@@ -128,7 +133,7 @@ class PdfExecutionPass:
         count_key = (purpose, stage)
         count = self.counters.get(count_key, 0)
         remaining = self.remaining(purpose)
-        reason = "time" if remaining <= 0 else stage if count >= limit else None
+        reason = "time" if remaining <= 0 else stage if limit is not None and count >= limit else None
         if reason:
             raise self.exhausted(purpose, stage, page, reason, count)
         self.counters[count_key] = count + 1

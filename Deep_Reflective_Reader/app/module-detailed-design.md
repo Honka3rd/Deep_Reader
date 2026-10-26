@@ -1,5 +1,454 @@
 # app Detailed Design
 
+## Persisted Translation Orchestration Plan (2026-10-26)
+
+**[Code-Confirmed]** TRUI-04 extends the historical stateless action below.
+Shared contract/lifecycle: [translation plan](../section_tasks/module-detailed-design.md#persisted-block-translation-plan-2026-10-26).
+Keep TranslationService as the reusable provider/prompt owner. App coordinates
+registry validation, existing profile default, authoritative block resolution,
+generation and domain-owned repository commit; no new prompt or SQL in app.
+
+Read current language-keyed results with zero model/profile generation, mutation or
+stale-row cleanup. Opening controls loads supported registry codes and the existing
+profile's default language; absent/unknown defaults are selectable, not fabricated.
+Explicit source override still wins. Generate persists only completed/partial valid
+results after commit-time text/version/deletion-epoch and same-language revision
+checks. Untranslatable/provider/validation/commit failure retains earlier records.
+Resolve an omitted/null source from the existing profile, then reject equal
+source/target codes with `translation_same_language` before saved lookup or replay.
+An existing valid target language is reused unchanged for a valid distinct pair,
+even with a different From or mutation ID, before model calls/writes. Only a missing target
+language generates; concurrent different languages
+merge atomically. Same mutation replay returns the saved outcome without another
+completion once committed; distinguish source conflict, transport failure and
+unknown commit. Never keep an LLM request inside a repository transaction.
+
+Storage uses existing document artifact metadata and atomic mutation
+ports, with section_tasks owning records and document_structure owning source-change
+cleanup; db adapters provide transaction guarantees. Verify ordinary artifact save,
+rename/delete/reparse and Undo do not drop/resurrect translations unintentionally.
+No frontend state, polling, timeout/cost policy or job queue is backend truth.
+
+TranslationAction.read returns current saved records, exact registry codes and the
+existing profile default without model calls or writes. Generate checks the resolved
+language pair, then current saved target language, then replay; on a miss it calls TranslationService and commits
+through domain commit_translation. Source binding guards still exclude stale results. Concurrent
+same-command completions return the committed record, not an unsaved alternative
+model response. Untranslatable does not save; failures preserve prior translations.
+File and SQL CAS/merge/rollback/rename/source-race tests and live backup-excerpt
+App/API tests pass. The stateless section below is historical first-phase evidence.
+
+Recovery clarification (2026-10-26): saved reads expose current records, not durable
+in-flight operation status. A missing target record cannot prove that an earlier
+request was cancelled or never committed. The UI retains command-specific retry IDs
+and allows another language pair; app/domain still enforce source-valid reuse,
+same-command replay and guarded commit. Existing records survive provider failure.
+Equal source/target pairs fail even if a target record or replay receipt exists.
+An explicit valid source avoids profile lookup. For omitted/null source, a profile
+read failure returns 503 even on a cache hit; absent/unknown profile may still reuse
+an existing saved target, but generation requires an explicit source. Saved reads
+retain historical equal-language records; no migration or deletion is introduced.
+Frontend behavior is
+specified in the [UI recovery design](../../Deep_Reader_UI/module-detailed-design.md#failure-recovery-2026-10-26).
+
+## Block Translation Action (2026-10-26)
+
+**Historical TRANS-API-01 scope, superseded by the persisted orchestration above.**
+The no-write and future-frontend statements below describe that initial phase only;
+current generation commits completed/partial records and UI delivery is implemented.
+
+`TranslationAction` owns only target/profile orchestration; TranslationService
+owns the prompt, capacity rules and output validation. Input is doc_name,
+content_block_id, target_language and optional source_language. This is block-only:
+do not accept source text or require frontend chapter/section/task-unit IDs.
+Search the authoritative hierarchy's render-compatible blocks for exact identity;
+reject missing/duplicate matches and use ReadingTargetResolver for effective
+manual-edit/cleanup content. IDs are opaque, not parsed by prefix.
+
+An explicit source_language wins without reading the profile. Omitted/null loads
+the existing DocumentProfile.document_language (the public profile language), with
+read-only path configuration: no directory creation, migration, profile generation,
+OCR, preparation or ancestor summaries. Missing/unknown language requires explicit
+selection; corrupt/unavailable profile is a service failure, not a language guess.
+
+Translate the whole effective block or reject capacity before completion. Source
+review flags alone do not erase/block translation: the shared translation prompt
+returns partial/untranslatable for unreadable input rather than inventing text.
+No artifact/session/cache/database write is introduced. After completion, reload
+and compare target content, structure version, reading revision and interaction
+epoch; reject deleted/reparsed/edited sources with translation_source_changed.
+There is no transaction held over the model request. Return the checked snapshot's
+version/revision/effective text digest, not a claim that future reads cannot change.
+Frontend result lifecycle and translation persistence are separate future work.
+
+Tasks: TRANS-API-01 in this module, then transport/DI/acceptance TRANS-API-02 in main.
+
+## Offline Preflight Follow-up (2026-10-24)
+
+**[Code-Confirmed 2026-10-24]** WAIT-04 adds observability, not a second cleanup engine or a job queue.
+Incident, offline provider policy and execution order:
+[WAIT design](../llm/module-detailed-design.md#offline-preflight-follow-up-2026-10-24).
+Previously `StandaloneCleanupService.preflight` reported only total elapsed time; this
+was insufficient to distinguish tokenizer acquisition from full-prompt counting in
+the 157.6-second dark-water incident. Source reuse/input adaptation already have logs.
+
+Record request-correlated start/end/failure and elapsed time for lease acquisition,
+accepted input read/adaptation, capacity invocation, fingerprint/consent registration
+and overall preflight outcome. Emit safe reason and execution availability on all
+returns, including rejection/exception, without logging opaque consent/handle values,
+private text or raw exception payloads. LLM-owned asset/init/count logs from WAIT-02
+complete the timeline; app must not reimplement encoding/prompt construction to time it.
+No additional source/repository read solely for logging. Logging failure must not
+change operation semantics. Reuse the existing request context and timing helpers.
+
+Preflight remains zero completion/OCR/profile work and zero document-content writes;
+its short-lived in-memory consent registration is not a cleanup commit. Keep existing
+shared lease, snapshot/capacity revalidation, short write transactions and unknown
+outcome reconciliation. Do not hold a new DB transaction over initialization or add
+request-path asset repair. Frontend removal of fixed deadlines does not disable
+backend provider timeouts, consent expiry, concurrency checks or capacity refusal.
+No new HTTP route or diagnostic payload is needed for these internal timings.
+
+### WAIT-04 Delivery (2026-10-24)
+
+`StandaloneCleanupService.preflight` retains the existing result/exception mapping;
+its private `_preflight` coordinates the same lease, accepted-input reader, capacity
+engine and process-local consent registry. `cleanup_preflight_logging` is a scoped
+logging adapter around existing `logging_config.log_stage`, not a second timer or
+tokenizer. It supplies these `cleanup_preflight_*` spans:
+
+- `overall`: one terminal availability/reason for every returned result.
+- `lease`: acquisition only, not time spent doing work while holding the lease.
+- `reconciliation`: existing uncertain-attempt checks, without extra receipt reads.
+- `input`: accepted-source read/adaptation and eligibility check, called once.
+- `capacity`: existing engine call, including full prompt/schema assembly/counting,
+  called once; nested llm-owned initialization/count logs retain the same request ID.
+- `consent`: input fingerprint, token binding and bounded in-memory registration.
+
+Existing stage IDs/parent IDs and request ContextVar correlate worker-thread logs.
+Started stages emit finished/failed events with duration; unreached stages emit
+nothing. Business refusals finish with `unavailable` and a safe reason; exceptions
+mark the throwing span `failed`, while handled failures still produce an overall
+unavailable result. Cancellation propagates and marks the overall span failed.
+Stage context and the original lease unwind on every path. `execution_available`
+is false until successful consent/overall completion; it is diagnostic, not new
+authorization state or an HTTP field. No source, prompt, path, token, handle or
+fingerprint is added to these records. Reason strings are allowlisted for logging;
+unknown values map to `cleanup_preflight_unavailable` without changing use-case
+results or route-owned sanitization. Existing shared logging emits exception type,
+never exception message. The adapter absorbs ordinary sink exceptions for its new
+records, preserving success/failure and context cleanup. Global logging and unrelated
+services are unchanged; this does not promise every older log call is fault-isolated.
+
+Validation: `scripts/test_cleanup_preflight_logging.py` adds 14 tests for paired
+spans/parentage, deterministic per-stage timing, single read/count, no content writes,
+capacity refusal/unavailability, actual missing-asset fallback without network,
+source/identity/eligibility failures, busy lease, reconciliation and consent failures,
+safe unknown reasons, sink failures, cancellation and concurrent request isolation.
+Actual FastAPI middleware/worker invocation retains the existing six-field DTO
+(including `impact`) and correlates every new record with `X-Request-ID`.
+208 scoped regressions pass with verified local tokenizer assets, immutable-book
+opt-ins and disposable PostgreSQL. Three OCR backup books retain hashes through
+existing service/API tests with deterministic model responses; Madame Bovary/Red
+Roulette full accepted-text counter checks also preserve backups. The disposable
+database was dropped. No paid model call, production mutation, deployment or restart.
+
+Broader legacy check: `test_upload_preparation_logging.LoggingTests.test_prepare_stages_and_cache_preserve_behavior`
+still expects `structured_reused=True` from an outdated Common-policy fixture and
+fails with `common_policy_mismatch`. The same failure reproduces independently in
+the pre-WAIT-04 image `62776af533ea`; shared logging/parser code was not changed or
+the unrelated assertion weakened. The 208 passing cases exclude that known failure.
+Full incident-book cold/warm HTTP and browser acceptance remains WAIT-05; these
+stage tests do not claim that final performance gate or production deployment.
+
+## Independent Cleanup Use Cases (2026-10-23)
+
+**[Code-Confirmed: SCLEAN-05/07, 2026-10-24]**
+SCLEAN-05 owns a narrow cleanup use-case service; SCLEAN-07 integrates its shared
+planning path with enhance. Canonical rules:
+[Independent Smart Cleanup](../document_structure/module-detailed-design.md#independent-smart-cleanup-2026-10-23).
+The service coordinates preflight/consent, source snapshot adapter, planner,
+repository commit and explicit readiness recovery. Do not put prompt construction,
+quote matching, SQL or a generic job framework in SectionTaskCoordinator. Existing
+coordinator entry points may delegate without exposing internal planning/staging
+methods to HTTP or UI. Do not call the service's standalone commit from enhance:
+enhance owns the combined hierarchy/overlay commit; both reuse the same planner.
+
+Standalone consent authorizes only safe OCR deletion and changed-content generated
+invalidation, retaining notes/manual edits and structure. It cannot reuse structural
+discard_interactions permission. Bound source/hierarchy/reading revision, cleanup
+policy/prompt and capacity identity are checked again before dispatch/commit.
+Preflight and result lookup are read-only and make no model/OCR/profile calls.
+Failed/no-op cleanup does not invalidate output. Current revision and durable receipt
+take precedence over browser state; a historical receipt after Undo is superseded.
+
+Replay the same operation without regeneration; fresh explicit cleanup obtains new
+consent and can call the cleanup LLM again, never the split LLM. Refresh/unknown
+commit outcomes first reconcile; database read failure must not look like absence.
+Process-local in-flight work is not durable; a new attempt cannot silently race a
+possibly running old operation. Source/revision CAS and operation ownership guard
+both standalone and combined flows. Release transactions before model calls.
+Expose a small retry action (regenerate_cleanup, resume_layout, reconcile, none),
+not provider failure internals. Fresh consent is required for regenerate_cleanup;
+resume_layout preserves the committed result and makes zero generation calls.
+
+Logs record operation origin (standalone/enhancement), stages/timing, version,
+counts/reason, commit/rollback/replay and layout. Do not log source quotes or tokens.
+Automatic cleanup failure is nonblocking only for the valid split candidate; final
+combined commit failure is still fatal. Standalone failure preserves the previous
+reading state. The use case, not the UI, performs any required layout continuation.
+
+### SCLEAN-05 Delivery (2026-10-24)
+
+`standalone_cleanup.StandaloneCleanupService` exposes preflight, execute, read-only
+lookup and explicit resume_layout. Composition injects one accepted-input reader,
+the repository/provider, the SAME cross-process document lease used by enhancement,
+and read-only readiness / source-and-revision-guarded layout continuation ports.
+No default unlocked execution, private coordinator calls, SQL, matching rules or
+prompt construction are added to app. Runtime port composition is SCLEAN-07;
+minimal HTTP mapping is SCLEAN-06. Neither is claimed implemented by this service.
+
+Preflight budgets the complete remaining-view prompt through the structure-owned
+engine, with zero model calls. Five-minute opaque consent handles bind namespace,
+document, full input fingerprint, reading revision, prompt/policy and model-capacity
+identity. They authorize only standalone cleanup, not all-interaction discard.
+Execution rechecks under the document lease, the engine checks capacity identity
+again before dispatch/transient retry, and app checks again before the short commit.
+Precommit records are process-local, bounded to 1024 entries with one-hour inactive
+retention; active work is never evicted. Restart does not authorize replaying an
+uncommitted attempt. A new attempt needs fresh explicit consent, readable storage,
+a newly accepted snapshot and an available shared lease. Locally uncertain writes
+are reconciled first. Same-operation execution never implicitly regenerates a plan.
+
+Durable content-only receipts now include a minimal source/structure fingerprint.
+Lookup verifies namespace/document/operation, accepted source, structure version,
+reading revision and actual injected readiness; historical layout flags alone are
+not readiness authority. Missing legacy lineage, later edits or Undo cannot authorize
+layout continuation. Missing receipts after restart stay unknown; read failures are
+reported separately and are never swallowed as absence. Lost commit acknowledgements
+reconcile the receipt before any continuation. Conflicts preserve concurrent work;
+unconfirmed storage failures remain unknown. Fresh confirmed retries call only the
+cleanup planner. Failed/partial plans retain their actual counts/status and retry
+action, never report complete repair of all OCR regions.
+
+After a confirmed commit, the service checks readiness and explicitly invokes the
+layout port when required. Failure returns resume_layout; lookup itself does not
+prepare. Resume after restart preserves the committed outcome and makes zero model
+or cleanup-commit calls. The port must CAS its supplied accepted snapshot before
+writing and reuse existing profile/source; actual preparation wiring remains SCLEAN-07.
+Stage/timing logs use hashed operation IDs and safe reasons, not consent tokens,
+private source text or exception payloads.
+
+Validation: `test_standalone_cleanup_service.py` adds 32 file and the same 32 isolated
+PostgreSQL use-case cases. Total 248 local and 146 disposable SQL/API/enhancement
+regressions pass. Includes consent expiry/staleness, dispatch-time model changes,
+duplicate/concurrent submission, provider retry, rollback/lost response, restart,
+read failure versus absence, no-op/partial, Undo/supersession and layout-only recovery.
+Three hash-verified backup books exercise actual accepted adapters, shared engine and
+file/SQL commits using deterministic provider responses; Sample2 applies the previously
+reviewed deletion. Backups and production Library remain unchanged. No live LLM,
+standalone HTTP/UI availability or service deployment is claimed. SCLEAN-10 remains
+the live-model/browser acceptance gate.
+
+### SCLEAN-06 Transport Support (2026-10-24)
+
+The use case now derives the opaque operation ID from the confirmation token's
+SHA-256 prefix. Execute checks this commitment before lookup or layout continuation,
+including after restart; receipts retain only the operation handle, never the token.
+Previously issued independent random-ID precommit handles are not compatible with
+this initial public wire contract and require fresh preflight. No standalone public
+API was shipped before SCLEAN-06.
+
+Repeat execute on a committed layout phase delegates to the same private layout
+continuation while holding the shared document lease. No route-owned recovery
+engine or second planner is added. Committed lookup includes current pending review
+count from the accepted snapshot; unavailable current review state remains unknown.
+Missing-document errors remain distinct from unknown-operation or storage-read
+failure. Unknown handles check accepted document existence read-only; this neither
+generates nor authorizes retry. Transport/status mapping remains in the API module.
+Production port composition and automatic enhancement integration are delivered by
+SCLEAN-07 below; the preceding test receipts describe their original task scope.
+
+### SCLEAN-07 Runtime Composition (2026-10-24)
+
+`cleanup_runtime.build_cleanup_service` injects public coordinator ports into the
+existing standalone service; it owns no prompt, validation, SQL or retry policy.
+Composition requires coherent snapshot and shared cross-process enhancement lease
+ports; unsupported storage remains unavailable. Preparation and standalone receive
+the same configured provider directly. Main installs the service without model I/O.
+
+EnhancementState retains its coherent accepted hierarchy for the candidate adapter;
+cleanup does not reload a persisted candidate. Enhance and standalone use the same
+remaining-view planner, exact validator and overlay application; only their commit
+contracts differ. Consent binds the new remaining-view prompt/policy as well as the
+existing overlay scope. Adapter failure retains the valid split and reports failed
+cleanup. Public reading_layout_ready is shared by both reconciliation paths; explicit
+prepare_cleanup_layout guards accepted input before work and just before layout
+write. No-op receipts retain existing IDs even when refreshing stale cache metadata.
+Same-op retries do not generate, and independent retries never invoke enhancement.
+
+Evidence/counts belong to preparation SCLEAN-07: 30 new real-layout cases, 308 local
+and 190 SQL/API regressions plus 16 existing consent/operation/cache cases. Actual
+default API dependency, container/provider reuse and same-document lease tested;
+three backup books unchanged. No deployment, UI or live-model acceptance claim.
+
+## Cleanup Layout Handoff Support (2026-10-23)
+
+Supporting preparation CLEAN-05 only: explicit layout resolution delegates to the
+canonical/effective mapping helper, retaining existing overlay targets. Cache metadata
+includes reading_revision; cleanup-dependent mismatch is read-only not-ready until
+explicit preparation. CLEAN-08 supporting mutation now advances an already matching
+stamp atomically for explicit overlay changes/Undo, preserving canonical units/IDs;
+a previously stale or missing stamp still requires explicit preparation. Thus Undo
+of a ready document no longer makes page reload fail. Ordinary manual block/review-only
+edits retain readiness. Repeated ready preparation does not write.
+Public cleanup execution, consent, outcomes and automatic invocation are delivered
+by CLEAN-06 below; this supporting cache change alone exposed no frontend capability.
+
+## Optional OCR Cleanup Operation (2026-10-22)
+
+**[Code-Confirmed]** CLEAN-06 delivered on 2026-10-23. API support is implemented;
+frontend consent/integration and real-book acceptance remain separate tasks.
+See [canonical design](../document_structure/module-detailed-design.md#optional-ocr-cleanup-plan-2026-10-22).
+Orchestrate explicit enhance as split/validate in memory -> optional cleanup/fix
+plan and in-memory application -> one atomic hierarchy/overlay commit -> automatic
+explicit layout preparation/read handoff. No manual Prepare, intermediate hierarchy
+save or database reload to perform cleanup.
+Do not hold a database transaction open across LLM requests. Keep operation identity
+and stage receipts so refresh/response loss can reconcile the single final commit
+without repeating its mutations. Generation receipts are not hierarchy saves; never
+expose an uncommitted candidate as the current document. Persist minimal source/version/revision-
+bound phase receipts via the repository; do not claim the current process-local
+registry survives restarts. Unknown outcome remains unknown until storage is checked.
+
+Extend existing preflight, execution and result DTO/routes additively; load root
+main/api_schemas memory before changes. Preserve structural change_kind/committed/
+structure_version/interactions_cleared meanings. Add optional typed cleanup outcome
+(status, proposed/applied/skipped counts, safe reason, reading_content_changed,
+reading_revision) and phase-aware retry information. Legacy absence means unknown/
+unsupported, never cleanup completed. Update reading_layout_required based on actual
+effective-content freshness, including cleanup after structurally unchanged results.
+Return/reload server-owned remaining review state after the final commit. Only
+regions proven fully resolved by the backend leave the active review queue; no
+redundant manual Ignore is required. Failed/partial/textless regions remain pending.
+Undo restores batch-resolved review states with reading content. Do not equate
+cleanup.status=completed with every OCR region resolved or perfect transcription.
+
+Cleanup failure/skip retains the usable uncleaned split candidate and a warning;
+only a successful final commit can report structural success. Final commit failure
+rolls back hierarchy and overlay together, retaining the old stored document.
+Transient cleanup provider failure may retry before commit without cost gates; on
+failure, continue with the retained split candidate. After commit, do not implicitly
+reload and clean/save again: recovery retries only layout/read or reconciles the
+existing receipt. A new enhancement requires explicit initiation and fresh consent.
+This recovery rule concerns replay of that same enhance operation. The new SCLEAN
+design additionally permits a separately confirmed standalone cleanup operation
+after failed/partial cleanup; it does not require another enhancement or split.
+Final source/revision/consent conflicts reject the whole stale write and preserve
+concurrent user work; they are not downgraded to optional-cleanup warnings.
+
+Consent must explicitly include OCR cleanup and generated-output invalidation while
+distinguishing structural replacement's all-interaction deletion. Bind reading
+revision and cleanup policy identity; stale or old-scope consent cannot authorize it.
+No-op structural results do not short-circuit optional cleanup. Separate capacity
+checks ensure oversized cleanup requests make zero cleanup calls without blocking
+a feasible structure operation. Correlated privacy-safe logs cover both stages and
+layout, including counts, failure reasons, timings, replay and rollback.
+
+### CLEAN-06 Delivery And Recovery Contract (2026-10-23)
+
+- Strict additive `allow_ocr_cleanup` defaults false on preflight, reparse and result
+  requests. The existing reparse adapter only accepts true with llm_enhanced;
+  SCLEAN adds a separate entry rather than relaxing reparse into a cleanup endpoint.
+  Existing clients do not implicitly grant
+  deletion authority through discard_interactions. Consent v3 binds this option,
+  current reading revision, cleanup scope/policy/prompt, and existing source,
+  hierarchy/interaction and model-capacity identities. Preflight exposes eligibility,
+  revision, scope and conditional generated-output invalidation without a model call.
+- `enhancement_cleanup.py` invokes the configured structure provider through the
+  independent full-source cleanup planner. No extraction/profile work or transaction
+  spans generation. One transient transport retry is permitted before commit; no
+  token/cost/OCR quota is introduced. Capacity/invalid-plan/permanent failures skip
+  cleanup and retain the candidate. An empty internal application preserves prior
+  manual/source overlays through structural replacement without authorizing deletion;
+  the reported outcome remains the actual failure/skip, not a fabricated no-op success.
+- The one final hierarchy/overlay transaction also stores an operation-keyed minimal
+  receipt in parse_provenance.enhancement_receipts. It contains structural outcome,
+  source identity/hash, resulting structure/reading revisions, counts and cleanup
+  outcome, not confirmation tokens, source text or model responses. Unchanged
+  structure can therefore write an operation/cleanup receipt while committed=false
+  retains its original structural meaning. Cleanup revision/change lives separately.
+- The opted-in POST automatically runs explicit progressive layout after commit.
+  success=true proves structural commit only; phase=complete proves current layout
+  readiness. Layout failure returns phase=layout, retryable=true, retry_stage=layout
+  and a safe layout_error. Transient precommit structural generation instead returns
+  its existing error status with retry_stage=generation. Optional cleanup failure is
+  terminal for that committed operation, not permission to save/reload/clean again.
+- Result polling is read-only. A matching persisted receipt returns
+  durability=persisted_commit and status=completed (commit completed, not necessarily
+  layout). Current layout metadata determines phase after restart/response loss.
+  Reposting the same confirmed request resumes only missing layout, rechecking source
+  identity under the document lease. It does not depend on the restarted process's
+  signing secret or expired precommit token, because a scoped exact receipt proves
+  authorization already exercised. A changed reading/source/structure state yields
+  historical phase=superseded without automatic mutation or retry. Review counts
+  always describe current stored state, including review restored by Undo.
+- Before commit there is still only the bounded process-local operation registry,
+  not a durable job queue. Missing/evicted receipts remain unknown, never permission
+  to regenerate automatically. Receipt history is bounded to 1000 metadata records;
+  this is not a model-use quota. Failed result-store reads return a sanitized error.
+  A durable receipt never claims an uncommitted candidate was saved or a precommit
+  model request survived a worker restart. Last layout exception text is not stored;
+  after refresh the server proves pending layout rather than reproducing that error.
+- Final storage failure rolls back receipt/hierarchy/overlay/invalidation together.
+  Lost commit acknowledgement remains unknown until receipt reconciliation. Cleanup
+  safety conflicts reject stale operations; they are never optional-failure success.
+  Authoritative pending_review_count/review_required come from remaining regions,
+  not cleanup.status. Existing reading-content Undo restores the review queue.
+
+### CLEAN-06 Governance And Validation Receipt (2026-10-23)
+
+Inspected: AGENTS.md; proposal.md; high-level-design.md; docs/modules/index.md;
+progress.md; design/checklist pairs for app, document_structure,
+document_preparation, db, section_tasks, scripts, main.py and api_schemas.py.
+Earlier loader/UI memory and pre-existing working-tree edits were retained unchanged
+in this task. No UI source or UI markdown changes were made by CLEAN-06.
+
+Markdown modified and reason (paths relative to backend root):
+
+| Files | Reason |
+| --- | --- |
+| app/module-detailed-design.md | Record implemented consent, orchestration, recovery limits and validation evidence. |
+| app/module-checklist.md | Complete only CLEAN-06 with evidence and current timestamp. |
+| main.module-detailed-design.md; api_schemas.module-detailed-design.md | Describe implemented route forwarding and additive strict contracts, not future claims. |
+| db/module-detailed-design.md | Document same-transaction receipt storage and rollback, with no schema migration. |
+| section_tasks/module-detailed-design.md | Separate structural success from cleanup, phase and review result fields. |
+| document_preparation/module-detailed-design.md; document_preparation/module-checklist.md | Record configured-provider handoff and update the cross-module delivery pointer without changing CLEAN-05 completion. |
+| document_structure/module-detailed-design.md; document_structure/module-checklist.md | Update shared ownership/delivery index to 6/10 without closing later tasks. |
+| progress.md | Sync backend-only CLEAN-06 completion: 6/8, leaving UI out of backend totals. |
+
+Evidence: test_enhancement_cleanup_api.CleanupApiTests has 27 disposable-PostgreSQL
+route cases. Combined 23-suite run: 360 cases, 359 passed, one existing private-source
+opt-in skipped; command scope includes outcome/preflight/operations, cleanup
+contract/planner/validator/overlay/preparation, real SQL reading mutations, source/
+loader/layout and PDF-mode/identity regressions. Local log:
+/tmp/deep-reader-clean06-combined.log. The new cases cover strict consent/policy/
+revision checks, capacity zero-call, cleanup-only note preservation, partial review,
+Undo, transient retry, manual edits surviving failed cleanup, single hierarchy
+commit before separate layout persistence, concurrent edits during provider work,
+real rollback after receipt writes, lost acknowledgement, worker restart and safe logs.
+No paid model, production book/schema mutation, deployment or browser acceptance.
+Those facts are not substituted for CLEAN-09/10 acceptance.
+
+Validation: git diff --check passes; ownership and architecture remain intact:
+hierarchy is authoritative, source/profile remain immutable in cleanup, result/layout
+reads do not prepare, and persistence is explicit. Implementation-validation is
+read-only and changes no files. Checklist synchronization changes documentation only;
+source changes belong to the preceding implementation phase. Existing unrelated
+dirty files were not reverted. Remaining app cleanup tasks: 0/1; combined 6/10,
+backend 6/8. Frontend CLEAN-07 is the next ordered task.
+
+
 ## Corrected Content Projection (2026-10-21)
 
 OCR-REVIEW-05: get_task_unit_contents applies the reading-only overlay to the

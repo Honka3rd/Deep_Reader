@@ -149,6 +149,33 @@ export interface ReparseDocumentStructureResponse {
   interactions_cleared?: boolean | null;
   reading_layout_required?: boolean | null;
   retryable?: boolean;
+  cleanup?: CleanupOutcome | null;
+  phase?: "layout" | "complete" | "superseded" | null;
+  retry_stage?: "generation" | "layout" | null;
+  layout_error?: "enhancement_layout_failed" | "enhancement_result_superseded" | null;
+  review_required?: boolean | null;
+  pending_review_count?: number | null;
+}
+
+export interface CleanupOutcome {
+  status: "not_applicable" | "no_changes" | "completed" | "partial" | "skipped" | "failed";
+  proposed_count: number | null;
+  applied_count: number;
+  skipped_count: number;
+  reason: string | null;
+  reading_content_changed: boolean;
+  reading_revision: number;
+}
+
+export interface EnhancementCleanupPreflight {
+  enabled: boolean;
+  eligibility: "eligible" | "not_applicable" | "skipped";
+  reason: string | null;
+  scope: "ocr_cleanup_reading_overlay_v1";
+  policy_version: "ocr_cleanup_policy_v1";
+  reading_revision: number;
+  invalidation: "generated_interactions_only_if_reading_content_changed";
+  preserves_notes_when_structure_unchanged: true;
 }
 
 export interface EnhancementOperationResponse {
@@ -156,7 +183,7 @@ export interface EnhancementOperationResponse {
   result: ReparseDocumentStructureResponse | null;
   reason: string | null;
   retryable: boolean;
-  durability: "process_local";
+  durability: "process_local" | "persisted_commit";
 }
 
 export interface EnhancementCapacity {
@@ -172,6 +199,7 @@ export interface EnhancementCapacity {
 }
 
 export interface EnhancementPreflightResponse {
+  ocr_cleanup?: EnhancementCleanupPreflight | null;
   capacity?: EnhancementCapacity | null;
   ready: boolean;
   execution_available: boolean;
@@ -219,6 +247,7 @@ export type DocumentManagementSourceStatus =
   | "failed";
 export type DocumentManagementPreparationStatus =
   | "not_prepared"
+  | "building"
   | "ready"
   | "failed"
   | "stale"

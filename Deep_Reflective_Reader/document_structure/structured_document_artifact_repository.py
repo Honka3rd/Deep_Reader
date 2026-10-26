@@ -46,9 +46,11 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         self,
         store: StructuredDocumentStore | None = None,
         base_dir: str = "data/structured",
+        namespace: str = "default",
     ):
         self.store = store or StructuredDocumentStore()
         self.base_dir = Path(base_dir)
+        self._cleanup_namespace = namespace
 
     def list_documents(
         self,
@@ -56,6 +58,8 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         limit: int = 50,
     ) -> list[DocumentListItem]:
         """List structured document files as lightweight discovery candidates."""
+        from document_structure.source_review_blocks import needs_review_from_provenance
+
         bounded_limit = max(1, min(limit, 200))
         normalized_query = (query or "").strip().casefold()
         if not self.base_dir.exists():
@@ -70,8 +74,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
                 continue
             try:
                 provenance = json.loads(path.read_text()).get("parse_provenance",{})
-                review_required = any(not provenance.get("reading_content",{}).get("regions",{}).get(r["id"])
-                    for r in provenance.get("source_review",{}).get("regions",[]))
+                review_required = needs_review_from_provenance(provenance)
             except (ValueError,OSError,TypeError,KeyError,AttributeError):
                 review_required = False
             candidates.append(
@@ -120,10 +123,108 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             document = self._load_document_for_write(doc_name)
             updated,result = mutation(document)
             if updated != document:
-                chapters = [replace(c,task_artifacts=None,sections=[replace(s,task_artifacts=None,
-                    task_units=[replace(u,task_artifacts=None) for u in s.task_units]) for s in c.sections]) for c in updated.chapters]
-                self._atomic_save(replace(updated,chapters=chapters),self._resolve_document_path(doc_name))
+                self._atomic_save(updated,self._resolve_document_path(doc_name))
             return result
+
+    def commit_cleanup_enhancement(self, doc_name, *, candidate, cleanup, source_path):
+        """Internal file-store equivalent: one locked atomic hierarchy/overlay replace."""
+        from document_preparation.accepted_source_snapshot import source_file_sha256
+        from document_preparation.structure_enhancement_candidate import validate_enhancement_document
+        from document_structure.enhancement_change import compare_enhancement_documents
+        from document_structure.ocr_cleanup_overlay import (
+            CleanupFileCommitResult, canonical_text, replay_cleanup, stage_cleanup, log_cleanup,
+        )
+        from document_structure.reading_content import digest, ReadingContentConflict
+        from doc_loaders.extraction_identity import extraction_matches
+        from time import perf_counter
+        started = perf_counter()
+        validate_enhancement_document(candidate.document, candidate.source)
+        with self._artifact_lock(doc_name):
+            current = self._load_document_for_write(doc_name)
+            expected = candidate.source
+            if (doc_name != expected.document_id or current.document_id != expected.document_id
+                    or source_file_sha256(source_path) != expected.extraction_identity.source_sha256
+                    or not extraction_matches(current.parse_provenance, expected.extraction_identity,
+                                              expected.canonical_text)):
+                raise ReadingContentConflict("cleanup_source_changed")
+            receipt = replay_cleanup(current, cleanup, candidate.document)
+            if receipt is not None:
+                log_cleanup(cleanup, "replayed", started=started, outcome=receipt["outcome"])
+                return CleanupFileCommitResult(current, receipt["change_kind"], receipt["outcome"])
+            version = current.parse_provenance.get("storage_structure_version", 1)
+            change = compare_enhancement_documents(current, candidate.document,
+                                                   canonical_text=canonical_text(current))
+            staged, outcome = stage_cleanup(current, candidate.document, cleanup,
+                namespace=expected.namespace, structure_version=version,
+                fingerprint=digest(current.to_dict()), change_kind=change.kind)
+            if change.kind == "structure_changed":
+                document = self.cleanup_reparsed_document_derived_artifacts(candidate.document)
+                document = replace(document, chapters=[replace(c, sections=[replace(s, task_units=[])
+                    for s in c.sections]) for c in document.chapters], parse_provenance={
+                        **document.parse_provenance, "storage_structure_version": version + 1,
+                        "interaction_epoch": uuid4().hex})
+            else:
+                document = replace(current, chapters=[replace(old, title=new.title, sections=[
+                    replace(old_s, title=new_s.title, container_title=new_s.container_title)
+                    for old_s, new_s in zip(old.sections, new.sections)])
+                    for old, new in zip(current.chapters, candidate.document.chapters)])
+            document = replace(document, parse_provenance={**document.parse_provenance,
+                **{key: staged.parse_provenance[key] for key in (
+                    "reading_content", "source_review", "source_page_spans", "actual_ocr_evidence") if key in staged.parse_provenance}})
+            if outcome["reading_content_changed"]:
+                from document_structure.ocr_cleanup_overlay import invalidate_generated
+                from document_structure.reading_content_artifacts import clear_source_dependents
+                from document_structure.reading_refresh import changed_blocks
+                document = clear_source_dependents(document, changed_blocks(current, document))
+                document = invalidate_generated(document)
+            if source_file_sha256(source_path) != expected.extraction_identity.source_sha256:
+                raise ReadingContentConflict("cleanup_source_changed")
+            try:
+                document = self._atomic_save(document, self._resolve_document_path(doc_name))
+            except Exception:
+                log_cleanup(cleanup, "commit_failed", started=started)
+                raise
+            log_cleanup(cleanup, "committed", started=started, outcome=outcome)
+            return CleanupFileCommitResult(document, str(change.kind), outcome)
+
+    def commit_cleanup(self, command):
+        """Content-only mutation; the configured base directory owns one namespace."""
+        from time import perf_counter
+        from document_structure.cleanup_commit import stage_cleanup_commit, verify_cleanup_source_file, log_cleanup_commit
+        from document_structure.reading_content import ReadingContentService, ReadingContentConflict
+        binding = command.staged.binding
+        ReadingContentService.validate_name(binding.document_id)
+        if binding.namespace != self._cleanup_namespace:
+            raise ReadingContentConflict("cleanup_identity_changed")
+        started = perf_counter()
+        try:
+            with self._artifact_lock(binding.document_id):
+                current = self._load_document_for_write(binding.document_id)
+                verify_cleanup_source_file(current, command.snapshot.source,
+                                           accepted_source_path=command.snapshot.accepted_source_path)
+                updated, result = stage_cleanup_commit(current, command, namespace=self._cleanup_namespace,
+                    structure_version=current.parse_provenance.get("storage_structure_version", 1))
+                if not result.replayed:
+                    verify_cleanup_source_file(current, command.snapshot.source,
+                                               accepted_source_path=command.snapshot.accepted_source_path)
+                    self._atomic_save(updated, self._resolve_document_path(binding.document_id))
+            log_cleanup_commit(binding, "replayed" if result.replayed else "committed", started)
+            return result
+        except Exception:
+            log_cleanup_commit(binding, "commit_unconfirmed", started)
+            raise
+
+    def lookup_cleanup(self, *, namespace, document_id, operation_id):
+        from document_structure.cleanup_commit import lookup_cleanup_receipt
+        from document_structure.reading_content import ReadingContentService, ReadingContentConflict
+        ReadingContentService.validate_name(document_id)
+        if namespace != self._cleanup_namespace:
+            raise ReadingContentConflict("cleanup_identity_changed")
+        try:
+            document = self.load_document(document_id)
+        except FileNotFoundError:
+            return None
+        return lookup_cleanup_receipt(document, namespace=namespace, document_id=document_id, operation_id=operation_id)
 
     def rename_document(self, doc_name, new_name, transform):
         with ExitStack() as stack:
@@ -175,7 +276,12 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         path = self._resolve_document_path(resolved_doc_name)
         with self._artifact_lock(resolved_doc_name):
             if path.exists():
-                document = preserve_explicit_annotations(self.load_document(resolved_doc_name), document)
+                current = self.load_document(resolved_doc_name)
+                version = current.parse_provenance.get("storage_structure_version")
+                if version is not None and document.parse_provenance.get("storage_structure_version") != version:
+                    from document_structure.reading_content import ReadingContentConflict
+                    raise ReadingContentConflict("reading_structure_changed_reload_required")
+                document = preserve_explicit_annotations(current, document)
             else:
                 document = replace(document, parse_provenance={**document.parse_provenance,
                                    "interaction_epoch": uuid4().hex})
@@ -420,6 +526,9 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     ) -> StructuredDocument:
         """Bulk update section task units and task-layout metadata in one save."""
         document = self._load_document_for_write(doc_name)
+        from document_structure.reading_content import state_for, ReadingContentConflict
+        if task_layout_metadata.get("reading_revision", 0) != state_for(document).get("revision", 0):
+            raise ReadingContentConflict("reading_revision_changed")
         updated_effective_sections = []
         for section in get_effective_sections(document):
             section_units = task_units_by_section_id.get(section.section_id, [])
@@ -508,10 +617,18 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         return title.strip() if isinstance(title, str) and title.strip() else None
 
     @staticmethod
-    def _atomic_save(document: StructuredDocument, path: Path) -> None:
+    def _atomic_save(document: StructuredDocument, path: Path) -> StructuredDocument:
         """Persist document atomically through temp-file + replace."""
+        from document_structure.source_review_blocks import persist_region_mapping
+
+        document = persist_region_mapping(document)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = document.to_json()
+        data = document.to_dict()
+        for chapter, chapter_data in zip(document.chapters, data["chapters"]):
+            for section, section_data in zip(chapter.sections, chapter_data["sections"]):
+                section_data["task_units"] = [
+                    unit.to_dict(include_content_blocks=True) for unit in section.task_units]
+        payload = json.dumps(data, ensure_ascii=False, indent=2)
         temp_file = None
         temp_path = None
         try:
@@ -536,6 +653,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
                 temp_file.close()
             if temp_path is not None and temp_path.exists():
                 temp_path.unlink(missing_ok=True)
+        return document
 
     @staticmethod
     def _assert_unique_task_unit_ids(

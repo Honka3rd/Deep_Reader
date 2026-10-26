@@ -1,7 +1,12 @@
+import { InlineTranslations, type InlineTranslationViewState } from "../block-translation";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
-import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import TranslateIcon from "@mui/icons-material/Translate";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import { contentBlockEditMenuItems } from "./ContentBlockEditMenuItems";
+import { useReviewHighlight, type ReviewNavigationTarget } from "./useReviewHighlight";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import FirstPageIcon from "@mui/icons-material/FirstPage";
+import LastPageIcon from "@mui/icons-material/LastPage";
 import PsychologyAltOutlinedIcon from "@mui/icons-material/PsychologyAltOutlined";
 import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
 import TipsAndUpdatesOutlinedIcon from "@mui/icons-material/TipsAndUpdatesOutlined";
@@ -19,7 +24,7 @@ import {
   Typography,
   Tooltip,
 } from "@mui/material";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { RequestStatus, SectionSelection } from "../../types/api";
 import { StateView } from "../../shared/components/StateView";
 import {
@@ -31,15 +36,17 @@ import {
   contentBlockInteractionAvailabilityHint,
   contentBlockInteractionEligibility,
   headingFromSelection,
-  paginateMeasuredGroups,
   type ContentBlockInteractionAvailabilityHint,
   type ReaderContentBlock,
   type ReaderContentGroup,
-  type ReaderContentPage,
 } from "./model";
 
 interface ReaderContentViewProps {
+  onVisibleTranslationBlocksChange?: (blocks: ReaderContentBlock[]) => void;
+  getInlineTranslationState?: (block: ReaderContentBlock) => InlineTranslationViewState;
+  navigationTarget?: ReviewNavigationTarget | null;
   onEditContentBlock?: (block: ReaderContentBlock, action: "edit" | "delete") => void;
+  onTranslateBlock?: (block: ReaderContentBlock, mode: "translate" | "view", trigger?: HTMLElement) => void;
   layoutStatus: RequestStatus;
   contentStatus: RequestStatus;
   selectedSection: SectionSelection | null;
@@ -71,7 +78,11 @@ interface ReaderContentViewProps {
 }
 
 export function ReaderContentView({
+  onVisibleTranslationBlocksChange,
+  getInlineTranslationState,
+  navigationTarget,
   onEditContentBlock,
+  onTranslateBlock,
   layoutStatus,
   contentStatus,
   selectedSection,
@@ -88,9 +99,24 @@ export function ReaderContentView({
   onRefreshInlineInsight,
 }: ReaderContentViewProps) {
   const pageListRef = useRef<HTMLDivElement | null>(null);
-  const measurementRef = useRef<HTMLDivElement | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [pages, setPages] = useState<ReaderContentPage[]>([]);
+  // One task unit per page keeps off-page blocks out of both visible and hidden DOM.
+  const pageCount = contentStatus === "success" ? (contentGroups.length || contentBlocks.length) : 0;
+  const displayPageIndex = Math.min(currentPageIndex, Math.max(0, pageCount - 1));
+  const activeGroups = contentGroups.slice(displayPageIndex, displayPageIndex + 1);
+  const visibleTranslationBlocks = contentStatus !== "success" ? [] : activeGroups.length
+    ? activeGroups.flatMap(group => group.blocks) : contentBlocks.slice(displayPageIndex, displayPageIndex + 1);
+  const visibleTranslationKey = JSON.stringify(visibleTranslationBlocks.map(block =>
+    [block.block_id, block.content, block.ownerContext.sourceHash]));
+  useEffect(() => {
+    onVisibleTranslationBlocksChange?.(visibleTranslationBlocks);
+    return () => onVisibleTranslationBlocksChange?.([]);
+    // Report identity changes, not new array instances from ordinary rendering.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onVisibleTranslationBlocksChange, visibleTranslationKey]);
+  const pageAnchor = useRef<{ blockId: string; taskUnitId: string } | null>(null);
+  const focusedNavigation = useRef<number | null>(null);
+  const highlight = useReviewHighlight(navigationTarget, contentGroups, contentStatus === "success", pageListRef);
   const [taskUnitInteractionMenu, setTaskUnitInteractionMenu] = useState<{
     anchorEl: HTMLElement;
     group: ReaderContentGroup;
@@ -104,62 +130,40 @@ export function ReaderContentView({
 
   useEffect(() => {
     setCurrentPageIndex(0);
-  }, [selectedSection?.section.section_id, contentGroups]);
+    pageAnchor.current = navigationTarget ?? null;
+  }, [selectedSection?.section.section_id]);
+
+  useEffect(() => { pageAnchor.current = navigationTarget ?? null; }, [navigationTarget]);
 
   useEffect(() => {
-    if (contentStatus !== "success" || contentGroups.length === 0) {
-      setPages([]);
-      return;
-    }
+    if (contentStatus !== "success") return;
+    const anchor = pageAnchor.current;
+    const anchorPage = anchor ? contentGroups.findIndex(group => group.taskUnitId === anchor.taskUnitId
+      && group.blocks.some(block => block.block_id === anchor.blockId)) : -1;
+    setCurrentPageIndex(current => anchorPage >= 0 ? anchorPage : Math.min(current, Math.max(0, pageCount - 1)));
+  }, [contentStatus, contentGroups, navigationTarget, pageCount]);
 
-    const updatePages = () => {
-      const pageList = pageListRef.current;
-      const measurementContainer = measurementRef.current;
-      if (!pageList || !measurementContainer) {
-        return;
+  useEffect(() => {
+    setTaskUnitInteractionMenu(null);
+    setContentBlockInteractionMenu(null);
+    if (pageListRef.current) pageListRef.current.scrollTop = 0;
+  }, [selectedSection?.section.section_id, displayPageIndex, contentStatus]);
+
+  useEffect(() => {
+    if (!navigationTarget || contentStatus !== "success" || pageCount === 0
+      || focusedNavigation.current === navigationTarget.requestId) return;
+    const frame = requestAnimationFrame(() => {
+      const block = Array.from(pageListRef.current?.querySelectorAll<HTMLElement>("[data-block-id]") ?? [])
+        .find(element => element.dataset.blockId === navigationTarget.blockId
+          && element.dataset.taskUnitId === navigationTarget.taskUnitId);
+      if (block && pageAnchor.current) {
+        focusedNavigation.current = navigationTarget.requestId;
+        block.focus({ preventScroll: true });
+        block.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
-      const groupElements = Array.from(
-        measurementContainer.querySelectorAll<HTMLElement>("[data-measure-group]"),
-      );
-      const groupHeights = groupElements.map((element) => {
-        const rect = element.getBoundingClientRect();
-        return Math.ceil(rect.height);
-      });
-      const nextPages = paginateMeasuredGroups(
-        groupHeights,
-        Math.floor(pageList.getBoundingClientRect().height),
-      );
-      setPages(nextPages);
-      setCurrentPageIndex((current) => Math.min(current, Math.max(0, nextPages.length - 1)));
-    };
-
-    updatePages();
-    const resizeObserver = new ResizeObserver(updatePages);
-    if (pageListRef.current) {
-      resizeObserver.observe(pageListRef.current);
-    }
-    if (measurementRef.current) {
-      resizeObserver.observe(measurementRef.current);
-    }
-    window.addEventListener("resize", updatePages);
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", updatePages);
-    };
-  }, [contentStatus, contentGroups]);
-
-  const activePage = pages[currentPageIndex] || null;
-  const activeGroups = useMemo(() => {
-    if (!activePage) {
-      return contentGroups;
-    }
-    return activePage.groupIndexes
-      .map((groupIndex) => contentGroups[groupIndex])
-      .filter((group): group is ReaderContentGroup => Boolean(group));
-  }, [activePage, contentGroups]);
-
-  const pageCount = pages.length || (contentStatus === "success" ? 1 : 0);
-  const displayPageIndex = Math.min(currentPageIndex, Math.max(0, pageCount - 1));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [navigationTarget, contentStatus, pageCount, displayPageIndex]);
   const canGoPrevious = displayPageIndex > 0;
   const canGoNext = displayPageIndex + 1 < pageCount;
 
@@ -290,13 +294,24 @@ export function ReaderContentView({
             <Typography color="text.secondary" variant="body2">
               Page {displayPageIndex + 1} / {pageCount}
             </Typography>
-            <Stack direction="row" spacing={1}>
+            <Stack className="reader-content-page-controls" direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+              <IconButton
+                className="reader-content-page-first"
+                size="small"
+                aria-label="First page"
+                title="First page"
+                disabled={!canGoPrevious}
+                onClick={() => { pageAnchor.current = null; setCurrentPageIndex(0); }}
+                sx={{ width: 32, height: 32 }}
+              >
+                <FirstPageIcon fontSize="small" />
+              </IconButton>
               <Button
                 className="reader-content-page-previous"
                 size="small"
                 variant="outlined"
                 disabled={!canGoPrevious}
-                onClick={() => setCurrentPageIndex((current) => Math.max(0, current - 1))}
+                onClick={() => { pageAnchor.current = null; setCurrentPageIndex((current) => Math.max(0, current - 1)); }}
               >
                 Previous
               </Button>
@@ -305,35 +320,41 @@ export function ReaderContentView({
                 size="small"
                 variant="outlined"
                 disabled={!canGoNext}
-                onClick={() =>
-                  setCurrentPageIndex((current) => Math.min(pageCount - 1, current + 1))
-                }
+                onClick={() => { pageAnchor.current = null;
+                  setCurrentPageIndex((current) => Math.min(pageCount - 1, current + 1)); }}
               >
                 Next
               </Button>
+              <IconButton
+                className="reader-content-page-last"
+                size="small"
+                aria-label="Last page"
+                title="Last page"
+                disabled={!canGoNext}
+                onClick={() => { pageAnchor.current = null; setCurrentPageIndex(Math.max(0, pageCount - 1)); }}
+                sx={{ width: 32, height: 32 }}
+              >
+                <LastPageIcon fontSize="small" />
+              </IconButton>
             </Stack>
           </Box>
           <Stack
             component="article"
             ref={pageListRef}
             spacing={2.25}
-            className={[
-              "content-blocks",
-              "reader-content-block-list",
-              activePage?.oversized ? "reader-content-block-list-oversized" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
+            className="content-blocks reader-content-block-list reader-content-block-list-oversized"
           >
             {activeGroups.length > 0
               ? activeGroups.map((group) => (
                   <ReaderContentGroupView
                     group={group}
+                    highlight={highlight}
                     insight={
                       selectedSection ? getTaskUnitInlineInsight?.(selectedSection, group) : null
                     }
                     selectedSection={selectedSection}
                     key={group.taskUnitId}
+                    getInlineTranslationState={getInlineTranslationState}
                     getContentBlockInlineInsight={getContentBlockInlineInsight}
                     onDismissInlineInsight={onDismissInlineInsight}
                     onGenerateInlineInsight={onGenerateInlineInsight}
@@ -343,9 +364,11 @@ export function ReaderContentView({
                     showInteraction
                   />
                 ))
-              : contentBlocks.map((block, index) => (
+              : contentBlocks.slice(displayPageIndex, displayPageIndex + 1).map((block, index) => (
                   <ContentBlockView
+                    translations={getInlineTranslationState?.(block)}
                     block={block}
+                    highlighted={highlight?.blockId === block.block_id && highlight.taskUnitId === block.ownerContext.taskUnitId}
                     insight={
                       selectedSection
                         ? getContentBlockInlineInsight?.(selectedSection, block)
@@ -411,12 +434,21 @@ export function ReaderContentView({
             onClose={closeContentBlockInteractionMenu}
           >
             {summaryNoteMenuItems(selectContentBlockInteraction)}
-            {onEditContentBlock && ["edit", "delete"].map(action => <MenuItem key={action} onClick={() => {
+            {onTranslateBlock && (["translate", "view"] as const).map(mode => <MenuItem key={mode}
+              className={`reader-content-block-${mode === "translate" ? "translate" : "translations"}-action`}
+              onClick={() => {
+                const selected = contentBlockInteractionMenu;
+                closeContentBlockInteractionMenu();
+                if (selected) onTranslateBlock(selected.block, mode, selected.anchorEl);
+              }}>
+              <ListItemIcon>{mode === "translate" ? <TranslateIcon fontSize="small" /> : <ViewListIcon fontSize="small" />}</ListItemIcon>
+              <ListItemText>{mode === "translate" ? "Translate" : "View translations"}</ListItemText>
+            </MenuItem>)}
+            {onEditContentBlock && contentBlockEditMenuItems(action => {
               const block = contentBlockInteractionMenu?.block;
               closeContentBlockInteractionMenu();
-              if (block) onEditContentBlock(block, action as "edit" | "delete");
-            }}><ListItemIcon>{action === "edit" ? <EditOutlinedIcon fontSize="small" /> : <DeleteOutlineIcon fontSize="small" />}</ListItemIcon>
-              <ListItemText primary={action === "edit" ? "Edit" : "Delete"} /></MenuItem>)}
+              if (block) onEditContentBlock(block, action);
+            })}
             <MenuItem
               className="reader-content-block-interaction-option reader-content-block-interaction-option-insight"
               onClick={() => selectContentBlockInteraction("insight")}
@@ -459,22 +491,6 @@ export function ReaderContentView({
               />
             </MenuItem>
           </Menu>
-          <Box
-            aria-hidden="true"
-            className="reader-content-pagination-measure"
-            ref={measurementRef}
-          >
-            {contentGroups.map((group) => (
-              <Stack
-                className="reader-content-measure-group"
-                data-measure-group
-                key={group.taskUnitId}
-                spacing={2.25}
-              >
-                <ReaderContentGroupView group={group} showInteraction={false} />
-              </Stack>
-            ))}
-          </Box>
         </>
       ) : null}
     </Box>
@@ -482,7 +498,9 @@ export function ReaderContentView({
 }
 
 function ReaderContentGroupView({
+  getInlineTranslationState,
   group,
+  highlight,
   insight,
   selectedSection,
   showInteraction,
@@ -493,7 +511,9 @@ function ReaderContentGroupView({
   onOpenInteractionMenu,
   onRefreshInlineInsight,
 }: {
+  getInlineTranslationState?: (block: ReaderContentBlock) => InlineTranslationViewState;
   group: ReaderContentGroup;
+  highlight?: ReviewNavigationTarget | null;
   insight?: InsightViewState | null;
   selectedSection?: SectionSelection | null;
   showInteraction: boolean;
@@ -559,7 +579,9 @@ function ReaderContentGroupView({
         {group.blocks.length > 0 ? (
           group.blocks.map((block, index) => (
             <ContentBlockView
+              translations={getInlineTranslationState?.(block)}
               block={block}
+              highlighted={highlight?.blockId === block.block_id && highlight.taskUnitId === group.taskUnitId}
               insight={
                 selectedSection
                   ? getContentBlockInlineInsight?.(selectedSection, block)
@@ -589,7 +611,9 @@ function ReaderContentGroupView({
 }
 
 function ContentBlockView({
+  translations = { records: [] },
   block,
+  highlighted = false,
   insight,
   index,
   showInteraction,
@@ -598,7 +622,9 @@ function ContentBlockView({
   onOpenInteractionMenu,
   onRefreshInlineInsight,
 }: {
+  translations?: InlineTranslationViewState;
   block: ReaderContentBlock;
+  highlighted?: boolean;
   insight?: InsightViewState | null;
   index: number;
   showInteraction: boolean;
@@ -617,6 +643,9 @@ function ContentBlockView({
   return (
     <Box
       component="section"
+      data-block-id={block.block_id}
+      data-task-unit-id={block.ownerContext.taskUnitId}
+      tabIndex={-1}
       className={[
         "content-block",
         "reader-content-block",
@@ -662,7 +691,7 @@ function ContentBlockView({
         ) : null}
       </Stack>
       <Typography className="reader-content-block-body" variant="body1">
-        {block.content}
+        {highlighted ? <mark className="reader-content-navigation-highlight">{block.content}</mark> : block.content}
       </Typography>
       {insight ? (
         <InlineInsightRegion
@@ -673,6 +702,7 @@ function ContentBlockView({
           onRefresh={onRefreshInlineInsight}
         />
       ) : null}
+      <InlineTranslations {...translations} />
     </Box>
   );
 }

@@ -1,3 +1,5 @@
+import { SimpleTreeView } from "@mui/x-tree-view/SimpleTreeView";
+import { NavigationTreeItem } from "./NavigationTreeItem";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import PsychologyAltOutlinedIcon from "@mui/icons-material/PsychologyAltOutlined";
 import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
@@ -7,14 +9,10 @@ import {
   Box,
   Alert,
   Button,
-  ButtonBase,
   Chip,
-  Divider,
   IconButton,
-  List,
   ListItemIcon,
   ListItemText,
-  ListItem,
   Menu,
   MenuItem,
   Stack,
@@ -90,63 +88,30 @@ function ChapterInteractionButton({
   );
 }
 
-function SectionButton({
-  chapter,
-  section,
-  selected,
-  displayTitle,
-  displaySubtitle,
-  onSelectSection,
+function SectionLabel({
+  section, displayTitle, displaySubtitle,
 }: {
-  chapter: ChapterLayout;
   section: SectionLayout;
-  selected: boolean;
   displayTitle?: string;
   displaySubtitle?: string | null;
-  onSelectSection: (selection: SectionSelection) => void;
 }) {
-  const taskUnits = section.task_units || [];
-  const resolvedTitle = displayTitle || labelOrId(section.title, section.section_id);
-  const buttonClassName = [
-    "section-button",
-    "hierarchy-section-button",
-    selected ? "selected hierarchy-section-button-selected" : "",
-    taskUnits.length === 0 ? "hierarchy-section-button-empty" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <ButtonBase
-      className={buttonClassName}
-      aria-selected={selected}
-      disabled={taskUnits.length === 0}
-      onClick={() => onSelectSection({ chapter, section, taskUnits })}
-    >
-      <Box className="section-button-copy hierarchy-section-label">
-        <Typography className="hierarchy-section-title" component="span" variant="body1">
-          {resolvedTitle}
+    <Box className="section-button-copy hierarchy-section-label">
+      <Typography className="hierarchy-section-title" component="span" variant="body1">
+        {displayTitle || labelOrId(section.title, section.section_id)}
+      </Typography>
+      {section.title_origin === "generated" && <Typography component="span" variant="caption" color="text.secondary">
+        Generated heading
+      </Typography>}
+      {displaySubtitle || section.container_title ? (
+        <Typography className="hierarchy-section-subtitle" component="span" variant="caption" color="text.secondary">
+          {displaySubtitle || section.container_title}
         </Typography>
-        {section.title_origin === "generated" && <Typography component="span" variant="caption" color="text.secondary">
-          Generated heading
-        </Typography>}
-        {displaySubtitle || section.container_title ? (
-          <Typography
-            className="hierarchy-section-subtitle"
-            component="span"
-            variant="caption"
-            color="text.secondary"
-          >
-            {displaySubtitle || section.container_title}
-          </Typography>
-        ) : null}
-      </Box>
-      <Chip
-        className="hierarchy-section-unit-count"
-        size="small"
-        label={`${taskUnits.length} units`}
-      />
-    </ButtonBase>
+      ) : null}
+      <Typography className="hierarchy-section-unit-count" component="span" variant="caption" color="text.secondary">
+        {(section.task_units || []).length} units
+      </Typography>
+    </Box>
   );
 }
 
@@ -293,11 +258,22 @@ export function HierarchyNavigationView({
     );
   }
 
+  function selectTreeSection(itemId: string) {
+    for (const chapter of layout?.chapters || []) {
+      const section = chapter.sections?.find(item => `section:${item.section_id}` === itemId);
+      if (section?.task_units?.length) {
+        onSelectSection({ chapter, section, taskUnits: section.task_units });
+        return;
+      }
+    }
+  }
+
   return (
     <Box className="hierarchy-navigation">
       <Stack
         direction="row"
         spacing={1}
+        useFlexGap
         alignItems="center"
         className="nav-title-row hierarchy-navigation-header"
       >
@@ -397,125 +373,65 @@ export function HierarchyNavigationView({
           onRefresh={onRefreshInlineInsight}
         />
       ) : null}
-      <List component="ol" className="chapter-list hierarchy-chapter-list" disablePadding>
+      <SimpleTreeView
+        key={layout.document_id}
+        className="chapter-list hierarchy-chapter-list"
+        aria-label="Chapters and sections"
+        itemChildrenIndentation={16}
+        selectedItems={selectedSectionId ? `section:${selectedSectionId}` : null}
+        defaultExpandedItems={layout.chapters.filter(chapter =>
+          chapter.sections?.some(section => section.section_id === selectedSectionId),
+        ).map(chapter => `chapter:${chapter.chapter_id}`)}
+        onItemClick={(_event, itemId) => selectTreeSection(itemId)}
+        onItemSelectionToggle={(event, itemId, selected) => {
+          // Mouse activation also supports re-reading the already-selected section.
+          // Keyboard selection uses this callback; avoid dispatching a click twice.
+          if (selected && event?.type !== "click") selectTreeSection(itemId);
+        }}
+      >
         {layout.chapters.map((chapter) => {
           const sections = chapter.sections || [];
           const singleSection = sections.length === 1 ? sections[0] : null;
           const chapterTitle = labelOrId(chapter.title, chapter.chapter_id);
-          const mergedSectionDisplay = singleSection
-            ? buildSectionDisplay(chapter, singleSection)
-            : null;
-          const chapterInlineInsight = getChapterInlineInsight?.(chapter) || null;
-
+          const display = singleSection ? buildSectionDisplay(chapter, singleSection) : null;
+          const chapterInsight = getChapterInlineInsight?.(chapter);
           return (
-            <ListItem
-              component="li"
-              className={
-                singleSection
-                  ? "chapter-item hierarchy-chapter-item hierarchy-chapter-item-merged merged"
-                  : "chapter-item hierarchy-chapter-item"
-              }
+            <NavigationTreeItem
               key={chapter.chapter_id}
+              itemId={singleSection ? `section:${singleSection.section_id}` : `chapter:${chapter.chapter_id}`}
+              className={`chapter-item hierarchy-chapter-item${singleSection ? " hierarchy-chapter-item-merged merged" : ""}`}
+              contentClassName={singleSection ? "hierarchy-chapter-merged-row hierarchy-section-button" : "hierarchy-chapter-header-row"}
+              label={display?.title || chapterTitle}
+              disabled={Boolean(singleSection && !singleSection.task_units?.length)}
+              copy={singleSection ? <SectionLabel section={singleSection} displayTitle={display?.title} displaySubtitle={display?.subtitle} />
+                : <Typography className="hierarchy-chapter-title" component="span" variant="body1">{chapterTitle}</Typography>}
+              action={<ChapterInteractionButton chapter={chapter} chapterTitle={chapterTitle} onOpen={openChapterInteractionMenu} />}
+              insight={chapterInsight ? <InlineInsightRegion className="hierarchy-chapter-inline-insight"
+                insight={chapterInsight} onDismiss={onDismissInlineInsight}
+                onGenerate={onGenerateInlineInsight} onRefresh={onRefreshInlineInsight} /> : null}
             >
-              {singleSection ? (
-                <Box className="hierarchy-chapter-merged-row">
-                  <SectionButton
-                    chapter={chapter}
-                    section={singleSection}
-                    selected={selectedSectionId === singleSection.section_id}
-                    displayTitle={mergedSectionDisplay?.title}
-                    displaySubtitle={mergedSectionDisplay?.subtitle}
-                    onSelectSection={onSelectSection}
-                  />
-                  <ChapterInteractionButton
-                    chapter={chapter}
-                    chapterTitle={chapterTitle}
-                    onOpen={openChapterInteractionMenu}
-                  />
-                  <SectionInteractionButton chapter={chapter} section={singleSection}
-                    sectionTitle={labelOrId(singleSection.title, singleSection.section_id)}
-                    onOpen={openSectionInteractionMenu} />
-                </Box>
-              ) : (
-                <>
-                  <Box className="hierarchy-chapter-header-row">
-                    <Typography className="hierarchy-chapter-title" component="h2" variant="h2">
-                      {chapterTitle}
-                    </Typography>
-                    <ChapterInteractionButton
-                      chapter={chapter}
-                      chapterTitle={chapterTitle}
-                      onOpen={openChapterInteractionMenu}
-                    />
-                  </Box>
-                  {chapterInlineInsight ? (
-                    <InlineInsightRegion
-                      className="hierarchy-chapter-inline-insight"
-                      insight={chapterInlineInsight}
-                      onDismiss={onDismissInlineInsight}
-                      onGenerate={onGenerateInlineInsight}
-                      onRefresh={onRefreshInlineInsight}
-                    />
-                  ) : null}
-                  <List
-                    component="ol"
-                    className="section-list hierarchy-section-list"
-                    disablePadding
-                  >
-                    {sections.map((section) => {
-                      const sectionTitle = labelOrId(section.title, section.section_id);
-                      const sectionInlineInsight =
-                        getSectionInlineInsight?.(chapter, section) || null;
-
-                      return (
-                        <ListItem
-                          component="li"
-                          className="section-item hierarchy-section-item"
-                          key={section.section_id}
-                        >
-                          <Box className="hierarchy-section-row">
-                            <SectionButton
-                              chapter={chapter}
-                              section={section}
-                              selected={selectedSectionId === section.section_id}
-                              onSelectSection={onSelectSection}
-                            />
-                            <SectionInteractionButton
-                              chapter={chapter}
-                              section={section}
-                              sectionTitle={sectionTitle}
-                              onOpen={openSectionInteractionMenu}
-                            />
-                          </Box>
-                          {sectionInlineInsight ? (
-                            <InlineInsightRegion
-                              className="hierarchy-section-inline-insight"
-                              insight={sectionInlineInsight}
-                              onDismiss={onDismissInlineInsight}
-                              onGenerate={onGenerateInlineInsight}
-                              onRefresh={onRefreshInlineInsight}
-                            />
-                          ) : null}
-                        </ListItem>
-                      );
-                    })}
-                  </List>
-                </>
-              )}
-              {singleSection && chapterInlineInsight ? (
-                <InlineInsightRegion
-                  className="hierarchy-chapter-inline-insight"
-                  insight={chapterInlineInsight}
-                  onDismiss={onDismissInlineInsight}
-                  onGenerate={onGenerateInlineInsight}
-                  onRefresh={onRefreshInlineInsight}
-                />
-              ) : null}
-              <Divider />
-            </ListItem>
+              {!singleSection && sections.length > 0 ? sections.map(section => {
+                const sectionTitle = labelOrId(section.title, section.section_id);
+                const sectionInsight = getSectionInlineInsight?.(chapter, section);
+                return <NavigationTreeItem
+                  key={section.section_id}
+                  itemId={`section:${section.section_id}`}
+                  className="section-item hierarchy-section-item"
+                  contentClassName="hierarchy-section-row hierarchy-section-button"
+                  label={sectionTitle}
+                  disabled={!section.task_units?.length}
+                  copy={<SectionLabel section={section} />}
+                  action={<SectionInteractionButton chapter={chapter} section={section}
+                    sectionTitle={sectionTitle} onOpen={openSectionInteractionMenu} />}
+                  insight={sectionInsight ? <InlineInsightRegion className="hierarchy-section-inline-insight"
+                    insight={sectionInsight} onDismiss={onDismissInlineInsight}
+                    onGenerate={onGenerateInlineInsight} onRefresh={onRefreshInlineInsight} /> : null}
+                />;
+              }) : null}
+            </NavigationTreeItem>
           );
         })}
-      </List>
+      </SimpleTreeView>
       <Menu
         className="hierarchy-chapter-interaction-menu"
         id="chapter-interaction-menu"

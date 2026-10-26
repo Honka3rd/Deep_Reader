@@ -1,5 +1,17 @@
 # db Checklist
 
+## Independent Smart Cleanup Backlog (2026-10-23)
+
+Owned tasks 1/1. [Shared order](../document_structure/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23).
+
+- [x] SCLEAN-04: Implement content-only cleanup commit with file/PostgreSQL parity.
+  Priority: P0. Depends on: SCLEAN-01/03. Owner: db; document_structure owns repository port/file adapter support.
+  Acceptance: Under the existing mutation boundary, atomically recheck source/hierarchy/revision and write overlays/audit/review/Undo/receipt, changed-only generated invalidation and valid layout stamp. Preserve hierarchy, labels, all IDs, structure_version, raw/page/profile, notes and manual edits. No-op/failure does not bump reading revision or invalidate outputs. Idempotent replay, supersession, late-writer guards and rollback; no LLM within transaction or hidden migration. Combined enhance continues to stage/commit once via shared primitives.
+  Evidence required: Real disposable SQL and file tests for content-only/no-op/partial commits, concurrent cleanup/edit/reparse, lost acknowledgement, receipt-write rollback, note preservation, stable generated block IDs, five-level no-resurrection and Undo. Any necessary migration must be explicit and justified.
+  Evidence: cleanup_commit.py shares baseline/evidence/view/policy checks, exact validator and minimal receipt handling across file/PostgreSQL ports. Both independent and combined paths reuse stage_validated_cleanup; shared transaction-local SQL writer keeps snapshots/generated metadata consistent. Content-only commit preserves source/hierarchy/notes/profile/IDs; no-op, replay, supersession, readiness stamp and unknown-ack handling are explicit. No schema migration or provider work in transactions.
+  Validation: 22 file and 27 standalone SQL cases; total 216 local plus 114 isolated PostgreSQL/API/enhancement regressions pass. Three backed-up Common/OCR books exercise temporary file/SQL commit/reload/replay; Sample2 reviewed deletion and Undo pass with backups unchanged. Tested concurrent cleanup/manual/reparse, rollback after SQL writes and receipt writes, nonempty profile/note rows, late saves and five-level no-resurrection. No new live model call, production mutation, deployment or standalone HTTP/UI exposure.
+  Timestamp: 2026-10-24
+
 ## Format-Neutral Extraction Backlog (2026-10-21)
 
 Implemented; evidence and scope are recorded per item. Ordered design: [shared plan](../document_preparation/module-detailed-design.md#format-neutral-extraction-plan-2026-10-21).

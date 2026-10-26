@@ -22,7 +22,6 @@ from PIL import Image
 from .abstract_document_loader import AbstractDocumentLoader
 from .document_load_errors import (
     RawTextOcrFailedError,
-    RawTextOcrLowQualityError,
     RawTextRequiresOcrError,
 )
 from .pdf_ocr_language_policy import normalize_tesseract_language_config
@@ -42,10 +41,11 @@ from .pdf_page_evidence import (
     analyze_ocr_tsv,
 )
 from .raw_data_paths import resolve_raw_data_dir
+from .ocr_review import bind_review_spans, page_review_regions, review_record
 
 
 logger = logging.getLogger(__name__)
-OCR_QUALITY_VERSION = "observed-script-v3"
+OCR_QUALITY_VERSION = "observed-script-v6-geometry-fallback"
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,7 @@ class PdfDocumentLoader(AbstractDocumentLoader):
             return output.getvalue()
 
     def open_source(self, doc_name: str, *, mode=None):
-        from .source_session import SourceSession, SourceArtifact
+        from .source_session import SourceSession, SourceArtifact, SourceTextSpan
         from .extraction_identity import normalize_pdf_identity
         from .pdf_extraction_identity import identity_for_loader
         path = self.source_path(doc_name)
@@ -160,6 +160,15 @@ class PdfDocumentLoader(AbstractDocumentLoader):
             boundaries = tuple(result.boundary_evidence.boundaries)
             spans = [{"page_index": b.page_index, "char_start": b.char_start,
                       "char_end": b.char_end, "page_label": b.page_label} for b in boundaries]
+            if selected == PdfExtractionMode.OCR:
+                recovered_pages = {b.page_index for b in boundaries}
+            elif selected == PdfExtractionMode.FAST or not result.provenance:
+                recovered_pages = set()
+            else:
+                recovered_pages = result.provenance.get("recovery_page_indexes")
+            ocr_spans = (tuple(SourceTextSpan(b.char_start, b.char_end, b.page_index)
+                               for b in boundaries if b.page_index in recovered_pages and b.char_start < b.char_end)
+                         if recovered_pages is not None else None)
             diagnostic = None
             if result.provenance:
                 diagnostic = {"provenance": {**result.provenance,
@@ -170,7 +179,8 @@ class PdfDocumentLoader(AbstractDocumentLoader):
                     "page_quality": list(result.page_quality)}, "pages": list(result.pages)}
             return SourceArtifact(generic, boundaries, result.outline_provider, result.layout_provider,
                 {"pdf_extraction": identity.record(result.text), "pdf_page_spans": spans,
-                 **({"source_review":result.provenance["source_review"]} if "source_review" in result.provenance else {})}, diagnostic)
+                 **({"source_review":result.provenance["source_review"]} if "source_review" in result.provenance else {})}, diagnostic,
+                 ocr_spans=ocr_spans)
 
         return SourceSession(identity=normalize_pdf_identity(identity), source_path=path, extract=extract,
             status=lambda state: {"requested_pdf_extraction_mode": selected,
@@ -395,8 +405,6 @@ Args:
             text, evidence, provenance, quality = run(canonical)
             if not text.strip():
                 raise PdfExtractionError(PdfExtractionFailureReason.NO_TEXT, "Automatic extraction produced no text.")
-        except RawTextOcrLowQualityError as error:
-            raise PdfExtractionError(PdfExtractionFailureReason.QUALITY_FAILED, "Automatic OCR quality rejected.") from error
         except RawTextRequiresOcrError as error:
             raise PdfExtractionError(PdfExtractionFailureReason.ENGINE_UNAVAILABLE, "Automatic recovery requires enabled OCR.") from error
         except RawTextOcrFailedError as error:
@@ -408,21 +416,30 @@ Args:
                     "OCR could not preserve all native text. Retry fast for native text or "
                     "explicit OCR for a new transcription; no partial result was saved.",
                 ) from error
+            if error.detail == "empty_ocr_text":
+                raise PdfExtractionError(PdfExtractionFailureReason.NO_TEXT, "Automatic recovery produced no text.") from error
             reason = PdfExtractionFailureReason.BUDGET_EXCEEDED if "budget" in (error.detail or "") or "limit" in (error.detail or "") else PdfExtractionFailureReason.EXTRACTION_FAILED
             raise PdfExtractionError(reason, "Automatic recovery failed.") from error
         pages = tuple(boundary.text for boundary in evidence.boundaries)
+        if provenance and "source_review" in provenance:
+            provenance = {**provenance, "source_review": review_record(
+                source_sha256,
+                bind_review_spans(provenance["source_review"]["regions"], text, evidence.boundaries),
+            )}
         return PdfExtractionResult(
             text=text, pages=pages, boundary_evidence=replace(evidence, doc_name=doc_name),
             effective_mode=PdfExtractionMode.AUTO, extraction_version="selective-pages-v1",
             empty_page_indexes=tuple(index for index, text in enumerate(pages) if not text),
-            warnings=("automatic_graphics_coverage_limits_apply",),
+            warnings=("automatic_graphics_coverage_limits_apply",) + (
+                ("source_needs_review",) if (provenance or {}).get("source_review", {}).get("regions") else ()
+            ),
             layout_provider=lambda: run(lambda snapshot: snapshot.load_page_layout_evidence(source_file_name, candidate_page_limit=30)),
             outline_provider=outline_provider, provenance=provenance or {}, page_quality=quality,
         )
 
     @in_pdf_pass
     def load(self, doc_name: str) -> str:
-        """Load complete canonical text; never return a partially recovered PDF."""
+        """Load recognized canonical text with any unresolved gaps in provenance."""
         _, pages, _, separator = self._load_canonical_pages(doc_name)
         return separator.join(text for text in pages if text)
 
@@ -492,6 +509,8 @@ Args:
                 pages[index] = recovered[index]
             if self._file_sha256(file_path) != source_sha256:
                 raise RawTextOcrFailedError(doc_name, detail="source_changed_during_recovery")
+            if not any(page.strip() for page in pages):
+                raise RawTextOcrFailedError(doc_name, detail="empty_ocr_text")
             return reader, pages, source_sha256, separator
         except PdfBudgetExceeded as error:
             self._clear_ocr_result()
@@ -1047,6 +1066,7 @@ Args:
         self._clear_ocr_result()
         pages: list[str] = [""] * len(reader.pages)
         quality_by_page: list[dict[str, object]] = []
+        review_regions = []
         with tempfile.TemporaryDirectory(prefix="deep-reader-pdf-ocr-pages-") as temp_dir:
             temp_path = Path(temp_dir)
             for page_index in indexes:
@@ -1077,26 +1097,33 @@ Args:
                             image_path=image_path,
                             doc_name=doc_name,
                             page_index=page_index,
+                            allow_review=True,
                         )
                     except (OSError, subprocess.TimeoutExpired) as error:
                         raise RawTextOcrFailedError(
                             doc_name, detail=f"page={page_index + 1}:ocr_process_failed:{type(error).__name__}",
                         ) from error
                     page_candidates.extend(candidates)
+                    if not recognized_text.strip():
+                        selected = self._select_ocr_candidate(candidates)
+                        recognized_text = selected.text if selected is not None else ""
                     if recognized_text:
                         recognized_parts.append(recognized_text)
                 pages[page_index] = "\n\n".join(recognized_parts)
                 summary = self._summarize_page_ocr_quality(
                     page_index=page_index, candidates=page_candidates,
                 )
-                if not pages[page_index].strip() or not summary["selected_passed"]:
-                    if any(candidate.text for candidate in page_candidates):
-                        raise RawTextOcrLowQualityError(
-                            doc_name, detail=f"page_quality_gate_failed:page={page_index + 1}",
-                        )
-                    raise RawTextOcrFailedError(doc_name, detail=f"empty_ocr_page:page={page_index + 1}")
                 if page_validator is not None:
                     page_validator(page_index, pages[page_index])
+                if not summary["selected_passed"] or any(
+                    region.get("accepted") is False or region.get("quality_flags")
+                    for region in summary["regions"]
+                ):
+                    with Image.open(image_paths[0]) as rendered:
+                        bbox = [0, 0, *rendered.size]
+                    review_regions.extend(page_review_regions(
+                        page_index, pages[page_index], summary, bbox, self.pdf_render_dpi,
+                    ))
                 quality_by_page.append(summary)
                 if (page_index + 1) % 10 == 0 or page_index + 1 == page_limit:
                     logger.info(
@@ -1109,6 +1136,7 @@ Args:
 
         if self._file_sha256(file_path) != provenance["source_file_sha256"]:
             raise RawTextOcrFailedError(doc_name, detail="source_changed_during_recovery")
+        provenance["source_review"] = review_record(source_hash, review_regions)
         self.last_ocr_provenance = provenance
         self.last_ocr_pages = list(pages)
         self.last_ocr_quality = list(quality_by_page)
@@ -1152,12 +1180,13 @@ Args:
         allow_review: bool = False,
     ) -> tuple[str, list[OcrCandidateQuality]]:
         """Compare bounded Tesseract segmentation candidates deterministically."""
-        from .chinese_ocr_strategy import recognize
+        from .chinese_ocr_strategy import ChineseOcrFallback, recognize
         directed = recognize(self, image_path, doc_name=doc_name, page_index=page_index, allow_review=allow_review)
-        if directed is not None:
+        fallback = directed if isinstance(directed, ChineseOcrFallback) else None
+        if directed is not None and fallback is None:
             candidate = replace(self._score_ocr_candidate(psm="chinese_vertical_columns", text=directed.text),
                                 region_evidence=directed.regions)
-            return (directed.text if candidate.passed else ""), [candidate]
+            return directed.text, [candidate]
         candidates: list[OcrCandidateQuality] = []
         for psm in (None, "5", "6", "11"):
             command = [self.tesseract_cmd, str(image_path), "stdout", "-l", self.ocr_language]
@@ -1172,14 +1201,20 @@ Args:
                     detail = result.stderr.strip() or f"exit_code={result.returncode}"
                     raise RawTextOcrFailedError(doc_name=doc_name, detail=detail)
             text = result.stdout.strip()
-            candidates.append(
-                self._score_ocr_candidate(
-                    psm="default" if psm is None else psm,
-                    text=text,
-                )
+            candidate = self._score_ocr_candidate(
+                psm="default" if psm is None else psm,
+                text=text,
             )
-        selected = max(candidates, key=lambda candidate: (candidate.passed, candidate.score), default=None)
-        selected_text = selected.text if selected is not None and selected.passed else ""
+            if fallback is not None and candidate.text.strip():
+                candidate = replace(candidate, region_evidence=({
+                    "bbox": list(fallback.bbox), "char_start": 0,
+                    "char_end": len(candidate.text), "accepted": False,
+                    "raw_candidate": candidate.text,
+                    "quality_flags": ["recognition_uncertain", fallback.reason],
+                },))
+            candidates.append(candidate)
+        selected = self._select_ocr_candidate(candidates)
+        selected_text = selected.text if selected is not None else ""
         logger.info(
             "ocr_candidate_selected doc=%s page=%s psm=%s score=%s passed=%s reasons=%s",
             doc_name,
@@ -1274,13 +1309,21 @@ Args:
             single_token_ratio=round(single_token_ratio, 4),
         )
 
+    @staticmethod
+    def _select_ocr_candidate(candidates: list[OcrCandidateQuality]) -> OcrCandidateQuality | None:
+        from .chinese_ocr_strategy import prefer_cjk_consensus
+        return max(
+            prefer_cjk_consensus(candidates),
+            key=lambda candidate: (candidate.passed, candidate.score), default=None,
+        )
+
     def _summarize_page_ocr_quality(
         self,
         *,
         page_index: int,
         candidates: list[OcrCandidateQuality],
     ) -> dict[str, object]:
-        selected = max(candidates, key=lambda candidate: (candidate.passed, candidate.score), default=None)
+        selected = self._select_ocr_candidate(candidates)
         return {
             "quality_version": OCR_QUALITY_VERSION,
             "page_index": page_index,
@@ -1304,46 +1347,6 @@ Args:
                 for candidate in candidates
             ],
         }
-
-    def _raise_if_ocr_quality_unusable(
-        self,
-        *,
-        doc_name: str,
-        quality_by_page: list[dict[str, object]],
-    ) -> None:
-        if not quality_by_page:
-            raise RawTextOcrLowQualityError(doc_name=doc_name, detail="no_quality_evidence")
-        passed_pages = [
-            page
-            for page in quality_by_page
-            if bool(page.get("selected_passed"))
-        ]
-        required_passed_pages = max(1, int((len(quality_by_page) * 0.35) + 0.999))
-        if len(passed_pages) >= required_passed_pages:
-            return
-        best_page = max(
-            quality_by_page,
-            key=lambda page: float(page.get("selected_score", 0.0)),
-        )
-        detail = (
-            "document_quality_gate_failed:"
-            f"passed_pages={len(passed_pages)}/{len(quality_by_page)},"
-            f"best_psm={best_page.get('selected_psm')},"
-            f"best_score={best_page.get('selected_score')}"
-        )
-        logger.warning("ocr_low_quality doc=%s detail=%s", doc_name, detail)
-        self.last_ocr_quality = list(quality_by_page)
-        raise RawTextOcrLowQualityError(doc_name=doc_name, detail=detail)
-
-    def _has_nonempty_ocr_candidate(self, quality_by_page: list[dict[str, object]]) -> bool:
-        for page in quality_by_page:
-            candidates = page.get("candidates")
-            if not isinstance(candidates, list):
-                continue
-            for candidate in candidates:
-                if isinstance(candidate, dict) and int(candidate.get("text_chars", 0)) > 0:
-                    return True
-        return False
 
     @in_pdf_pass
     def _render_page_images(

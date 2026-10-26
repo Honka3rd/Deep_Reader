@@ -6,6 +6,9 @@ services:
     restart: unless-stopped
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      HTTP_PROXY: ${DEEP_READER_CONTAINER_PROXY:-}
+      HTTPS_PROXY: ${DEEP_READER_CONTAINER_PROXY:-}
+      NO_PROXY: localhost,127.0.0.1,::1,postgres,api,host.docker.internal
       DEEP_READER_STRUCTURED_STORAGE_BACKEND: ${DEEP_READER_STRUCTURED_STORAGE_BACKEND:-postgres}
       DEEP_READER_POSTGRES_DSN: postgresql://${POSTGRES_USER:-deep_reader}:${POSTGRES_PASSWORD:-deep_reader_dev}@postgres:5432/${POSTGRES_DB:-deep_reader}
       DEEP_READER_PDF_OCR_ENABLED: ${DEEP_READER_PDF_OCR_ENABLED:-1}

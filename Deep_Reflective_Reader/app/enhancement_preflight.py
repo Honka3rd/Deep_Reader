@@ -12,6 +12,7 @@ from typing import Callable
 
 from document_preparation.accepted_source_snapshot import AcceptedSourceSnapshot, SourceNotReady
 from document_structure.enhancement_capacity import capacity_projection, require_capacity_identity
+from document_structure.structured_document import StructuredDocument
 
 LOGGER = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ class EnhancementState:
     interaction_revision: str
     interaction_count: int | None = None
     includes_user_notes: bool | None = None
+    reading_revision: int = 0
+    document: StructuredDocument | None = None
+    accepted_source_path: str | None = None
 
 
 class EnhancementPreflightService:
@@ -75,6 +79,16 @@ class EnhancementPreflightService:
             return "enhancement_execution_unavailable"
         return self.availability(doc_name)
 
+    def activity(self, doc_name):
+        """Observe the shared execution lease, not a historical operation outcome."""
+        if self.lease is None:
+            raise EnhancementConflict("enhancement_execution_unavailable", 503)
+        try:
+            with self.lease(doc_name):
+                return "idle"
+        except BlockingIOError:
+            return "running"
+
     def _state(self, doc_name: str) -> EnhancementState:
         if self.reader is None:
             raise EnhancementConflict("enhancement_storage_guards_unavailable", 503)
@@ -84,27 +98,34 @@ class EnhancementPreflightService:
         return state
 
     @staticmethod
-    def _binding(state, doc_name, toc_hint, enhancement_intent, capacity_fingerprint):
+    def _binding(state, doc_name, toc_hint, enhancement_intent, capacity_fingerprint, allow_ocr_cleanup=False):
+        from document_structure.ocr_cleanup_contract import CLEANUP_POLICY_VERSION, CLEANUP_CONSENT_SCOPE
+        from document_structure.ocr_cleanup_planner import REMAINING_CLEANUP_PROMPT_VERSION, REMAINING_CLEANUP_POLICY_VERSION
         source = state.source
-        value = ["enhancement-consent-v2", doc_name, source.namespace,
+        value = ["enhancement-consent-v3", doc_name, source.namespace,
                  source.document_id, source.structure_version,
                  source.extraction_identity.to_dict(), source.text_sha256,
                  state.interaction_revision, "llm_enhanced", str(toc_hint),
-                 str(enhancement_intent), source.language, capacity_fingerprint]
+                 str(enhancement_intent), source.language, capacity_fingerprint,
+                 allow_ocr_cleanup, state.reading_revision, CLEANUP_POLICY_VERSION,
+                 CLEANUP_CONSENT_SCOPE, REMAINING_CLEANUP_PROMPT_VERSION, REMAINING_CLEANUP_POLICY_VERSION]
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
-    def preflight(self, *, doc_name, toc_hint="auto", enhancement_intent="restore_source"):
+    def preflight(self, *, doc_name, toc_hint="auto", enhancement_intent="restore_source", allow_ocr_cleanup=False):
         result = dict(ready=False, reason=None, structure_version=None,
                       interaction_count=None, includes_user_notes=None,
                       cleanup_scope="all_document_interactions_and_local_drafts",
                       cleanup_condition="structure_changed_only",
-                      confirmation_token=None, expires_at=None, execution_available=False, capacity=None)
+                      confirmation_token=None, expires_at=None, execution_available=False, capacity=None,
+                      ocr_cleanup=None)
         try:
             state = self._state(doc_name)
         except (EnhancementConflict, SourceNotReady) as error:
             return {**result, "reason": error.reason}
         result.update(ready=True, structure_version=state.source.structure_version,
                       interaction_count=state.interaction_count, includes_user_notes=state.includes_user_notes)
+        from app.enhancement_cleanup import cleanup_preflight
+        result["ocr_cleanup"] = cleanup_preflight(state, allow_ocr_cleanup)
         unavailable = self.execution_unavailable_reason(doc_name)
         if unavailable:
             return {**result, "reason": unavailable}
@@ -113,13 +134,13 @@ class EnhancementPreflightService:
         if report["capacity"]["status"] != "fits":
             return {**result, "reason": report["capacity"]["reason_code"]}
         expires = int(self.clock()) + 300
-        binding = self._binding(state, doc_name, toc_hint, enhancement_intent, report["fingerprint"])
+        binding = self._binding(state, doc_name, toc_hint, enhancement_intent, report["fingerprint"], allow_ocr_cleanup)
         body = f"{expires}.{binding}.{secrets.token_hex(16)}"
         signature = hmac.new(self.secret, body.encode(), hashlib.sha256).hexdigest()
         token = base64.urlsafe_b64encode(f"{body}.{signature}".encode()).decode()
         try:
             self.operations.register(dict(doc_name=doc_name, toc_hint=toc_hint,
-                enhancement_intent=enhancement_intent, confirmation_token=token))
+                enhancement_intent=enhancement_intent, confirmation_token=token, allow_ocr_cleanup=allow_ocr_cleanup))
         except EnhancementConflict as error:
             return {**result, "reason": error.reason}
         return dict(result, ready=True, execution_available=unavailable is None, reason=unavailable,
@@ -129,7 +150,7 @@ class EnhancementPreflightService:
                     confirmation_token=token, expires_at=expires)
 
     def verify_consent(self, *, doc_name, discard_interactions=False, confirmation_token=None,
-                 toc_hint="auto", enhancement_intent="restore_source"):
+                 toc_hint="auto", enhancement_intent="restore_source", allow_ocr_cleanup=False):
         if discard_interactions is not True or not confirmation_token:
             raise EnhancementConflict("confirmation_required")
         try:
@@ -165,7 +186,8 @@ class EnhancementPreflightService:
         if capacity["status"] != "fits":
             raise EnhancementConflict(capacity["reason_code"],
                 413 if capacity["status"] in {"exceeded", "resource_limited"} else 503, capacity)
-        if not hmac.compare_digest(binding, self._binding(state, doc_name, toc_hint, enhancement_intent, report["fingerprint"])):
+        if not hmac.compare_digest(binding, self._binding(state, doc_name, toc_hint, enhancement_intent,
+                                                        report["fingerprint"], request.get("allow_ocr_cleanup", False))):
             raise EnhancementConflict("confirmation_stale")
         return state, report["fingerprint"]
 

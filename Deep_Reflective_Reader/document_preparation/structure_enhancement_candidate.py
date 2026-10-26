@@ -50,6 +50,12 @@ def build_structure_enhancement_candidate(*, snapshot, builder, toc_hint="auto",
         identity = normalize_pdf_identity(identity)
     provenance.pop("pdf_extraction", None)
     provenance["extraction"] = identity.record(text)
+    if snapshot.cleanup_context is not None:
+        context = snapshot.cleanup_context
+        provenance["source_page_spans"] = [{"page_index": p.page_index, "char_start": p.start,
+                                            "char_end": p.end} for p in context.pages]
+        if context.evidence is not None:
+            provenance["actual_ocr_evidence"] = context.evidence.model_dump(mode="json")
     provenance["enhancement_source"] = {
         "structure_version": snapshot.structure_version,
         "text_sha256": snapshot.text_sha256, "text_length": snapshot.text_length,

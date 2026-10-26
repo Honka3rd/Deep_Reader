@@ -1,7 +1,8 @@
-from typing import Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from document_structure.common_parse_policy import TocHint
+from document_structure.ocr_cleanup_contract import CleanupOutcome, OutcomeReason
 from document_structure.structure_plan_contract import EnhancementIntent, validate_enhancement_intent
 from shared.artifact_target_model import ArtifactTargetLevel
 from doc_loaders.pdf_extraction_contract import (
@@ -19,6 +20,90 @@ ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS: frozenset[str] = frozenset(
         "schema_version",
     }
 )
+
+
+SmartCleanupOperationId = Annotated[str, Field(strict=True, min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")]
+SmartCleanupToken = Annotated[str, Field(strict=True, min_length=43, max_length=43, pattern=r"^[A-Za-z0-9_-]{43}$")]
+SmartCleanupServiceReason = Literal[
+    "cleanup_service_unavailable", "cleanup_document_missing", "cleanup_source_not_ready",
+    "cleanup_identity_changed", "cleanup_in_progress", "cleanup_operation_capacity",
+    "cleanup_preflight_unavailable", "cleanup_reconciliation_unavailable",
+    "cleanup_execution_unavailable", "cleanup_outcome_unknown", "cleanup_source_changed",
+    "cleanup_operation_superseded", "cleanup_layout_failed", "cleanup_confirmation_required",
+    "cleanup_confirmation_invalid", "cleanup_confirmation_expired",
+]
+SmartCleanupReason = OutcomeReason | SmartCleanupServiceReason
+SMART_CLEANUP_REASONS = frozenset((*get_args(OutcomeReason), *get_args(SmartCleanupServiceReason)))
+
+
+class SmartCleanupDTO(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+
+class SmartCleanupPreflightRequest(SmartCleanupDTO):
+    """Document identity is in the route; no client policy or parser settings."""
+
+
+class SmartCleanupExecuteRequest(SmartCleanupDTO):
+    operation_id: SmartCleanupOperationId
+    confirmation_token: SmartCleanupToken
+
+
+class SmartCleanupErrorResponse(SmartCleanupDTO):
+    detail: SmartCleanupReason | Literal["cleanup_request_invalid"]
+
+
+class SmartCleanupImpact(SmartCleanupDTO):
+    generated_invalidation: Literal["only_if_reading_content_changed"] = "only_if_reading_content_changed"
+    preserves_notes: Literal[True] = True
+    preserves_manual_edits: Literal[True] = True
+    preserves_original: Literal[True] = True
+    preserves_structure: Literal[True] = True
+
+
+class SmartCleanupPreflightResponse(SmartCleanupDTO):
+    execution_available: bool
+    reason: SmartCleanupReason | None = None
+    impact: SmartCleanupImpact = Field(default_factory=SmartCleanupImpact)
+    operation_id: SmartCleanupOperationId | None = None
+    confirmation_token: SmartCleanupToken | None = None
+    expires_in_seconds: int | None = Field(default=None, ge=1, le=300)
+
+    @model_validator(mode="after")
+    def coherent(self):
+        handles = (self.operation_id, self.confirmation_token, self.expires_in_seconds)
+        if self.execution_available:
+            if self.reason is not None or any(value is None for value in handles):
+                raise ValueError("cleanup_ready_requires_consent")
+        elif self.reason is None or any(value is not None for value in handles):
+            raise ValueError("cleanup_unavailable_cannot_issue_consent")
+        return self
+
+
+class SmartCleanupOperationResponse(SmartCleanupDTO):
+    operation_id: SmartCleanupOperationId
+    phase: Literal["planning", "staging", "committing", "layout", "finished", "unknown", "superseded"]
+    commit: Literal["not_started", "not_committed", "committed", "unknown"]
+    outcome: CleanupOutcome | None
+    reason: SmartCleanupReason | None = None
+    retry_action: Literal["none", "reconcile", "regenerate_cleanup", "resume_layout"]
+    reading_ready: bool | None
+    pending_review_count: int | None = Field(default=None, ge=0)
+    durability: Literal["process_local", "persisted_commit"]
+
+    @model_validator(mode="after")
+    def coherent(self):
+        ready = True if self.phase == "finished" and self.commit == "committed" else (
+            False if self.phase == "layout" else None)
+        if self.reading_ready is not ready:
+            raise ValueError("cleanup_readiness_phase_mismatch")
+        if self.phase == "unknown" and (self.commit != "unknown" or self.outcome is not None
+                                        or self.retry_action != "reconcile"):
+            raise ValueError("cleanup_unknown_requires_reconciliation")
+        if self.outcome and self.outcome.reading_content_changed and self.commit != "committed":
+            raise ValueError("cleanup_change_not_committed")
+        return self
+
 
 ARTIFACT_CONTEXT_MODES: frozenset[str] = frozenset(
     {
@@ -86,7 +171,7 @@ DOCUMENT_MANAGEMENT_SOURCE_STATUSES: frozenset[str] = frozenset(
 )
 
 DOCUMENT_MANAGEMENT_PREPARATION_STATUSES: frozenset[str] = frozenset(
-    {"not_prepared", "ready", "failed", "stale", "unknown"}
+    {"not_prepared", "building", "ready", "failed", "stale", "unknown"}
 )
 
 DOCUMENT_UPLOAD_CONFLICT_POLICIES: frozenset[str] = frozenset(
@@ -299,13 +384,122 @@ class DocumentListResponse(BaseModel):
 
 class ReadingContentMutationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    action: Literal["edit", "delete", "undo", "discard_region"]
+    action: Literal["edit", "delete", "undo", "discard_region", "cleanup_edit", "cleanup_restore", "cleanup_delete",
+                    "region_edit", "region_apply", "region_delete",
+                    "review_block_edit", "review_block_delete", "review_block_keep"]
     expected_revision: int = Field(ge=0, strict=True)
     source_token: str = Field(pattern=r"^[0-9a-f]{64}$")
     mutation_id: str = Field(min_length=1,max_length=100)
     block_id: str | None = Field(default=None,max_length=200)
     text: str | None = Field(default=None,max_length=10000)
     region_id: str | None = Field(default=None,max_length=100)
+    discard_interactions: bool | None = Field(default=None, strict=True)
+    cleanup_record_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def _validate_region_command(self):
+        if self.action.startswith("review_block_"):
+            if not self.region_id or not self.block_id or self.cleanup_record_id is not None:
+                raise ValueError("invalid_review_block_command")
+            if self.action == "review_block_edit":
+                if not isinstance(self.text, str) or not self.text.strip() or self.discard_interactions is None:
+                    raise ValueError("invalid_review_block_command")
+            elif self.text is not None or self.discard_interactions is not None:
+                raise ValueError("invalid_review_block_command")
+            return self
+        if not self.action.startswith("region_"):
+            return self
+        if not self.region_id or self.block_id is not None or self.cleanup_record_id is not None:
+            raise ValueError("invalid_region_command")
+        if self.action == "region_edit" or self.text is not None:
+            if not isinstance(self.text, str) or not self.text.strip():
+                raise ValueError("reading_text_requires_1_to_10000_characters")
+        if (self.action == "region_apply" and self.discard_interactions is None
+                or self.action != "region_apply" and self.discard_interactions is not None
+                or self.action == "region_delete" and self.text is not None):
+            raise ValueError("invalid_region_command")
+        return self
+
+
+class ReviewManualChangeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    status: Literal["modified", "deleted", "restored"]
+    at: str
+
+
+class RegionRepairResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    text: str
+    edited_at: str | None
+    applied_text: str | None
+    applied_at: str | None
+    can_edit: bool
+    can_apply: bool
+    can_delete: bool
+    blocked_reason: str | None
+
+
+class SourceReviewRegionResponse(BaseModel):
+    # Original coordinates and internal mapping proofs are intentionally not exposed.
+    model_config = ConfigDict(extra="ignore", strict=True)
+    id: str
+    page_index: int = Field(ge=0)
+    reason: str | None = None
+    raw_candidate: str = ""
+    status: Literal["unresolved"]
+    block_ids: list[str]
+    mapping_status: Literal["complete", "partial", "unavailable"]
+    mapping_reason: Literal["never_in_body", "source_mapping_unavailable", "verified_source_overlap",
+                            "partial_source_coverage", "blocks_not_materialized", "block_mapping_unavailable"]
+    body_status: Literal["linked", "excluded", "unknown", "pending"]
+    related_deleted_count: int = Field(ge=0)
+    manual_change: ReviewManualChangeResponse | None
+    repair: RegionRepairResponse | None = None
+
+
+class ReviewBlockRepairResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    can_edit: bool
+    can_delete: bool
+    can_keep: bool
+    blocked_reason: str | None
+
+
+class ReadingBlockResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    block_id: str
+    task_unit_id: str
+    section_id: str
+    chapter_id: str
+    content: str
+    deleted: bool
+    modified: bool
+    manually_edited: bool
+    review_repair: ReviewBlockRepairResponse | None = None
+
+
+class ReadingBlockPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    total: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    limit: Literal[20]
+
+
+class ReadingContentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    document_id: str
+    structure_version: str | None
+    revision: int = Field(ge=0)
+    source_token: str
+    max_chars: Literal[10000]
+    disposition: Literal["needs_review", "completed"]
+    regions: list[SourceReviewRegionResponse]
+    can_undo: bool
+    undo_action: str | None
+    blocks: list[ReadingBlockResponse]
+    block_page: ReadingBlockPageResponse | None = None
+    cleanup_audit: dict[str, Any] | None = None
+    refresh: "ReadingContentRefreshResponse | None" = None
 
 
 class DocumentManagementItemResponse(BaseModel):
@@ -1501,6 +1695,115 @@ class AnalysisArtifactPayloadResponse(BaseModel):
         return self
 
 
+class TranslationReadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    doc_name: str = Field(..., strict=True, min_length=1, max_length=255)
+    content_block_id: str = Field(..., strict=True, min_length=1, max_length=255)
+
+    @model_validator(mode="after")
+    def _validate_translation(self):
+        name = self.doc_name.strip()
+        if name in {".", ".."} or any(c in name for c in "/\\") or any(ord(c) < 32 for c in name):
+            raise ValueError("translation_invalid_document_name")
+        self.doc_name = name
+        self.content_block_id = self.content_block_id.strip()
+        if not self.doc_name or not self.content_block_id:
+            raise ValueError("translation_missing_target")
+        return self
+
+
+class TranslationInteractionRequest(TranslationReadRequest):
+    target_language: str = Field(..., strict=True, max_length=32,
+                                 description="Required registered language code, e.g. en or zh.")
+    source_language: str | None = Field(None, strict=True, max_length=32,
+        description="Translate from. Omitted/null uses the existing document profile language.")
+    mutation_id: str | None = Field(None, strict=True, min_length=1, max_length=100, pattern=r".*\S.*")
+
+    @model_validator(mode="after")
+    def _validate_languages(self):
+        from section_tasks.translation_records import interactive_language
+        self.target_language = interactive_language(self.target_language, field="target_language")
+        if self.source_language is not None:
+            self.source_language = interactive_language(self.source_language, field="source_language")
+        return self
+
+
+class TranslationInteractionEnvelope(BaseModel):
+    """Durable result binding; untranslatable is explicitly not persisted."""
+
+    model_config = ConfigDict(extra="forbid")
+    target: ReadingInteractionTargetResponse
+    interaction_type: Literal["translate"] = "translate"
+    status: Literal["completed", "partial", "untranslatable"]
+    source_structure_version: int | None = Field(None, ge=0)
+    reading_revision: int = Field(..., ge=0)
+    effective_content_hash: str
+    schema_version: Literal["translation_interaction_v1"] = "translation_interaction_v1"
+    prompt_instruction_version: str
+    persisted: bool = False
+
+
+class TranslationSavedRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_language: str
+    target_language: str
+    status: Literal["completed", "partial"]
+    translated_text: str = Field(min_length=1)
+    generated_at: str
+    updated_at: str
+    revision: int = Field(ge=1)
+    mutation_id: str
+    effective_content_hash: str
+
+
+class TranslationReadResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: ReadingInteractionTargetResponse
+    language_codes: list[str]
+    default_source_language: str | None
+    effective_content_hash: str
+    reading_revision: int = Field(ge=0)
+    translations: list[TranslationSavedRecord]
+
+
+class TranslationInteractionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_language: str
+    target_language: str
+    translated_text: str | None
+
+
+class TranslationInteractionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    envelope: TranslationInteractionEnvelope
+    payload: TranslationInteractionPayload
+    record: TranslationSavedRecord | None = None
+
+    @model_validator(mode="after")
+    def _validate_translation_result(self):
+        text = self.payload.translated_text
+        if self.envelope.status == "untranslatable":
+            if text is not None:
+                raise ValueError("untranslatable requires null text")
+        elif not text or not text.strip():
+            raise ValueError("translation requires nonempty text")
+        if self.envelope.persisted != (self.record is not None):
+            raise ValueError("translation persistence requires a saved record")
+        if self.record is not None and (
+                self.record.status != self.envelope.status
+                or self.record.effective_content_hash != self.envelope.effective_content_hash
+                or self.record.source_language != self.payload.source_language
+                or self.record.target_language != self.payload.target_language
+                or self.record.translated_text != self.payload.translated_text):
+            raise ValueError("translation response must match its committed record")
+        return self
+
+
+class TranslationInteractionErrorResponse(BaseModel):
+    detail: str
+
+
 class SummaryInteractionReadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target: ReadingInteractionTargetRequest
@@ -2073,6 +2376,84 @@ class TaskUnitContentBlockResponse(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class ReadingRefreshBlockResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    block_id: str
+    chapter_id: str
+    section_id: str
+    task_unit_id: str
+    block_order: int = Field(ge=0)
+    insert_before_block_id: str | None
+    unit_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    deleted: bool
+    manually_edited: bool
+    content_block: TaskUnitContentBlockResponse | None
+
+    @model_validator(mode="after")
+    def _validate_visibility(self):
+        if self.deleted != (self.content_block is None):
+            raise ValueError("refresh_block_visibility_mismatch")
+        if self.content_block is not None and self.content_block.block_id != self.block_id:
+            raise ValueError("refresh_block_identity_mismatch")
+        return self
+
+
+class CleanupRecordChangeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    batch_revision: int = Field(ge=0)
+    record_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    deleted: bool
+    record: dict[str, Any] | None = None
+    applied_count: int = Field(ge=0)
+    remaining_count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _validate_record(self):
+        if self.deleted != (self.record is None):
+            raise ValueError("cleanup_change_record_mismatch")
+        if self.record is not None and self.record.get("record_id") != self.record_id:
+            raise ValueError("cleanup_change_identity_mismatch")
+        if self.remaining_count > self.applied_count:
+            raise ValueError("cleanup_change_count_mismatch")
+        return self
+
+
+class ReadingContentRefreshResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    document_id: str
+    structure_version: str | None
+    revision: int = Field(ge=0)
+    source_token: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mutation_id: str
+    mutation_revision: int = Field(ge=0)
+    cleanup_record_id: str | None
+    scope_current: bool
+    generated_invalidated: bool
+    body_changed: bool = False
+    summaries_invalidated: bool = False
+    translation_block_ids: list[str] = Field(default_factory=list)
+    cleared_block_id: str | None
+    cleared_block_ids: list[str] = Field(default_factory=list)
+    blocks: list[ReadingRefreshBlockResponse] = Field(max_length=20)
+    block_page: ReadingBlockPageResponse
+    cleanup_change: CleanupRecordChangeResponse | None = None
+
+    @model_validator(mode="after")
+    def _validate_refresh_scope(self):
+        if self.scope_current and self.revision != self.mutation_revision:
+            raise ValueError("refresh_revision_mismatch")
+        if not self.scope_current and (self.blocks or self.cleanup_change is not None):
+            raise ValueError("stale_refresh_contains_blocks")
+        if self.cleanup_change is not None and self.cleanup_change.record_id != self.cleanup_record_id:
+            raise ValueError("cleanup_change_target_mismatch")
+        ids = [block.block_id for block in self.blocks]
+        if len(set(ids)) != len(ids):
+            raise ValueError("duplicate_refresh_block")
+        if self.scope_current and len(self.blocks) != min(20, max(0, self.block_page.total - self.block_page.offset)):
+            raise ValueError("refresh_page_incomplete")
+        return self
+
+
 class TaskUnitContentResponse(BaseModel):
     """On-demand task-unit content response with backward-compatible rich-content shape.
 
@@ -2590,6 +2971,8 @@ class ReparseDocumentStructureRequest(BaseModel):
     )
 
     doc_name: str = Field(..., description="Document name")
+    model_config = ConfigDict(extra="forbid")
+    allow_ocr_cleanup: bool = Field(False, strict=True)
     discard_interactions: bool = Field(False, strict=True)
     confirmation_token: str | None = Field(None, max_length=1024)
     toc_hint: TocHint = TocHint.AUTO
@@ -2619,6 +3002,8 @@ class ReparseDocumentStructureRequest(BaseModel):
                 "parser_mode must be common, llm_enhanced, or manual_structure"
             )
         self.parser_mode = normalized_parser_mode
+        if self.allow_ocr_cleanup and normalized_parser_mode != "llm_enhanced":
+            raise ValueError("allow_ocr_cleanup requires llm_enhanced")
         validate_enhancement_intent(normalized_parser_mode, self.enhancement_intent)
 
         if normalized_parser_mode == "manual_structure":
@@ -2634,6 +3019,8 @@ class ReparseDocumentStructureRequest(BaseModel):
 
 
 class EnhancementPreflightRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    allow_ocr_cleanup: bool = Field(False, strict=True)
     doc_name: str = Field(..., min_length=1)
     parser_mode: Literal["llm_enhanced"] = "llm_enhanced"
     toc_hint: TocHint = TocHint.AUTO
@@ -2668,6 +3055,19 @@ class EnhancementCapacityResponse(BaseModel):
     prompt_version: str | None = None
 
 
+class EnhancementCleanupPreflight(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+    eligibility: Literal["eligible", "not_applicable", "skipped"]
+    reason: Literal["native_source", "ocr_evidence_missing", "ocr_evidence_mismatch",
+                    "extraction_mode_unsupported"] | None
+    scope: Literal["ocr_cleanup_reading_overlay_v1"]
+    policy_version: Literal["ocr_cleanup_policy_v1"]
+    reading_revision: int = Field(ge=0)
+    invalidation: Literal["generated_interactions_only_if_reading_content_changed"]
+    preserves_notes_when_structure_unchanged: Literal[True]
+
+
 class EnhancementPreflightResponse(BaseModel):
     ready: bool
     execution_available: bool = False
@@ -2680,6 +3080,7 @@ class EnhancementPreflightResponse(BaseModel):
     confirmation_token: str | None
     expires_at: int | None
     capacity: EnhancementCapacityResponse | None = None
+    ocr_cleanup: EnhancementCleanupPreflight | None = None
 
 
 class ReparseDocumentStructureResponse(BaseModel):
@@ -2697,6 +3098,17 @@ class ReparseDocumentStructureResponse(BaseModel):
     interactions_cleared: bool | None = None
     reading_layout_required: bool | None = None
     retryable: bool = False
+    cleanup: CleanupOutcome | None = None
+    phase: Literal["layout", "complete", "superseded"] | None = None
+    retry_stage: Literal["generation", "layout"] | None = None
+    layout_error: Literal["enhancement_layout_failed", "enhancement_result_superseded"] | None = None
+    review_required: bool | None = None
+    pending_review_count: int | None = Field(None, ge=0)
+
+
+class EnhancementActivityResponse(BaseModel):
+    doc_name: str
+    status: Literal["idle", "running"]
 
 
 class EnhancementOperationRequest(EnhancementPreflightRequest):
@@ -2708,4 +3120,4 @@ class EnhancementOperationResponse(BaseModel):
     result: ReparseDocumentStructureResponse | None = None
     reason: str | None = None
     retryable: bool = False
-    durability: Literal["process_local"] = "process_local"
+    durability: Literal["process_local", "persisted_commit"] = "process_local"

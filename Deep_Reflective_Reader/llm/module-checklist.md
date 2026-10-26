@@ -1,5 +1,30 @@
 # llm Checklist
 
+## Offline Preflight Follow-up (2026-10-24)
+
+Shared WAIT track: 5/5 implemented and accepted (100%); backend 4/4, UI 1/1.
+WAIT-01..05 have evidence in their owner checklists. Existing SCLEAN
+completion remains historical scoped evidence. Runtime deployment is not claimed.
+Timestamp: 2026-10-24
+Design: [incident and contract](module-detailed-design.md#offline-preflight-follow-up-2026-10-24).
+Checkboxes live only with their owners; this table is the execution index.
+
+| Order | Task | Owner | Scope | Dependency |
+| --- | --- | --- | --- | --- |
+| 1 | WAIT-01 | [UI](../../Deep_Reader_UI/module-checklist.md#request-wait-policy-follow-up-2026-10-24) | Remove frontend fixed request deadlines, retain lifecycle/recovery | None |
+| 2 | WAIT-02 | llm | Shared offline-only token counting | None |
+| 3 | WAIT-03 | [scripts](../scripts/module-checklist.md#offline-preflight-follow-up-2026-10-24) | Package/verify tokenizer assets in image and local setup | WAIT-02 |
+| 4 | WAIT-04 | [app](../app/module-checklist.md#offline-preflight-follow-up-2026-10-24) | Correlated preflight stage/outcome timings | WAIT-02 |
+| 5 | WAIT-05 | [scripts](../scripts/module-checklist.md#offline-preflight-follow-up-2026-10-24) | Cold/offline/real-book and browser acceptance | WAIT-01..04 |
+
+- [x] WAIT-02: Make shared token counting offline-only with explicit safe fallback.
+  Priority: P0. Owner: llm; document_structure supports existing budget/fingerprint consumers.
+  Acceptance: Verified model-matched local encoding only; no request/import-time download, wrong-encoding fallback, zero-count acceptance or prompt truncation. Missing/corrupt/unsupported assets return unavailable promptly; existing labelled conservative capacity decision remains fail-closed where necessary. Preflight/dispatch identity changes require fresh consent. Add private-data-safe local initialization/count timings.
+  Evidence required: Network-denied cold/warm/missing/corrupt/unsupported/concurrent initialization tests; special-token text and full prompt/schema accounting; unchanged model limits/output reserve; zero completion calls and prompt/source-free logs. Tests accompany this task rather than wait for final acceptance.
+  Evidence: offline_token_counter owns the five-model/o200k manifest, hash/size-verified local reads, pinned public Encoding recipe and synchronized shared successful cache. OpenAILLMProvider delegates without registry download. Missing/corrupt/mismatched/unavailable paths return None, preserving the labelled conservative budget fallback. Internal recipe/hash/library identity flows through SemanticPlanProvider into existing split/cleanup consent fingerprints, without new API exposure or changed capacity policy. Safe stage durations distinguish verification, initialization and counting.
+  Validation: 129 tests pass, including 13 new counter cases and opt-in verified real-asset/immutable-book checks. Fresh processes with denied network and empty temporary cache, warm/concurrent counts, missing/corrupt/unreadable assets, absent dependency, unsupported mapping, special-token/multilingual parity, full schema accounting and changed identity/fallback refusal pass. Madame Bovary/Red Roulette complete accepted-text counting preserves manifest hashes; zero model calls. No production mutation/deployment; default asset packaging remains WAIT-03, app spans WAIT-04 and full incident-book/container acceptance WAIT-05.
+  Timestamp: 2026-10-24
+
 ## Full-Source Enhancement Follow-up
 
 - [x] FULL-01: Separate verified context/input/output capacity and migrate budget consumers.

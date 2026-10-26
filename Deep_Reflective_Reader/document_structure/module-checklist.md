@@ -1,5 +1,273 @@
 # document_structure Checklist
 
+## Source-Dependent Interaction Lifecycle (2026-10-26)
+
+Implemented and verified: 2/2 owned tasks. [Shared queue](../section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).
+
+- [x] TRUI-02: Compare stored effective body and make identical edits no-ops.
+  Priority: P0. Depends on: TRUI-01. Acceptance: Under existing write lock, validate identity/source/revision then compare effective text. Identical submit preserves body revision, manual flags, timestamps, Undo, epochs and all metadata; return truthful no-change. Cover main/source-review Edit and actual-body repair application; keep draft/history semantics and protections separate.
+  Evidence required: File and PostgreSQL exact-equality/whitespace/Unicode/overlay/stale-editor tests, Clear versus Keep both no-op when equal, repeated apply/restore, receipt replay and zero destructive changes. UI must settle without full layout rebuild.
+  Evidence: reading_content.py compares effective text under the existing write lock; neutral replay receipts produce body_changed=false refreshes without revision/Undo/audit/edit-flag changes. SQL preserves document updated_at for no-ops. File/SQL equality, whitespace, overlay, replay and stale-editor tests plus real App no-op acceptance pass.
+  Timestamp: 2026-10-26
+- [x] TRUI-03: Atomically purge source-dependent translations/summaries and honor other-metadata consent.
+  Priority: P0. Depends on: TRUI-01/02. Acceptance: Actual changes always clear affected translations and summary resources/caches/dependencies, but Keep retains other kinds. Delete clears all deleted-block interactions including Note. Shared policy covers edit/repair/cleanup/Undo and structural lifecycle; no profile rebuild. Prevent legacy/late-writer resurrection; use existing transactions and return precise changed/cleared scope.
+  Evidence required: No-op/change/delete matrix for Keep/Clear, ancestor/descendant summary dependency and fallback-scope tests, unaffected blocks/languages, retained Quiz/Insight/thinking/Note, reparse/Undo/rename, SQL rollback and concurrency. No broad artifact wipe under Keep or read-time mutation.
+  Evidence: shared clear_source_dependents removes changed-block translations and document-wide summary-kind resources conservatively, preserving Quiz/other metadata under Keep. Reading/cleanup/Undo paths, per-block content epochs, legacy-save protection and relational summary-only SQL purge are covered in 408 passing regressions; SQL post-write rollback and real App targeted refresh pass. Profiles remain unchanged.
+  Timestamp: 2026-10-26
+
+## Block-Level Source Review Correction (2026-10-26)
+
+- [x] SRBLOCK-01: Independently validate and atomically edit/delete/confirm one related block.
+  Acceptance: Region + block identity, revision/source CAS and replay; per-block capabilities, no sibling-wide rejection, unchanged manual flag for review edits, durable protection after body edits/deletes/Undo. Keep removes review membership without changing body/artifacts and survives reload/Undo. Reuse transaction/overlays/Note policy and bounded refresh. Preserve source evidence; no schema change or model call.
+  Evidence required: File and disposable SQL tests, rollback/replay/invalid commands/Note preservation; actual incident acceptance belongs to UI SRBLOCK-02.
+  Evidence: 400 backend tests pass without skips, including 15 new file/API/SQL checks for independent sibling protection, repeat edits, Keep body/Note preservation and durable removal, Delete Note purge, replay, invalid identity/consent and rollback after SQL writes. Four private backup reads preserve 16 hashes; the saved Madame Bovary snapshot verifies 38 regions/33 mapped targets. Natural Page 3 actual API/SQL/browser acceptance is recorded once in UI SRBLOCK-02. Source/hierarchy remain immutable and no new database schema is introduced.
+  Timestamp: 2026-10-26
+
+## Guarded Source Region Repair (2026-10-26)
+
+Historical region-wide delivery, not acceptance of the corrected SRBLOCK behavior.
+
+New track; historical SRMAP/RCR receipts do not complete these tasks. Each checkbox
+lives only in its owner module. [Design](module-detailed-design.md#guarded-source-region-repair-2026-10-26).
+Current track: 7/7 complete (100%); backend-owned 5/5, UI-owned 2/2.
+Implementation, regression and private real-state acceptance complete; no deployment implied.
+
+| Order | Task | Owner | Dependency |
+| --- | --- | --- | --- |
+| 1 | SRREPAIR-01 Exact writable spans and eligibility | document_structure | Existing SRMAP/RCR |
+| 2 | SRREPAIR-02 Draft/application ownership and shared guards | document_structure | 01 |
+| 3 | SRREPAIR-03 Atomic apply/delete and interaction policy | document_structure; db support | 02 |
+| 4 | SRREPAIR-04 Minimal API and affected-block refresh | document_structure; API support | 03 |
+| 5 | SRREPAIR-05 Region edit/apply/delete UI | Deep_Reader_UI | 04 |
+| 6 | SRREPAIR-06 Local refresh and lifecycle safety | Deep_Reader_UI | 05 |
+| 7 | SRREPAIR-07 Real-state end-to-end acceptance | document_structure; UI/scripts/db support | 01..06 |
+
+- [x] SRREPAIR-01: Define exact region/block write targets and read-only eligibility.
+  Acceptance: Reuse verified source mapping; expose canonical and block-relative canonical intersections with hierarchy IDs and snapshot binding. Deny partial/ambiguous/unmaterialized mappings, body-edited/deleted blocks and conflicting overlays without affecting navigation. No API writes or UI enablement; no read-side persistence.
+  Evidence required: Partial-block and cross-block coverage, whitespace normalization, Unicode offsets, manual edit/delete/Undo, source drift, overlapping blocks, legacy ambiguity, overlay conflicts and snapshot purity tests; backed-up real-state read check where available.
+  Evidence: Internal region_repair_targets and region_source_intersections reuse the verified mapping core, preserve persisted navigation v2/HTTP contracts and return source-bound canonical intersections and denial reasons without writes. 22 new tests and 399 combined mapping/API/file/disposable-PostgreSQL/history/refresh regressions pass without skips. Four private backups/39 natural regions retain 16 file hashes; a separate saved incident snapshot has 101 regions/60 mapped targets with all backup hashes unchanged. No UI enablement, new mutation/API, production writes or deployment; full integrated acceptance remains 07.
+  Timestamp: 2026-10-26
+- [x] SRREPAIR-02: Separate region drafts from owned applications and share repair guards.
+  Acceptance: Preserve immutable evidence; region-keyed draft/application state, exact own-overlay proof and common low-level protection helpers reusable by cleanup history. Repeated region repairs never set/clear manual flags; foreign overlaps reject. Define persisted version/Undo compatibility without adopting ambiguous legacy ownership.
+  Evidence required: Repeated save/apply planning, own versus foreign changes, source epochs, manual flags and cleanup-history regressions. No transport/UI behavior claimed yet.
+  Evidence: source_region_repair separates source-bound region_drafts from exact region_applications and source_region_id overlays. Shared reading_repair_guards serve regions and cleanup history. Repeat replacement, corrupt/foreign ownership, source drift and durable manual protection pass in the 425-test file/SQL regression; Undo retains applications but never rewinds manual flags or epochs.
+  Timestamp: 2026-10-26
+- [x] SRREPAIR-03: Apply or delete region text atomically through the existing mutation port.
+  Acceptance: Validate every touched block under lock; source/revision CAS, idempotent replay, overlays/audit/receipts/artifact invalidation commit together. Delete only mapped text; full block removal purges interactions including Note, edit retains explicit Keep/Clear choice. Preserve evidence, repeat repair and explicit Ignore; no automatic Ignore or block creation.
+  Evidence required: File and disposable PostgreSQL rollback/concurrency/replay, cross-block all-or-none, Undo, stale/body-edit/delete rejection, Note policy and original-source immutability.
+  Evidence: region_edit/apply/delete reuse ReadingContentService and the existing locked repository transaction. Cross-block removal purges every affected physical Note row and advances each block epoch. 26 mutation tests cover file/SQL repeat application, same-ID replay, concurrent revision conflicts, partial/all deletion, foreign overlap, one-protected-target all-or-none, Keep/Clear and post-SQL rollback. Four verified private backups additionally exercise real-page repairs without canonical/source changes; constructed review evidence is labelled explicitly.
+  Timestamp: 2026-10-26
+- [x] SRREPAIR-04: Expose minimal repair DTO/actions and targeted refresh.
+  Acceptance: Typed read/mutation contracts reuse reading-content transport; return authoritative capabilities/reasons, draft/application state and affected-block/related-region changes. Internal mapping proof stays server-owned; old clients remain compatible. No full layout rebuild, hidden Prepare or profile creation.
+  Evidence required: HTTP/schema tests for limits, conflicts, unknown outcomes, refresh paging, related shared-block rows, hidden-to-visible blocks and idempotent retries.
+  Evidence: Strict RegionRepairResponse and region-only mutation validation reuse existing routes. Public DTOs omit executable source offsets and ownership proof; refresh adds plural cleared_block_ids. Actual HTTP tests reject malformed commands, serialize server capability/application state and return authoritative paged block/tombstone refresh. Existing 20-block paging/stale-scope tests pass in the 425-test suite; browser loss-of-response acceptance replays the same mutation ID without another revision.
+  Timestamp: 2026-10-26
+- [x] SRREPAIR-07: Accept the integrated flow against private backed-up real books.
+  Acceptance: Hash-verify source/state backups; mutate disposable storage only. Actual API/SQL and desktop/mobile UI prove repeated repair/delete, unchanged manual flags, protection after main-reader edit/delete, targeted refresh, stable row/scroll and retained recovery evidence. Cover cross-block/overlap conditions with explicitly identified fixtures when absent naturally.
+  Evidence required: Real-state manifests, persistence assertions, browser screenshots/request counts, regression/build results and unchanged backup hashes. No production reparse/deletion or deployment inferred.
+  Evidence: accept-source-region-repair.py loads only hash-verified saved SQL/profile/PDF backups into disposable schemas. Actual App/FastAPI/SQL acceptance passes at 1280/390 for 暗水幽灵 (101 natural regions, 38 eligible single-block targets) and Madame_Bovary_261021_155934 (38/11). Repeated Save/Apply, lost-response same-ID replay, Delete/cancel/recovery, Keep/Clear, untouched manual flags, body-edit protection, stable DOM/scroll/focus, lazy history and zero region-triggered layout/section reads pass. Canonical text/relational source rows and both JSONB reading-state copies are checked; backups unchanged and schemas removed. Private receipts: data/test-books/srrepair07/20261026T040032Z-963f487a and 20261026T040631Z-ee8127e8. 425 backend tests, six frontend browser suites and npm run check pass; fixed-build retry eliminated development hot-reload interference. Four backup real-page fixtures (including the hash-verified 暗水幽灵_sample) supplement natural cases without claiming loader-generated mappings. No OCR/model calls, production edits or Docker restart.
+  Timestamp: 2026-10-26
+
+## Repeatable Cleanup Repair (2026-10-25)
+
+New corrective track, not completion inferred from CLEAN-RESTORE/CRUI. Shared order
+below; each checkbox lives only with its owner. Current progress: 4/4 (100%);
+backend RCR-01/03 and UI-owned RCR-04/05 complete. RCR-05 accepts the isolated
+incident backup with actual App/API/SQL at 1280/390; evidence belongs to the UI
+checklist. No new backend task or production deployment is implied.
+RCR-02 (drop non-navigable history) was withdrawn by the maintainer before
+implementation to preserve accidental-deletion recovery. It is not a completed task.
+
+| Order | Task | Owner | Dependency |
+| --- | --- | --- | --- |
+| 1 | RCR-01 Repeatable, record-owned restoration | document_structure | Existing CLEAN-RESTORE |
+| 2 | RCR-03 Minimal affected-block mutation/read contract | document_structure; main/api_schemas support | 01 |
+| 3 | RCR-04 Targeted frontend refresh and repeat application | Deep_Reader_UI | 03 |
+| 4 | RCR-05 Real-state and desktop/mobile acceptance | Deep_Reader_UI; scripts/db support | 01/03/04 |
+
+- [x] RCR-01: Replace one-shot Restore with record-owned reapplication.
+  Acceptance: Separate saved draft from applied text; first restore removes the deletion, later restores replace only the same record's applied canonical span. Persistent backend body-edit flag remains unchanged by all history edits/restores. Preserve source/revision CAS, idempotency, Undo, Note and transactional artifact rules. Exclude only verified own replacements from overlap protection; reject foreign/stale changes. Recover the incident's legacy state only from exact source, mapping, last restore audit and Undo proof, never by fuzzy text matching or GET backfill.
+  Evidence required: File and real disposable PostgreSQL repeated save/restore, original-text restore, own/foreign overlap, disjoint/cross-block records, Undo, concurrent writes, rollback and legacy incident-shaped state; production source remains unchanged.
+  Evidence: cleanup_history separates saved drafts from persisted applications and tags exact owned source overlays; repeat Restore replaces rather than inserts. Undo includes application ownership, including adoption of proven legacy state. 281 backend regression tests plus 29 audit tests pass; SQL assertions verify both JSONB copies, unchanged manual flags, post-write rollback and concurrency. Read-only evaluation of production snapshot revision 5 for 19652:content:2 now yields can_restore=true, without modifying that snapshot. No Docker deployment, production book mutation, UI change or full real-book restoration acceptance; latter belongs to RCR-05.
+  Timestamp: 2026-10-25
+- [x] RCR-03: Return the smallest authoritative affected-block refresh contract.
+  Acceptance: Reuse reading-content routes; expose changed record and verified affected block IDs/revision, with a bounded targeted read of canonical reader DTOs as needed. Include all affected blocks and visibility changes, plus minimum interaction invalidation metadata. Do not return whole document/layout or let client offsets become authority. Replay returns consistent refresh scope; refresh never regenerates profile/layout/interactions.
+  Evidence required: HTTP/schema tests for restore/reapply, cross-block, hidden-to-visible, stale revision, replay and exact targeted read; bound response work and avoid exposing internal ownership metadata.
+  Evidence: Optional nested mutation refresh plus source/revision-bound GET reuse reading-content. Pages contain at most 20 affected shared reader DTOs/tombstones with canonical order/anchors, backend manual flag, unit hash and invalidation flags. GET loads one snapshot, indexes hierarchy and projects only selected units; no full review snapshot/profile/layout mutation. Stale replay acknowledges commit without a body patch; old receipts do not invent refresh proof. 354 backend regression tests pass with real disposable PostgreSQL and backup-book shared-engine checks enabled, plus 29 audit tests and both task-unit-content/shared-block script suites. Coverage includes repeated apply, 25-block pagination, visibility/Undo, stale source/revision, legacy receipts, schema rejection and rollback. Frontend integration and isolated incident-book/browser acceptance remain RCR-04/05; no deployment or production writes.
+  Timestamp: 2026-10-25
+
+## Cleanup Record Recovery (2026-10-25)
+
+Historical delivery below verified the earlier one-shot behavior. RCR supersedes
+that rule and its full-layout refresh expectation; it is not covered by those receipts.
+
+- [x] CLEAN-RESTORE: Add exact per-record block links, saved restoration text and atomic restore through reading-content; preserve immutable evidence, reject manual edit/delete/stale mappings, prevent double insertion, retain notes and invalidate generated data on restore only. Support file/PostgreSQL through the existing transaction port and cover rollback, replay, cross-block and hidden-block recovery.
+  Evidence: cleanup_history owns exact links/drafts/restore under the existing repository mutation port. Backend manually_edited persists in document JSONB and structured snapshots, survives Undo, and is rechecked on restore. Full regression 266 tests and audit suite 29 tests pass; coverage includes actual FastAPI, file/disposable PostgreSQL, concurrent attempts, post-SQL rollback, cross-block/fully hidden restore, canonical source immutability and generated-data removal with Note preservation. Three UI browser suites pass at 1280/390. No production deployment or live-book restoration claim.
+  Timestamp: 2026-10-25
+
+## OCR Preservation Follow-up (2026-10-25)
+
+Shared queue: doc_loaders OCR-KEEP-01..06; no duplicate completion count.
+The historical SRMAP-01/04/07 exclusion receipts below do not authorize hiding
+quality-rejected text or recognition gaps under this new policy.
+
+- [x] OCR-KEEP-05: Keep quality-excluded legacy content and extraction gaps visible.
+  Acceptance: Preserve truthful excluded/unknown mapping state without guessed targets; do not hide quality-rejected readable candidates merely because old extraction omitted them. Use the shared eligibility projection for reader/Library/guards; new included regions map through exact source spans. Explicit Ignore/cleanup and manual deletion semantics remain unchanged; no read-side backfill or source reconstruction.
+  Evidence: source-review-blocks-v2 requires affirmative source-bound blank-render evidence before exclusion; old v1 cache cannot hide quality candidates/gaps, reads recompute without writes. 146 mapping/reading/API/file/PostgreSQL/Note tests pass, including old cached proof, pure repeated reads, explicit backfill, deletion/Undo and guards. Actual new OCR page-80 review links all eight body blocks; historical gap remains visible with no invented target. Eight corpus file/SQL acceptance runs preserve all 16 backups.
+  Timestamp: 2026-10-25
+
+## Source Review Mapping Backlog (2026-10-25)
+
+Current delivery: **8/8 accepted (100%)**; backend-owned 5/5, UI-owned 3/3.
+No remaining task in this track. Earlier mapping/edit helpers alone are not completion evidence.
+Canonical [design](module-detailed-design.md#source-review-mapping-and-read-only-workflow-2026-10-25).
+Checkboxes live only in their owner checklist; preserve historical CLEAN/SCLEAN
+receipts without counting them as this track. No production deployment is implied.
+
+| Order | Task | Owner | Depends on | Deliverable |
+| --- | --- | --- | --- | --- |
+| 1 | SRMAP-01 | document_structure | Existing source evidence | Exact mapping and inclusion-state contract |
+| 2 | SRMAP-02 | document_structure; db/preparation support | 01 | Durable links, explicit legacy backfill and epoch handling |
+| 3 | SRMAP-03 | document_structure; db/section_tasks support | 02 | Manual audit, tombstones and explicit-only Ignore |
+| 4 | SRMAP-04 | document_structure; main/app/section_tasks support | 03 | Minimal read DTO and unified eligibility projection |
+| 5 | SRMAP-05 | [UI](../../Deep_Reader_UI/module-checklist.md#read-only-source-review-backlog-2026-10-25) | 04 | Read-only review and body navigation |
+| 6 | SRMAP-06 | UI | 05 | Refresh, manual-change display and lifecycle safety |
+| 7 | SRMAP-07 | document_structure; scripts support | 01..04 | Real-source and file/PostgreSQL acceptance |
+| 8 | SRMAP-08 | UI; backend/scripts support | 05..07 | Actual API/browser/real-book workflow acceptance |
+
+- [x] SRMAP-01: Define source-backed region/block relations and inclusion states.
+  Priority: P0; first implementation task. Owner: document_structure; doc_loaders supports source evidence only.
+  Acceptance: Separate coverage (complete/partial/unavailable) from never-in-body, not-yet-materialized/unknown, linked and manually deleted history. Resolve many-to-many intersections with verified extraction identity, canonical hash and source spans; complete coverage does not imply whole-block ownership. Reuse one exact resolver, no fuzzy matching, source-text rewrite, loader-assigned block IDs or UI text matching.
+  Evidence required: One-to-one, one-to-many, shared-block, partial-block overlap, duplicate quotes, whitespace/normalization, cross-page, empty/excluded, stale identity and pre-unit fixtures; no read-side effects. Record how existing loader evidence supports or cannot prove each state.
+  Evidence: source_review_blocks.py shares exact resolution and eligibility; verified canonical hashes/lengths, page spans, extraction identity and custom block source evidence determine links. Durable proof distinguishes excluded from unknown/pending; coverage is not ownership. Loader rejection paths add body_inclusion=excluded without block identity or policy leakage. Mapping/integrity tests cover many-to-many, partial, duplicates, corrupt bounds, changed titles/text/source and pure reads.
+  Timestamp: 2026-10-25
+
+- [x] SRMAP-02: Persist mapping at explicit write boundaries and preserve lifecycle identity.
+  Priority: P0. Depends on: SRMAP-01. Owner: document_structure; db and preparation support the domain contract.
+  Acceptance: Source/version-bound relation records written after final unit/block ID assignment, canonical evidence retained before materialization, and deleted-link tombstones retained within the structure epoch. File/PostgreSQL parity, short atomic writes, hard-reparse replacement versus unchanged/title-only reuse. Legacy records use safe read projection or explicit CAS backfill, never a GET/task-layout migration; no guessed links or empty-ID navigation.
+  Evidence required: DB ID normalization, restart, repeated write/backfill, rollback/concurrency, reparse/Undo and unchanged immutable-source checks. Unrecoverable legacy evidence remains explicitly unknown.
+  Evidence: Initial file/artifact saves and final-ID SQL hierarchy writes persist one domain mapping; title-only SQL updates metadata/snapshot together and file commit returns persisted state. Mapping failure rolls back labels/cleanup/notes. Internal rebuild_review_mapping is CAS-checked, metadata-only and never invoked by GET. Repository tests include allocated IDs, atomic concurrent backfill, restart, stale source, replacement, unchanged/replay purity and physical artifact retention; 26 focused file/real-SQL tests pass.
+  Timestamp: 2026-10-25
+
+- [x] SRMAP-03: Make manual block changes auditable without automatic Ignore.
+  Priority: P0. Depends on: SRMAP-02. Owner: document_structure; db/section_tasks support.
+  Acceptance: Remove manual-delete ignore_empty_regions behavior; even last-block deletion retains review until explicit Ignore. Record server UTC manual edit/delete/Undo history and derive every affected region's state/time through durable links. Keep smart cleanup resolution separate. Reuse existing targeted Note removal, edit Keep/Clear, generated-output invalidation, stale-writer protection, CAS and idempotency; Undo never resurrects deleted interactions. No manual mutation-count quota or second review editor command.
+  Evidence required: Partial/all-block deletion, shared regions, edit without region_id, explicit Ignore, Undo, duplicate requests, failed commit, late Note save and more than 1000 manual operations. No modification timestamps for cleanup/Ignore alone.
+  Evidence: Removed ignore_empty_regions; audit records affected IDs, UTC time and mutation identity. Original links survive overlays/deletion, yielding modified/deleted/restored badges across shared regions. File/SQL tests preserve explicit Ignore, targeted Note deletion, Keep/Clear, late-writer/CAS/replay protection and text-only Undo. SourceReviewManualVolumeTests performs 1002 real service edits with complete revision/audit/receipt counts and no automatic Ignore.
+  Timestamp: 2026-10-25
+
+- [x] SRMAP-04: Expose a minimal read projection with consistent visibility and guards.
+  Priority: P0. Depends on: SRMAP-03. Owner: document_structure; main/app/section_tasks support transport and consumers.
+  Acceptance: Freeze/implement strict additive DTO for ordered surviving hierarchy/block targets, mapping reason, related deletion/manual-change state/time and revisions; bounded text reads, no heavy task-layout fields. A single domain eligibility policy controls review list/count, Library/reader warnings and interaction guards. Hide only proven never-in-body regions whose text is also absent from generation/context inputs; unknown mapping and manually deleted links stay visible. Hidden does not create Ignore/resolution audit. Reads remain pure and legacy behavior conservative.
+  Evidence required: API compatibility/shape, stale/unknown IDs, consistent count/guard outcomes, all five interaction target levels, excluded candidate non-leakage, no LLM/OCR/profile/Prepare calls, and bounded query/payload checks.
+  Evidence: Strict ReadingContentResponse filters existing GET/POST responses; additive structure version, coverage/body reason, deleted count/manual time and surviving hierarchy targets. Source geometry stays internal. Both general/region text reads page at 20; a 25-block actual HTTP fixture verifies ordering/bounds/purity. One active_review_regions policy drives file/SQL Library flags, reader and target guards. Five API tests and all-level resolver tests pass; no new public write API or hidden prepare/profile/LLM/OCR calls.
+  Timestamp: 2026-10-25
+
+- [x] SRMAP-07: Validate mapping and manual-change semantics with real source and storage.
+  Priority: P1. Depends on: SRMAP-01..04. Owner: document_structure; scripts supports acceptance harnesses.
+  Acceptance: Back up and hash-check 暗水幽灵 (excluded-region incident), 暗水幽灵_sample and relevant 中國文化的深層結構 samples under data/test-books before testing disposable copies. Use original accepted extraction/review/hierarchy evidence, not only injected canonical_span fixtures; preserve production data. Prove exact linked/partial cases, excluded-vs-unknown classification, manual deletion retention, atomic audit/Note behavior and read purity in file and actual PostgreSQL storage.
+  Evidence required: Reproducible private reports, source hashes, mapping counts/reasons, reviewed region-to-body correspondence and regression results. If real corpus has no linked region, report that gap and add a real-source fixture; synthetic success alone cannot close this task. Missing corpus remains Needs Confirmation, not assumed success.
+  Evidence: Final 252-test mapping/reading/notes/OCR/file/SQL suite passes with no skips; separate 120-test cleanup/API/SQL integration suite passes with immutable-book opt-in enabled. accept_source_review_mapping.py --backend both passes eight corpus/storage runs; all 16 backup files unchanged. Latest private report: data/test-books/srmap07/20261025T053519848970Z.json. Full-book 39-region legacy proof recovery plus exact real-page/subquote partial/shared fixtures cover read purity, edits/deletes/Undo, Notes and Ignore. No natural positive review links exist in these backups; constructed real-source evidence is explicitly labelled, with no injected canonical_span. No live OCR/LLM, production mutation or deployment.
+  Timestamp: 2026-10-25
+
+## Independent Smart Cleanup Backlog (2026-10-23)
+
+Completed track: SCLEAN-01..10, 10/10 implemented and accepted (100%). Prior CLEAN-01..10 is a
+completed foundation, NOT evidence that independent cleanup exists. Canonical
+[design](module-detailed-design.md#independent-smart-cleanup-2026-10-23).
+Each checkbox lives only in its owner checklist. Execute in the following order;
+supporting modules do not add duplicate completion counts.
+SCLEAN-10 evidence is owned by scripts: seven bounded live-book flows, reviewed
+safe deletion, API/SQL/browser regression and isolated-image smoke. No production
+deployment is claimed; retained OCR noise/semantic limits are recorded in the design.
+Timestamp: 2026-10-24
+
+| Order | Task | Owner/checklist | Depends on | Deliverable |
+| --- | --- | --- | --- | --- |
+| 1 | SCLEAN-01 | document_structure (below) | Existing CLEAN foundation | Independent input/outcome and repository contracts |
+| 2 | SCLEAN-02 | [document_preparation](../document_preparation/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23) | 01 | Existing hierarchy / candidate input adapters |
+| 3 | SCLEAN-03 | document_structure (below) | 01, 02 | One planner/validator for remaining eligible content |
+| 4 | SCLEAN-04 | [db](../db/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23) | 01, 03 | Atomic content-only commit and file parity |
+| 5 | SCLEAN-05 | [app](../app/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23) | 02, 03, 04 | Consent, standalone operation, recovery |
+| 6 | SCLEAN-06 | [main.py](../main.module-checklist.md#independent-smart-cleanup-backlog-2026-10-23) | 05 | Minimal routes and strict DTOs |
+| 7 | SCLEAN-07 | [document_preparation](../document_preparation/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23) | 02, 03, 04, 05, 06 | Enhance integration and automatic layout |
+| 8 | SCLEAN-08 | [UI](../../Deep_Reader_UI/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23) | 06, 07 | Independent command and confirmation |
+| 9 | SCLEAN-09 | [UI](../../Deep_Reader_UI/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23) | 08 | Retry/reconcile, review refresh and Undo |
+| 10 | SCLEAN-10 | [scripts](../scripts/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23) | 01..09 | Real-book/API/SQL/browser acceptance |
+
+- [x] SCLEAN-01: Define cleanup-ready input and independent operation contracts.
+  Priority: P0; first implementation task. Owner: document_structure.
+  Acceptance: Replace new-split-success as a capability requirement with immutable accepted hierarchy/effective-view/OCR evidence/revision input. Separate model proposal, pure staging, content-only repository command and operation outcome from enhancement DTOs. Freeze phase/commit/outcome/retry distinctions, consent binding, same-operation replay versus explicit fresh attempt and no-op invariants. No public arbitrary-plan executor or generic job framework.
+  Evidence required: Contract/ownership/strict-schema tests; Common input accepted without a splitter, stale/missing evidence denied, backward enhancement adapter behavior documented. No runtime route exposure claimed yet.
+  Evidence: cleanup_input.py freezes canonical hierarchy/source, mapped effective parts, protected ranges, explicit prior-deletion gaps, OCR/page evidence and revisions; cleanup_operation.py separates consent/staging/content-only repository commands from operation phase, commit certainty and retry. Same-operation replay and fresh-consent boundaries are contracted, not yet implemented in storage. Legacy enhancement adapter remains unchanged; SCLEAN-02/03/04/07 own migration and execution.
+  Validation: 26 new tests including hash-preserving read-only input checks of Sample/Sample2/noise backups; 120 contract/planner/validator/file-overlay tests and 21 preparation/evidence/layout tests pass. PostgreSQL integration not run successfully because dedicated test DSN is unavailable; no DB implementation changed. No live LLM, production-data mutation, API exposure or UI completion claimed.
+  Timestamp: 2026-10-23
+
+- [x] SCLEAN-03: Reuse one cleanup planner and exact validator for both entry paths.
+  Priority: P0. Depends on: SCLEAN-01/02. Owner: document_structure.
+  Acceptance: Same source-aware prompt/provider port for standalone and enhance; remaining eligible effective text mapped exactly to immutable canonical spans, prior deletions excluded and manual edits protected. Disjoint gaps cannot become false contiguous quotes. Retain mixed meaningful text, anchors and uncertain semantics; freeze repeated-batch aggregate guards. Complete-prompt dynamic capacity gate, versioned prompt, no hidden truncation/OCR/profile/web calls. Valid partial subsets remain possible without calling a split planner.
+  Evidence required: Prompt snapshots, mixed-readable/garbage sentinel, ambiguous quote, protected/manual/gap/repeated-run cases, Auto/native/unknown controls and zero-call capacity tests; counts and safe rejection logs without source text. Real-model quality remains SCLEAN-10.
+  Evidence: ocr_cleanup_planner.py remaining-view prompt v3 and shared provider dispatch; ocr_cleanup_validation.py shared exact validation core, immutable-input fingerprint, protected/manual/disjoint mapping and aggregate prior-plus-new deletion guards. Accepted Common and in-memory candidate inputs use the same engine without a split request. Missing Common boundary origins conservatively retain first nonempty lines; invalid evidence is rejected. Legacy canonical v2 remains compatible; runtime wiring stays SCLEAN-07.
+  Validation: 20 new shared-engine tests; combined 160 contract/adapter/planner/validator/file-overlay tests and 21 selected preparation/evidence/layout regressions pass. Three hash-verified backups remain unchanged; Sample2 reviewed deletion replays with identical source/page offsets. No live LLM, DB mutation, API/UI exposure or deployment claimed.
+  Timestamp: 2026-10-23
+
+## Optional OCR Cleanup Plan Backlog (2026-10-22)
+
+Historical completed track; its exclusive-entry/candidate-only design is superseded
+by SCLEAN. Completion percentages below apply only to the earlier foundation.
+
+Contract, planner, validator, atomic overlay storage, preparation, app integration, UI, cross-stage validation and bounded real-book acceptance delivered. Combined track: 10/10 (100%); zero pending in this track. Updated 2026-10-23; evidence and remaining semantic limitations are in the owner designs/checklists.
+Canonical design: [Optional OCR Cleanup Plan](module-detailed-design.md#optional-ocr-cleanup-plan-2026-10-22).
+Execution order: CLEAN-01..04 here -> preparation CLEAN-05 -> app CLEAN-06 ->
+UI CLEAN-07/08 -> CLEAN-09/10 here. No duplicate completion counts.
+
+- [x] CLEAN-01: Define the independent cleanup proposal, provenance and outcome contracts.
+  Priority: P0; first implementation task completed.
+  Acceptance: Separate model quote/reason schema from backend IDs/offsets/hash/revision binding; delete-only operations, empty no-op, strict unknown-field rejection, numeric item/quote/output limits, explicit OCR/actual Auto evidence versus unknown provenance, canonical/readable mapping and no raw-source mutation. Freeze cleanup status/reason semantics and consent impact without changing structural change_kind.
+  Evidence required: Contract/schema fixtures and exact field ownership tests; unsupported evidence skips cleanup without extraction.
+  Evidence: `ocr_cleanup_contract.py` strict delete-only model schema, backend source/version/consent binding, pure OCR eligibility and coherent terminal outcomes; 19 new contract tests pass. Combined semantic/generic-extraction/change regressions pass 80 tests with PYTHONPATH=.:scripts. Quotes/context/items/JSON limits are fixed and documented; exact resolution, aggregate deletion guards, persisted evidence handoff, live model/API/cleanup remain later tasks. No source or runtime workflow mutation.
+  Timestamp: 2026-10-22
+
+- [x] CLEAN-02: Add OCR-aware splitting guidance and an independent cleanup prompt.
+  Depends on: CLEAN-01.
+  Acceptance: Splitting ignores noise as semantic evidence but preserves canonical text; cleanup proposes deletion only, never repairs names/quotes or treats unfamiliar languages/formulas as garbage. Full-source separate request after split success, prompt versioning, strict output schema and independent model-capacity gate. Malformed cleanup never invalidates split output; no OCR/profile/web requests.
+  Evidence required: Prompt snapshots, adversarial source instructions, multilingual negative controls, zero-call cleanup over-capacity tests and privacy-safe timing logs.
+  Evidence: Structural prompt v17 preserves all source while excluding noise as semantic evidence; standalone ocr_cleanup_prompt_v1/planner uses full canonical JSON parts, Auto OCR scope, strict schema, caller-confirmed structure success, independent dynamic budget and safe failure results. 19 new tests cover snapshot, source injection framing/protection instructions, exact capacity/zero-call rejection, cancellation, provider/JSON errors and privacy logs; combined 152 tests pass. Proposed items are not applied success. API sequencing, exact deletion validation, live-model semantics and actual cleanup remain pending; no paid calls or deployment.
+  Timestamp: 2026-10-22
+
+- [x] CLEAN-03: Resolve and validate cleanup quotes against immutable source coordinates.
+  Depends on: CLEAN-01/02.
+  Acceptance: Unique exact quote plus optional adjacent context; backend-only half-open spans, source/hash checks, canonical mapping and page evidence. Coalesce duplicates; skip ambiguity, overlaps, cross-section/unsafe spans, heading anchors and existing user edits. Freeze fixture-tested excessive-deletion limits, reject all-body removal, return per-item safe reasons. Never fuzzy-match. Real-book calibration remains CLEAN-10.
+  Sequencing: Validate against the in-memory split candidate before any hierarchy save; no persisted-candidate reload for cleanup.
+  Evidence required: Repeated garbage, Unicode/CRLF, normalization, cross-page, ambiguous, all-noise and meaningful-text fixtures; false-deletion review, not model confidence alone.
+  Evidence: ocr_cleanup_validation.py pure in-memory validator and 31 tests; combined 183 tests pass. Exact source/binding/candidate checks, canonical/readable resolution, clipped page evidence, protected ranges, Auto-only scope, overlap/duplicate handling, 4096-character and 10% batch guards, all-document/all-body rejection and safe diagnostics. Meaningful-text controls test explicit retention ranges, not semantic classification. Validation is not application/commit success; actual deletion, region resolution and live-book false-deletion review remain CLEAN-04..10. No source or production mutations.
+  Timestamp: 2026-10-22
+
+- [x] CLEAN-04: Persist reversible source-span cleanup overlays atomically.
+  Depends on: CLEAN-03.
+  Acceptance: Extend existing reading overlays for pre-unit spans; keep raw text/page maps/hierarchy unchanged, stable block IDs, revision CAS, idempotent receipts, audit and batch single-level Undo. Stage cleanup on a separate in-memory split candidate copy; application failure retains the uncleaned candidate. Persist hierarchy, overlay, audit/revision and invalidation together in one final commit, without save-reload-clean-save. Final storage failure rolls back the entire transaction and preserves the old database document. Preserve user edits/notes; invalidate generated interactions/ancestor caches and reject late writes; all five target levels use effective content and no empty-container fallback resurrects text.
+  Review resolution: Automatically resolve only regions whose trusted canonical mapping proves full cleanup, in the same successful commit; remove active review entries without another Ignore. Preserve audit/evidence and restore batch-resolved states on Undo without reverting unrelated decisions. Routine visibility/count/guard treatment of excluded versus unknown/partial regions is superseded by delivered SRMAP-04; manual block deletion is not cleanup resolution.
+  Evidence required: File and PostgreSQL persistence/reload, rollback, duplicate replay, concurrent-edit, fully/partly resolved regions and Undo tests. Read DB/section_tasks module memory before supporting changes; no new hierarchy source.
+  Evidence: ocr_cleanup_overlay.py, reading_content projection/Undo, internal file commit_cleanup_enhancement and optional PostgreSQL commit_enhancement cleanup. 24 file and 27 disposable-PostgreSQL tests pass; combined 304 cases, 303 passed and one existing private-source opt-in skipped. Proves one final save/transaction, rollback, stable IDs/raw/page data, manual-edit/notes preservation, generated invalidation/late-writer rejection, idempotency/concurrency, all-level effective content and empty-container behavior. Exact source-linked review resolution and Undo tested; unmapped/absent/partial regions remain. No production data or paid calls. Actual source mapping/preparation handoff, API/UI wiring and live-book acceptance remain CLEAN-05..10.
+  Timestamp: 2026-10-25
+
+- [x] CLEAN-09: Validate stage failures, state reconciliation and content consistency end to end.
+  Depends on: CLEAN-04/05/06.
+  Acceptance: Malformed/missing cleanup, provider timeout, over-capacity, invalid subset, write rollback, concurrency, refresh/restart/response loss, structural no-op/title-only plus cleanup and layout failure are distinct. Cleanup failure retains the valid uncleaned in-memory split candidate; final storage failure preserves the old database document. Assert one final hierarchy/overlay commit and zero save-reload-clean-save cycles; no duplicate commits, deleted-text resurrection, stale generated artifacts, hidden profile/OCR or falsely resolved review regions. Cover legacy non-OCR responses and cleanup Undo.
+  Evidence required: Actual API plus isolated file/PostgreSQL tests with fault injection and stage/call assertions; fully resolved queue removal, absent/partial region retention, commit rollback and Undo restoration. Deterministic tests are not live-model acceptance.
+  Evidence: test_cleanup_consistency.py adds six methods covering 18 disposable API/SQL scenarios, including the actual split and cleanup planners with deterministic transport, one final hierarchy/overlay commit before layout, all three structural outcomes with missing/malformed/empty cleanup, staged projection failure, final receipt rollback, combined lost-ack/restart/layout-retry chain and native legacy opt-out. Combined targeted contract/planner/validator/file/SQL/preparation/API/reading/legacy suites: 279 run, 278 pass, one inherited private-source opt-in skipped. Existing tests cover timeout/capacity/subsets, concurrent and late writers, all-level no-resurrection, notes, review resolution and Undo. No production code change was needed; git diff --check passes. Live-model/book/browser acceptance is not claimed and remains CLEAN-10.
+  Timestamp: 2026-10-23
+
+- [x] CLEAN-10: Accept real-book cleanup and desktop/mobile reading workflows.
+  Depends on: CLEAN-07/08/09.
+  Acceptance: Use hash-verified backups under data/test-books of Sample/Sample2 and reported garbage sample when available; Madame Bovary TXT and Red-book Fast are non-OCR controls. Live split+cleanup, real storage/API/layout and browser 1280/390 checks; manually inspect every deletion in the small OCR samples for meaningful-text loss and retained noise. Verify byte-identical raw source/page mappings, complete split coverage, no duplicate mutation, concise warnings, audit/Undo and all-level interactions. Require a real nonempty correct cleanup case, not all-skipped success.
+  Evidence required: Private manifests, model/prompt versions, counts/timings, failure reasons, deletion review, screenshots and reproducible reports. Missing corpus/live credentials remains Needs Confirmation; no production deletions or deployment implied.
+  Evidence: accept_ocr_cleanup_books.py runs hash-verified Sample/Sample2/noise backups through actual OCR, live gpt-4.1-mini structural v17/cleanup v2, FastAPI/disposable SQL, production layout and desktop/mobile App at 1280/390. Final attempts 20261023T030348165685Z / 20261023T030347436965Z / 20261023T030459209503Z pass 88/9/19 effective target checks, source/page preservation and single-commit replay. Sample2 applies one manually reviewed corrupt fragment, skips two unsafe-boundary proposals and passes audit/collapse/Undo/reload; Sample/noise retain rejected proposals (quote_not_found). TXT/Fast real-content controls make zero cleanup calls. Reports, logs, rendered sources, screenshots and manual-review.json remain private under data/test-books/cleanup-20261023.
+  Corrections: v2 prompt protects readable adjacent words; semantic false proposals can still occur and are explicitly not a solved general guarantee. Generated block IDs now follow new unit IDs during normalization and SQL allocation, preventing duplicate effective text. No deletion cap relaxation, source rewrite or read-time migration. Legacy backup context is reconstructed from verified evidence without changing backups.
+  Validation: 288 regression cases run, 287 pass/one inherited opt-in skip; 28 focused tests pass (overlapping coverage); shared/normalizer/resolver standalone checks pass. Controlled flow/review browser suites and npm run check pass. Earlier unsafe deletion/identity-failure attempts are not counted. Live review queues are empty; controlled tests cover fully/partly resolved queues. Acceptance is bounded, not universal OCR accuracy or fresh interaction-answer generation. No production deployment or Library mutation.
+  Timestamp: 2026-10-23
+
+
 ## Common Multilingual Correctness Backlog
 
 - [x] COMMON-LANG-01: Resolve the mismatch between language-registry candidate detection and predominantly Chinese/English final heading validation.

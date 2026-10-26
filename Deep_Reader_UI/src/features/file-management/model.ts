@@ -137,10 +137,12 @@ export function getDocumentPreparationStatusLabel(
   switch (status) {
     case "ready":
       return "Structure prepared";
+    case "building":
+      return "Structure building";
     case "not_prepared":
       return "Not prepared";
     case "failed":
-      return "Preparation failed";
+      return "Structure failed";
     case "stale":
       return "Needs refresh";
     case "unknown":

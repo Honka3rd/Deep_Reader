@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   DocumentLifecycleService,
   DocumentManagementService,
@@ -13,6 +13,7 @@ import {
 } from "../../services";
 import type {
   DocumentManagementItem,
+  DocumentTaskLayout,
   DocumentUploadConflictPolicy,
   RequestStatus,
   PdfExtractionMode,
@@ -57,11 +58,14 @@ export function useFileManagementController({
 }: UseFileManagementControllerOptions = {}) {
   const [open, setOpen] = useState(false);
   const listRequestIdRef = useRef(0);
+  const listRequestRef = useRef<AbortController | null>(null);
+  const libraryOpenRef = useRef(false);
   const uploadRequestRef = useRef(0);
   const uploadPdfModeRef = useRef<PdfExtractionMode>("fast");
   const uploadBusyRef = useRef(false);
   const prepareBusyRef = useRef(false);
   const openingRequest = useRef<AbortController | null>(null);
+  const openingDocumentRef = useRef<string | null>(null);
   const blockedDocuments = useRef(new Set<string>());
   const [openingDocName, setOpeningDocName] = useState<string | null>(null);
   const [openError, setOpenError] = useState("");
@@ -73,6 +77,9 @@ export function useFileManagementController({
     dispatched: boolean;
   } | null>(null);
   useEffect(() => () => {
+    libraryOpenRef.current = false;
+    listRequestRef.current?.abort();
+    ++listRequestIdRef.current;
     const operation = uploadPreparation.current;
     uploadPreparation.current = null;
     if (operation?.timer) clearTimeout(operation.timer);
@@ -121,43 +128,73 @@ export function useFileManagementController({
     [filters],
   );
 
-  async function loadDocuments() {
+  const invalidateOpen = useCallback(() => {
+    openingRequest.current?.abort();
+    openingRequest.current = null;
+    openingDocumentRef.current = null;
+    setOpeningDocName(null);
+    setOpenError("");
+  }, []);
+
+  const loadDocuments = useCallback(async () => {
+    if (!libraryOpenRef.current) return;
     invalidateOpen();
+    listRequestRef.current?.abort();
+    const request = new AbortController();
+    listRequestRef.current = request;
     const requestId = ++listRequestIdRef.current;
     setStatus("loading");
     setError("");
     try {
-      const response = await service.listDocuments("", 200);
-      if (requestId !== listRequestIdRef.current) return;
+      const response = await service.listDocuments("", 200, request.signal);
+      if (request.signal.aborted || requestId !== listRequestIdRef.current) return;
+      if (openingDocumentRef.current && !response.items.some(item =>
+        item.docName === openingDocumentRef.current && item.preparationStatus === "ready")) invalidateOpen();
       setItems(response.items);
+      setError("");
       setStatus(response.items.length > 0 ? "success" : "empty");
     } catch (caughtError) {
-      if (requestId !== listRequestIdRef.current) return;
+      if (request.signal.aborted || requestId !== listRequestIdRef.current) return;
+      invalidateOpen();
       setItems([]);
       setStatus("error");
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+    } finally {
+      if (listRequestRef.current === request) listRequestRef.current = null;
     }
-  }
+  }, [service, invalidateOpen]);
+
+  useEffect(() => {
+    // State-preserving effect replay must restore visibility after cleanup.
+    libraryOpenRef.current = open;
+    if (!open) return;
+    setStatus(current => current === "loading" && !listRequestRef.current ? "initial" : current);
+    return () => {
+      libraryOpenRef.current = false;
+      listRequestRef.current?.abort();
+      listRequestRef.current = null;
+      ++listRequestIdRef.current;
+    };
+  }, [open, service]);
 
   function openLibrary() {
+    if (libraryOpenRef.current) return;
+    libraryOpenRef.current = true;
     setOpen(true);
     void loadDocuments();
   }
 
   function closeLibrary() {
+    libraryOpenRef.current = false;
+    listRequestRef.current?.abort();
+    ++listRequestIdRef.current;
     invalidateOpen();
     if (!prepareBusyRef.current) setPrepareState(null);
     setOpen(false);
   }
 
-  function invalidateOpen() {
-    openingRequest.current?.abort();
-    openingRequest.current = null;
-    setOpeningDocName(null);
-    setOpenError("");
-  }
-
   function canOpenDocument(docName: string) {
+    if (items.some(item => item.docName === docName && item.preparationStatus === "building")) return false;
     if (!docName.trim() || prepareBusyRef.current || uploadBusyRef.current ||
       deleteState.item !== null || renameState.item !== null ||
       blockedDocuments.current.has(docName) || uncertainPreparations.current.has(docName)) return false;
@@ -166,25 +203,27 @@ export function useFileManagementController({
     return status === "success" && items.some(item => item.docName === docName && item.preparationStatus === "ready");
   }
 
-  async function validateDocumentOpen(docName: string): Promise<boolean> {
-    if (openingRequest.current || !canOpenDocument(docName)) return false;
+  async function validateDocumentOpen(docName: string): Promise<DocumentTaskLayout | null> {
+    if (openingRequest.current || !canOpenDocument(docName)) return null;
     const request = new AbortController();
     openingRequest.current = request;
+    openingDocumentRef.current = docName;
     setOpeningDocName(docName);
     setOpenError("");
-    const ready = await preparationService.isReaderReady(docName, request.signal);
-    if (openingRequest.current !== request) return false;
+    const readyLayout = await preparationService.fetchReadyLayout(docName, request.signal);
+    if (openingRequest.current !== request || request.signal.aborted) return null;
     openingRequest.current = null;
+    openingDocumentRef.current = null;
     setOpeningDocName(null);
-    if (!ready) {
+    if (!readyLayout) {
       const item = items.find(candidate => candidate.docName === docName);
       if (item && item.sourceStatus === "available") {
         requestPrepareDocument(item);
       }
       setOpenError("Reader layout is unavailable. Prepare the document explicitly or retry after checking the connection.");
-      return false;
+      return null;
     }
-    return true;
+    return readyLayout;
   }
 
   function changeFilter(name: keyof DocumentManagementFilters, value: string) {
@@ -583,7 +622,7 @@ export function useFileManagementController({
   }
 
   function requestPrepareDocument(item: DocumentManagementItem) {
-    if (prepareBusyRef.current || uploadBusyRef.current || item.sourceStatus !== "available") return;
+    if (prepareBusyRef.current || uploadBusyRef.current || item.sourceStatus !== "available" || item.preparationStatus === "building") return;
     invalidateOpen();
     setPrepareState({ item, pdfMode: item.sourceType === "pdf" ? "fast" : undefined,
       status: "initial", message: "", readerReady: false });
@@ -623,6 +662,7 @@ export function useFileManagementController({
 
   async function prepareExistingDocument() {
     if (!prepareState || prepareBusyRef.current || uploadBusyRef.current) return;
+    if (items.some(item => item.docName === prepareState.item.docName && item.preparationStatus === "building")) return;
     const snapshot = prepareState;
     invalidateOpen();
     blockedDocuments.current.add(snapshot.item.docName);

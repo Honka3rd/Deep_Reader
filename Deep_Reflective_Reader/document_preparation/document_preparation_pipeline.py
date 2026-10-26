@@ -85,6 +85,13 @@ class DocumentPreparationPipeline:
                     "visible_source_chars": preview["source_length"]}, source_chars=snapshot.text_length),
                 "fingerprint": fingerprint}
 
+    def prepare_enhancement_cleanup(self, *, candidate, binding, baseline=None, provider=None, is_cancelled=None):
+        from document_preparation.cleanup_handoff import prepare_enhancement_cleanup
+        if provider is None:
+            provider = self.cleanup_provider
+        return prepare_enhancement_cleanup(candidate=candidate, binding=binding,
+                                           baseline=baseline, provider=provider, is_cancelled=is_cancelled)
+
     def build_enhancement_candidate(self, *, snapshot, toc_hint="auto",
                                     enhancement_intent="restore_source"):
         """Internal in-memory build; deliberately bypass all prepare/load stages."""
@@ -108,9 +115,11 @@ class DocumentPreparationPipeline:
         profile_store: DocumentProfileStore,
         bundle_provider: BundleProvider,
         post_structure_enricher: PostStructureMetadataEnricher | None = None,
+        cleanup_provider=None,
     ):
         """Initialize pipeline with explicit dependencies for preparation steps."""
         self.loader_factory = loader_factory
+        self.cleanup_provider = cleanup_provider
         self.language_detector = language_detector
         self.structured_document_builder = structured_document_builder
         self.structured_document_store = structured_document_store
@@ -748,6 +757,8 @@ class DocumentPreparationPipeline:
                 assets.source_session.verify_source()
                 if extraction is not None:
                     structured_document.parse_provenance.update(extraction.storage_metadata)
+                    from document_preparation.cleanup_handoff import extraction_cleanup_metadata
+                    structured_document.parse_provenance.update(extraction_cleanup_metadata(extraction))
                     if extraction.page_boundaries:
                         structured_document.parse_provenance["source_page_spans"] = [
                             {"page_index": b.page_index, "char_start": b.char_start,

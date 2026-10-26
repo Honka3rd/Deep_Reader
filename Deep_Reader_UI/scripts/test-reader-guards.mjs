@@ -15,14 +15,23 @@ try {
   const errors = [];
   const unexpected = [];
   const interactions = [];
+  const cancelledContent = [];
   let fault = "404";
   let pendingContent;
   let deferredSeen;
   page.on("pageerror", (error) => errors.push(error.message));
+  page.on("requestfailed", request => {
+    if (request.url().endsWith("/task-units/content")) cancelledContent.push(request.postDataJSON().task_unit_ids[0]);
+  });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = decodeURIComponent(new URL(request.url()).pathname);
     const body = request.postDataJSON();
+    if (path.endsWith("/reading-content")) return route.fulfill({ json: {
+      revision: 0, source_token: "fixture", disposition: "accepted", can_undo: false,
+      max_chars: 10000, regions: [], blocks: [],
+    } });
+    if (path.endsWith("/reparse-structure/status")) return route.fulfill({ json: { status: "idle" } });
     if (path === "/api/documents/task-layout") return route.fulfill({ json: layout(body.doc_name) });
     if (path === "/api/documents" || path === "/api/documents/management") return route.fulfill({ json: {
       total: 2, items: ["Book", "Other"].map((name) => ({ doc_name: name, title: name, source: "structured", preparation_status: "ready" })),
@@ -57,6 +66,7 @@ try {
     return route.fulfill({ status: 500, json: { detail: "Unexpected API call" } });
   });
   await page.goto(`${base}/documents/Book`);
+  await page.locator('[data-item-id="chapter:Book-c"] .hierarchy-tree-icon').click();
   const section = (name) => page.locator(".hierarchy-section-button").filter({ hasText: name });
   await section("one").click();
   await page.getByText("Missing content fixture", { exact: true }).first().waitFor();
@@ -78,10 +88,9 @@ try {
   await firstDeferred;
   await section("two").click();
   await page.locator(".reader-content-block-body").filter({ hasText: "Visible Book-two-u" }).first().waitFor();
-  const staleSectionResponse = page.waitForResponse((r) => r.url().endsWith("/task-units/content") && r.request().postDataJSON().task_unit_ids[0] === "Book-one-u");
   pendingContent();
-  await staleSectionResponse;
   await page.waitForTimeout(100);
+  assert.ok(cancelledContent.includes("Book-one-u"), "Superseded section request is cancelled");
   assert.equal(await page.locator(".reader-content-block-body").filter({ hasText: "Visible Book-one-u" }).count(), 0);
 
   // Section interactions still work after content failures, independently of content state.
@@ -99,12 +108,14 @@ try {
   await page.getByRole("button", { name: "Library", exact: true }).click();
   await page.locator(".file-management-row").filter({ hasText: "Other" })
     .getByRole("button", { name: "Open", exact: true }).click();
+  await page.locator('[data-item-id="chapter:Other-c"] .hierarchy-tree-icon').click();
   await section("two").click();
   await page.locator(".reader-content-block-body").filter({ hasText: "Visible Other-two-u" }).first().waitFor();
-  const staleDocumentResponse = page.waitForResponse((r) => r.url().endsWith("/Book/task-units/content"));
+  const cancelledBefore = cancelledContent.filter(id => id === "Book-one-u").length;
   pendingContent();
-  await staleDocumentResponse;
   await page.waitForTimeout(100);
+  assert.ok(cancelledBefore >= 2 || cancelledContent.filter(id => id === "Book-one-u").length >= 2,
+    "Document switch cancels the second obsolete request");
   assert.equal(await page.locator(".reader-content-block-body").filter({ hasText: "Visible Book-one-u" }).count(), 0);
 
   const checks = await page.evaluate(async () => {

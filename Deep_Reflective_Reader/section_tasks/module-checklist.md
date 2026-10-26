@@ -1,5 +1,65 @@
 # section_tasks Checklist
 
+## Persisted Block Translation Queue (2026-10-26)
+
+Implemented and verified: **11/11 (100%)**, backend 6/6, frontend 5/5.
+Evidence: 408 backend tests pass without skips, UI build/lifecycle/refresh/pagination
+checks pass, and real-model/SQL/browser backup-excerpt acceptance passes at 1280/390.
+Private report: data/test-books/persisted-translation/20261026T070158Z-06e6f6e0.
+Production Docker was not restarted; this is implementation acceptance, not deployment.
+Prior TRANS-01..04 and TRANS-API-01/02 remain historical foundation evidence.
+[Canonical design](module-detailed-design.md#persisted-block-translation-plan-2026-10-26).
+Execute in order; owner files hold the only checkboxes, not this index table.
+
+| Order | ID | Owner | Deliverable | Dependencies |
+| --- | --- | --- | --- | --- |
+| 1 | TRUI-01 | section_tasks | Registry-only codes and persistence contracts | Existing foundation |
+| 2 | TRUI-02 | document_structure | Atomic effective-text equality/no-op | 01 |
+| 3 | TRUI-03 | document_structure | Mandatory translation/summary cleanup; optional other metadata | 01, 02 |
+| 4 | TRUI-04 | app | Language-keyed persistence and guarded orchestration | 01, 03 |
+| 5 | TRUI-05 | main.py | Read/options and persisted generate API | 04 |
+| 6 | TRUI-06 | scripts | Backend SQL/file/lifecycle/real-book acceptance | 02..05 |
+| 7 | TRUI-07 | Deep_Reader_UI | Typed services and model | 05, 06 |
+| 8 | TRUI-08 | Deep_Reader_UI | Block menu and searchable-language Modal | 07 |
+| 9 | TRUI-09 | Deep_Reader_UI | Async handoff, cancellation and stale-state guards | 08 |
+| 10 | TRUI-10 | Deep_Reader_UI | Persisted multi-language drawer and local invalidation | 07, 09 |
+| 11 | TRUI-11 | Deep_Reader_UI | Browser/real API acceptance | 06, 08..10 |
+
+- [x] TRUI-01: Define registry-only interactive languages and persisted-result contracts.
+  Priority: P0. Owner: section_tasks, with language registry/schema support.
+  Acceptance: Use actual LanguageProfileRegistry codes excluding unknown; public source/target reject unregistered variants without changing the generic service. Define one result per block/target code, source provenance, partial/untranslatable rules, atomic replace/CAS/replay binding and minimal read/default-language DTOs. Freeze mandatory translation/summary cleanup and optional other-metadata rules. No duplicate registry or source text in public requests.
+  Evidence required: Contract tests for registry parity, code rejection, profile override/missing language, language-key uniqueness, saved statuses and private-field exclusion. Existing stateless routes are not persistence evidence.
+  Evidence: translation_records.py enforces exact registry codes and private source bindings; typed saved/read DTOs and minimal mutation IDs. Registry, replay, same/different-language CAS, profile defaults and partial/untranslatable tests pass on file/SQL; the generic text service retains its broader tag contract.
+  Timestamp: 2026-10-26
+
+## Translation Service Foundation (2026-10-26)
+
+Scope: first-step backend service only; no UI/persistence delivery.
+Subsequent block API work is tracked once as app TRANS-API-01 and main TRANS-API-02;
+the four foundation tasks below do not count that follow-up implementation.
+Foundation implementation/verification: 4/4 complete (100%). Live response-contract
+checks pass; literary semantic accuracy is NOT certified (see TRANS-04 evidence).
+Design: [translation contract](module-detailed-design.md#translation-service-foundation-2026-10-26).
+
+- [x] TRANS-01: Define translation inputs, immutable results, errors and language tags.
+  Acceptance: Explicit text/source/target; preserve script/region including Chinese variants; reject empty/unknown/malformed inputs. Future caller defaults source from existing profile with user override, never regeneration/detection.
+  Evidence: translation_contracts.py immutable result, explicit error codes and strict language-tag normalization; all current base languages and Chinese script/region variants tested. Profile default remains documented caller responsibility, not a shipped UI control.
+  Distinct-language correction: Shared guard rejects equal normalized codes before provider/capacity work; distinct script conversions remain valid in the generic service. 65 service/action/persistence tests pass. Live backup acceptance data/test-books/translation/20261026T145146Z-8dc0b6df/report.json passes five cases with backups unchanged; response checks do not certify literary accuracy.
+  Timestamp: 2026-10-26
+- [x] TRANS-02: Build versioned faithful-translation prompt and strict output contract.
+  Acceptance: Exact source as data, no summary/invented reconstruction; completed/partial/untranslatable; reject malformed, extra or duplicate response keys and empty successful output.
+  Evidence: translation_prompt_v1 encodes exact source as JSON data; translation_service rejects invalid result shapes and clear en/zh script mismatches. Live pure-symbol control exposed partial-versus-untranslatable ambiguity; explicit meaningful-content requirement fixed that control in two subsequent runs. Prompt instructions cannot certify semantic accuracy.
+  Timestamp: 2026-10-26
+- [x] TRANS-03: Implement provider-injected translation service with capacity and safe errors.
+  Acceptance: Count the full prompt once and reserve the declared model maximum output for every translation; no source-length/output estimate, truncation or chunking. Dispatch that maximum without mutating shared defaults; unsupported providers must already use the same maximum or fail explicitly. Retain model input/shared-context checks. No document/profile/DB coupling or hidden retries. Metadata-only logging.
+  Evidence: translation_service.py uses the injected LLMProvider only. 61 service/action/persistence tests pass, covering fixed maximum dispatch for short/long inputs, unchanged defaults, legacy-provider incompatibility, exact input/context limits, UTF-8 fallback, unavailable capabilities/counts and no fallback after provider failure. API routes and persistence are unchanged by this capacity correction.
+  Capacity correction: The intermediate length-derived 4,762 allowance is superseded. The actual 1,562-character Chinese incident now completes with the model maximum of 32,768 allowed, versus the unchanged shared default of 3,276; five backed-up-book/control live checks pass with unchanged source hashes. Evidence: data/test-books/translation-capacity/incident-model-limit-result.json and data/test-books/translation/20261026T135402Z-58fc3dc0/report.json. This does not certify literary accuracy.
+  Timestamp: 2026-10-26
+- [x] TRANS-04: Verify contracts/failure paths and live translation on backed-up real books.
+  Acceptance: Multilingual/script tags, OCR ambiguity, injection-shaped text, malformed output, capacity boundaries, provider failure and privacy tests. Use immutable backup excerpts with the configured real provider; report live results separately from deterministic tests and verify backup hashes unchanged.
+  Evidence: 50 tests pass with real tokenizer/book opt-ins enabled and zero skips (16 new translation tests). accept_translation_books.py uses hash-verified Madame Bovary and Red Roulette backups, gpt-4.1-mini and existing local-env injection. Final data/test-books/translation/20261026T053241Z-6a232d39/report.json passes 5 response-contract checks (four translations and one synthetic unreadable control); backup hashes unchanged, no live book/DB/profile writes. Review in semantic-review.json identifies a Bovary archaic-idiom/pronoun mistranslation in Chinese; literary accuracy remains a known follow-up, not a passed quality gate. No UI/API/deployment acceptance claimed.
+  Timestamp: 2026-10-26
+
 ## Summary And Note Delivery Index (2026-10-21)
 
 This resumes the 2026-10-13 backlog, unrelated to TOC or enhancement prompt work.

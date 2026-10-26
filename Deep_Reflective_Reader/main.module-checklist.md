@@ -1,5 +1,35 @@
 # main.py Checklist
 
+## Persisted Block Translation (2026-10-26)
+
+Implemented and verified: 1/1 owned task. [Shared queue](section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).
+
+- [x] TRUI-05: Expose minimal saved-result/options reads and persisted generation contracts.
+  Priority: P1. Depends on: TRUI-04. Acceptance: Strict block-only read/generate DTOs, registry-only codes, existing profile default, language-keyed saved results and commit/replay evidence. Read makes zero LLM/write/prepare calls; generate success implies commit. Distinguish partial/untranslatable/error/unknown and sanitize failures. Add only necessary body no-change/invalidation transport support; no source/provider internals or broad new management API.
+  Evidence required: Actual FastAPI/OpenAPI/container contracts, unsupported codes and arbitrary fields rejected, correct default/missing-profile behavior, reload/replay, no-op body response, conflicts/capacity/provider/commit failures and zero-call reads. Source registration is not deployment.
+  Evidence: translate/read returns registry codes, existing profile default, target binding and saved records; generate returns persisted plus a validated matching record only after commit. Strict DTO/OpenAPI/container, missing wiring/profile, no-store, sanitized failures and readonly-read checks pass. Reading refresh exposes body_changed, summaries_invalidated and translation_block_ids. Docker restart not performed.
+  Distinct-language correction: translation_routes maps translation_same_language to 422/no-store. FastAPI regressions cover explicit/default/null source and saved/replay bypass attempts, no provider work or storage changes, and retained read access. 65 focused backend tests pass.
+  Timestamp: 2026-10-26
+
+## Translation Action (2026-10-26)
+
+- [x] TRANS-API-02: Expose and wire the backend translate action with strict public DTOs.
+  Acceptance: POST /documents/reading-interactions/translate/generate accepts doc_name, content_block_id, target_language and optional source_language. No source text or caller-supplied hierarchy IDs. Validate errors/statuses, sanitized failures, actual route/container wiring and backed-up book inputs. Frontend and translation persistence are excluded.
+  Evidence: translation_routes.py, api_schemas.py, main.py and config/container.py register/wire the block-only action. 92 scoped unittest cases pass, plus existing executable API-schema/container suites. Actual main.app TestClient and container-overridden service verify registration/composition. accept_translation_action_books.py passes two real gpt-4.1-mini HTTP block calls with omitted source_language, temporary stored profiles/hierarchies and immutable Madame Bovary/Red Roulette backups; data/test-books/translation-api/20261026T054907Z-c7b0d961/report.json records results. Source/profile/backups unchanged. Response contracts verified, literary accuracy not certified; prior semantic caveat remains. No production data changes, restart/deployment or UI delivery.
+  Timestamp: 2026-10-26
+
+## Independent Smart Cleanup Backlog (2026-10-23)
+
+Owned tasks 1/1. [Shared order](document_structure/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23).
+
+- [x] SCLEAN-06: Expose minimal standalone cleanup routes and strict public DTOs.
+  Priority: P1. Depends on: SCLEAN-05. Owner: main.py; api_schemas.py supports typed contracts without a duplicate task.
+  Acceptance: Preflight, execute/resume and read-only lookup only, following owner design; namespace-scoped opaque operation/consent handles, safe outcomes/readiness/retry actions. Reject raw source/plans, parser/discard flags, offsets and provider/guard tuning. No model calls on preflight/lookup, no storage policy in route handlers. Reuse audit/Undo routes, preserve legacy enhancement semantics and distinguish unsupported old servers.
+  Evidence required: Actual FastAPI/disposable-storage request/response tests, strict unknown/coercion rejection, cross-document handle rejection, source/revision conflicts, zero-call reads, truthful no-op/partial/unknown/commit outcomes and no extra public stage endpoints. Mark API docs implemented only after tests pass.
+  Evidence: main.py registers smart_cleanup_routes.py with only preflight, execute/resume and GET lookup; dedicated strict DTOs and explicit OpenAPI error unions exclude source/plans/provider/binding details. The namespace-scoped app service remains the sole orchestrator; it verifies token commitment after restart, resumes layout without regeneration, and supplies current review counts. Missing/busy/stale/invalid/unavailable/unknown outcomes remain distinct. Scoped validation/error sanitization and no-store headers preserve legacy routes. Runtime service composition is still SCLEAN-07; unconfigured preflight/execute/lookup truthfully return 503, never fallback reparse.
+  Validation: 28 file and 28 disposable PostgreSQL actual FastAPI cases; total 276 local plus 174 SQL/API/enhancement regressions pass. Three hash-verified backup books exercise transport/service/storage with deterministic model responses and unchanged originals. Includes schema/OpenAPI inventory, coercion/extra rejection, scope isolation, zero-call reads, concurrency, source/revision conflicts, no-op/partial/failure, rollback/lost response/restart, consent-verified layout-only POST and Undo review counts. git diff --check passes. No live LLM, production mutation, deployment or UI completion claimed.
+  Timestamp: 2026-10-24
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `main.py` module.

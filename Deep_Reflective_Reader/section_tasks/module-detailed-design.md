@@ -1,5 +1,313 @@
 # section_tasks Detailed Design
 
+## Persisted Block Translation Plan (2026-10-26)
+
+**[Code-Confirmed: TRUI-01..11]** Implemented and verified. The block API now
+persists language-keyed results and exposes readonly saved-result/options reads;
+the frontend provides registry-only selection and a saved translation drawer.
+This delivery supersedes the first phase's no-persistence scope, not its evidence.
+Canonical task order is in the paired checklist; each checkbox has one owner.
+
+Delivery: translation_records owns exact registry validation, effective-source
+bindings and same-language CAS/replay; app performs provider work outside the
+repository transaction. Records use metadata.translations[block_id].languages[code]
+with hierarchy refs and private binding/receipt fields excluded from public DTOs.
+The existing file lock/atomic replacement and SQL document lock are reused; no DDL.
+Receipt history is bounded at 256 per block; exhaustion rejects before a model call.
+Unknown HTTP outcomes reconcile by saved read and reuse the same mutation ID for the
+same unresolved command. This does not impose a block-wide language-selection lock.
+
+Historical initial delivery: 408 backend tests pass with no skips, alongside UI build/lifecycle/refresh/pagination
+checks. Real-model, actual App/API, disposable-SQL acceptance at 1280/390 uses
+immutable Madame Bovary and Red Roulette excerpts; two target languages, same-code
+replacement (superseded by reuse below), reload, no-op/edit Keep and stale-navigation guards pass. Private
+evidence: data/test-books/persisted-translation/20261026T070158Z-06e6f6e0.
+Backups/profile remain unchanged. This does not certify literary accuracy or imply
+that the existing production Docker image has been rebuilt.
+
+Reuse correction (2026-10-26): normal Translate is get-or-generate, keyed by current
+document/block source binding and target language only. Existing completed/partial
+records are returned unchanged after validating the current language pair and before
+model work or persistence. App resolves an omitted source from the existing profile
+before checking equality, including cache hits/replays. Equal source/target codes fail
+with `translation_same_language`; changing From to a different code still does not
+replace an existing To, and saved source provenance remains intact.
+Missing To generates normally. No regeneration control/force flag is introduced.
+Source edits/deletion/reparse continue to invalidate records through the existing policy.
+80 focused file/SQL/service/API tests and actual App/API/model/SQL backup-excerpt
+acceptance pass at 1280/390: data/test-books/persisted-translation/
+20261026T113558Z-5d5c71b0. This supersedes the initial same-code replacement behavior.
+
+### Confirmed Workflow
+
+- Translate is a content-block action only. Send document name and opaque block
+  ID, never source text or caller-inferred parent IDs. Backend resolves ownership
+  and effective current text using the existing reading projection.
+- Menu Translate opens a Modal with searchable, selection-only Translate from/to
+  combo boxes. From defaults to the existing profile language; explicit selection
+  overrides it. Missing/unknown language requires selection, never model detection
+  or profile rebuilding. To is required; no unrequested default is invented. UI
+  recovery can prefill a valid unresolved command without locking either selector.
+  To excludes the selected From; a conflicting previous To is cleared. Equal codes
+  are rejected before generation or saved reuse; View translations remains read-only.
+- Both public inputs must be actual codes returned by
+  LanguageProfileRegistry.get_supported_language_codes(), excluding unknown.
+  Do not synthesize script/region variants, accept arbitrary strings, or maintain
+  an independent frontend allowlist. Labels may be localized; codes are identity.
+  The standalone service may retain its broader tag contract; the interactive
+  boundary must reject unregistered variants such as zh-Hant unless registered.
+- Submit closes the Modal and transfers generation to the feature controller.
+  Only confirmed persisted completed/partial success opens the translation drawer.
+  Partial output is visibly partial; untranslatable/failure is not a saved section.
+  An explicit View translations command permits saved-result access without LLM.
+- Store one current translation per document + block + target language code.
+  Different target languages coexist; source language is record metadata, not a
+  second grouping dimension. Repeated submission reuses that target language without
+  changing its record, revision or timestamps; other language sections remain.
+  Only a missing valid target-language record causes generation.
+
+### Persistence And Ownership
+
+Domain code owns translation identity, validation, records and stale-write policy;
+app coordinates target/profile, TranslationService and repository; routes only map
+transport; UI owns transient presentation. Reuse mutate_document_artifacts on file
+and PostgreSQL adapters. Storage is a translation-owned map within
+DocumentTaskArtifacts.metadata with explicit hierarchy target refs and language-keyed
+records, not browser storage or hierarchy truth. A new table is not presumed needed;
+verify atomicity/lifecycle parity before selecting any new schema.
+
+Each record needs resolved source/target codes, completed/partial status, text,
+timestamps, revision, mutation identity, effective-source digest, structure identity
+and content/deletion epochs. Do not duplicate original prose or save provider secrets.
+Expose only fields needed for grouping, stale-response rejection and save evidence.
+
+Perform LLM work outside transactions; check effective text/versions/epochs inside
+the short atomic commit. Same-language competing writes must not overwrite a newer
+result silently; different-language writes merge fresh metadata and preserve Notes
+and other artifacts. Same-command replay returns its committed result. Rejected or
+unknown outcomes never claim persistence success. UI duplicate prevention is not
+database concurrency control. No new global job system or retry-cost policy.
+
+### Source Change Matrix
+
+Confirmed after the maintainer clarified that Summary is mandatory cleanup too:
+
+| Operation | Translation | Summary | Other interaction metadata |
+| --- | --- | --- | --- |
+| Submitted effective text equals current stored effective text | Preserve | Preserve | Preserve; no destructive side effects |
+| Text changes, Keep selected | Delete affected block translations | Delete affected summaries | Preserve |
+| Text changes, Clear selected | Delete affected block translations | Delete affected summaries | Existing explicitly consented clear scope |
+| Block deleted | Delete all its translations | Delete affected summaries | Clear deleted block interactions, including Note |
+| Confirmed structural reparse | Existing full replacement cleanup | Existing full replacement cleanup | Existing confirmed full-clear policy |
+
+Changed/deleted-block cleanup removes the entire block entry, including all language
+records and replay receipts; it is persisted deletion, not a frontend visibility flag.
+Unchanged blocks keep their language records. `translation_block_ids` reports mandatory
+invalidation independently of the optional `generated_invalidated` flag. The UI consumes
+this scope, and new/restored body translation requires an explicit user action.
+The [source owner](../document_structure/module-detailed-design.md#selective-atomic-cleanup)
+defines the cleanup implementation.
+
+Compare under the repository lock against the effective body served to the editor,
+not stale UI text, raw OCR or canonical text before overlays. Do not normalize away
+punctuation, spaces or Unicode changes; compare in the authoritative editor's text
+representation. Same-text submission does not advance reading revision, edit flags,
+timestamps, Undo or cleanup epochs. Any required replay receipt is not a body change.
+A no-op response must let the UI finish without full layout rebuild or invalidation.
+
+Summary includes public summary interactions, ancestor-summary caches and derived
+hierarchy summary fields. Cover block/unit/section/chapter/book dependencies and
+summaries relying on invalidated parent summaries; never use old summaries as new
+LLM context. Prefer proven dependency-scoped deletion; when legacy metadata cannot
+prove dependency, conservatively clear summary-kind resources within that document,
+not all interaction kinds. Keep preserves Quiz/Insight/thinking/Note records but
+does not certify freshness or rewrite their source provenance. The document-profile
+summary is excluded: preserve the existing initial-load/reparse-only profile policy.
+
+Body changes, mandatory removals, user-selected clearing and version/flag updates
+commit together. Ordinary legacy saves must not restore removed records; late
+generation must fail after edit/delete/reparse, even after text is later restored.
+Undo does not resurrect deleted translations/summaries. The shared policy covers
+main-reader Edit/Delete, source-review applied changes, cleanup Restore/repair and
+smart cleanup, not just translation routes. Draft-only edits, review Ignore/Keep
+decisions and identical body submissions do not count as source changes.
+
+### UI And Acceptance
+
+No browser persistence, polling, fixed frontend timeout, silent generation on read,
+hidden preparation or full-layout reload for translation. The controller explicitly
+owns generation after Modal submit; cancelling an unsubmitted Modal cancels its
+reads. Target change/unmount aborts feature requests and generation/identity checks
+prevent stale drawer reopening. HTTP abort does not prove backend rollback: re-entry
+reads server state before retry. Keep existing scoped notifications and MVC.
+
+Current recovery/highlight details are owned by the
+[UI design](../../Deep_Reader_UI/module-detailed-design.md#failure-recovery-2026-10-26).
+UI retry identity includes both source and target codes, while persisted result identity
+remains block + target code. Users may choose a different pair after failure without
+losing the original unresolved command's ID. A saved read can reconcile a committed
+target, but an absent record is not an operation-status endpoint and does not prove
+that prior model work has stopped. Same-language retries can still incur model work
+before a committed record exists; the backend commit/replay checks protect persistence.
+Reload retains a valid active-language highlight and performs no generation; close/
+reopen resets that UI selection. None of this adds a new backend job or storage model.
+
+Require file/PostgreSQL atomicity, rollback, concurrency and replay tests; registry
+parity, exact-text no-op and the retention matrix; backed-up real-book block calls;
+actual Modal/drawer flows at desktop/mobile. Use existing immutable Madame Bovary
+and Red Roulette backups in data/test-books with disposable mutation storage.
+No production deletion/reparse is authorized. Earlier 92 API tests/live calls prove
+only the stateless phase; contract success is not literary accuracy certification.
+
+## Translation Service Foundation (2026-10-26)
+
+Follow-up: the [block translation API](../main.module-detailed-design.md#block-translation-api-2026-10-26)
+now composes this service. The first-step scope/evidence below is historical;
+the generic service still takes explicit text/source/target, while the new public
+API takes a block ID and resolves text/profile in app. The foundation phase itself
+did not deliver a frontend; the persisted workflow above now includes one.
+
+Maintainer-approved first step, independent of the future reading-content action.
+`TranslationService(llm_provider).translate(text=..., source_language=...,
+target_language=...)` owns translation validation, a versioned built-in prompt,
+capacity checks and response parsing. It depends on LLMProvider, not a concrete
+vendor, document/profile repository, hierarchy, OCR or browser state. No route,
+artifact persistence, DI-container activation or frontend delivery is implied.
+
+### Contract And Ownership
+
+- Both language codes are explicit service inputs. The future interaction caller
+  defaults Translate from to the existing document profile language; an explicit
+  user selection overrides it. Missing/unknown profile language requires selection,
+  never English fallback, profile rebuild or a separate detection-model call.
+- Accept current LanguageCode base languages plus optional script/region subtags.
+  Normalize case/underscores, preserve zh-Hans versus zh-Hant and region details;
+  do not use the lossy LanguageCodeResolver result as a translation target.
+  Reject malformed/unsupported codes and empty/non-string source before completion.
+- Immutable result: source_language, target_language, status and translated_text.
+  Status is completed, partial or untranslatable. Partial text explicitly marks
+  unreadable portions in the target language. Untranslatable has null text; it is
+  not a fabricated translation or a transport error. Stable exceptions distinguish
+  invalid input/language, capacity unavailable/exceeded, provider failure and
+  invalid output. Provider exception details and source text are not public errors.
+- No source trimming/normalization, hidden summaries, context fetch, service-owned
+  retries, caching, DB writes or source mutation. Equal normalized source/target tags
+  raise `translation_same_language` before prompt construction, token counting,
+  capacity lookup or provider calls. Distinct script tags (zh-Hans to zh-Hant) remain
+  valid for this standalone service; public APIs still require registry membership.
+
+### Prompt And Capacity
+
+The task-owned prompt translates faithfully, preserving meaning, tone, paragraphs,
+numbers and names without analysis, prefacing or invented details. Treat the exact
+JSON-encoded source as untrusted data, never instructions. Tolerate readable OCR
+imperfections but do not reconstruct missing text; mark partial/untranslatable
+explicitly. Require only a strict JSON status/translated_text object. Reject
+malformed/truncated JSON, extra/duplicate keys, invalid statuses and empty success.
+This validates the response contract, not a proof of semantic completeness or a
+universal language detector; real multilingual review remains necessary.
+
+Every translation requests the configured model's declared `max_output_tokens`,
+regardless of source length. This is an allowed ceiling, not a required response
+length. Do not estimate translation length from characters or source tokens, or
+apply the generic interaction output default as a translation limit.
+
+Count the entire assembled prompt once locally, using the provider's counting
+method; when it returns None, use UTF-8 byte length as the conservative fallback.
+Reserve 256 input tokens for transport overhead. Validate the full input against
+the model's independent input limit and shared context remaining after reserving
+the full model output maximum. A request exceeding this input capacity fails with
+`translation_capacity_exceeded`; this denotes preflight capacity refusal, not
+account quota exhaustion or a provider billing error.
+
+Dispatch the same maximum through `complete_text_with_output_budget` without
+mutating the shared provider's default. A provider without that method may use
+`complete_text` only when its effective output budget equals its declared maximum
+(or no separate effective budget is declared). An incompatible lower budget or
+invalid capabilities/counts fails as `translation_capacity_unavailable`. Never
+silently excerpt/chunk, reduce the allowance, or retry after provider failure.
+Safe logs include status, duration and capacity counts only, never source,
+translations, prompts or keys. Strict response validation still rejects malformed
+or truncated JSON; using the maximum is not a completeness guarantee.
+
+Capacity correction (2026-10-26): a 1,562-character Chinese block was incorrectly
+rejected against the generic 3,276-token default. An intermediate fix raised its
+request to a length-derived 4,762 tokens. That heuristic is now superseded by the
+fixed model-maximum policy: the configured gpt-4.1-mini receives 32,768 for both
+short and long translations, while the shared default remains unchanged.
+
+Validation: 61 service/action/persistence tests pass, including fixed maximum
+allowances for short/long inputs, one full-prompt count, unchanged defaults,
+unsupported-provider rejection, exact input/shared-context boundaries and no
+fallback dispatch after provider failure. Live translation of the exact
+hash-verified incident source completed with a 32,768 output allowance, without
+document/artifact writes; private evidence is
+`data/test-books/translation-capacity/incident-model-limit-result.json`. All five
+backed-up-book/control checks pass in
+`data/test-books/translation/20261026T135402Z-58fc3dc0/report.json`, with backup hashes
+unchanged. Response-contract success is not literary accuracy certification.
+
+Local runtime verification: the API image was updated with only
+`translation_service.py` and the API container restarted. Packaged incident
+preflight returns 32,768 with the shared default unchanged; deployed source hash
+matches the workspace. Health and affected-block read through the Vite proxy
+return HTTP 200. Live verification did not persist a translation into the user's book.
+
+### Delivery Sequence
+
+TRANS-01 contract/languages -> TRANS-02 prompt -> TRANS-03 service/capacity/errors
+-> TRANS-04 focused regressions and backed-up real-book live-provider acceptance.
+See the owning checklist. Follow-up API/UI orchestration, source-default controls,
+cancellation/revision handling and storage policy are outside these four tasks;
+the generic service's completion must not be reported as a shipped UI action.
+
+### Implemented And Verified
+
+TRANS-01..04 are delivered as three task-owned modules (translation_contracts,
+translation_prompt, translation_service) and focused/live scripts. The service
+also reuses the existing conservative en/zh script-mismatch guard; other language
+and script-variant correctness remains prompt-constrained and review-dependent.
+There are no changes to provider, model configuration, DI container, API or UI.
+
+50 regression tests pass without skips, including 16 new translation tests and
+offline real-tokenizer/full-backup checks. Live gpt-4.1-mini response-contract
+acceptance uses immutable Madame Bovary/Red Roulette excerpts: English to
+zh-Hant/zh-Hans/French, Chinese to English, and a separately labelled synthetic
+unreadable control. Initial pure-symbol output was incorrectly partial; the prompt
+now requires meaningful translatable content for partial. Final evidence:
+data/test-books/translation/20261026T053241Z-6a232d39/report.json and semantic-review.json.
+All five contract checks pass and source backups remain hash-identical.
+
+Semantic limitation: Chinese translations still misread the archaic Bovary phrase
+"as if just surprised at his work", changing the sense of each pupil being caught
+at work into surprise about another person's work. The French rendering retains
+the passive sense. Script compliance, JSON success and provider success do not
+establish literary accuracy. This observation remains a quality follow-up before
+claiming high-quality literary translation; no hidden second-model judging/retry
+loop or source-specific phrase substitution was introduced to force acceptance.
+The translation result is a model proposal, never a replacement of canonical text.
+
+## Generated Block Identity Consistency (2026-10-23)
+
+Supporting CLEAN-10: both TaskUnitIdNormalizer paths call the shared pure identity
+rebinder before setting parent_section_id. New deterministic unit IDs and generated
+content-block IDs must agree; otherwise a stale full-unit compatibility block can
+be mistaken for custom content and duplicated by reading projection. Custom block
+IDs and canonical text are not rewritten. This changes explicit unit construction,
+not task-layout read persistence or existing interaction identities on ordinary reads.
+Real-book acceptance checks all five effective target levels after SQL allocation.
+
+## Cleanup Workflow Result (2026-10-23)
+
+Supporting app CLEAN-06: ReparseDocumentStructureResult retains structural success,
+change_kind/committed/version/deletion meanings and adds optional cleanup, phase,
+retry_stage, layout_error and current review counts. The app/repository own values;
+this data carrier does not generate or persist anything. Generation retry and
+postcommit layout retry are distinct. cleanup-only content invalidation is recorded
+in cleanup.reading_content_changed/revision, not mislabeled structure_changed.
+Legacy constructors remain compatible through nullable defaults. API schema owns
+wire validation; app tests cover committed-but-not-ready, restart and supersession.
+
 ## Reviewed Reading Sources (2026-10-21)
 
 OCR-REVIEW-06: ReadingTargetResolver applies the pure reading overlay to block,

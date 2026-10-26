@@ -44,8 +44,11 @@ def enforce_prompt_budget(prompt, provider, *, safety_margin_ratio=0.05, minimum
         try:
             count = counter(prompt)
             if type(count) is int and count > 0:
+                identity = getattr(provider, "tokenizer_identity", None)
                 decision.update(input_estimate=count,
                                 measurement="provider_matched_local_tokenizer_not_provider_usage")
+                if isinstance(identity, str) and identity:
+                    decision["tokenizer_identity"] = identity
         except Exception:
             pass
     # With no configured allowance, reserve the provider's entire output limit.

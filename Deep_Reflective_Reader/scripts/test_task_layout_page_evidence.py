@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import test_pdf_mode_preparation as mode_tests
 from document_preparation.pdf_extraction_identity import PdfExtractionIdentity
+from doc_loaders.extraction_identity import normalize_pdf_identity
 
 
 class PageEvidenceTests(unittest.TestCase):
@@ -51,6 +52,7 @@ class PageEvidenceTests(unittest.TestCase):
             document = deepcopy(self.document)
             identity = replace(PdfExtractionIdentity(**record["identity"]), mode=mode)
             document.parse_provenance["pdf_extraction"] = identity.record(document.raw_text)
+            document.parse_provenance["extraction"] = normalize_pdf_identity(identity).record(document.raw_text)
             self.assertEqual(len(self.read(document)), 1)
 
     def test_changed_source_is_rejected(self):
@@ -81,6 +83,7 @@ class PageEvidenceTests(unittest.TestCase):
             with self.subTest(spans=spans):
                 document = deepcopy(self.document)
                 document.parse_provenance["pdf_page_spans"] = spans
+                document.parse_provenance["source_page_spans"] = spans
                 self.assertEqual(self.read(document), [])
 
 

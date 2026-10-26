@@ -32,13 +32,11 @@ class PromptBudgetTests(unittest.TestCase):
         from llm.openai_llm_provider import OpenAILLMProvider
         p = object.__new__(OpenAILLMProvider)
         p.model_capabilities = SimpleNamespace(model_name="fixture-model")
-        encoding = Mock()
-        encoding.encode.return_value = [1, 2, 3]
-        with patch("tiktoken.encoding_for_model", return_value=encoding) as lookup:
+        with patch("llm.openai_llm_provider.TOKEN_COUNTER") as counter:
+            counter.count.return_value = 3
             self.assertEqual(p.count_input_tokens("source"), 3)
-            lookup.assert_called_once_with("fixture-model")
-            encoding.encode.assert_called_once_with("source", disallowed_special=())
-        with patch("tiktoken.encoding_for_model", side_effect=KeyError("unsupported")):
+            counter.count.assert_called_once_with("fixture-model", "source")
+            counter.count.return_value = None
             self.assertIsNone(p.count_input_tokens("source"))
 
     def test_exact_boundary_and_one_byte_over(self):

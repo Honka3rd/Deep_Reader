@@ -27,6 +27,12 @@ class PostgresStructuredDocumentArtifactRepository(StructuredDocumentArtifactRep
     def mutate_reading_content(self, doc_name, mutation):
         return self.store.mutate_reading_content(self.store.target_for_doc_name(doc_name),mutation)
 
+    def commit_cleanup(self, command):
+        return self.store.commit_cleanup(command)
+
+    def lookup_cleanup(self, *, namespace, document_id, operation_id):
+        return self.store.lookup_cleanup(namespace=namespace, document_id=document_id, operation_id=operation_id)
+
     def rename_document(self, doc_name, new_name, transform):
         return self.store.rename_document(self.store.target_for_doc_name(doc_name), new_name, transform)
 
@@ -46,9 +52,10 @@ class PostgresStructuredDocumentArtifactRepository(StructuredDocumentArtifactRep
     def profile_structure_invalidated(self, doc_name):
         return self.store.profile_structure_invalidated(self.store.target_for_doc_name(doc_name))
 
-    def commit_enhancement(self, doc_name: str, *, candidate, interaction_revision, source_path):
+    def commit_enhancement(self, doc_name: str, *, candidate, interaction_revision, source_path, cleanup=None, operation=None):
         return self.store.commit_enhancement(self.store.target_for_doc_name(doc_name),
-            candidate=candidate, interaction_revision=interaction_revision, source_path=source_path)
+            candidate=candidate, interaction_revision=interaction_revision, source_path=source_path,
+            cleanup=cleanup, operation=operation)
 
     def backfill_txt_extraction(self, doc_name, *, result, source_path):
         return self.store.backfill_txt_extraction(self.store.target_for_doc_name(doc_name),

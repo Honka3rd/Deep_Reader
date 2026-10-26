@@ -1,5 +1,1241 @@
 # Deep_Reader_UI Detailed Design
 
+## Persisted Block Translation Plan (2026-10-26)
+
+**[Code-Confirmed: TRUI-07..11]** Integrated with backend TRUI-01..06.
+[Shared design](../Deep_Reflective_Reader/section_tasks/module-detailed-design.md#persisted-block-translation-plan-2026-10-26)
+and [task order](../Deep_Reflective_Reader/section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).
+The persistent read/generate API now supplies this UI's saved-result contract.
+
+Delivery uses features/block-translation/{model,controller,view,index} and typed
+TranslationService; App only wires normal-block commands and server invalidation.
+The feature controller owns generation after Modal submission. Aborted/unknown
+commands keep only in-memory identity until a readonly reconciliation; known rejected
+commands release that identity. No browser storage, polling or frontend timeout.
+Main-reader edit now consumes bounded refresh responses rather than reloading layout;
+identical text closes the editor with no invalidation/refresh. Source-review consent
+wording also distinguishes mandatory summary/translation deletion from other metadata.
+
+Historical initial delivery: build, mounted StrictMode/controller/DTO tests and existing refresh/pagination tests
+pass. Actual App/current API/configured LLM/disposable PostgreSQL tests pass using
+immutable Madame Bovary/Red Roulette excerpts at 1280/390, including two-language
+reload, initial same-language regeneration (superseded by reuse below), no-op/change Keep, cancel,
+duplicates and stale navigation. Private backend evidence:
+data/test-books/persisted-translation/20261026T070158Z-06e6f6e0. Production Docker
+was not rebuilt during that acceptance; Vite was running at http://127.0.0.1:5173.
+
+Reuse correction (2026-10-26): Modal opening reads saved results from the backend.
+Submitting an existing valid To opens/focuses that saved section with zero generate
+requests when From is absent or differs from To; an equal selected pair is rejected
+before saved-result reuse. Only a missing To generates with valid distinct languages. The backend repeats this
+policy for direct callers and races. Returned saved records retain their original
+source language and mutation ID, which need not match the new request. DTO checks
+still require target/source-hash and committed record/payload agreement. No force
+regeneration API/UI is added. 80 focused backend tests, mounted controller/DTO tests,
+build and real-book App/API/model/SQL at 1280/390 pass; evidence:
+backend data/test-books/persisted-translation/20261026T113558Z-5d5c71b0.
+
+### Interaction
+
+Add Translate only to the normal content-block interactive menu, not parent-level
+or source-review repair menus. Open a titled MUI Dialog/Modal with searchable
+Autocomplete controls labelled Translate from/to. From uses the server's existing
+profile language; missing/unknown leaves it empty, requiring selection. To is required
+and empty on a fresh open; re-entry may prefill an unresolved command's language pair
+for retry. No locale/profile default is invented for To.
+Both inputs are selection-only, not freeSolo, searchable by language name or code.
+Options come from backend registry codes, never an independent frontend allowlist.
+Disable submit while identity/options/selections are missing or a submit is active.
+To options exclude the selected From code. Changing From clears To if they become
+equal; choosing To first follows the same rule. Clearing From restores all registry
+options. The model, controller submit path and DTO service reject equal selected codes
+before saved reuse or HTTP generation. Reconciliation clears an equal To from legacy
+unresolved commands. API rejection `translation_same_language` is a definite failure
+with a language-selection message, not an unknown outcome to retry unchanged.
+View translations still reads existing records, including historical equal-language
+records; this policy introduces no cleanup or deletion.
+
+Submit closes the Modal immediately and transfers the operation to the feature
+controller. Keep pending feedback in the shared notification pattern; open the
+drawer only after confirmed persisted completed/partial success, label partial
+output, and never replace saved results on failure/untranslatable. Cancel before
+submission starts no model request. Include View translations for saved records
+so reopening does not require generation; Add translation reopens the same-block
+language Modal from the drawer. Submitting a saved target reuses its section only
+after the distinct-language selection guard.
+
+### Inline Translation Display (2026-10-26)
+
+**[Code-Confirmed: initial delivery]** The saved-translation drawer has `Translations`
+and `Reading display` tabs. Multiple saved languages render below the original body,
+after the block's visible Insight when present. Labels, partial status, paragraph
+breaks, direction and wrapping are preserved; task-unit pagination bounds rendered
+blocks. Initial per-block/current-section selection is superseded by the session
+contract below; it must not be described as the final preference lifetime.
+
+#### Session preference contract (2026-10-26)
+
+**[Code-Confirmed: UI-TRINLINE-02, following maintainer contract]** Reading display
+selects target languages for the entire active application session. Session means
+one mounted App/page lifetime: drawer close, block/page navigation, section changes
+and book changes preserve the selected codes. A full page reload, closing the tab or
+unmounting App ends the session and resets them. No localStorage, sessionStorage,
+backend preference write or account/custom-tab binding is introduced in this phase.
+Future longer-lived/custom-tab preferences are a separate requirement.
+
+Language preference is separate from saved translation content. Use one feature-owned
+language selection, not per-block checkboxes or a saved-text cache as preference
+truth. A checked language applies to matching existing saved records as they are read
+and to subsequent successfully persisted generation results, without another checkbox
+click. Unchecking hides that language across blocks while leaving saved data intact.
+Missing/deleted/invalidated records never clear the selected language preference;
+new valid translations in that language automatically become visible again.
+
+Reading display lists the current backend registry codes together with already
+selected session codes, so a preference can be disabled even when this block has no
+matching saved translation. It explains session-wide behavior and does not promise
+to generate missing translations. Generation remains an explicit Translate action.
+
+Saved content remains bound to document, block and source identity. Scope/source
+changes drop obsolete snapshots and cancel pending reads, while retaining language
+preferences. Fetch saved translations only for blocks on the currently rendered
+reader page when at least one language is selected, using the existing read-only
+translate/read API with at most two concurrent background reads. Do not fetch all
+sections/books, change task-layout or generate translations on display. Cache verified
+results for the current loaded scope, including empty reads, to avoid repeated reads
+on ordinary rerenders. Drawer reads and successful generation reconcile that cache;
+a late background read must not replace a newer explicit result or resurrect an
+invalidated record.
+
+Leaving a reader page or scope, removing/changing a block, disabling all selected
+languages or unmounting cancels obsolete background reads. Guard responses against
+request/source/scope changes even if cancellation is ignored. Read failures are
+explicitly retryable and must not be silently interpreted as no saved translations;
+retain a last verified snapshot when available. Server translation/cleared-block
+invalidation removes affected snapshots even with the drawer closed, without clearing
+session preferences. Restoring source text does not restore old snapshots; only a
+fresh authoritative read or successful generation may supply content.
+
+**[Code-Confirmed: UI-TRINLINE-02]** Display locations
+are exclusive: a session-selected language is omitted from the drawer's Translations
+panel and shown only inline; unchecking moves it back. Reading display keeps the
+checkbox available regardless of where the text is shown. If every saved language
+is inline, explain that location instead of claiming no translations exist.
+
+Highlight/focus follows the target language's actual rendered destination. After
+new generation or saved-target reuse, an inline-selected target closes the language
+Modal and focuses/scrolls its inline section without opening an empty translations
+drawer; other targets open/focus their saved drawer section. Changing a highlighted
+language's checkbox transfers its highlight to the other location. Preserve highlight
+through reload while the source-valid record exists, clear it when that record is
+removed or its source/scope changes, and never steal keyboard focus behind an open
+modal. Closing the drawer allows a pending inline destination to receive focus.
+Only the current document/block/language destination may be highlighted.
+
+The render order remains body -> optional visible block Insight -> matching saved
+translations. A task-unit Insight above child blocks does not change that order.
+Keep preference/cache/request ownership in the translation feature; App only composes
+reader props. A small preference boundary should permit a later lifecycle owner
+without implementing storage or a generic settings system now.
+
+Acceptance gates: session selection across blocks/pages/sections/books; later matching
+generation; unchecking globally; no matching record and partial output; failed-read
+retry; bounded current-page requests; source invalidation, delayed/aborted reads and
+same block IDs in different books; full reload resets preferences. Preserve existing
+drawer focus/recovery behavior. Run build, mounted controller and actual-App browser
+checks at 1280/390 and inspect screenshots. Backend/SQL/model acceptance is not implied
+by UI fixture tests.
+
+Delivery evidence: `npm run check`, `test-translation-controller.mjs`,
+`test-translation-session-lifecycle.mjs`, `test-translation-inline.mjs`,
+`test-translation-focus.mjs` and `test-translation-recovery.mjs` pass. Actual-App
+controlled-HTTP checks at 1280/390 verify cross-block/section/book preference, same-ID
+book isolation, global deselection, explicit future generation, reload reset, read
+failure/retry, exclusive placement and inline/drawer focus transfer. Held-read tests
+verify two-worker concurrency, explicit-result precedence, source/scope cancellation,
+late-response suppression and invalidation retaining language choices. Desktop/mobile
+settings and inline-highlight screenshots are inspected. This phase changes frontend
+only; no preference storage, backend schema/API or live-book mutation is added.
+
+### MVC And Lifecycle
+
+Use a translation model/controller/view and typed RestClient service. App remains
+a composition shell; do not grow quiz/thinking controllers with translation storage.
+The feature controller outlives the submitted Modal. Modal-only reads cancel on
+close; submitted generation has explicit feature ownership. Unmount, document/block
+switch, source changes or supersession abort requests and invalidate generation IDs.
+Check target/source identity before every state/notification/finally update. A delayed
+response must not reopen an old drawer. HTTP abort does not prove rollback: re-entry
+reconciles backend records before retry, without polling or browser persistence.
+No fixed frontend timeout, hidden prepare/profile generation or full-layout reload.
+
+### Failure Recovery (2026-10-26)
+
+**[Code-Confirmed]** A failed or unconfirmed generation must not lock both language
+selectors. `Try again` opens the language Modal and reads saved results first; it
+does not generate automatically. A failed read exposes `Retry` and keeps inputs
+disabled until a valid read succeeds. Once ready, the user may change either language,
+retry the original pair, or open an already saved target without model work.
+
+Unknown commands retain in-memory identity keyed by document, block, source language
+and target language, with the effective-content hash. Retrying the same unresolved
+pair reuses its `mutation_id`; changing a pair uses a separate command identity.
+Selecting or saving another target must not discard the original pending command.
+This command key is distinct from backend storage's one-record-per-block/target rule.
+A successful read removes pending entries when their content hash changed or a valid
+saved target is present. Confirmed save/reuse clears pending entries for that target;
+explicit source invalidation clears the selected block's pending entries.
+An empty saved read alone does not prove an earlier request stopped or rolled back.
+
+The typed service distinguishes definite rejection from unknown outcome:
+
+| Response | Retry identity policy |
+| --- | --- |
+| HTTP 4xx except 408 | Release the rejected command; retain normal conflict/reload handling |
+| 502 with `translation_provider_failed` or `translation_invalid_output` | Release the command and offer retry |
+| 503 with `translation_capacity_unavailable` or `translation_profile_unavailable` | Release the command and offer retry |
+| Network failure/abort, 408, generic gateway 502/504, `translation_service_unavailable`, or unverifiable success payload | Retain identity until reconciliation; keep language choices available after a successful read |
+
+Known rejection and unknown outcome both preserve saved translations. Provider timeout
+is not evidence that a language pair is forbidden, and the UI recovery fix does not
+claim to eliminate backend/provider timeouts. Closing or switching targets still
+aborts owned requests and prevents late success/failure from reopening old surfaces.
+
+### Drawer And Source Changes
+
+Use a bounded, scrollable drawer keyed by selected block, with stable sections keyed
+by target language code. Show language name/code, source code, timestamp, status and
+plain translated text. The selected or newly generated target appears first, has
+`aria-current` and a visible highlight, and receives keyboard focus; other sections
+sort by language code. The scroll container returns to the selected section at the
+top. There are no per-language collapse controls in the current implementation.
+
+`Reload translations` reads saved results and retains the active language through
+loading and failed-read retry. Once the read succeeds, retain its highlight only
+when that language still has a valid saved record; otherwise clear it. A fresh
+open, including close/reopen, resets the active language instead of restoring an old
+highlight. An obsolete read cannot restore that old selection. Reload does not
+generate or replace translations. Reuse/new generation preserves sibling languages.
+Reopen/reload reads the backend, not localStorage/sessionStorage. Registry size bounds
+section count. Render loading/empty/failure states explicitly; use one AppNotification
+within the active modal/drawer surface.
+
+Backend compares submitted text with stored effective body inside its write boundary.
+Same-text success must not clear translations/summaries, flip edit flags or trigger
+layout reload. Real changes delete every saved language for each changed block from
+backend storage, including its replay receipts; this is not just hidden UI content.
+Unaffected blocks retain their translations. Real changes also clear affected summaries;
+Keep/Clear applies only to other interaction metadata. Update editor confirmation
+wording to make this distinction explicit. Consume server changed/cleared scope to
+close or invalidate affected views without dropping unrelated Notes/drafts. Block
+deletion clears all its interaction state. Never publish in-flight obsolete results.
+The backend owns dependency scope; UI must not guess which ancestor summaries survive.
+`App.tsx` forwards `translation_block_ids` and cleared-block scope to the translation
+controller even when `generated_invalidated` is false under Keep. The controller closes
+an affected drawer/Modal, cancels its request and clears its pending commands. The
+backend commit guard rejects results generated from an obsolete source. Undo does
+not restore deleted translations; translating the new/restored body requires a new
+explicit user action. See the [source lifecycle design](../Deep_Reflective_Reader/document_structure/module-detailed-design.md#selective-atomic-cleanup).
+
+### Acceptance
+
+Verify search/selection, registry rejection, profile defaults, one POST per submit,
+Modal-close-before-completion, persisted-success drawer, multiple saved languages,
+same-language reuse without generation, refresh/reopen, partial/untranslatable and commit errors.
+Exercise delayed responses, rapid target changes, close/unmount, no-op/change/delete
+policies, keyboard/focus and long text at 1280/390. Final App/API/SQL tests use isolated
+copies of immutable Madame Bovary/Red Roulette backups. Mocked contracts are useful
+regressions but not final persistence acceptance; no production books are mutated.
+
+Correction evidence (2026-10-26, preceding implementation runs): `npm run check`,
+`scripts/test-translation-controller.mjs`, `scripts/test-translation-focus.mjs` and
+`scripts/test-translation-recovery.mjs` passed. Focus and recovery browser checks use
+1280/390 widths and controlled service/HTTP outcomes. They cover reload highlight,
+failed-read retry, removed language, keyboard/long-text scrolling, close/reopen and
+stale reads; provider/gateway failure, editable From/To, separate command identities,
+saved-target reuse and return to the original retry ID. These are frontend regressions,
+not a new live-model/SQL acceptance run or a guarantee of provider availability.
+Implementation: `src/features/block-translation/{model.ts,controller.ts,view.tsx}`,
+`src/services/TranslationService.ts` and the refresh integration in `src/App.tsx`.
+
+## Block-Level Source Review Correction (2026-10-26)
+
+The maintainer corrected the operation boundary: every `.source-review-block`
+owns one three-dot menu with Edit, Delete and Keep it. A region is a grouping and
+source-image/navigation context, never the batch-edit target. The region-wide
+editor described below is historical and removed from the current UI.
+
+- Expand Related blocks lazily; render at most 20 blocks. Edit the complete current
+  text of the selected block, not concatenated region text or a guessed substring.
+- Consume per-block `review_repair` from the backend. A protected sibling never
+  disables another block. Repeated review edits do not set body manual-edit flags.
+- Edit uses explicit Keep/Clear interaction consent; Delete confirms removal of
+  that block and its Notes/interactions only. Keep it confirms the text is correct,
+  removes that block from Source review across its linked regions, and warns that
+  review editing is no longer available and this decision cannot be undone. Body
+  text and interactions remain intact; the main reader's Edit remains available.
+- Keep confirmation is persisted by the server, not browser storage. Original
+  evidence is retained. No body insertion, OCR/model calls or automatic Prepare.
+- Merge authoritative target DTOs/tombstones and kept membership into existing
+  keyed rows. Preserve modal/tab/expansion/scroll. Refill a bounded page only when
+  deletion/Keep leaves a page gap; edits do not re-fetch the review list or layout.
+- SourceReviewBlockRepair owns block menu/editor presentation; ReadingContentActions
+  owns command/retry lifecycle; useSourceReviewBlocks owns paged related reads and
+  local merges. Definitive failures and unknown outcomes remain distinct.
+
+SRBLOCK-02 is accepted against Madame_Bovary_261021_155934, Page 3, 20 canonical
+related blocks, on 1280/390 viewports with real API and disposable SQL. Final report:
+backend data/test-books/srrepair07/20261026T044959Z-7b1702d7. Repeat edits preserve
+other blocks and row DOM; Keep/cancel/replayed response loss/reopen and single-block
+Delete pass. Source and backups are unchanged; the disposable schema is removed.
+Mounted editor, navigation/state and reader refresh regressions plus build pass.
+Screenshots were checked on desktop/mobile. Current API is rebuilt/healthy; a live
+read-only browser confirms block menus and Keep confirmation, without book writes.
+Old region-wide acceptance does not establish this correction.
+
+## Guarded Source Region Repair (2026-10-26)
+
+Historical region-wide delivery. The block-level correction above supersedes its
+UI action boundary; shared CAS, transaction, source and interaction safeguards remain.
+
+Maintainer-approved successor to the read-only SRMAP UI. Backend authority
+and shared execution order live in the
+[domain design](../Deep_Reflective_Reader/document_structure/module-detailed-design.md#guarded-source-region-repair-2026-10-26)
+and [checklist](../Deep_Reflective_Reader/document_structure/module-checklist.md#guarded-source-region-repair-2026-10-26).
+SRREPAIR-05/06 consume the implemented optional per-region repair DTO, not legacy
+block IDs/manual flags alone. Older servers stay read-only.
+
+- Keep Source regions and cleanup history as separate horizontal tabs with stable
+  region/record identity. Reuse existing editor/confirmation primitives, not a second
+  body-mutation implementation. Model transforms DTOs; controller owns requests and
+  drafts; view renders; typed services own transport.
+- Distinguish Original evidence, saved repair draft and applied text. Save changes
+  only the draft; Apply explicitly updates the body. Offer region Edit and Delete
+  text through the established menu; Delete requires confirmation and only removes
+  the server-mapped region text, not unrelated text in a shared block.
+- Render server can-apply/can-delete and reason. Main-reader manual edit/delete
+  disables region body mutation. Region/history draft saves and applications never
+  toggle a frontend manual flag. Unknown/partial/stale mappings retain preview and
+  valid navigation/Ignore without guessed write targets. Ignore is not text deletion.
+- Edit asks Keep/Clear for interaction data including Note; complete block deletion
+  clears that block's interactions. Use backend invalidation results, never assume
+  retained generated data is still current. Preserve recovery history and explicit
+  Ignore semantics; deleting all related text does not automatically Ignore.
+- After commit, merge only authoritative affected block DTOs/tombstones and related
+  region states. Preserve tab, row expansion, selection, focus, drafts and scroll;
+  do not remount Source review or fetch full task-layout. Navigation/highlights use
+  verified current targets, never JavaScript slicing of canonical source offsets.
+- Cancel obsolete requests and guard generation/document/source/revision on every
+  response. Keep same-command unknown-outcome reconciliation distinct from read
+  refresh retry after a confirmed commit. Protect dirty drafts; no sessionStorage,
+  localStorage, fixed request timeout, implicit Prepare or library polling.
+- Use centralized notifications, stable classes/labels/data identities and bounded
+  lazy region/block lists. Validate 1280/390 viewports, keyboard/focus, rapid target
+  changes and long lists; actual real-state acceptance belongs to SRREPAIR-07.
+
+### Implemented Controls And Lifecycle
+
+`SourceRegionRepair` renders the existing MUI menu/dialog primitives. The nested
+editor has one scoped draft, distinct Save draft and Apply, a Keep/Clear interaction
+confirmation, and explicit Delete region text confirmation. Original remains the
+immutable preview. Delete preserves the region row and its saved draft for recovery.
+Editable text counts Unicode code points with the existing 10,000-character limit.
+Missing capabilities and protected mappings never become writable client-side.
+
+`ReadingContentActions` owns revision-bound commands through ReadingContentService,
+same-ID unknown-outcome retry and the existing committed-body refresh callback.
+Definitive 4xx rejection releases the retry identity; uncertain transport outcomes
+retain it until identical replay or an explicit authoritative reload. No browser
+persistence, timeout, polling or implicit preparation. Single active error surface
+is inside the current editor, not duplicated behind its modal focus boundary.
+
+Region mutation responses update the existing keyed rows and related block list.
+Draft Save performs no GET/body refresh. Apply/Delete/region Undo use the existing
+20-block refresh paging, including tombstones, reappearing blocks and plural cleared
+interaction targets. They never request task-layout or section content. Cleanup
+history eligibility is invalidated after body changes and read lazily on tab entry;
+that read merges only history, retaining Source regions DOM, expansion and scroll.
+Failed related-block reads hide unverified text; failed navigation after an accepted
+read retains verified review data and requires a fresh check on another navigation.
+
+Source regions render at most 20 rows; related blocks retain their existing 20-item
+pagination. Editor exit restores its connected region trigger with preventScroll
+and restores the outer scroll offset. Cleanup cancels pending focus frames. Dialog
+close/document change aborts requests; generation/source/revision checks reject late
+publication. Editor unmount/target switch cannot close or dirty a replacement editor.
+
+Supporting changes stay within typed service, review components/hooks and the existing
+reader refresh model. App only forwards authoritative plural interaction invalidation.
+No new body editor path, manual block insertion or frontend manual-edit truth.
+
+### SRREPAIR Acceptance
+
+UI-owned 05/06 and shared final acceptance 07 are complete. Actual App/API/disposable
+SQL workflows pass at 1280/390 on both hash-verified dark-water and Madame Bovary OCR
+backups. Private reports live under backend data/test-books/srrepair07/
+20261026T040032Z-963f487a and 20261026T040631Z-ee8127e8. Assertions cover immutable
+source, repeated application, Delete/recovery, same-ID response-loss replay, retained
+row DOM/scroll/focus, lazy history refresh, no region-triggered layout/section reads
+and authoritative protection after main-reader Edit. Test schemas are removed.
+
+test-source-region-editor, test-source-review-navigation, test-source-review-state,
+test-cleanup-history and test-reading-refresh browser suites pass; actual real-book
+browser acceptance is the sixth suite. Screenshots are inspected on both viewports.
+npm run check passes with the existing large-bundle warning. The final long-book
+acceptance uses a fixed build to exclude development hot-reload interference.
+No production writes or backend deployment; full governance/validation receipt is
+in the linked document_structure design, without duplicating task ownership.
+
+## Repeatable Cleanup Repair (2026-10-25)
+
+RCR-04/05 follow backend RCR-01/03; RCR-02 was withdrawn before implementation.
+RCR-04 local refresh and RCR-05 isolated real-state acceptance are complete. Canonical backend design:
+[Repeatable Cleanup Repair](../Deep_Reflective_Reader/document_structure/module-detailed-design.md#repeatable-cleanup-repair-2026-10-25).
+
+Save changes only the record draft. Restore explicitly applies it, including after
+an earlier Restore: backend replaces its own previously applied fragment. Never
+disable solely because status=restored, concatenate text or set a local edit flag.
+The backend remains authority for can_restore and permanent body manually_edited.
+Use concise state for a saved draft not yet applied; already restored is not a
+permanent prohibition. Keep immutable quote distinct from draft and applied text.
+
+After apply, fetch/merge only server-specified affected block DTOs in the existing
+reader controller; preserve selection/focus and recalculate local pagination if
+needed. Support cross-block and hidden-to-visible cases, authoritative ordering and
+interaction invalidation without fetching task-layout or a whole section. Refresh
+history status separately. Saved success followed by refresh failure keeps a targeted
+read-retry handle, never a fresh Restore. Abort/generation/identity guards, draft
+discard confirmation and same-ID unknown-outcome retry remain mandatory.
+
+Backend RCR-03 supplies optional mutation `refresh` plus paged read-only
+reading-content refresh queries. RCR-04 consumes the nested payload, not legacy
+top-level blocks. Bind every page to the mutation/source/revision, merge in canonical
+order using the server's next-unaffected anchor, and apply tombstones or reappearing
+blocks. Update cached sibling owner/hash metadata using `unit_source_hash`; absence
+of lazy interaction availability means unknown, not not_generated. Apply server
+generated-invalidation/purged-block flags without deleting unaffected Notes.
+`scope_current=false` acknowledges an older commit but cannot update current text;
+409 or unavailable refresh needs explicit reconciliation, never a guessed patch.
+Frontend wiring and controlled-transport browser checks are complete under RCR-04;
+RCR-05 additionally accepts the isolated incident-book API/SQL/browser workflow.
+
+### Implemented Refresh Lifecycle
+
+ReadingContentService owns the typed refresh DTO/query. readingRefreshModel validates
+page bindings and performs pure merge; the reader controller fetches pages and owns
+cancellation/publication. App only connects the callback and existing interaction
+invalidation. Cleanup Restore and Undo of cleanup/record restoration use this path;
+ordinary manual Edit/Delete and Ignore retain their existing refresh workflow.
+This task does not claim every reading mutation has been migrated.
+
+The controller rereads page zero against the committed mutation binding, including
+on retry, then collects every 20-block page before publishing any body change.
+Reject stale source/revision/structure/document bindings, duplicate IDs, invalid
+hierarchy/visibility and missing insertion anchors. Merge only loaded groups using
+server block order/next-unaffected anchors; do not fabricate unloaded sections or
+concatenate replacement strings. Later normal navigation loads current content for
+unloaded units. Update sibling source hashes and invalidate lazy generated hints
+according to backend flags, without inferring missing availability as not_generated.
+
+History draft Save refreshes history only. Restore retains batch expansion/item page,
+reads current history separately, and never derives eligibility from status=restored.
+The caption distinguishes a saved draft from the immutable quote without claiming
+the draft is the currently applied body; only server can_restore permits another apply.
+Confirmed mutation plus refresh failure retains an in-memory read-retry handle;
+Retry reading does not issue POST. Missing/stale refresh capability blocks patching
+instead of silently falling back to full layout. Lost mutation responses retain the
+same mutation ID. No browser persistence is added.
+
+Generated interaction state is invalidated on confirmed restoration even if its
+body refresh fails. Unaffected Note drawers/drafts remain. Reader selection and current
+page are retained while measurement recalculates; navigation focus is applied once
+per navigation request. History submission restores its connected action's focus
+after controls re-enable, with frame cancellation/generation guards on teardown.
+Document/section switch, layout supersession, request cancellation and unmount cannot
+publish delayed partial pages or restore stale focus. Non-navigable history remains.
+
+Retain the existing history even when navigation is unavailable, as the maintainer
+withdrew the proposed filtering/deletion rule to preserve accidental-deletion recovery.
+Do not infer permanent absence from an empty client cache or can_navigate=false.
+No new browser persistence, general inline body editor or manual block insertion.
+
+Validation must prove Edit -> Restore -> Edit -> Restore updates the same fragment,
+flag remains false, no duplicate text, zero task-layout fetches and correct targeted
+body content. Then body interactive Edit makes history overwrite unavailable. Test
+stale/cancel/response-loss/retry, retained non-navigable history and desktop/mobile layout on an
+isolated copy of the incident book. Earlier CRUI tests asserted one-shot behavior
+and must be revised, not cited as new acceptance.
+
+### RCR-05 Delivery And Governance Receipt
+
+UI-owned `scripts/accept-repeatable-cleanup.py` captures document 68 through a
+read-only, repeatable-read source transaction and preserves its full SQL rows,
+source PDF and existing profile under ignored `data/test-books/rcr05`. A unique
+disposable PostgreSQL schema loads only those backup rows, preserving IDs,
+revision 5, saved draft, prior application and Undo evidence. Desktop/mobile runs
+reset from the backup, not by reparsing or synthesizing the incident. Source-path
+null remains intact. Source and backup hashes are checked again after teardown.
+The capture helper preserves the scoped DSN search_path when adding read-only mode.
+
+The actual App uses production FastAPI reading-content/task-layout/content routes
+and the real repository/domain logic through an allowlisted local test bridge.
+Library listing and enhancement status are transport fixtures; generated interaction
+availability is disabled and the existing backed-up profile is reused. No model,
+OCR, Prepare or production mutation occurs. Preparation is forbidden in the test
+coordinator. The bridge and disposable schema are closed even after failure.
+
+Final evidence: `Deep_Reflective_Reader/data/test-books/rcr05/20261025T150648Z-06b7c9e3/`
+contains manifest, immutable inputs, SQL/browser reports and four screenshots.
+At 1280/390, block `19652:content:2` accepts three successive record applications.
+Save changes only the draft; each Restore replaces its own text exactly once,
+retains manually_edited=false, and triggers one targeted read with zero additional
+layout or section-content requests. Both SQL reading-state copies agree. Five real
+non-navigable records remain visible with navigation disabled. Body interactive
+Edit sets the backend flag, disables UI Restore and makes a direct API Restore
+return 409; the rejected request leaves the entire SQL fingerprint unchanged.
+Canonical hierarchy, extraction rows, source PDF/profile and backups are unchanged;
+the temporary schema is confirmed absent. Screenshots show fitting desktop/mobile
+controls and scroll-contained history. This is source acceptance, not deployment.
+
+Supplemental verification: `/tmp/rcr05-backend.log` reports 264 passing file/SQL
+tests from test_cleanup_history and test_reading_refresh. `/tmp/rcr05-history.log`,
+`/tmp/rcr05-refresh.log` and `/tmp/rcr05-requests.log` cover response loss, read retry,
+Note retention, hidden/cross-block cases, 25-block pagination and stale lifecycle
+responses using controlled fixtures. `/tmp/rcr05-build.log` passes TypeScript/Vite
+with the existing bundle-size advisory. `/tmp/rcr05-real.log` records the real-state
+run. Earlier failed harness runs are retained as failed reports, not acceptance.
+
+Inspected markdown: AGENTS; proposal/high-level-design; module index/progress;
+both development standards; UI, document_structure, scripts and db designs and
+checklists; module-memory-loader and implementation-validation skills. Modified
+markdown: UI design for this harness/evidence receipt; UI checklist for RCR-05
+completion; document_structure design/checklist for shared acceptance and 4/4 status.
+No progress.md change or additional backend completion count. Maintainer-authorized
+governance only; historical RCR-04 receipts below describe their earlier scope.
+
+Implementation-validation (UI implementation/acceptance): scope, architecture,
+boundaries, documentation, testing and memory PASS; diff and script syntax checks
+pass. Added only the two UI-owned acceptance scripts; no production source changes
+or file removals in this task. Memory loading and validation themselves modify no
+files. Pre-existing worktree changes remain untouched. RCR is complete at 4/4,
+UI-owned tasks 2/2; no remaining task in this corrective track.
+
+### RCR-04 Delivery And Governance Receipt
+
+Evidence: `/tmp/rcr04-history.log` records actual App browser tests at 1280/390
+with controlled HTTP: repeated saved/unsaved-draft application replaces text, no
+layout/section reloads on Restore, response-loss same-ID replay, read-only retry
+after a saved mutation, current-page/expansion/focus retention, unsaved Note retention,
+server edit-protection presentation, 23-row pagination and retained non-navigable
+history. `/tmp/rcr04-refresh.log` records a mounted controller with 25 affected
+blocks, all-pages-before-publication, replay without duplication, six stale/failure/
+cancel/switch/unmount scenarios and 13 pure merge/contract checks, including hidden
+and cross-unit recovery. Backend flags are consumed, never inferred or written by UI.
+
+Regression evidence: `/tmp/rcr04-review-state.log`, `/tmp/rcr04-review-navigation.log`
+and `/tmp/rcr04-requests.log` pass; `/tmp/rcr04-build.log` passes TypeScript/Vite
+with the existing large-chunk advisory. Desktop/mobile screenshots are
+`/tmp/cleanup-history-1280.png` and `/tmp/cleanup-history-390.png`; review confirms
+bounded scrolling, fitting controls and no horizontal overflow. Existing Vite at
+127.0.0.1:5173 was reused. No production book/API mutation, LLM/OCR, Docker restart
+or isolated real-state acceptance at that delivery; RCR-05 was then unchecked.
+The subsequent acceptance receipt above closes it without changing this test scope.
+
+Inspected markdown: AGENTS, proposal, high-level-design, module index/progress,
+both development standards, UI and document_structure design/checklist, memory,
+checklist-sync and validation skills. Modified markdown: UI design for implemented
+refresh lifecycle and evidence, UI checklist for RCR-04 completion/shared 3/4;
+document_structure design/checklist only to align the cross-module integration
+status/shared count. Historical test receipts remain historical. No progress.md edit.
+These are maintainer-requested governance updates; no global architecture changes.
+
+Module-memory-loader: module-specific UI implementation, required memory loaded,
+no conflicts; memory loading itself modified nothing. Implementation-validation:
+scope, architecture, boundaries, documentation, testing and memory PASS; git diff
+--check passes. Validation itself modifies no files. Added readingRefreshModel and
+test-reading-refresh; edited ReadingContentService, reader controller/view,
+ReadingContentActions, useCleanupHistory, CleanupAudit, App and test-cleanup-history.
+No files removed. Unrelated pre-existing changes retained. Next work at that delivery
+was RCR-05 isolated real-state acceptance, now completed in the receipt above.
+
+## Per-Item Cleanup Recovery (2026-10-25)
+
+Supersedes the CLEAN-08 claim that only last-batch Undo is available. Source-region
+review remains read-only; this editor changes a cleanup record's restoration text,
+not arbitrary body text. Body Edit/Delete remain the only general block editor.
+No manual block insertion, model call, Prepare or reparse occurs in this workflow.
+
+Five UI tasks: typed contract, record editor, Restore, navigation, acceptance.
+Backend support is implemented in document_structure CLEAN-RESTORE. Absent record
+capabilities on older deployments mean read-only history, never local guesses.
+Rows expose original quote separately from editable restoration text, stable record
+ID, block links with canonical block-relative Unicode char_from/char_to, status and
+server unavailability reason. Browser UTF-16 offsets are never sent as write authority.
+
+Keep batch pagination and paginate expanded deletion rows, since cleanup proposal
+count/quote/deletion-ratio limits have been removed. Only the selected row mounts a
+bounded multiline editor. Save persists restoration text; Restore submits that text
+atomically, including unsaved edits. Original evidence never changes. Editing a
+restored record does not silently modify its body; explicit Restore reapplies that
+record's own fragment under RCR. General body changes still use body interactive Edit.
+
+One controller owns drafts, busy locks, request aborts, mutation IDs and generation
+guards. Drafts are in memory only; server-saved record text survives reopening.
+Confirm discarding dirty drafts on close/page/collapse/navigation. Use the existing
+dialog notification surface, stable classes/data-record-id and MUI icon tooltips.
+Source/reading revision conflicts keep the draft and require explicit reload.
+Unknown transport outcomes replay the same mutation ID; no optimistic insertion.
+Confirmed restore must reload authoritative review and only affected body blocks;
+the historical implementation's full-layout refresh is replaced by RCR-04.
+a failed refresh offers read-only retry and never repeats the committed restore.
+Saving record text does not invalidate generated interactions or rebuild layout.
+
+Navigation rereads the specific block and current revision, then uses the existing
+reader navigation controller and measured pages. No PDF-page-to-reader-page guess,
+substring search or whole-book fetch. Fully cleanup-hidden blocks can Restore but
+cannot navigate until visible; manually deleted blocks cannot Restore or navigate.
+Changed/reparsed/unmapped targets report unavailability. Request completion after
+close/switch cannot update state, reopen UI or move the reader.
+
+Backend `manually_edited` is persistent document JSONB state, returned on reading
+blocks. Restore eligibility is separately computed by the server and rechecked in
+the transaction. UI never derives the flag from local editor use. Body Edit sets it;
+Undo does not erase it. Editing restoration text or restoring a disjoint cleanup
+record does not set the whole-block flag.
+
+### CRUI Delivery And Governance Receipt
+
+All five CRUI tasks are complete. `CleanupAudit`, `useCleanupHistory` and
+`cleanupHistoryModel` own view, lifecycle and presentation rules; the existing
+reading-content controller/service remains the sole mutation transport. No new
+generic write route, browser persistence, body editor or backend layout mutation.
+
+Validation: three browser suites (`test-cleanup-history.mjs`,
+`test-source-review-navigation.mjs`, `test-reading-content-requests.mjs`) pass at
+1280/390. Editor screenshots inspected at both sizes. New history coverage includes
+23-record pagination, immutable evidence, dirty discard, saved text, lost-response
+replay, duplicate submit, server edit guards, conflicts, reader focus, cancellation
+and legacy fallback. Backend regression passes 266 tests; the existing audit suite
+passes 29 tests. These include file/PostgreSQL rollback, stored edit flags after Undo,
+cross-block restore and artifact/Note semantics. Read-only backup-book shared-engine
+checks ran; browser transport is controlled fixtures, not live-book restoration or
+live LLM acceptance. `npm run check` passes with the existing bundle-size warning.
+No production book mutation, Docker rebuild or deployment was performed.
+
+Inspected markdown: AGENTS.md, proposal/high-level-design/module index/progress,
+both development standards, UI design/checklist, document_structure design/checklist,
+main design/checklist, api_schemas design/checklist, db design/checklist and scripts
+design/checklist. Modified markdown: UI design/checklist for the five delivered
+frontend tasks; document_structure design/checklist for CLEAN-RESTORE behavior and
+acceptance; main/api_schemas/db detailed designs for the implemented transport,
+response and atomic JSONB contract. Evidence is the source and tests named above.
+No progress aggregate was changed for this UI track; existing unrelated work remains.
+
+## Request Wait Policy Follow-up (2026-10-24)
+
+**[Code-Confirmed; WAIT-01 delivered 2026-10-24]** At this development stage the
+frontend must not impose a fixed elapsed-time deadline on API requests. This replaces
+the 120-second client wait policy described in historical cleanup/enhancement delivery
+sections; both timer-triggered aborts are now removed. Scope is application
+request deadlines generally, with the changed sites in
+`features/smart-cleanup/controller.ts` and `features/structure-enhancement/view.tsx`.
+Shared backend incident/design and task order:
+[WAIT](../Deep_Reflective_Reader/llm/module-checklist.md#offline-preflight-follow-up-2026-10-24).
+
+- WAIT-01 removes timer-triggered aborts for preflight, execute, lookup/resume and
+  reading refresh. Do not replace 120 seconds with a larger constant, synthetic
+  failure, deadline-triggered retry or a shared RestClient default timeout.
+- Keep AbortController for owner destruction, dialog close, target changes,
+  superseded requests and explicit cancellation. Preserve generation/identity checks,
+  duplicate-submit guards and per-document recovery handles. A deliberate longer-lived
+  owner must be explicit; removing a timer must not strand stale component callbacks.
+- A live pending request stays pending until response, actual transport failure or
+  lifecycle cancellation. Existing compact progress and accessible Close/Cancel remain
+  available; cancel means stop waiting, not backend rollback. Do not create new alert
+  panels, fake progress percentages or claim the backend job stopped.
+- Browser/proxy/backend failures can still occur. With a submitted mutation handle,
+  preserve unknown state and reconcile through the existing operation API before retry.
+  Preflight cancellation without a handle must not become a cleanup execution or an
+  invented recoverable operation. Preserve known failure versus unknown outcome.
+- Consent expiry, polling intervals, debounce, upload queue scheduling and UI timers
+  are not request timeouts; retain their purpose. In particular the backend's
+  five-minute cleanup consent validity remains enforced. Long request waits do not
+  extend it or authorize execution with an expired token. Preserve conservative UI
+  expiry and obtain fresh consent when required; do not redesign the API in this task.
+- This policy does not remove provider/OCR/server/proxy timeouts or bypass capacity
+  limits, and does not promise an HTTP connection can survive browser closure.
+
+Acceptance: advance controlled browser time beyond 120 seconds while actual API
+responses are held; verify pending remains cancellable, then valid success is accepted.
+Exercise cleanup and structuring, close/switch/unmount, out-of-order completion,
+duplicate clicks, expired consent, external gateway/network failure, refresh/reopen
+and recovery without duplicate generation. Run desktop/mobile browser tests and build.
+Historical timeout tests become lifecycle/transport-failure recovery tests; retain
+their safety assertions rather than deleting coverage with the timer.
+
+### WAIT-01 Delivery
+
+Cleanup retains its existing owner-scoped controller, generation check, busy lock,
+consent interval and recovery handles; only deadline wiring and timer-only fallback
+state were removed. Structuring now binds execution and subsequent reading refresh
+to the dialog's AbortController and request generation. App forwards that signal to
+existing layout/title/content services. Close, unmount and document switch invalidate
+late results/finally effects. A cancelled submitted operation retains its consent
+locator as unknown; a cancelled post-commit refresh remains reloadable. Closing does
+not clear saved content or claim backend rollback. Cancel is available during every
+wait, including reading preparation. Unacknowledged legacy layout preparation is
+not marked complete; an explicit reading retry may repeat that idempotent preparation,
+but never the LLM operation. The current backend flow retains authoritative readiness.
+
+Source audit found no other API deadline/AbortSignal.timeout/Promise.race mechanism;
+the zero-delay upload queue and consent/polling intervals are unchanged. No shared
+RestClient timeout, backend/provider changes, automatic retry or capacity bypass.
+
+Verification: npm run check; cleanup transport contract (36 malformed variants);
+enhancement confirmation/outcomes and standalone cleanup/recovery/combined cleanup
+browser suites at 1280/390. Controlled time passes 120 seconds during held preflight,
+execution, content refresh and lookup; requests remain pending and valid replies are
+accepted. Existing expiry, network/503, duplicate submit, draft retention, close,
+document switch, reload and reconciliation checks pass. Desktop/mobile long-wait
+screenshots are unclipped with usable Cancel/Close. Actual FastAPI/isolated PostgreSQL
+cleanup tests use a deterministic provider; no live LLM or production book writes.
+Cold/offline real-book tokenizer acceptance remains WAIT-05. Backend progress unchanged.
+
+WAIT-05 acceptance (2026-10-24): `test-cleanup-books.mjs` now has an explicit
+preflight-only mode. It reads navigation from the immutable full-book backup and
+forwards readiness to the actual local HTTP service, without executing cleanup.
+At 1280/390, held responses remain cancellable after 120001 ms, release into valid
+consent, and cannot reopen a closed dialog. Navigation is a fixture projection,
+not acceptance of production task-layout rendering. Existing five wait/recovery
+browser suites, the 36-case adapter check and build pass. Full evidence, storage
+scope and timing belong to [scripts WAIT-05](../Deep_Reflective_Reader/scripts/module-detailed-design.md#wait-05-delivery-2026-10-24),
+not a duplicated UI completion checkbox. No UI runtime changes or deployment.
+
+## Independent Smart Cleanup UI Plan (2026-10-23)
+
+**[Code-Confirmed 2026-10-24]** SCLEAN-08 delivers the independent entry and
+confirmed normal path; SCLEAN-09 delivers recovery/reconciliation and review reuse.
+SCLEAN-06 registered the three standalone backend routes/strict DTOs on 2026-10-24;
+SCLEAN-07 now supplies backend runtime/readiness composition. Unconfigured or
+unsupported-storage preflight returns
+503 with execution_available=false, not permission to enable the UI. No deployment
+is claimed. Frontend integration is detailed below. Authoritative
+[backend design](../Deep_Reflective_Reader/document_structure/module-detailed-design.md#independent-smart-cleanup-2026-10-23)
+and [transport plan](../Deep_Reflective_Reader/main.module-detailed-design.md#standalone-cleanup-transport-plan-2026-10-23)
+define readiness, consent and outcomes. This supersedes a UI where cleanup is
+available only through smart structuring; historical CLEAN evidence below remains.
+
+Add a document-level Smart cleanup command alongside Smart structuring in the
+existing repair/action surface, using the existing icon library and tooltip. Do not
+add block-level cleanup, a new editor page, arbitrary scope switches or plan editing.
+An accepted Common result can use the command; imported/unparsed files cannot.
+Backend preflight, not parser mode/filename/rendered noise, decides execution.
+Native/unknown evidence, capacity overflow and old-server unsupported responses
+show concise reasons without triggering OCR, Prepare or enhancement. Availability
+does not require task units to exist; backend owns explicit missing-layout handling.
+
+A small cleanup feature controller/service owns standalone preflight, confirmation,
+operation handles and reconciliation. It reuses reading refresh/audit/Undo components,
+not a copied enhancement state machine or direct fetches from App. Confirm possible
+deletion and generated-output invalidation, preserved source/notes and Undo; never
+ask to discard all interactions for cleanup alone. Protect unsaved edits/note drafts
+before starting or replacing views. One confirmed action plans/applies and prepares
+reading automatically; never expose a normal-path manual Prepare requirement.
+
+Show running, no changes, applied/partial, skipped, failed, unknown and superseded
+results truthfully using backend phases and counts. Completed is not fully repaired
+OCR. Do not display model budget/JSON/raw diagnostics or infer success from HTTP 200.
+After failed/partial automatic cleanup, offer Smart cleanup again as a NEW cleanup
+operation, without triggering reparse. After lost response use read-only lookup;
+resume committed layout only when instructed by backend. Page refresh, polling,
+duplicate click, switch-away/back or draft restoration must not start a new LLM call.
+
+Reload content/interaction availability only on authoritative content or readiness
+change; preserve stable standalone hierarchy selection/IDs. Reload server review
+state, not a local cleared flag. Existing collapsible audit/page references/Original,
+remaining-region Ignore and latest-operation Undo are reused. Fully resolved regions
+disappear only when server proves coverage; partial/textless regions stay. A later
+edit can supersede Undo/recovery; preserve current work rather than overwrite it.
+Store only per-document opaque recovery handles, never plans or an independent
+content snapshot as backend truth. Older servers do not receive fallback reparse
+requests. Executing cleanup requires a supported backend's affirmative preflight;
+opening the entry may inspect unavailable/older servers without starting cleanup.
+
+Acceptance: actual App/API/disposable storage at 1280/390 for Common-only cleanup,
+enhance automatic cleanup, independent retry after failure, partial/no-op, concurrent
+edit, draft protection, lost response/restart, layout-only recovery and Undo. Verify
+no new split/profile/OCR calls, no duplicate commits or hidden Prepare, no clipping/
+overlap and stable selection. SCLEAN-10 owns final real-book verification once.
+
+### SCLEAN-08 Delivery (2026-10-24)
+
+`features/smart-cleanup` owns presentation, lifecycle/consent and pure user-facing
+reason mapping; `SmartCleanupService` owns encoded document paths, minimal request
+bodies and validated transport responses. Neither consumes a split plan nor calls
+the enhancement service. `shared/cleanupOutcome.ts` supplies the existing shared
+outcome validator/messages to both entry paths; App only composes the dialog and
+the shared `refreshReadyReading` callback. The reader refresh accepts an optional
+AbortSignal without replacing backend hierarchy/revision truth.
+
+The Repairs menu can check cleanup with an accepted document even when task-layout
+projection fails because units are absent. Common/LLM repair actions retain their
+own readiness gates. Cleanup preflight sends `{}` to the implemented document path;
+execution sends only opaque operation ID and confirmation token. Consent validates
+all four preservation promises and content-change-only generated invalidation.
+Malformed/old responses fail closed; no raw provider/model/source metadata appears
+in DOM. Eligibility, source provenance and capacity are never guessed in the UI.
+
+One Clean text action executes cleanup and backend readiness; only authoritative
+reading-ready results refresh the reading view. Changed content reuses generated
+interaction invalidation and review/content refresh, retains hierarchy selection
+and mounted Note drafts. An active block editor disables the entry to avoid replacing
+unsaved text. Compact modal status/consent replaces scattered alerts; the screen's
+notification is suppressed while the cleanup dialog is active. Confirmation focuses
+Cancel and remains bounded/scrollable on mobile.
+
+On close/unmount/document change, requests and timers are cancelled and generation
+checks reject late effects. Double clicks cannot submit twice. Confirmation expires
+conservatively from request start. Before execute, session storage saves only the
+document-scoped opaque handles; storage failure prevents execution. HTTP failure,
+timeout, aborted wait, committed-but-unready or failed reading refresh do not prove
+rollback and retain the handle. Reopen/refresh blocks a new request. At SCLEAN-08
+delivery, GET reconciliation, layout resume, read-refresh retry, automatic-cleanup
+retry integration and full Undo/review recovery acceptance were deferred; these are
+now delivered by SCLEAN-09 below.
+Definitive terminal results clear the handle. No manual Prepare or fallback reparse.
+
+Evidence: `scripts/test-smart-cleanup-contract.mjs` validates valid/partial/unknown
+responses, rejects 31 malformed variants, checks encoded identity, minimal bodies,
+AbortSignal and safe error mapping. `scripts/test-smart-cleanup.mjs` runs real App
+components through FastAPI/isolated PostgreSQL via `accept-cleanup-flow.py`, with a
+controlled provider and explicit negative transport fixtures. Accepted Common and
+zero-unit fixtures prove cleanup does not require enhancement or manual Prepare.
+1280/390 checks cover all normal outcomes, native/unknown/capacity/legacy gates,
+consent/expiry/cancel, note preservation, manual-edit guard, duplicate submit,
+response loss/reopen/refresh blocking and late mutation response after navigation.
+No split calls/Prepare requests; browser runtime errors absent. Screenshots saved in
+`/tmp/smart-cleanup-{consent,completed,partial,failed,no_changes,unsafe}-{1280,390}.png`;
+mobile consent and desktop partial-result captures were visually inspected, with
+browser assertions for dialog bounds. `npm run check`, enhancement-confirmation
+regression and the existing actual-API/SQL `test-cleanup-flow.mjs` pass at both
+widths, including legacy enhancement recovery/Undo. This is not live-model/book
+acceptance; SCLEAN-10 was still required at this delivery, and deployment was not performed.
+
+Governance receipt: inspected AGENTS.md, proposal.md, high-level-design.md, module
+index, backend progress and shared SCLEAN order, both development standards, and
+this UI design/checklist. Modified only the UI design and checklist markdown:
+design records implemented ownership/lifecycle/remaining recovery boundaries;
+checklist records evidenced SCLEAN-08 completion and UI-local 1/2/shared 8/10 counts.
+No backend progress or checkbox was changed. Validation: source/API contract review,
+type/build, adapter and browser checks above, git diff --check and scoped ownership
+review pass. No forbidden architecture changes or new backend mutations on reads.
+The only aggregation caveat is the untouched backend index's older 7/10 snapshot;
+owner checkboxes established shared 8/10 at SCLEAN-08 delivery. Validation itself modified no files.
+
+### SCLEAN-09 Delivery (2026-10-24)
+
+The same `features/smart-cleanup` controller owns every standalone entry and retry.
+Enhancement's completed result offers Smart cleanup after failed/partial/skipped
+automatic cleanup; it only hands off to this feature, without another split or
+duplicated cleanup policy. A new operation always requires fresh preflight/consent.
+Provider planning, validation, commit and readiness remain backend responsibilities.
+
+`recovery.ts` persists only per-document opaque operation ID/confirmation token in
+session storage, validates old handles and compare-removes the expected ID. Invalid
+storage fails closed. Opening/reopening with a handle uses read-only GET lookup,
+never a new preflight or implicit execute. Unknown/planning/committing results offer
+Check stored state. An explicit Resume reading click first rechecks GET and only
+POSTs the existing consent when phase=layout and retry_action=resume_layout. Lost
+resume acknowledgements follow the same recovery path. No hidden Prepare, reparse,
+profile creation or OCR fallback is introduced by the UI.
+
+`SmartCleanupService` validates phase/commit/outcome consistency and retains valid
+operation DTOs returned with 409/503 rather than flattening them into network errors.
+Timeout, abort or HTTP failure is not proof of rollback. At this historical delivery,
+requests have lifecycle cancellation, a 120-second client wait limit, generation guards
+and a synchronous duplicate-action lock. WAIT-01 above retires that fixed wait limit;
+it retains lifecycle and actual transport-failure recovery. Client cancellation does
+not claim to stop backend work. A live request remaining pending is not itself failure.
+Invalid/expired consent requires another preflight, never silent regeneration.
+
+Terminal/superseded recovery refreshes the current backend task-layout projection
+and selected section contents before forgetting the handle. The reader validates
+responses against this new projection, retains matching chapter/section IDs and
+clears selections that no longer exist. App publishes the layout after the content
+read so changing the projection cannot abort its own refresh. Review/availability
+refresh follows server truth; generated views reset where needed, while Note and
+critical-thinking drafts remain. A failed reading refresh retains the handle and
+offers Retry reading, which rechecks GET rather than replaying a stale result or
+starting cleanup. Concurrent edits and Undo supersession never restore old content.
+
+Existing reading-content review, collapsible audit/Original, remaining-region Ignore
+and latest-operation Undo are reused without a second implementation. Fully covered
+regions disappear through server state; textless/unmapped regions remain visible.
+Ignore removes the server review entry and refreshes the same panel. Later edits
+disable/conflict Undo without overwriting current work. Manual block-edit protection
+continues to prevent cleanup from discarding an unsaved editor draft.
+
+Evidence: `npm run check` passes (existing bundle-size warning).
+`test-smart-cleanup-contract.mjs` rejects 36 malformed variants and checks GET/no-store,
+minimal mutation payloads, scoped recovery storage, and authoritative 409/503 DTOs.
+Actual App/FastAPI/disposable PostgreSQL suites `test-smart-cleanup-recovery.mjs`,
+`test-smart-cleanup.mjs`, `test-cleanup-flow.mjs` and `test-cleanup-review.mjs` pass at
+1280/390. The recovery suite covers failed/partial automatic cleanup -> independent
+consented retry, lost acknowledgement, service recreation/page refresh, content
+refresh failure/timeout, layout-only continuation, concurrent edits, supersession,
+stable IDs, Note draft preservation, review retention/resolution, Ignore, Undo and
+Undo conflict. Assertions check provider/commit counts and reject hidden Prepare
+fallback; stale responses after navigation do not update the view. Screenshots
+`/tmp/smart-cleanup-recovery-audit-390.png` and
+`/tmp/smart-cleanup-recovery-conflict-1280.png` were visually inspected with no modal
+clipping/overlap. Controlled providers, Note-read fixtures and a synthetic preview
+image mean this is integration/lifecycle acceptance, not live-model, real-book or
+OCR-image quality acceptance. SCLEAN-10 remained necessary at this delivery. No production data was
+changed and Docker was not restarted; the local source preview runs on port 5175.
+
+Governance receipt: inspected AGENTS.md, proposal.md, high-level-design.md, module
+index, backend progress/shared SCLEAN ordering, both development standards and UI
+design/checklist. Modified markdown: only this design (implemented ownership,
+recovery boundaries and validation evidence) and UI checklist (SCLEAN-09 completion,
+timestamp and UI 2/2/shared 9/10 counts). Backend-owned progress remains 7/8; the
+untouched backend index's 7/10 is its earlier snapshot, not current shared completion.
+Validation evidence is above; scoped architecture/ownership and whitespace checks
+are required before closing this task. Validation itself is read-only.
+
+### SCLEAN-10 Acceptance Support (2026-10-24)
+
+Final shared acceptance is owned once by
+[scripts SCLEAN-10](../Deep_Reflective_Reader/scripts/module-detailed-design.md#sclean-10-delivery-2026-10-24),
+not an additional frontend task. `test-cleanup-books.mjs` now checks standalone
+recovery, fresh confirmation and an actual desktop cleanup against the live provider
+through isolated FastAPI/PostgreSQL; 390px checks current-state recovery, audit,
+collapse, reading reload and Undo. All three backed-up OCR books exercise standalone
+and combined entry paths; Sample2 also covers injected automatic failure followed
+by live independent retry. Native TXT/Fast PDF remain no-cleanup controls.
+
+The final Sample2 desktop result and mobile expanded audit screenshots were visually
+inspected with no modal clipping. Every applied deletion was checked against its
+source page. Sample/dark-water retained noise is explicitly recorded as safely
+rejected, not cleaned. This does not validate general OCR quality or guarantee zero
+false deletions for all documents. Production Library data and Docker services were
+not changed; isolated image/API smoke is not deployment. No runtime UI code changed
+in this task. UI remains 2/2; the shared track is 10/10 after the owner acceptance.
+
+Governance: inspected the global memory/standards and UI/scripts/structure module
+design/checklist pairs; updated UI design for this evidence/limitations and UI
+checklist's shared aggregate only. Backend acceptance is counted in scripts, not
+again in UI. Build, adapter, actual-book browser and scoped whitespace validation
+pass; the scripts receipt records full regression evidence.
+
+## Optional OCR Cleanup Experience (2026-10-22)
+
+The following describes existing enhance-integrated delivery, not an exclusive UI
+entry policy. Standalone entry and recovery are delivered above by SCLEAN-08/09.
+
+**[Code-Confirmed 2026-10-23]** CLEAN-07/08 consume the implemented CLEAN-06
+contract and explicit reading-content audit/Undo projection. Canonical requirement:
+[cleanup plan](../Deep_Reflective_Reader/document_structure/module-detailed-design.md#optional-ocr-cleanup-plan-2026-10-22).
+
+One confirmed smart-structuring flow: split in memory -> optional OCR cleanup ->
+single final commit -> automatic layout -> open. Consent distinguishes potential structural deletion of all
+interactions from cleanup-only invalidation of generated outputs with notes retained.
+Original extraction is preserved; cleanup is reversible. No new normal-path manual
+Prepare or mandatory cleanup retry. Show concise stage/status text, not raw model
+budgets, hashes, JSON or backend diagnostics. Do not infer OCR from rendered text.
+
+Only after final commit succeeds, cleanup failure/partial result shows a nonblocking
+warning and continues reading. Split-candidate readiness is not saved success;
+final storage failure preserves the old document and shows an operation error. Report no-change honestly. Refresh, network loss and document
+switch reconcile through backend operation/revision truth; ignore obsolete responses.
+Only server-confirmed content changes reload content/availability and affected open
+interaction views; structure change still follows existing identity reset. Old server
+responses without cleanup fields remain compatible, not falsely labelled cleaned.
+
+Expose cleanup counts and audit through the existing reading-content review surface,
+with collapsible source details and source-page references where available. Use
+existing single-level Undo extended by the backend; explain unavailability/conflict
+without overwriting subsequent manual edits. No manual block insertion. Preserve dirty
+draft protection, confirmed deletes, collapsed Original preview and explicit Ignore.
+Automatic cleanup success alone cannot hide unresolved regions or disable guards.
+In div[aria-labelledby="reading-content-dialog-title"], reload authoritative review
+state after commit: backend-confirmed fully resolved regions leave the active queue
+without another Ignore Region action. If none remain, remove the review warning;
+keep audit/original evidence accessible. The newer Read-Only Source Review Navigation
+contract distinguishes proven never-in-body evidence from unknown mapping and manual
+deletion; do not unconditionally retain or hide every textless/unmapped row.
+Undo reloads restored region states.
+Backend CLEAN-04/06 provide these review/Undo semantics. CLEAN-08 now implements
+the expanded audit display and controlled API/browser acceptance of resolved/remaining
+queues. CLEAN-10 now adds real-model/book reading acceptance as described below.
+UI cannot invent cleanup spans, persist independent content truth or call OCR/profile
+on read. Cover 1280px and 390px, long audit lists, empty states, rollback, retry and
+reload through actual API; heavy audit data stays outside task-layout.
+
+### CLEAN-10 Supporting Browser Evidence (2026-10-23)
+
+`scripts/test-cleanup-books.mjs` mounts the actual App against the isolated live-book
+FastAPI/SQL result prepared by the backend acceptance harness. Sample, Sample2 and
+the reported garbage sample pass at 1280px/390px: read, source-review audit, empty
+history or quote/page/reason, no horizontal panel overflow and read after reload.
+Sample2 additionally checks expand/collapse and mobile Undo against persisted
+revision and restored content. Screenshots were inspected. Library listing alone
+is stubbed empty to avoid production access; book reads/mutations are real.
+Browser runs do not generate another plan or invoke manual Prepare. Controlled
+CLEAN-07/08 suites remain responsible for consent, failures, conflicts and resolved/
+remaining regions; live source-review queues are empty, not invented fixtures.
+The backend owns the single CLEAN-10 completion count. No new frontend runtime
+feature, independent content truth or backend schema claim is introduced here.
+
+### CLEAN-07 Consent And Recovery Delivery (2026-10-23)
+
+`StructureRepairService` requests cleanup-aware preflight. Only its implemented
+`ocr_cleanup` metadata enables the extra consent and binds `allow_ocr_cleanup`
+on execution/result lookup. Validate policy/scope, notes-preservation semantics and
+reading revision; incompatible metadata disables confirmation. Missing metadata
+uses the legacy structural-only response path, never a claimed cleanup success.
+No model, token, source hash or raw cleanup reason is rendered.
+
+Keep structural `change_kind`, `committed` and `interactions_cleared` separate from
+`cleanup.reading_content_changed`. Validate cleanup counts/revision and the coherent
+`phase`, layout-required, retry-stage and remaining-review flags before acting.
+`phase=complete` permits reading refresh; `phase=layout` means already committed,
+not a generation failure. Resume with the original consent to finish backend layout,
+without frontend Prepare or another LLM call. A failed resume reconciles stored state
+and never claims the committed changes were unapplied. `superseded` retains current
+content; missing/contradictory results stay unknown and block blind regeneration.
+Temporary precommit failures retain the existing explicit retry flow.
+
+Session storage keeps only a per-document operation locator: original consent,
+TOC hint and minimal readiness metadata. It is not completion truth. Reopening
+after refresh checks the backend result, including durable committed receipts after
+worker restart. Unknown results cannot authorize a new operation. Successful local
+recovery clears the locator; no document text or drafts are persisted in this record.
+Draft retention is in-memory only, not a promise to survive page refresh.
+
+On confirmed cleanup-only change, reset stale generated-interaction views, refresh
+the selected content and existing review state, and retain the mounted Note draft.
+No-change/skipped/failed cleanup without a structural change does not refetch content
+or clear drafts. Structural changes retain full identity/draft reset; title-only
+changes retain the established label refresh. If page refresh left layout unavailable,
+read the now-ready backend projection before reporting reading recovery complete.
+Read failure offers read-only retry, not generation. Successful recovery clears stale
+error notifications; background notifications are hidden while the modal is open so
+they cannot cover mobile recovery controls. Dirty content edits require the existing
+discard confirmation before opening enhancement. Document-scoped callbacks and
+obsolete-response guards remain in force.
+
+Validation evidence: `npm run check`; `scripts/test-enhancement-confirmation.mjs`
+and `scripts/test-enhancement-outcomes.mjs`; `scripts/accept-cleanup-flow.py` driving
+`test-cleanup-flow.mjs`. The cleanup harness serves production routes/coordinator,
+real layout/storage and disposable PostgreSQL with a controlled provider/candidate.
+It covers completed/partial/skipped/failed/no-change cleanup, duplicate clicks,
+stale consent, final-write rollback, response loss/unknown, refresh plus worker
+restart, layout resume including actual content opening, read-only retry and Undo
+supersession. A separate note-read fixture in that harness verifies unsaved Note
+retention and cancelled discard; it is not a saved-note storage acceptance claim.
+Legacy suites cover conditional deletion, title/no-op draft retention, transient
+retry, capacity/expiry guards and late document-switch responses. Desktop/mobile
+1280px/390px screenshots and horizontal overflow are checked. No live model,
+production-book mutation, deployment or CLEAN-10 real-book acceptance is claimed.
+
+Governance receipt: inspected AGENTS.md, backend proposal.md, high-level-design.md,
+docs/modules/index.md, progress.md, app design/checklist, document_structure checklist
+and both UI module documents. Modified only the two UI markdown files: this design
+records implemented wire/recovery behavior and limits; the checklist records CLEAN-07
+evidence/date/progress. Backend progress and earlier dirty work are unchanged by this
+task. Validation uses implementation-validation: scope, hierarchy ownership, read-only
+projection, documentation and diff-whitespace checks; only the existing build-size
+warning remains. No files are modified by the validation phase itself.
+
+
+### CLEAN-08 Audit And Undo Delivery (2026-10-23)
+
+The existing Source review dialog now loads cleanup history only when opened,
+using GET reading-content with include_cleanup_audit=true and cleanup_offset.
+The server returns ten newest-first applied batches per page, total/offset/limit,
+revision/time, applied/skipped/remaining counts, undoable status and exact deleted
+quotes with safe reason/page-index projections. Internal operation IDs, canonical
+offsets, policy hashes and provider output are not exposed. Empty history is distinct
+from a legacy server lacking the optional field. No new source-of-truth store exists.
+
+Each batch expands independently and quotes scroll within a bounded area. Only one
+Undo slot exists: undo_action determines whether the command is Undo OCR cleanup
+or Undo last content change. A later manual edit prevents undoing the older cleanup
+batch; the UI does not target arbitrary historical batches or overwrite newer edits.
+Revision/source token and stable mutation ID stay bound to the explicit POST. Immediate
+double clicks are excluded; a lost response retries the same mutation ID. Conflicts
+retain drafts/current state and offer Reload. After a confirmed mutation, generated
+interaction views at all levels are invalidated locally and authoritative content/review
+state is reread; mounted notes are retained. A failed reading refresh offers read-only
+retry, never another Undo. Fully resolved regions disappear without Ignore; textless,
+unmapped or partially resolved regions remain. Undo restores their authoritative queue.
+
+Integration exposed a stale layout stamp after Undo. Explicit overlay mutations now
+advance only a previously matching reading_revision cache stamp within the same
+transaction. Canonical units, hierarchy IDs and other cache keys are unchanged;
+missing/stale layout is not blessed. Snapshot projection validates the resulting
+reading content before commit. No task-layout GET mutation or automatic reparse is added.
+
+Evidence: scripts/test-cleanup-audit.py passes 29 cases (five new, 24 imported
+overlay regressions). Reading/SQL overlay/API/preparation regression passes 237
+cases; suites overlap and are not summed. accept-cleanup-flow.py with
+CLEANUP_BROWSER_SCRIPT=test-cleanup-review.mjs passes production App/routes/disposable
+PostgreSQL at 1280px/390px: original quote/page, empty/collapsed/23-record pagination,
+resolved versus textless/unmapped regions, restored content after Undo and page reload,
+duplicate/lost response, conflict, preserved Note draft and failed-read recovery.
+The long history and note-read data are explicit fixtures, not live-model outcomes.
+CLEAN-07 browser regression, TypeScript/build and diff-whitespace checks pass;
+desktop/mobile screenshots were inspected. Extra accept_reading_review.py real-PDF
+OCR rerun is unverified because the local OCR/renderer is unavailable. No paid LLM,
+production book changes or deployment; CLEAN-09/10 remain pending.
+
+Governance/validation receipt: inspected AGENTS.md, proposal.md, high-level-design.md,
+docs/modules/index.md, progress.md; both UI documents; document_structure design/checklist,
+main design/checklist, app and document_preparation designs. Modified UI design/checklist
+for CLEAN-08 implementation/evidence/date and 8/10 combined progress; main and
+document_structure designs for the actual read-only API projection and explicit-mutation
+cache stamp; app design removes the obsolete unconditional post-Undo not-ready claim.
+No backend checklist/progress totals changed. Source changes are limited to the review
+components, App refresh callback, reading-content projection/mutation and route adapter;
+tests use isolated fixtures. No files removed; prior unrelated dirty work preserved.
+implementation-validation: scope/architecture/boundary/documentation/memory PASS;
+testing WARNING only for unavailable extra real-PDF OCR regression and the existing
+bundle-size warning. Validation itself modifies no files. Next task is CLEAN-09.
+
+## Read-Only Source Review Navigation (2026-10-25)
+
+Historical delivered scope. SRREPAIR above supersedes the permanent single-editor
+restriction as a planned feature; current UI remains read-only until SRREPAIR-05/06.
+The historical acceptance below is not evidence that region writes are implemented.
+
+**[Maintainer-Provided] + [Code-Confirmed, 2026-10-25]** Current manual-review
+requirements supersede the earlier inline Source review editor. Backend mapping
+authority and visibility rules are specified in
+[Source Review Mapping](../Deep_Reflective_Reader/document_structure/module-detailed-design.md#source-review-mapping-and-read-only-workflow-2026-10-25).
+The UI consumes the implemented SRMAP-04 DTO. Tasks and acceptance are
+[SRMAP-05/06/08](module-checklist.md#read-only-source-review-backlog-2026-10-25).
+
+### Historical Single Editing Location
+
+- Source review stays read-only for body text: original image, latest associated
+  blocks with IDs, manual-change status/time and Go to content. Remove inline
+  block Edit/Delete menus and editor selection wiring from SourceReviewBlocks.
+  Reuse the existing Reading content three-dot actions as the sole editing entry;
+  do not implement another editor or a character-range highlighting system.
+- Ignore remains an explicit confirmed review decision, not a body edit. Retain
+  the existing successfully loaded Original prerequisite. Success removes the row
+  from the active list only after server confirmation; preserve backend evidence
+  and audit. Manual edit/delete, including deletion of every linked block, never
+  means automatic Ignore. Verified automatic cleanup resolution remains separate.
+  Ignore acknowledges review without deleting retained body text; confirmation must
+  not promise text removal or exclusion from generation.
+- A region can intersect one or several blocks; several regions can share a block.
+  Show these as related blocks, not wholly owned text. A partial intersection still
+  navigates to the actual block. Editing/deleting there affects that entire block
+  and follows the existing confirmation, not an implicit region-wide operation.
+- No manual add/insert blocks, OCR candidate recovery into new blocks, substring
+  editor, range selection or automatic text reconstruction in this track.
+
+### Navigation And Freshness
+
+Use server-verified chapter/section/task-unit/block IDs and current revisions, never
+quote searches in the browser. Present ordered related targets when more than one
+exists; default to the first surviving target. Resolve the Reading content page
+using the existing pagination model after fetching the relevant content. A PDF
+physical page number is not a reader page. Wait for pagination/layout measurement
+before focusing the block; resize must not redirect to a different block. No full
+book prefetch, implicit Prepare, profile rebuild or mutation through task-layout.
+
+Remember review selection by document/region identity while navigating to the body.
+Reopening, reselecting a row (including the same row) or explicit refresh loads current
+server text/status; do not retain stale text merely because the ID is unchanged.
+Body save/delete uses the existing single authoritative layout/content refresh path;
+review refresh must not duplicate that operation. On version conflict, refresh and
+re-resolve; deleted/stale targets cannot send empty-ID requests or fall back to an
+unrelated block. If every linked block was manually deleted, keep the row with
+deletion status/time and disable navigation until a surviving target exists.
+
+Label related body as manually modified/deleted with backend-provided latest UTC
+timestamp formatted for the user. Do not imply all associated text was corrected.
+Smart cleanup, parsing and Ignore are not manual body modification. Undo refreshes
+current state and audit; do not fabricate timestamps or recover purged Note data.
+
+### Visibility And Interaction Lifecycle
+
+OCR-KEEP replaces blanket hiding of never-in-body evidence: quality-excluded legacy
+text and nonblank recognition gaps remain server-visible, without invented targets.
+Only verified non-body evidence without recognition loss may be omitted by the backend.
+Do not filter by empty block_ids, empty raw_candidate, a failed
+request or unavailable mapping in JSX. Unknown/partial mapping stays visible with a
+concise reason; expose only verified navigation targets. Originally mapped but
+manually deleted blocks are not never-in-body. Library/reader warning and interaction
+guard state must come from the same backend eligibility policy. Old-server responses
+remain conservative and cannot be interpreted as already filtered or fully mapped.
+
+Reading content editing retains 10000-code-point validation and explicit Save.
+Ask whether to keep or clear the edited block's interactions, explicitly including
+Note; saved old generated results cannot be labelled current after changed content.
+Delete confirmation explains the block's interactions/Note are removed. Other notes
+are unaffected. Undo restores text only, not deleted interactions. No manual mutation
+count limit. Protect drafts on navigation/close; failed writes keep drafts and stable
+mutation IDs. Review itself has no editing draft to synchronize.
+
+Use existing MVC/service boundaries and centralized notifications. Lazy-load bounded
+block lists and images; Original expands/collapses and releases resources appropriately.
+Give controls/rows stable classes or labels and region/block data identities. Abort
+and generation-guard reads on close, switch, supersession and unmount; clear stale
+selection/menu state. Strict Mode must not duplicate requests or mutations. Preserve
+keyboard focus and scroll containment on desktop/mobile and long lists.
+
+### SRMAP Delivery And Acceptance
+
+`SourceReviewBlocks` is read-only; `sourceReviewModel` derives navigation eligibility
+and display labels, and `useSourceReviewBlocks` owns bounded reads, selection,
+refresh and cancellation. `ReadingContentService` consumes the additive server DTO
+and treats absent legacy fields conservatively. Only server-verified surviving
+targets can navigate. The existing reader controller selects the target section;
+the view finds the block in measured pagination, maintains the anchor through
+resize, then focuses/scrolls it. Content batches have no snapshot token, so navigation
+does a bounded target read and rechecks source/version/revision, hierarchy identity
+and displayed target text before publishing or focusing. It never treats PDF
+page_index as a reader page.
+
+Same-row reselection and explicit refresh fetch new content. Snapshot guards check
+both dispatch-time and latest source/version/revision before publishing or
+navigating; close/switch/unmount cancels work. A shrinking block list clamps and
+refetches a valid page. Deleted-linked counts and manual UTC timestamps are shown
+without claiming resolution; all-deleted rows remain, with navigation disabled.
+Cleanup audit is retained only for the same snapshot; a newer related-block read
+invalidates old audit rather than showing stale remaining/Undo state. Ignore copy
+explicitly states that retained body text is unchanged.
+Reading content remains the sole editor, with existing draft protection and a
+single authoritative layout/content refresh after a successful mutation.
+
+Validation: `npm run check` passes with the existing bundle-size warning.
+`test-source-review-navigation.mjs` covers actual App/StrictMode, multiple/shared/
+partial/unknown/legacy targets, measured pagination and resize, same-row refresh,
+failure/conflict, aborted/superseded reads and bounded-list shrinkage at 1280/390.
+`test-source-review-state.mjs` covers twelve delayed-response snapshot races across
+refresh/navigation/content/verification and nine display-normalization comparisons. Existing
+reader pagination/request tests and 42 reader identity guards pass.
+
+`scripts/accept-source-review.py` runs actual App/FastAPI/disposable PostgreSQL for
+synthetic and `READING_TEST_REAL_CASE=sample2` inputs at 1280/390. Both pass body
+navigation, Keep/Clear Note, manual edit/delete timestamps, failed save/retry,
+last-block deletion retention, explicit Ignore, text-only Undo, source immutability
+and exactly one layout refresh per mutation. Twelve body/review/deletion screenshots
+were inspected. Real mode uses hash-verified accepted book/page text with constructed
+review annotations and no injected canonical_span; Original preview is a UI fixture.
+It is not a naturally flagged positive region or fresh OCR/model-quality test.
+Private evidence is retained under backend `data/test-books/srmap08/`.
+
+No production book mutation, backend deployment or Docker restart was performed.
+Legacy records without persisted exclusion proof stay conservative until an explicit
+backend write/backfill; the UI never performs that migration on open or refresh.
+SRMAP-05/06/08 are accepted (3/3); the shared backend/UI track is 8/8. Independent
+review's stale navigation/audit and misleading Ignore-copy findings were fixed;
+eleven controller cases, final browser reruns, type/build and diff checks pass.
+
 ## OCR Review And Content Correction (2026-10-21)
 
 **[Code-Confirmed]** Shared queue: backend doc_loaders
@@ -7,9 +1243,10 @@
 Do not infer source quality from
 rendered strings or convert extraction failures into success locally.
 
-Show a persistent review-needed indication in Library and reader when the server
-reports partial recognition. Expose failed physical pages/regions with original
-image preview; an empty OCR region is not invented text or a silently absent block.
+The baseline exposes review-needed indication and failed-page/region previews.
+Current target visibility is defined in Read-Only Source Review Navigation above;
+quality-excluded text and nonblank recognition gaps remain in the queue under OCR-KEEP.
+Empty or unavailable mappings are not sufficient proof to hide a row.
 Opening review is read-only, without OCR/profile/LLM generation. Replaced source
 bytes must invalidate preview identity. Task-layout stays lightweight.
 
@@ -17,8 +1254,9 @@ Block editing uses server identity/revision, explicit Save and a 10000-code-poin
 limit. Confirm Delete; provide explicit Undo and dirty-draft protection. Failed
 or conflicting writes retain the draft. On successful mutation reload authoritative
 content and affected interaction availability; do not emulate cache invalidation
-in UI state. Original extraction remains immutable, and saved notes must not be
-silently deleted with stale generated interactions. Block generation selection with
+in UI state. Original extraction remains immutable. Edit asks whether to clear
+interactive data including Note; block Delete removes its Note with confirmation.
+Automatic span cleanup retains its separate note-preservation policy. Block generation selection with
 a warning for server-reported unresolved source until reviewed; backend preflight
 remains authoritative. Do not assume that low quality
 necessarily means no usable content. Desktop/mobile acceptance must cover preview,
@@ -406,8 +1644,9 @@ Cancel is initially focused after the menu/dialog transition. Preflight failures
 unknown counts/notes, zero interactions, server gating and expired tokens are
 explicit; zero does not waive consent. TOC hint is snapshotted with the token.
 409/422 or a document-matched success=false response invalidates consent and requires
-another explicit check. Other ambiguous errors, lost connections and the 120-second
-client waiting timeout retain local data and block re-submission. Aborting waiting
+another explicit check. Other ambiguous errors and lost connections retain local data
+and block re-submission. WAIT-01 removed the historical 120-second client timer;
+external timeout/unknown-outcome recovery remains required. Aborting waiting
 is not server cancellation. Pending/unknown/reload state survives dialog close and
 document switches in this mounted app; this is not a durable server-job registry.
 
@@ -515,9 +1754,53 @@ Document input
 - App shell owns state, API calls, and top-level layout.
 - Document search owns doc-name input, backend candidate lookup, empty-result list fallback, and API-returned option selection. Selecting an API-returned option triggers layout loading without a separate submit button.
 - Hierarchy navigation renders backend chapter and section projection.
-- Section buttons update local selection state while retaining internal task-unit ids.
+- Selectable section tree items update local selection state while retaining internal task-unit ids.
 - Reader panel fetches each task-unit content for the selected section on demand and renders aggregated `content_blocks`.
 - Empty-state views handle missing document, missing hierarchy, missing task units, and missing content blocks.
+
+### Chapter / Section Tree Navigation (2026-10-26)
+
+`.chapter-list` now hosts MUI X `SimpleTreeView` rather than the earlier nested
+MUI `List`/`ListItem` presentation. The visible tree remains at most two levels:
+chapter and section. A chapter with one section retains the existing merged row,
+section reading target and chapter interaction menu; task units are never tree nodes.
+Backend hierarchy/order/IDs and `/documents/task-layout` remain authoritative.
+
+`NavigationTreeItem` uses MUI `useTreeItem` and the supported TreeItem components
+for registration, expansion, roving focus and arrow-key navigation. Section selection
+is controlled by the existing reader selection and dispatches the same section and
+ordered task-unit IDs. Clicking an already selected section still re-reads it;
+mouse selection dispatches once, while keyboard selection follows the tree callback. The root exposes `treeitem`, selected and disabled semantics.
+Empty sections cannot start reading. Chapter/section action menus retain their
+original target identities; menu and inline-insight keyboard events do not bubble
+into tree navigation. Inline insight regions remain outside the selectable label.
+
+Chapters start collapsed, except the selected section's parent when the tree mounts.
+MUI group transitions unmount collapsed children. Expanding/collapsing is local UI
+state, keyed by document, with no content fetch, persistence, profile regeneration
+or hierarchy mutation. Selection survives collapse/reopen. Same-document render
+updates preserve expansion; switching documents resets it. This bounds initial
+section DOM growth without introducing task-unit nodes or changing API payloads.
+
+Long chapter/section titles wrap completely, including unbroken strings. Rows grow
+vertically, use 16px child indentation and keep a fixed-size action column. Unit
+counts and subtitles occupy lines below the title, so counts no longer squeeze
+long titles horizontally. `.chapter-list` remains the bounded vertical scroll
+surface; the header and reading pane preserve their existing scroll containment.
+
+Validation: `npm run check`; `scripts/test-hierarchy-tree.mjs` at 1280/390/320px
+covers keyboard and mouse navigation, disabled leaves, selected-state preservation,
+menu focus restoration, full-title bounds, no horizontal/page overflow, document
+reset, no expansion API calls or browser-storage writes. A fixture containing
+100 chapters/1,000 sections mounts 100 initial tree items and 110 after expanding
+one chapter; one local development run measured 480ms navigation/render and 67ms
+last-chapter expansion. These timings are observations, not a universal performance
+guarantee. Desktop/mobile screenshots were inspected. Existing hierarchy header,
+interaction-menu, pane-resize, pagination and reader identity/recovery regressions
+also pass (42 identity guard cases). Interaction-menu tests use
+real Madame Bovary layout metadata with fixture content/interaction reads; they
+verify the 451-unit merged row and chapter/section targeting without production
+mutation or LLM calls.
 
 ### Reading Content Pagination
 

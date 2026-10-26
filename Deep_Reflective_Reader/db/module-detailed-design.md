@@ -1,5 +1,226 @@
 # db Detailed Design
 
+## Translation And Same-Text Persistence (2026-10-26)
+
+Supporting TRUI-02..06, counted in the shared translation queue, not a new DB task.
+Translations reuse document_task_artifacts metadata and mutate_document_artifacts;
+the domain resolves hierarchy ownership and executes model work outside the lock.
+Same/different-language CAS and replay merge fresh metadata under the document row
+lock. No DDL, broad mutation API or independent nested commit is added.
+
+Reading mutations distinguish content revision from a neutral replay receipt. Same-
+text submissions preserve documents.updated_at and never run artifact purges. Real
+Keep edits delete summary fields from hierarchy JSONB and summary-kind artifact rows
+without deleting Quiz/other kinds; changed-block translation metadata is cleared in
+the same transaction. Existing consented Clear and deleted-block Note cleanup remain.
+Disposable-SQL tests verify concurrent writers, post-write trigger rollback, no-op
+timestamps and source-dependent lifecycle. All are part of 408 passing backend tests.
+
+## Source Region Repair Persistence (2026-10-26)
+
+Supporting domain-owned SRREPAIR-02/03; no duplicate DB task or new DDL. Existing
+reading-state JSONB and structured snapshots hold region_drafts, region_applications,
+source_region_id ownership, affected/cleared block IDs and durable mutation receipts.
+Domain stages exact range changes; the existing document lock and transaction commit
+overlay, audit, Undo, interaction epochs, document metadata and snapshot together.
+No SQL-side mapping policy, independent helper transaction or model work under lock.
+
+The artifact purge now accepts all cleared canonical block IDs. It remains scoped
+to the current document and resolves physical content-block targets through existing
+metadata/identity rules using parameterized SQL. Full removal and explicit Clear
+purge Notes as well as other block interactions; unaffected Notes remain. Undo does
+not resurrect purged artifacts or rewind permanent manual flags/interaction epochs.
+File and disposable PostgreSQL tests cover multi-block Note rows, rollback after
+metadata/artifact work, duplicate replay and concurrent revision conflicts.
+
+## Cleanup Record Persistence (2026-10-25)
+
+RCR-03 stores `refresh_source_token` beside the existing mutation audit revision,
+affected block IDs and invalidation metadata in reading-state JSONB/snapshot. The
+existing transaction persists this binding with body/artifact changes; response
+projection failure inside the mutation rolls back. No new table, DDL, SQL adapter
+rewrite or read-time migration. Old receipts without the binding remain replayable
+but cannot claim a current targeted refresh. GET uses one current repository snapshot
+and checks source/revision in the domain service without writing or repairing state.
+
+RCR-01 extends the same JSONB with cleanup_record_applications and source-edit
+record ownership. Applied state and overlays participate in the same Undo snapshot;
+saved drafts and permanent manual block flags do not. Reapply replaces a verified
+owned overlay, never appends another copy. Legacy ownership inference is domain-owned
+and read-only until an explicit successful mutation. No DDL/read-time migration.
+The proposed RCR-02 retention pruning was withdrawn before implementation; preserve
+history, active overlays and idempotency/Undo evidence regardless of navigation state.
+RCR-01 SQL validation passes within the 281-test regression: both persisted payloads
+carry the same applied-text ownership, reapplication rolls back after injected SQL
+failure, and concurrent writes cannot overwrite newer revisions. Domain helpers
+use the existing transaction port; no database DDL or SQL repository rewrite needed.
+
+CLEAN-RESTORE uses existing document reading-state JSONB and structured snapshot;
+no new table/column or DDL migration. Persistent block_edit_flags, cleanup_record_links
+and cleanup_record_edits are server-owned. Body Edit sets the flag in the same
+transaction as body/artifact changes; Undo does not erase the historical flag.
+Cleanup draft edits and record restores do not set the whole-block flag.
+
+The existing mutate_reading_content transaction revalidates source/revision and
+restoration eligibility before writing state, audit, snapshot and artifact effects.
+Draft saves preserve generated data and Note; Restore invalidates generated data
+while retaining Note. `_commit_cleanup_state` binds links against final persisted
+task-unit IDs before saving cleanup-only state. Reads never repair/backfill JSONB.
+Mapping/protection rules stay in document_structure, not SQL code.
+
+Disposable PostgreSQL tests in test_cleanup_history.py verify both JSONB copies,
+Undo flag persistence, post-SQL failure rollback, replay/concurrency, unchanged raw
+source and artifact/Note behavior. These pass within the 266-test regression; no
+production data migration or book writes were performed. Counted under CLEAN-RESTORE.
+
+## Standalone Cleanup Commit (2026-10-23)
+
+**[Code-Confirmed: SCLEAN-04, 2026-10-24]** Storage implementation and supporting file
+adapter parity under the structure-owned repository contract. See the
+[active design](../document_structure/module-detailed-design.md#independent-smart-cleanup-2026-10-23).
+Expose one narrow internal content-only cleanup commit, not a public generic plan
+writer and not a forged unchanged enhancement. Under a short lock/transaction,
+revalidate source/hierarchy fingerprint and reading revision; stage safe deletions;
+atomically write reading overlays/audit/Undo/review state, generated invalidation,
+ready-layout revision stamp and minimal operation receipt. Never replace hierarchy,
+renumber units/blocks, advance structure_version or rewrite raw source/profile.
+
+Notes and concurrent manual work must survive. New effective content advances
+reading_revision once; no-op/failure must not invalidate generated output or bump
+content revision. A receipt-only terminal outcome may be stored separately from a
+content change. Replay the same operation idempotently; later edits/Undo supersede
+historical results and do not authorize reapplication. Roll back receipt and content
+together on write failure, and reject late generation writes at stale revisions.
+Provider/planning work is outside transactions. Share staging primitives with the
+existing combined enhancement commit, retaining its one-transaction semantics;
+do not let storage orchestrate layout or call back into preparation/app.
+
+Keep existing audit/read/Undo routes and relational hierarchy as truth. File and
+PostgreSQL contracts must agree on rollback, replay and no-resurrection. No schema
+change is presumed necessary; any required migration must be explicit in SCLEAN-04,
+not runtime table creation or a lazy read repair.
+
+### SCLEAN-04 Delivery (2026-10-24)
+
+Both repositories implement `CleanupRepository.commit_cleanup` and read-only
+`lookup_cleanup`. The file adapter scopes its configured base directory to one
+namespace (default `default`, explicit constructor override supported). PostgreSQL
+uses its existing configured namespace and locks the document row with FOR UPDATE.
+Neither entry manufactures an enhancement candidate or changes hierarchy/version.
+File storage uses its existing lock and one atomic replacement; SQL uses one
+connection/transaction and the shared `_commit_cleanup_state` helper. SQL snapshot
+reading state and generated metadata now agree with relational state after cleanup.
+No migration, provider request, profile generation or layout orchestration is added.
+
+`document_structure/cleanup_commit.py` owns common locked-baseline comparison,
+source/evidence/view checks, policy binding, stage revalidation and receipt handling.
+It calls `validate_cleanup_input`, not duplicated deletion rules. Both standalone
+and combined enhancement reuse `ocr_cleanup_overlay.stage_validated_cleanup` for
+overlay application, audit, review resolution, Undo and changed-only invalidation.
+Ready revision stamps reuse `reading_content.advance_layout_revision`. A carried
+stamp is not proof of source/options/resolver cache validity; the existing readiness
+owner must still check that in SCLEAN-05/07. Missing units are never built in storage.
+
+Under the lock, compare the accepted document snapshot and version, recompute the
+effective view/manual protections, verify authoritative OCR/page coordinates, and
+rerun exact shared validation. Caller-supplied staging must equal the recomputed
+result. Page labels remain preserved provenance, not executable coordinates.
+Source-file bytes are checked with the existing bounded/race-aware hash utility
+before and just before final commit; there is no file extraction. Raw-file lifecycle
+is not part of the SQL transaction: this does not promise cross-resource atomicity.
+Changes after the final source check remain the source owner's lifecycle concern.
+
+Minimal standalone receipts live in reading-state JSON under
+`standalone_cleanup_receipts`, keyed by namespace/operation digest, storing command
+digest plus typed binding/outcome/readiness, never book text or raw plan. They commit
+with content, audit, review and generated invalidation. A no-op/rejected plan may
+persist only a receipt and does not advance reading revision or clear generated
+output. Same-command replay writes nothing; changed-command reuse conflicts. Undo
+or a newer reading/structure revision rejects reapplication as superseded. Lookup
+returns historical evidence, not permission to overwrite current state; the app
+must reconcile current state separately. A 1000-receipt bound rejects new commits
+without eviction/reapplication. Lost acknowledgement is logged as unconfirmed, not
+assumed rollback; lookup recovers durable evidence. Fresh consent remains SCLEAN-05.
+
+Validation: 22 shared file cases and 27 inherited/additional real PostgreSQL cases;
+216 local regressions plus 114 disposable SQL/API/enhancement regressions pass.
+Coverage includes partial/no-op, same-operation and competing-operation concurrency,
+manual/reparse races, failed final writes/receipt writes, lost acknowledgement,
+stale workers, notes/profile/IDs preservation, revision stamps, five-level deleted
+content behavior and Undo. SQL rollback compares pre/post row revisions as well as
+payloads; notes/generated rows and a nonempty profile are independently checked.
+Three hash-verified backups run through temporary file storage and isolated SQL;
+Sample2's previously reviewed deletion commits/reloads/replays/undoes with source
+unchanged. Initial real-book failure exposed extra page_label metadata; coordinate
+comparison was corrected and both backend suites rerun. No new live LLM calls,
+production-library mutation, service restart or frontend/API capability claimed.
+
+## Allocated Unit And Block IDs (2026-10-23)
+
+Supporting CLEAN-10: when an explicit hierarchy/layout save allocates a numeric
+task-unit ID different from the incoming ID, rebind exact generated content-block
+IDs with TaskUnit.with_unit_id and update the same row's metadata within the SAME
+transaction. Custom block IDs remain intact. No table/schema migration, source
+rewrite, second commit or read-triggered repair is introduced. Existing stale stored
+rows are not silently migrated. Real SQL tests cover a large compatibility block,
+effective-content projection without duplication and cleanup Undo; three backed-up
+OCR books pass the live API/layout/content-resolver path after this correction.
+
+## Cleanup Operation Receipts (2026-10-23)
+
+Supporting app CLEAN-06: optional internal operation metadata on commit_enhancement
+persists a minimal enhancement_receipts map in document provenance and the existing
+snapshot within the SAME hierarchy/overlay transaction. No new table/migration,
+candidate staging save or model call is added. Records bind backend operation hash,
+accepted extraction/text identity, resulting structure/reading revisions, structural
+change kind, section count and actual cleanup outcome; no source text, prompt, token
+or provider response. Up to 1000 receipts are retained; eviction never authorizes
+automatic regeneration. Existing no-operation structural no-op still performs no
+writes. Opted-in no-op may persist receipt/overlay without changing structure_version.
+
+Empty cleanup applications retain existing manual/source overlays through structural
+replacement when optional planning fails; receipt outcome remains failure/skip.
+Receipt replay is checked before mutation, and changed revisions conflict. Final
+receipt-write failure rolls back hierarchy, notes/generated invalidation and overlay
+with it. Lost acknowledgement is reconciled via persisted evidence by app; storage
+does not run layout or claim durable precommit generation. Real PostgreSQL rollback,
+cleanup-only retention, late edit, restart and replay tests are in CLEAN-06.
+
+## Cleanup Preparation Support (2026-10-23)
+
+Supporting preparation CLEAN-05: structural enhancement preserves trusted source
+page/review/actual-OCR evidence, including the optional-cleanup-failed/no-application
+path. Explicit task-layout updates reject reading-revision mismatch. On late metadata
+saves after a reading edit, compare against the locked actual hierarchy before allowing
+unit replacement; do not construct a fake current hierarchy from incoming stale units.
+These are internal consistency checks, not new schema or API fields. Disposable SQL
+tests exercise effective-to-canonical unit persistence, stable IDs, empty-section Undo,
+failed cleanup, metadata retention and concurrent-edit rejection.
+
+## Optional Cleanup Atomic Commit (2026-10-23)
+
+Supporting structure CLEAN-04; no additional completion checkbox here.
+commit_enhancement accepts optional internal CleanupApplication. Under existing
+locks it checks receipts, source/version/confirmation, stages the validated overlay
+on the in-memory candidate, then commits hierarchy/reading state/invalidation once.
+No save-reload-clean-save sequence and no provider calls inside the transaction.
+Unchanged/title-only cleanup preserves IDs/version and note rows, clearing generated
+rows and metadata only when content changes. Structural replacement preserves the
+new staged overlay through a private same-transaction save option, while retaining
+the established all-interaction cleanup. External hard-reparse defaults still clear
+old reading overlays. Final write failure rolls back the whole operation.
+Internal EnhancementCommitResult.cleanup is optional; CLEAN-04 itself exposed no
+public DTO. CLEAN-06 now adds explicit-consent public orchestration as described above.
+
+Receipt replay returns the stored historical cleanup outcome and current snapshot
+without duplicate writes; command mismatch conflicts. Canonical spans do not depend
+on the temporary candidate IDs that PostgreSQL replaces. Source-review decisions
+and undo/audit state persist with reading metadata. File-store parity and 27 actual
+disposable-schema tests cover rollback after hierarchy/cleanup writes, concurrent
+requests, generated rows versus notes, all-level projection, stable identity,
+review resolution and Undo. Combined 304 cases: 303 pass, one existing opt-in private
+source case skipped; no production schema/data mutation or live-model acceptance.
+
 ## Atomic Reading Mutations (2026-10-21)
 
 OCR-REVIEW-05 uses mutate_reading_content with SELECT FOR UPDATE on the document

@@ -139,15 +139,39 @@ class ReadingContentTests(unittest.TestCase):
             decision = policy.preflight(ReadingInteractionRequest(target=target,interaction_type=kind))
             self.assertEqual(decision.reason,"source_needs_review")
         self.assertEqual(self.service.read("book")["disposition"],"needs_review")
-        self.change("discard_region",region_id="page-1-region-0")
+        result = self.change("discard_region",region_id="page-1-region-0")
+        self.assertEqual(result["regions"], [])
+        self.assertEqual(self.service.read("book")["regions"], [])
+        with self.assertRaises(FileNotFoundError):
+            self.service.preview("book", "page-1-region-0")
+        with self.assertRaises(ReadingContentConflict):
+            self.change("discard_region",region_id="page-1-region-0")
+        self.assertEqual(self.repo.load_document("book").raw_text, original.raw_text)
         self.assertEqual(self.service.read("book")["disposition"],"completed")
         self.change("undo")
         self.assertEqual(self.service.read("book")["disposition"],"needs_review")
+        self.assertEqual([r["id"] for r in self.service.read("book")["regions"]], ["page-1-region-0"])
 
     def test_failed_write_preserves_source_and_revision(self):
         with patch.object(self.repo,"_atomic_save",side_effect=OSError("disk full")):
             with self.assertRaises(OSError): self.change()
         self.assertEqual(self.service.read("book"),self.initial)
+
+    def test_ignore_removes_only_selected_region_and_retry_is_idempotent(self):
+        original = self.repo.load_document("book")
+        regions = [{"id":f"page-{i}-region-0", "page_index":i, "bbox":[0,0,10,10],
+                    "render_dpi":200, "reason":"recognition_uncertain", "raw_candidate":""} for i in (1,2)]
+        self.repo.save_document(replace(original, parse_provenance={**original.parse_provenance,
+            "source_review":{"source_sha256":"a"*64,"regions":regions}}), "book")
+        state = self.service.read("book")
+        command = dict(action="discard_region", expected_revision=state["revision"],
+            source_token=state["source_token"], mutation_id="ignore-once", region_id=regions[0]["id"])
+        result = self.service.mutate("book", **command)
+        self.assertEqual(self.service.mutate("book", **command), result)
+        self.assertEqual([r["id"] for r in result["regions"]], [regions[1]["id"]])
+        self.assertEqual(result["disposition"], "needs_review")
+        self.change("undo")
+        self.assertEqual(len(self.service.read("book")["regions"]), 2)
 
     def test_routes_have_no_insert_and_stale_conflicts(self):
         from fastapi.testclient import TestClient

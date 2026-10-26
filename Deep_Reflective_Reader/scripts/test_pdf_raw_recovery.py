@@ -2,7 +2,9 @@
 """Selective raw recovery, atomic failures and canonical page offset parity."""
 
 from contextlib import ExitStack
+from dataclasses import replace
 from pathlib import Path
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -16,7 +18,7 @@ from pypdf.generic import DictionaryObject, FloatObject, NameObject
 from PIL import Image
 
 from doc_loaders.document_load_errors import (
-    RawTextOcrFailedError, RawTextOcrLowQualityError, RawTextRequiresOcrError,
+    RawTextOcrFailedError, RawTextRequiresOcrError,
 )
 from doc_loaders.pdf_document_loader import PdfDocumentLoader
 from doc_loaders.pdf_extraction_contract import PdfExtractionError
@@ -66,8 +68,12 @@ class PdfRawRecoveryTests(unittest.TestCase):
         stack.enter_context(patch.object(self.loader, "_binary_identity", side_effect=lambda cmd: (cmd, "fixture-v1")))
         stack.enter_context(patch("doc_loaders.pdf_document_loader.shutil.which", return_value="engine"))
         stack.enter_context(patch.object(self.loader, "_tesseract_version", return_value="test-version"))
+        image_path = Path(self.temp.name) / "render.png"
+        with Image.new("RGB", (30, 40), "white") as rendered:
+            rendered.putpixel((1, 1), (0, 0, 0))
+            rendered.save(image_path)
         render = stack.enter_context(patch.object(
-            self.loader, "_render_page_images", side_effect=lambda **kw: [Path(f"page-{kw['page_index']}.png")],
+            self.loader, "_render_page_images", side_effect=lambda **kw: [image_path],
         ))
 
         def recognize(**kw):
@@ -76,7 +82,7 @@ class PdfRawRecoveryTests(unittest.TestCase):
                 raise errors[index]
             text = texts.get(index, RECOVERED)
             candidate = self.loader._score_ocr_candidate(psm="default", text=text)
-            return (text if candidate.passed else ""), [candidate]
+            return text, [candidate]
 
         ocr = stack.enter_context(patch.object(self.loader, "_ocr_image_text_with_quality", side_effect=recognize))
         return render, ocr
@@ -222,8 +228,8 @@ class PdfRawRecoveryTests(unittest.TestCase):
     def test_page_failure_is_atomic_and_retry_does_not_reuse_partial_results(self):
         self.write_pages("scan", "native", "scan")
         with ExitStack() as stack:
-            self.fake_ocr(stack, {2: ""})
-            with self.assertRaisesRegex(RawTextOcrFailedError, "empty_ocr_page:page=3"):
+            self.fake_ocr(stack, errors={2: RawTextOcrFailedError("sample", detail="engine_failed")})
+            with self.assertRaisesRegex(RawTextOcrFailedError, "engine_failed"):
                 self.loader.load("sample")
         self.assertIsNone(self.loader.last_ocr_provenance)
         self.assertIsNone(self.loader.last_ocr_pages)
@@ -232,13 +238,112 @@ class PdfRawRecoveryTests(unittest.TestCase):
             self.assert_parity()
         self.assertEqual(render.call_count, 2)
 
-    def test_low_quality_single_page_is_not_hidden_by_good_pages(self):
+    def test_low_quality_page_is_retained_with_review_and_cached_boundaries(self):
         self.write_pages("scan", "native", "scan")
+        uncertain = "[[[[[[[[[]]]]]]]]]"
         with ExitStack() as stack:
-            self.fake_ocr(stack, {2: "[[[[[[[[[]]]]]]]]]"})
-            with self.assertRaisesRegex(RawTextOcrLowQualityError, "page=3"):
+            render, _ = self.fake_ocr(stack, {2: uncertain})
+            _, pages, _ = self.assert_parity()
+        self.assertEqual(pages[2], uncertain)
+        self.assertEqual(render.call_count, 2)
+        self.assertFalse(self.loader.last_ocr_quality[-1]["selected_passed"])
+        review = self.loader.last_ocr_provenance["source_review"]
+        self.assertEqual(review["disposition"], "needs_review")
+        self.assertEqual(review["source_sha256"], self.loader._file_sha256(self.path))
+        region = review["regions"][0]
+        self.assertEqual((region["page_index"], region["raw_candidate"]), (2, uncertain))
+        self.assertEqual(region["bbox"], [0, 0, 30, 40])
+        self.assertEqual(region["body_inclusion"], "included")
+
+    def test_auto_review_spans_bind_after_native_prefix_in_source_artifact(self):
+        self.write_pages("native", "scan", "blank", "scan")
+        # Auto's preservation policy does not depend on the full-OCR review flag.
+        for flag in ("0", "1"):
+            with self.subTest(flag=flag), ExitStack() as stack:
+                stack.enter_context(patch.dict("os.environ", {"DEEP_READER_OCR_REVIEW_ENABLED": flag}))
+                session = self.loader.open_source("sample", mode="auto")
+                render, ocr = self.fake_ocr(stack, {1: "!", 3: "?"})
+                artifact = session.extract()
+                self.assertIs(session.extract(), artifact)
+            canonical = artifact.result.canonical_text
+            self.assertTrue(canonical.endswith("\n!\n?"))
+            self.assertEqual(render.call_count, 2)
+            self.assertTrue(all(call.kwargs["allow_review"] for call in ocr.call_args_list))
+            review = artifact.storage_metadata["source_review"]
+            self.assertEqual([r["raw_candidate"] for r in review["regions"]], ["!", "?"])
+            for region in review["regions"]:
+                span = artifact.page_boundaries[region["page_index"]]
+                self.assertEqual(canonical[span.char_start:span.char_end], region["raw_candidate"])
+                self.assertEqual(region["canonical_span"], {
+                    "char_start": span.char_start, "char_end": span.char_end,
+                    "text_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
+                })
+                self.assertNotIn("page_span", region)
+            self.assertEqual([span.page_index for span in artifact.ocr_spans], [1, 3])
+
+    def test_auto_result_warns_when_nonempty_text_needs_review(self):
+        self.write_pages("scan")
+        with ExitStack() as stack:
+            self.fake_ocr(stack, {0: "!"})
+            result = self.loader.extract("sample", mode="auto")
+        self.assertEqual(result.text, "!")
+        self.assertIn("source_needs_review", result.warnings)
+        self.assertFalse(result.page_quality[0]["selected_passed"])
+
+    def test_recovery_preserves_candidate_when_recognizer_returns_empty_selection(self):
+        self.write_pages("scan")
+        with ExitStack() as stack:
+            _, ocr = self.fake_ocr(stack)
+            ocr.side_effect = None
+            ocr.return_value = ("", [self.loader._score_ocr_candidate(psm="6", text="!")])
+            self.assertEqual(self.loader.load("sample"), "!")
+
+    def test_region_uncertainty_is_reviewed_even_when_page_score_passes(self):
+        self.write_pages("scan")
+        with ExitStack() as stack:
+            _, ocr = self.fake_ocr(stack)
+            ocr.side_effect = None
+            candidate = replace(self.loader._score_ocr_candidate(psm="6", text=RECOVERED),
+                                region_evidence=({"accepted": False, "bbox": [0, 0, 15, 20],
+                                                  "char_start": 0, "char_end": 9},))
+            self.assertTrue(candidate.passed)
+            ocr.return_value = (RECOVERED, [candidate])
+            self.assertEqual(self.loader.load("sample"), RECOVERED)
+        self.assertEqual(self.loader.last_ocr_provenance["source_review"]["disposition"], "needs_review")
+
+    def test_empty_nonblank_page_is_explicit_review_gap_with_other_text(self):
+        self.write_pages("native", "scan", "scan")
+        with ExitStack() as stack:
+            render, _ = self.fake_ocr(stack, {1: "", 2: "!"})
+            result = self.loader.extract("sample", mode="auto")
+        self.assertEqual(render.call_count, 2)
+        self.assertEqual(result.pages[1:], ("", "!"))
+        self.assertEqual(result.empty_page_indexes, (1,))
+        empty = result.provenance["source_review"]["regions"][0]
+        self.assertEqual(empty["reason"], "recognition_empty")
+        self.assertEqual(empty["raw_candidate"], "")
+        self.assertNotIn("canonical_span", empty)
+        self.assertNotIn("page_span", empty)
+        self.assertFalse(result.page_quality[0].get("blank_render_confirmed", False))
+
+    def test_all_empty_nonblank_pages_still_fail_raw_recovery(self):
+        self.write_pages("scan", "scan")
+        with ExitStack() as stack:
+            render, _ = self.fake_ocr(stack, {0: "", 1: ""})
+            with self.assertRaisesRegex(RawTextOcrFailedError, "empty_ocr_text"):
                 self.loader.load("sample")
-        self.assertIsNone(self.loader.last_ocr_pages)
+        self.assertEqual(render.call_count, 2)
+        self.assertIsNone(self.loader.last_ocr_provenance)
+
+    def test_auto_no_text_and_execution_failures_remain_distinct(self):
+        self.write_pages("scan")
+        for text, errors, reason in (("", {}, "no_text"),
+                                     ("!", {0: OSError("engine failed")}, "extraction_failed")):
+            with self.subTest(reason=reason), ExitStack() as stack:
+                self.fake_ocr(stack, {0: text}, errors=errors)
+                with self.assertRaises(PdfExtractionError) as raised:
+                    self.loader.extract("sample", mode="auto")
+                self.assertEqual(raised.exception.reason.value, reason)
 
     def test_ocr_timeout_and_oserror_are_typed_failures(self):
         self.write_pages("scan")

@@ -14,7 +14,7 @@ class FaissStorageConfig:
     profile_path: Path
     _NAMESPACE_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")
 
-    def __init__(self, namespace: str = "default"):
+    def __init__(self, namespace: str = "default", *, read_only: bool = False):
         """Initialize object state and injected dependencies.
 
 Args:
@@ -22,14 +22,16 @@ Args:
 """
         normalized_namespace = self.normalize_namespace(namespace)
         base_root = Path("data/faiss")
-        self._migrate_legacy_namespace_dir(
-            base_root=base_root,
-            original_namespace=namespace,
-            normalized_namespace=normalized_namespace,
-        )
+        if not read_only:
+            self._migrate_legacy_namespace_dir(
+                base_root=base_root,
+                original_namespace=namespace,
+                normalized_namespace=normalized_namespace,
+            )
 
         self.base_dir = base_root / normalized_namespace
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        if not read_only:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
         self.doc_name = normalized_namespace
         self.index_path = self.base_dir / "index.faiss"
         self.records_path = self.base_dir / "records.json"

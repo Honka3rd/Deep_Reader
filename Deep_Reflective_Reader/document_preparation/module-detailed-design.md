@@ -1,5 +1,209 @@
 # document_preparation Detailed Design
 
+## Independent Cleanup Adapters (2026-10-23)
+
+**[Code-Confirmed: SCLEAN-02/07]** Adapters support the
+[active design](../document_structure/module-detailed-design.md#independent-smart-cleanup-2026-10-23).
+Replace candidate-only handoff with two narrow adapters producing the same immutable
+cleanup input: accepted stored hierarchy (including Common) and validated in-memory
+enhancement candidate. Reuse accepted_source_snapshot and generic extraction/page/
+actual-OCR capabilities; do not create a fake EnhancementCandidate for standalone
+cleanup. Canonical/effective maps, reading revision and manual protections must be
+captured coherently. Missing provenance/profile/readiness returns a reason, not a
+loader call or profile reconstruction. Concrete PDF/TXT branching is forbidden.
+
+Preparation supplies inputs and explicit layout handoff only. Structure owns prompt,
+validation/staging; app owns operation/consent and invokes the repository. Shared
+provider injection is supplied by composition, not obtained by traversing splitter
+private internals. Retain a compatibility adapter for prepare_enhancement_cleanup
+only if necessary; no parallel independent planner implementation.
+
+Standalone cleanup can start before task units exist. After a content-only commit,
+reuse canonical ready units and their IDs, or explicitly prepare a missing/stale layout
+using accepted source/existing profile. Combined enhance must pass the in-memory
+split candidate into the SAME cleanup capability before the sole final write. A
+cleanup failure preserves that candidate; a final commit failure preserves the old
+stored document. Never save/reload a candidate for cleanup or let task-layout/content
+reads mutate. SCLEAN-07 proves no split/OCR/profile on standalone or cleanup retry,
+and no cleanup/LLM repeat during layout-only recovery.
+
+### SCLEAN-02 Delivery (2026-10-23)
+
+`cleanup_input_adapter.py` exposes only `adapt_document_cleanup_input` and
+`adapt_candidate_cleanup_input`. Stored input takes a coherent accepted-source
+snapshot, hierarchy and expected reading revision; it does not load storage itself.
+Callers establish source-file acceptance with `resolve_accepted_source_snapshot`.
+The adapter checks canonical digest/coverage, identity, known language, available
+structure-version stamp, reading revision and authoritative OCR/page evidence.
+Missing raw_text can reuse accepted canonical text with exact section coverage;
+missing task units is allowed. No profile store is accessed: existing accepted
+language is required, while use-case readiness remains the caller's responsibility.
+Missing Auto evidence yields ineligibility; corrupt/stale evidence is rejected,
+not silently converted into permission. Native/unknown modes remain ineligible.
+
+The candidate adapter validates the unsaved split against that same accepted source
+and reuses the baseline's reading state. In a detached cleanup-input copy, old
+block edits become canonical source edits so changed unit/block IDs do not lose
+manual corrections. Original candidate/baseline objects remain unchanged. Accepted
+page/OCR/review metadata is preserved, with conflicting candidate evidence rejected.
+No candidate save/reload, fake enhancement result, provider traversal or generation.
+
+The pure `document_structure/cleanup_reading_view.py` helper owns overlay mapping,
+reusing existing manual-source mapping and reading projection precedence. It checks
+overlay source hash, exact quotes, ordered nonoverlapping ranges and valid manual
+replacements. Prior deletions remain explicit gaps, empty manual deletions remain
+protected, and an all-deleted effective view never falls back to original text.
+Manual replacement wins over an overlapping cleanup span exactly as in reading_slice.
+Pending/textless/unmapped review entries remain unchanged and do not block corrective
+input when mapped OCR evidence exists. No review resolution is claimed here.
+
+Safe adapter logs contain origin, eligibility, part/protection/gap counts, reason and
+duration, not source text or document names. Twenty new adapter tests pass, including
+poisoned split/extraction/profile/read/write dependencies and three hash-verified
+private Common/OCR backups via the real accepted-source boundary. With
+`PYTHONPATH=.:scripts` and
+`DEEP_READER_TEST_CLEANUP_INPUT_BOOKS=data/test-books/cleanup-20261023`, the combined
+contract/planner/validator/file-overlay suite passes 140 tests; 21 explicitly selected
+preparation/evidence/layout tests also pass. No new persistence or PostgreSQL test,
+paid model request, OCR run, profile rebuild, public API or UI change. SCLEAN-03/07
+still own shared planning and runtime integration; SCLEAN-10 owns live acceptance.
+
+### SCLEAN-07 Delivery (2026-10-24)
+
+Production composition injects `cleanup_provider` directly into preparation and
+`app.cleanup_runtime.build_cleanup_service`; no splitter-provider traversal remains.
+Main installs the singleton service in app.state. PostgreSQL uses the same namespace,
+coherent accepted snapshot and cross-process enhancement lease for both entries.
+An unsupported backend without those ports returns unavailable; the file repository
+retains tested atomic cleanup/layout primitives, not a new unlocked production flow.
+
+Enhance retains its accepted hierarchy in EnhancementState while building the split.
+The handoff adapts that baseline and the UNSAVED candidate to CleanupInput, calls
+`plan_cleanup_input` with remaining-view prompt v3, then carries the proposal/input
+to the existing combined commit. No candidate save/reload or standalone commit.
+CleanupApplication binds original candidate and accepted baseline digests; storage
+checks both under its existing lock and calls `validate_cleanup_input`, then the
+shared `stage_validated_cleanup`. Old manual edits and deletion gaps remain protected.
+Legacy canonical handoff remains only as a compatibility adapter, not production
+planning. Enhance consent also binds remaining prompt/policy versions, while public
+overlay consent scope/DTO semantics remain compatible. Planner/input failure is an
+explicit nonblocking cleanup outcome; final persistence failure still rolls back.
+
+Coordinator exposes narrow read-input, actual readiness and explicit layout ports.
+Readiness uses existing source/options/resolver/revision/duplicate-ID checks, never
+receipt flags alone. Layout checks the supplied input fingerprint before work and
+again immediately before persistence; existing repository revision guards remain.
+No-op cleanup receipts also preserve existing canonical units during cache refresh.
+Missing units are built explicitly from the effective view with canonical mappings;
+profile, source extraction and structure planning are never regenerated. Same-op
+restart recovery only reconciles/resumes layout. Fresh consent after failed/partial
+automatic cleanup runs the same planner on remaining content, never another split.
+The document lease and SQL transaction do not lock physical source bytes; source
+hash guards are not a claim of cross-resource atomicity.
+
+Validation: `scripts/test_cleanup_runtime.py` adds 30 cases across file/shared and
+disposable PostgreSQL execution. Combined 308 local + 190 SQL/API regressions pass,
+plus 16 consent/operation/layout-cache regressions. Three hash-verified backups under
+`data/test-books/cleanup-20261023` exercise actual readiness/layout (not boolean fake
+ports); Sample2 applies its previously reviewed nonempty deletion. Deterministic
+providers, no paid requests, OCR, source/profile regeneration or production mutation.
+Final live-model/browser acceptance is still SCLEAN-10; no deployment is claimed.
+
+Governance receipt: inspected AGENTS, both development standards, proposal/HLD,
+module index/progress and preparation/app/structure/config/db/main/schema/UI memory.
+Modified preparation design/checklist for implementation and acceptance evidence;
+app/structure/config/main/schema designs for composition and shared-engine boundaries;
+structure checklist/progress and UI design/checklist only for authoritative dependency
+status. No UI implementation or backend progress credit for UI work. Existing test
+receipts retain their historical scope. Checklist timestamps are 2026-10-24; tests,
+scope/architecture review and `git diff --check` are the validation evidence.
+
+## Optional OCR Cleanup Handoff (2026-10-22)
+
+The delivery below is historical. SCLEAN-07 above replaces production planning
+and provider discovery; the legacy canonical adapter remains for compatibility.
+
+**[Code-Confirmed]** CLEAN-05 delivered internally on 2026-10-23. Public cleanup
+orchestration was delivered separately by app CLEAN-06. That delivery obtained the
+cleanup provider from the splitter; SCLEAN-07 replaces this with explicit DI without
+re-observing TOC, re-extracting or rebuilding profile. Contract authority:
+[structure cleanup design](../document_structure/module-detailed-design.md#optional-ocr-cleanup-plan-2026-10-22).
+Supply immutable accepted text, generic extraction identity, existing actual OCR
+evidence and source-page maps to the optional planner without re-extraction or
+profile rebuild. Mode=auto alone is not evidence that OCR actually produced text.
+Unknown evidence skips optional cleanup; never inspect PDF internals in this layer.
+
+Pass the validated split candidate and accepted-source snapshot directly to cleanup
+before persistence. Do not save it and load it back for a second cleanup write.
+After cleanup finishes or falls back to the uncleaned candidate, app commits once;
+explicit layout-only preparation then consumes the authoritative effective-content
+projection. Commit-time freshness checks and normal layout reads remain permitted.
+Source-span cleanup may exist before units: unit construction must retain source
+mappings and stable backend IDs, including when all text in a section was removed.
+Do not persist a projected document over canonical hierarchy/raw_text. Existing
+block overlays alone do not satisfy this mapping contract; the canonical-unit
+handoff below handles source-span overlays.
+
+No-op/title-only structure with unchanged content retains ready units. Changed
+effective content requires explicit dependent layout/cache freshness handling keyed
+to reading revision, not just structure_version. No hidden mutation in task-layout
+or content GET. Cleanup failure still permits preparation from the usable committed
+source; actual layout failure stays a distinct retryable stage. Profile is reused
+in all paths; cleanup does not grant new profile generation authority.
+
+### CLEAN-05 Delivery And Validation (2026-10-23)
+
+`SourceArtifact.ocr_spans` is an optional loader capability: None means unknown,
+an empty tuple proves native-only output, and nonempty spans identify actual OCR
+characters. PDF adapter owns full OCR versus Auto recovery-page selection; no PDF
+branch enters preparation. `extraction_cleanup_metadata` binds these coordinates
+to the generic extraction identity and full canonical digest on initial preparation.
+Existing Auto documents without evidence skip cleanup; reads never backfill by OCR.
+
+`AcceptedSourceSnapshot.cleanup_context` captures validated page ranges and immutable
+OCR evidence with the accepted source. `prepare_enhancement_cleanup` checks the
+in-memory candidate, calls the independent planner and returns either a bound
+CleanupApplication or an optional-failure outcome. It does not load/save hierarchy,
+extract, rebuild profile or claim application success. Repository staging revalidates
+and applies the application before the sole final atomic commit. Source page/review/
+OCR evidence survives structural commits even when optional cleanup is unavailable.
+
+Explicit layout preparation uses `reading_layout_handoff`: existing units with
+overlays retain IDs and block targets; new sections are split using effective text,
+then every unit is mapped back to contiguous canonical slices before persistence.
+Resolver whitespace normalization is tolerated only with exact ordered conservation
+of every non-whitespace character. Rewrites, omissions, stale source coordinates or
+cuts inside a manual replacement reject layout separately; they never corrupt source.
+An entirely cleaned section retains a canonical unit anchor whose reading projection
+is empty, allowing Undo without fallback resurrection. No projected hierarchy is saved.
+
+Layout metadata records reading_revision. Cleanup-dependent layouts (including
+receipts retained after Undo) require matching revision; explicit preparation updates
+the stamp and repeated preparation reuses it. Existing manual block/review-only edits
+retain their prior ready-layout behavior. Revision checks reject stale layout writes;
+file/PostgreSQL late saves cannot replace unit identity after a concurrent edit.
+This supporting app cache hook is not CLEAN-06 consent/DTO/operation delivery.
+
+Evidence: `scripts/test_cleanup_preparation.py` has 35 file/SQL/capability/cache cases;
+combined regression runs 308 cases, 307 passed and one existing private-source
+opt-in skipped. Uses disposable PostgreSQL schemas, real repositories and the actual
+explicit layout coordinator; provider calls are controlled fixtures, not live LLM
+acceptance. No production book mutation, OCR rerun, paid request or deployment.
+Absent/partial/textless review regions remain pending: exact region mappings are
+never fabricated from similar text. Live-book/API/browser acceptance remains CLEAN-10.
+
+Governance receipt: inspected AGENTS.md, proposal.md, high-level-design.md, module
+index, progress.md and design/checklist memory for document_preparation,
+document_structure, doc_loaders, app, db, section_tasks and scripts. Modified this
+design and preparation checklist for delivery/evidence; structure design/checklist
+for shared sequencing/status; loader/app/DB designs for supporting contracts; backend
+progress for 5/8, excluding UI tasks. Checklist-progress-sync changes only checklist/
+progress memory, outside implementation edits. Validation is read-only: focused and
+combined tests, timestamp/count checks and git diff --check; unrelated dirty work is
+preserved. The page-evidence regression fixture now updates both generic and legacy
+provenance, matching the existing format-neutral authority rather than weakening it.
+
+
 ## Review Evidence Handoff (2026-10-21)
 
 OCR-REVIEW-03 uses the existing generic SourceArtifact.storage_metadata handoff:

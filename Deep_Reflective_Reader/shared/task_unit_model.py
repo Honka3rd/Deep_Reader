@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import hashlib
 import re
 from typing import Any
@@ -284,6 +284,25 @@ class TaskUnit:
                 content=self.content,
             )
         ]
+
+    def with_unit_id(self, unit_id: str) -> "TaskUnit":
+        """Rebind generated block identities when a new unit receives its ID."""
+        if unit_id == self.unit_id:
+            return self
+        blocks = []
+        prefix = self.unit_id + ":content:"
+        for block in self.content_blocks:
+            suffix = block.block_id[len(prefix):] if block.block_id.startswith(prefix) else ""
+            if re.fullmatch(r"0|[1-9][0-9]*", suffix):
+                block_id = build_default_content_block_id(task_unit_id=unit_id, block_index=int(suffix))
+                metadata = None if block.metadata is None else dict(block.metadata)
+                if metadata is not None:
+                    for key, value in (("content_block_id", block_id), ("task_unit_id", unit_id)):
+                        if key in metadata:
+                            metadata[key] = value
+                block = replace(block, block_id=block_id, metadata=metadata)
+            blocks.append(block)
+        return replace(self, unit_id=unit_id, content_blocks=blocks)
 
     def segment_content_blocks(self) -> list[TaskUnitContentBlock]:
         """Explicit opt-in deterministic segmentation from `content` to multiple blocks."""

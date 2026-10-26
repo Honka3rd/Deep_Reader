@@ -7,9 +7,10 @@ import os
 from pathlib import Path
 import re
 
-from doc_loaders.extraction_identity import ExtractionIdentity, read_extraction_record
+from doc_loaders.extraction_identity import ExtractionIdentity, ExtractionResult, read_extraction_record
 from document_structure.structured_document import StructuredDocument
 from language.language_code import LanguageCode, LanguageCodeResolver
+from document_preparation.cleanup_handoff import CleanupSourceContext, accepted_cleanup_context
 
 
 class SourceNotReady(ValueError):
@@ -29,6 +30,7 @@ class AcceptedSourceSnapshot:
     text_sha256: str
     text_length: int
     language: str
+    cleanup_context: CleanupSourceContext | None = None
 
 
 def source_file_sha256(path: Path) -> str:
@@ -127,4 +129,8 @@ def resolve_accepted_source_snapshot(
         structure_version=structure_version, extraction_identity=identity,
         canonical_text=text, text_sha256=text_hash, text_length=len(text),
         language=language.value,
+        cleanup_context=accepted_cleanup_context(
+            ExtractionResult(identity, text),
+            provenance,
+        ),
     )

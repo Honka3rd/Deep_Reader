@@ -1,5 +1,62 @@
 # app Checklist
 
+## Persisted Block Translation (2026-10-26)
+
+Implemented and verified: 1/1 owned task. [Shared queue](../section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).
+
+- [x] TRUI-04: Persist and read language-keyed translations through guarded orchestration.
+  Priority: P1. Depends on: TRUI-01/03. Acceptance: Reuse TranslationService, existing profile and current block resolution; domain-owned records through atomic repository mutation, no LLM under lock. One current result per target code; merge other languages, same-language CAS and same-command replay. Commit-time source/epoch checks, completed/partial-only saves, read-only retrieval and preserved old records on failure. No hidden prepare/profile construction.
+  Evidence required: Real record reload/restart, parallel same/different language writes, idempotent replay/unknown outcomes, source edit/delete/reparse races, legacy-save protection, rollback, profile/registry failures and no-call reads on both storage adapters. Domain/db support belongs to this task, not duplicate checked items.
+  Evidence: TranslationAction uses domain translation_records and existing atomic repository ports after model completion. File/SQL concurrency, same-command different-model-output replay, stale source/edit-Undo/reparse, rename and legacy-save tests pass. Real provider/API/SQL/browser saves and reloads two languages for both immutable book excerpts; profile/backups unchanged.
+  Reuse correction: Valid block/To results are returned unchanged after source default/pair validation and before model/write, regardless of new mutation ID or a different valid From. Only absent To generates. 80 focused file/SQL/service/API tests pass; real-book acceptance 20261026T113558Z-5d5c71b0 verifies direct API reuse and unchanged records.
+  Distinct-language correction: Explicit/profile-default equal pairs reject before saved lookup/replay with no model or writes; omitted-source profile errors cannot bypass validation through cache. Explicit distinct source still permits reuse without profile lookup. 65 service/action/persistence tests pass, including preserved records after rejection.
+  Timestamp: 2026-10-26
+
+## Translation Action (2026-10-26)
+
+- [x] TRANS-API-01: Resolve current reading targets and optional source language for translation.
+  Acceptance: Resolve block ownership using doc_name and content_block_id only, reuse effective hierarchy content and existing profile language; explicit override wins. No preparation/profile writes, persistence or parent-summary generation. Reject stale versions/content before returning results. Delegate prompt/capacity/output rules to TranslationService.
+  Evidence: app/translation_action.py composes the existing hierarchy/overlay resolver, profile store and TranslationService. Real DocumentProfile.document_language is reused; read-only path configuration suppresses mkdir/migration. 20 new action/API tests cover defaults/overrides, opaque/duplicate/missing/deleted blocks, effective edits, reparse/version/epoch conflicts, no source-text inputs, zero writes and sanitized failures. Included in 92 passing regressions; live backed-up TXT/PDF block API checks pass (main TRANS-API-02 evidence). No production deployment or frontend implementation.
+  Timestamp: 2026-10-26
+
+## Offline Preflight Follow-up (2026-10-24)
+
+Owned WAIT tasks 1/1 (100%). [Shared order](../llm/module-checklist.md#offline-preflight-follow-up-2026-10-24).
+
+- [x] WAIT-04: Instrument preflight stages and safe terminal outcomes.
+  Priority: P1. Depends on: WAIT-02. Owner: app; reuse llm initialization/count logs.
+  Acceptance: Request-correlated lease/input/capacity/consent/overall start-end/failure timing and safe availability/reason on every exit. Reuse existing helpers without additional source reads, leaked source/prompt/keys/consent, duplicate token counting, new API fields or document mutations. Keep preflight zero model/OCR/profile calls and preserve shared leases/short transactions.
+  Evidence required: Success, capacity refusal, unavailable asset fallback, missing source, busy lease and exception tests prove stage attribution, request isolation, privacy and unchanged behavior. Real incident-book timeline is accepted in WAIT-05, not counted twice.
+  Evidence: standalone_cleanup delegates its unchanged preflight operation to timed lease/reconciliation/input/capacity/consent stages and one overall terminal span. Scoped cleanup_preflight_logging reuses log_stage and request context, allowlists diagnostic reasons and absorbs sink failures for new records. No duplicate source reads/counts, domain writes, prompt construction, HTTP/schema changes or global logging changes.
+  Validation: 14 new cases are included in 208 passing scoped tests with verified real assets, immutable OCR/TXT/PDF backups and disposable PostgreSQL. Deterministic timing separates lease acquisition from held work; actual FastAPI request IDs, concurrent isolation, all refusal/error paths, cancellation, missing-asset conservative fallback, sink failure, private-data exclusion, unchanged DTOs and one read/count pass. Test DB dropped; no paid LLM, production data changes or deployment. One unrelated legacy prepare-cache assertion fails identically in pre-change image 62776af533ea; documented separately, not counted as passing or relaxed. WAIT-05 remains the final incident-book/browser gate.
+  Timestamp: 2026-10-24
+
+## Independent Smart Cleanup Backlog (2026-10-23)
+
+Owned tasks 1/1. [Shared order](../document_structure/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23).
+
+- [x] SCLEAN-05: Implement independent cleanup use-case orchestration and reconciliation.
+  Priority: P0. Depends on: SCLEAN-02/03/04. Owner: app.
+  Acceptance: Narrow service coordinates preflight/consent, snapshot, planner, commit and explicit reading continuation; delegate all matching/storage details. Fresh standalone consent permits generated invalidation only on actual change, never all-interaction discard. Same operation replays/reconciles; explicitly new attempts regenerate cleanup only. Separate provider failure, semantic skip, commit conflict/unknown and layout failure. Durable committed receipts, safe process-local precommit recovery and concurrent-operation guards; no long DB transactions or implicit OCR/profile/structure generation.
+  Evidence required: Service/fault tests with exact call counts for duplicate submit, stale consent/source/edit, restart/lost response, read failure versus missing receipt, no-op, provider retry/capacity refusal, partial outcome, supersession and layout-only resume. Privacy-safe stage logs required.
+  Evidence: standalone_cleanup.py injects accepted-input/repository/provider/shared document lease and readiness ports, delegating prompt/budget/validation/application to existing structure helpers. Separate short-lived consent binds input/policy/capacity; durable lineage-bound receipts reconcile committed work, unknown reads fail closed, same-operation replay never regenerates, and explicit layout resume makes zero model/cleanup-commit calls. No HTTP or production composition is introduced; SCLEAN-06/07 remain pending.
+  Validation: 32 file and 32 isolated SQL service cases; combined 248 local plus 146 SQL/API/enhancement regressions pass. Three immutable backup books pass accepted-adapter/shared-engine/file/SQL paths with deterministic provider responses and unchanged backup hashes. Covers concurrency, stale source/edit/model, no-op/partial, transient retries, commit rollback/lost acknowledgement, restart/read failures, Undo and layout recovery. git diff --check passes. No live LLM, production-data changes or deployment; actual runtime/browser acceptance remains SCLEAN-07/10.
+  Timestamp: 2026-10-24
+
+## Optional OCR Cleanup Operation Backlog (2026-10-22)
+
+Shared track: [structure checklist](../document_structure/module-checklist.md#optional-ocr-cleanup-plan-backlog-2026-10-22).
+Historical delivery; this module owns one completed CLEAN task. Current shared
+foundation status is in the linked canonical checklist; SCLEAN above is new work.
+
+- [x] CLEAN-06: Expose and orchestrate independently recoverable cleanup after successful splitting.
+  Depends on: CLEAN-05.
+  Acceptance: Update preflight/consent, strict additive execution/result DTOs and stage orchestration; keep structure change_kind separate from cleanup outcome/revision. Bind cleanup policy and reading revision, reconcile durable minimal stage receipts after refresh/response loss, preserve at-most-once mutations and allow stage-specific transient retries without cost gates. Optional capacity/provider/validation/application failure retains the uncleaned split candidate; one final hierarchy/overlay commit precedes layout. Final storage failure rolls back the entire write, never reports success. No intermediate save-reload-clean-save cycle; commit conflicts reject the stale operation. No-op structure can still clean; no manual Prepare and no transactions held during LLM calls.
+  Review resolution: Expose authoritative remaining review state after commit/Undo, including automatic removal of proven fully resolved regions; cleanup success alone cannot clear review guards.
+  Evidence: enhancement_cleanup.py, consent v3, strict additive DTO/routes, atomic PostgreSQL operation receipts and automatic explicit layout. test_enhancement_cleanup_api.CleanupApiTests adds 27 actual disposable-SQL route cases for legacy/strict contracts, stale policy/revision, capacity zero-call, transient retry, preserved manual edits/notes, partial/resolved reviews and Undo, lost acknowledgement/restart/replay, layout-only retry, concurrent model-time edits, privacy and real final-write rollback. Combined regression: 360 cases, 359 pass, one existing private-source opt-in skip; git diff --check passes. No production mutations, paid LLM or deployment. Committed receipts survive restart; precommit work remains process-local and unknown is never permission to regenerate. UI CLEAN-07/08 and acceptance CLEAN-09/10 stay unchecked.
+  Timestamp: 2026-10-23
+
+
 ## Format-Neutral Extraction Backlog (2026-10-21)
 
 Implemented; evidence and scope are recorded per item. Ordered design: [shared plan](../document_preparation/module-detailed-design.md#format-neutral-extraction-plan-2026-10-21).

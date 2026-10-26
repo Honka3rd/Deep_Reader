@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -53,7 +54,8 @@ class OcrScriptQualityTests(unittest.TestCase):
         good = self.score(ENGLISH)
         bad = replace(self.score(GARBAGE), score=good.score + 1)
         candidates = [bad, good, bad, bad]
-        with patch.object(self.loader, "_score_ocr_candidate", side_effect=candidates), \
+        with patch("doc_loaders.chinese_ocr_strategy.recognize", return_value=None), \
+                patch.object(self.loader, "_score_ocr_candidate", side_effect=candidates), \
                 patch.object(self.loader, "_run_process", return_value=subprocess.CompletedProcess([], 0, "output", "")):
             text, scored = self.loader._ocr_image_text_with_quality(
                 image_path=Path("unused.png"), doc_name="fixture", page_index=0,
@@ -83,13 +85,158 @@ class OcrScriptQualityTests(unittest.TestCase):
                 self.assertFalse(self.score(spaced + " " + noise).passed)
 
     def test_quality_version_invalidates_previous_policy(self):
-        self.assertEqual(OCR_QUALITY_VERSION, "observed-script-v3")
+        self.assertEqual(OCR_QUALITY_VERSION, "observed-script-v6-geometry-fallback")
         with patch("doc_loaders.pdf_extraction_identity.shutil.which", return_value=None):
             for mode in ("fast", "ocr", "auto"):
                 current = identity_for_loader(self.loader, source_sha256="a" * 64, mode=mode)
-                with patch("doc_loaders.pdf_document_loader.OCR_QUALITY_VERSION", "observed-script-v2"):
+                with patch("doc_loaders.pdf_document_loader.OCR_QUALITY_VERSION", "observed-script-v5-candidate-consensus"):
                     previous = identity_for_loader(self.loader, source_sha256="a" * 64, mode=mode)
                 self.assertEqual(current == previous, mode == "fast")
+
+    def test_page_80_all_failed_consensus_retains_requested_phrase(self):
+        phrase = "\u88d5\u4e4b\u5e76\u4e0d\u5341\u5206\u5728\u4e4e\u8fd9\u4e9b"
+        # Reported incident metrics: PSM 5's Latin-branch score exceeds all CJK scores.
+        candidates = [replace(self.score(phrase + CHINESE * 35), psm=psm,
+                              passed=False, score=score, cjk_ratio=ratio)
+                      for psm, score, ratio in (("default", .617, .880), ("6", .634, .886), ("11", .616, .880))]
+        outlier = replace(self.score(ENGLISH), psm="5", passed=False, score=.666,
+                          cjk_ratio=.124, latin_ratio=.820)
+        candidates.insert(1, outlier)
+        with patch("doc_loaders.chinese_ocr_strategy.recognize", return_value=None), \
+                patch.object(self.loader, "_score_ocr_candidate", side_effect=candidates), \
+                patch.object(self.loader, "_run_process", return_value=subprocess.CompletedProcess([], 0, "output", "")):
+            text, scored = self.loader._ocr_image_text_with_quality(
+                image_path=Path("unused.png"), doc_name="page80", page_index=79,
+            )
+        self.assertIn(phrase, text)
+        summary = self.loader._summarize_page_ocr_quality(page_index=79, candidates=scored)
+        self.assertEqual(summary["selected_psm"], "6")
+        self.assertEqual(summary["selected_score"], .634)
+        self.assertFalse(summary["selected_passed"])
+        self.assertEqual(summary["candidate_count"], 4)
+
+    def test_consensus_requires_two_supporters_and_two_thirds_of_nonempty(self):
+        cjk = replace(self.score(CHINESE * 3), score=.3)
+        english = replace(self.score(ENGLISH), score=.9)
+        empty = replace(self.score(""), passed=True, score=100)
+        for candidates, expected in (([cjk, english, empty, empty], english),
+                                     ([cjk, cjk, english, english], english),
+                                     ([cjk, cjk, english, empty], cjk),
+                                     ([cjk, cjk, cjk, english], cjk)):
+            with self.subTest(count=len(candidates)):
+                self.assertIs(self.loader._select_ocr_candidate(candidates), expected)
+
+    def test_short_cjk_labels_do_not_override_english(self):
+        short = replace(self.score(CHINESE[:4]), passed=True, score=.3)
+        english = replace(self.score(ENGLISH), score=.9)
+        self.assertIs(self.loader._select_ocr_candidate([short, short, short, english]), english)
+
+    def test_consensus_filter_log_contains_counts_and_rule_without_source_text(self):
+        cjk = self.score(CHINESE * 3 + " private-source-sentinel")
+        english = self.score(ENGLISH)
+        with self.assertLogs("doc_loaders.chinese_ocr_strategy", level="INFO") as captured:
+            self.loader._select_ocr_candidate([cjk, cjk, english, self.score("")])
+        self.assertEqual(len(captured.output), 1)
+        message = captured.output[0]
+        self.assertIn("candidate_count=4 nonempty_candidate_count=3 consensus_pool_count=2", message)
+        self.assertIn("rule=strong_cjk_consensus", message)
+        self.assertNotIn("private-source-sentinel", message)
+        self.assertNotIn(CHINESE, message)
+        self.assertNotIn(ENGLISH.strip(), message)
+        with self.assertNoLogs("doc_loaders.chinese_ocr_strategy", level="INFO"):
+            self.loader._select_ocr_candidate([cjk, english])
+            self.loader._select_ocr_candidate([cjk, cjk])
+
+    def test_bilingual_consensus_retains_both_scripts_and_ignores_installed_packs(self):
+        bilingual = replace(self.score(CHINESE * 8 + ENGLISH), score=.3)
+        outlier = replace(self.score(ENGLISH), score=.9)
+        self.assertGreaterEqual(bilingual.cjk_ratio, .35)
+        candidates = [bilingual, bilingual, bilingual, outlier]
+        for language in ("eng", "chi_sim", "eng+chi_sim+chi_tra"):
+            selected = PdfDocumentLoader(ocr_language=language)._select_ocr_candidate(candidates)
+            self.assertIs(selected, bilingual)
+            self.assertIn(CHINESE, selected.text)
+            self.assertIn(ENGLISH.strip(), selected.text)
+
+    def test_consensus_keeps_pass_first_ranking_within_observed_script(self):
+        passed = replace(self.score(CHINESE * 3), score=.3)
+        failed = replace(passed, passed=False, score=.9)
+        outlier = replace(self.score(ENGLISH), score=1)
+        self.assertIs(self.loader._select_ocr_candidate([failed, passed, failed, outlier]), passed)
+
+    def test_best_nonempty_rejected_candidate_beats_empty_higher_scores(self):
+        best = replace(self.score("!"), psm="6", score=-0.5)
+        worse = replace(self.score("?"), psm="5", score=-0.8)
+        for empty in (self.score(""), replace(self.score(" "), passed=True, score=10)):
+            candidates = [empty, worse, best, empty]
+            with patch("doc_loaders.chinese_ocr_strategy.recognize", return_value=None), \
+                    patch.object(self.loader, "_score_ocr_candidate", side_effect=candidates), \
+                    patch.object(self.loader, "_run_process", return_value=subprocess.CompletedProcess([], 0, "output", "")):
+                text, scored = self.loader._ocr_image_text_with_quality(
+                    image_path=Path("unused.png"), doc_name="fixture", page_index=0,
+                )
+            self.assertEqual(text, "!")
+            summary = self.loader._summarize_page_ocr_quality(page_index=0, candidates=scored)
+            self.assertEqual(summary["selected_psm"], "6")
+            self.assertEqual(summary["selected_score"], -0.5)
+            self.assertFalse(summary["selected_passed"])
+
+    def test_empty_candidates_have_no_selected_text(self):
+        with patch("doc_loaders.chinese_ocr_strategy.recognize", return_value=None), \
+                patch.object(self.loader, "_run_process", return_value=subprocess.CompletedProcess([], 0, " \n", "")):
+            text, candidates = self.loader._ocr_image_text_with_quality(
+                image_path=Path("unused.png"), doc_name="fixture", page_index=0,
+            )
+        self.assertEqual(text, "")
+        self.assertIsNone(self.loader._summarize_page_ocr_quality(page_index=0, candidates=candidates)["selected_psm"])
+
+    def test_directed_nonempty_low_quality_text_keeps_region_diagnostics(self):
+        regions = ({"accepted": False, "quality_flags": ["recognition_uncertain"]},)
+        with patch("doc_loaders.chinese_ocr_strategy.recognize", return_value=SimpleNamespace(text="!", regions=regions)):
+            text, candidates = self.loader._ocr_image_text_with_quality(
+                image_path=Path("unused.png"), doc_name="fixture", page_index=0,
+            )
+        self.assertEqual(text, "!")
+        self.assertFalse(candidates[0].passed)
+        self.assertEqual(candidates[0].region_evidence, regions)
+
+    def test_typed_geometry_fallback_marks_every_nonempty_generic_candidate(self):
+        from doc_loaders.chinese_ocr_strategy import ChineseOcrFallback
+        from doc_loaders.ocr_review import page_review_regions
+        fallback = ChineseOcrFallback(reason="chinese_layout_coverage_uncertain", bbox=(0, 0, 80, 120))
+        outputs = [ENGLISH, "", "!", ENGLISH + "Additional readable words."]
+        with patch("doc_loaders.chinese_ocr_strategy.recognize", return_value=fallback), \
+                patch.object(self.loader, "_run_process", side_effect=[
+                    subprocess.CompletedProcess([], 0, output, "") for output in outputs
+                ]) as process:
+            text, candidates = self.loader._ocr_image_text_with_quality(
+                image_path=Path("unused.png"), doc_name="fixture", page_index=0,
+            )
+        self.assertEqual(process.call_count, 4)
+        for candidate in candidates:
+            if not candidate.text:
+                self.assertEqual(candidate.region_evidence, ())
+                continue
+            region, = candidate.region_evidence
+            self.assertEqual(region["bbox"], [0, 0, 80, 120])
+            self.assertEqual((region["char_start"], region["char_end"]), (0, len(candidate.text)))
+            self.assertEqual(region["raw_candidate"], candidate.text)
+            self.assertFalse(region["accepted"])
+            self.assertIn(fallback.reason, region["quality_flags"])
+        summary = self.loader._summarize_page_ocr_quality(page_index=0, candidates=candidates)
+        self.assertTrue(summary["selected_passed"])
+        review, = page_review_regions(0, text, summary, [0, 0, 80, 120], 200)
+        self.assertEqual(review["raw_candidate"], text)
+        self.assertEqual(review["body_inclusion"], "included")
+
+    def test_ordinary_horizontal_none_does_not_invent_geometry_warning(self):
+        with patch("doc_loaders.chinese_ocr_strategy.recognize", return_value=None), \
+                patch.object(self.loader, "_run_process", return_value=subprocess.CompletedProcess([], 0, ENGLISH, "")):
+            text, candidates = self.loader._ocr_image_text_with_quality(
+                image_path=Path("unused.png"), doc_name="fixture", page_index=0,
+            )
+        self.assertEqual(text, ENGLISH.strip())
+        self.assertTrue(all(not candidate.region_evidence for candidate in candidates))
 
     def test_reported_english_page_ten_when_local_fixture_available(self):
         fixtures = list((Path(__file__).resolve().parents[1] / "data/raw").glob("20250515-*.pdf"))

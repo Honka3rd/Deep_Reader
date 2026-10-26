@@ -1,5 +1,25 @@
 # config Detailed Design
 
+## Block Translation Wiring (2026-10-26)
+
+TRANS-API-02 injects the existing llm_provider into TranslationService and wires it
+with the selected structured repository and profile store into TranslationAction.
+Main exposes the action through app.state; no model settings/new provider/private
+key handling or import-time completion. FaissStorageConfig adds opt-in read_only
+path resolution for this action, suppressing mkdir and legacy directory migration;
+existing callers retain their defaults. No automatic migration on translation reads.
+
+## Smart Cleanup Wiring (2026-10-24)
+
+SCLEAN-07 supporting composition: the configured llm_provider is injected directly
+as DocumentPreparationPipeline.cleanup_provider and into the singleton standalone
+service factory. Coordinator supplies coherent accepted-input, shared enhancement
+lease and explicit readiness ports; main installs the resulting service in app.state.
+No splitter-private provider discovery, new model settings or import-time request.
+Backends lacking coherent enhancement snapshot/lease ports remain unavailable; no
+unlocked fallback. Container/default-route and isolated SQL tests are counted once
+in preparation SCLEAN-07, not a second config task.
+
 ## Summary Service Wiring (2026-10-21)
 
 SN-10 supporting composition: SummaryInteractionService receives the configured

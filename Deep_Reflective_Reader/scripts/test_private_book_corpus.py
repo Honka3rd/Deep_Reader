@@ -1,5 +1,6 @@
 """Backups survive Library deletion and reject accidental replacement/corruption."""
 from pathlib import Path
+from dataclasses import replace
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -46,6 +47,15 @@ class CorpusTests(unittest.TestCase):
             corpus.preserve(path, b"replacement")
         self.assertEqual(path.read_bytes(), b"accepted source fixture")
 
+    def test_legacy_backup_without_cleanup_context_is_derived_read_only(self):
+        self.coordinator.read_enhancement_state.return_value = SimpleNamespace(
+            source=replace(self.snapshot, cleanup_context=None))
+        case_id = corpus.backup_book(self.coordinator, "doc")
+        path = corpus.fixture_path(case_id) / "snapshot.json"
+        before = path.read_bytes()
+        self.assertEqual(corpus.load_book(case_id)[1], self.snapshot)
+        self.assertEqual(path.read_bytes(), before)
+
     def test_corruption_and_missing_backups_fail_closed(self):
         case_id = corpus.backup_book(self.coordinator, "doc")
         path = corpus.fixture_path(case_id) / "source.pdf"
@@ -59,6 +69,20 @@ class CorpusTests(unittest.TestCase):
     def test_case_cannot_escape_corpus(self):
         with self.assertRaises(ValueError):
             corpus.fixture_path("../raw/doc")
+
+    def test_typed_ocr_evidence_survives_backup_and_reload(self):
+        from document_structure.ocr_cleanup_contract import ActualOcrEvidence, CanonicalOcrSpan
+        from document_preparation.cleanup_handoff import CleanupSourceContext
+        evidence = ActualOcrEvidence(schema_version="cleanup_ocr_evidence_v1",
+            extraction_identity=self.snapshot.extraction_identity, text_sha256=self.snapshot.text_sha256,
+            spans=(CanonicalOcrSpan(page_index=0, char_start=0, char_end=self.snapshot.text_length),))
+        context = CleanupSourceContext(evidence=evidence, pages=self.snapshot.cleanup_context.pages)
+        self.snapshot = replace(self.snapshot, cleanup_context=context)
+        self.fixture.document.parse_provenance["actual_ocr_evidence"] = evidence.model_dump(mode="json")
+        self.coordinator.read_enhancement_state.return_value = SimpleNamespace(source=self.snapshot)
+        case_id = corpus.backup_book(self.coordinator, "doc")
+        self.assertEqual(corpus.load_book(case_id)[1], self.snapshot)
+        self.assertEqual(corpus.backup_book(self.coordinator, "doc"), case_id)
 
 
 if __name__ == "__main__":

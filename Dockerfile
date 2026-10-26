@@ -23,8 +23,14 @@ ADD https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359
 RUN echo '1df02a4b210e5c217b783819538b63e9dfe6904e2b5e53b62664f1b9f7a989d0  /usr/share/tesseract-ocr/5/tessdata/chi_tra_vert.traineddata' | sha256sum -c -
 RUN echo '20590de84725bab69cde93bd6e8ed360a13cc5421a7e7364ddeb93e9af53d6da  /usr/share/tesseract-ocr/5/tessdata/chi_sim_vert.traineddata' | sha256sum -c -
 
+ENV DEEP_READER_TOKENIZER_ASSET_DIR=/opt/deep-reader/tokenizer-assets
+COPY Deep_Reflective_Reader/llm/offline_token_counter.py ./llm/offline_token_counter.py
+COPY Deep_Reflective_Reader/scripts/prepare_tokenizer_assets.py ./scripts/prepare_tokenizer_assets.py
+RUN python -m scripts.prepare_tokenizer_assets
+
 COPY Deep_Reflective_Reader/ ./
 
 EXPOSE 8000
 
+ENTRYPOINT ["python", "-m", "scripts.tokenizer_startup"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
