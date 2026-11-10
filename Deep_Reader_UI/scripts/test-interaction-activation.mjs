@@ -1,7 +1,8 @@
 // Actual React app with isolated API fixtures: no production writes or model calls.
 import assert from "node:assert/strict";
+import { book } from "./learning-controller-fixtures.mjs";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
 const labels = { insight: "Insights", summary: "Summary", quiz: "Quiz", "critical-thinking": "Critical thinking" };
 const interactionKinds = process.env.INTERACTION_KIND ? [process.env.INTERACTION_KIND] : Object.keys(labels);
 const types = { insight: "analysis", summary: "summary", quiz: "quiz", "critical-thinking": "critical_thinking_session" };
@@ -26,6 +27,7 @@ try {
         items: ["Book", "Other"].map(doc_name => ({ doc_name, title: doc_name, source: "structured", preparation_status: "ready" })) } });
       if (path.endsWith("/task-layout")) return route.fulfill({ json: { ...layout, document_id: route.request().postDataJSON().doc_name } });
       if (path.endsWith("/reparse-structure/status")) return route.fulfill({ json: { status: "idle" } });
+      if (path.endsWith("/reading-preferences/read")) return route.fulfill({ json: book(route.request().postDataJSON().doc_name, "normal") });
       if (path.endsWith("/reading-content")) return route.fulfill({ json: {
         revision: 0, source_token: "fixture", disposition: "accepted", can_undo: false, max_chars: 10000, regions: [], blocks: [],
       } });
@@ -40,6 +42,7 @@ try {
       }
       if (kind === "note") return route.fulfill({ json: { target: { ...target, target_id: "Book" }, target_token: "t1", max_chars: 10000, note: null } });
       const isRead = operation === "read";
+      if (!isRead && currentMode === "generation-http-error") return route.fulfill({ status: 503, json: { detail: "Unknown generation outcome" } });
       if (isRead && currentMode === "http-error") return route.fulfill({ status: 503, json: { detail: "Unavailable" } });
       if (isRead && currentMode === "malformed") return route.fulfill({ json: { unexpected: true } });
       const saved = currentMode === "saved" || !isRead;
@@ -126,6 +129,15 @@ try {
       calls.length = 0; holdPhase = kind === "critical-thinking" ? "generate-question" : "generate"; release = null;
       await open(kind); await until(() => release); await close(kind); release(); await pause(100);
       assert.equal(calls.length, 2); assert.equal(await surface(kind).isVisible(), false);
+      {
+        // R1: reopening while the server is still generating must join that work.
+        calls.length = 0; holdPhase = kind === "critical-thinking" ? "generate-question" : "generate"; release = null;
+        await open(kind); await until(() => release); const finishGeneration = release;
+        await close(kind); await open(kind); await pause(150);
+        assert.equal(calls.length, 2, `${kind}: reopening dispatched duplicate generation`);
+        finishGeneration(); await visibleContent(kind); await idle(kind);
+        assert.equal(calls.length, 2); await close(kind);
+      }
       // Failed generation does not retry. Explicit retry reconciles a saved outcome.
       mode = "generation-error"; calls.length = 0;
       await open(kind); await until(() => calls.length === 2); await idle(kind); await pause(100);
@@ -136,6 +148,16 @@ try {
       await retry.click(); await visibleContent(kind); await idle(kind);
       assert.deepEqual(calls.map(call => call.operation), ["read", kind === "critical-thinking" ? "generate-question" : "generate", "read"]);
       await close(kind);
+      {
+        // Lost transport outcome is retained across reopening, not interpreted as missing.
+        mode = "generation-http-error"; calls.length = 0;
+        await open(kind); await idle(kind); await close(kind);
+        await open(kind); await idle(kind);
+        assert.equal(calls.length, 2, `${kind}: unknown outcome must not automatically restart`);
+        mode = "saved"; await retry.click(); await visibleContent(kind); await idle(kind);
+        assert.equal(calls.length, 3, `${kind}: explicit retry reconciles through read`);
+        await close(kind);
+      }
       console.log(`PASS ${width}px ${kind}: one-click, saved, 11 read faults, close, explicit retry reconciliation`);
     }
     // Same inline action repeated during its read is deduplicated.

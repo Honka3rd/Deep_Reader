@@ -178,6 +178,7 @@ export default function App() {
     selectedInteraction,
     selectInteractionAction,
     activateInteraction,
+    generationTasks,
     beginInlineInsightRequest,
     applyInlineInsightState,
     failInlineInsightRequest,
@@ -1298,6 +1299,7 @@ export default function App() {
         onCloseDrawer={closeReadingInteractionDrawer}
       />
       {summaryNoteSelection && <SummaryNoteDrawer
+        generationTasks={generationTasks}
         key={`${summaryNoteSelection.kind}:${JSON.stringify(summaryNoteSelection.target)}`}
         selection={summaryNoteSelection} dirtyRef={noteDirtyRef} onClose={() => { closeSummaryNote(); }} />}
       <BlockTranslationView controller={translations} />

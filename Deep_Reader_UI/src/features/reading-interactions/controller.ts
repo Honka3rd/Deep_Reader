@@ -1,6 +1,7 @@
 import type { ReadingInteractionTargetRequest, ReadingInteractionResponseEnvelope } from "../../types/api";
 import type { ReadingInteractionService } from "../../services/ReadingInteractionService";
-import { readOrGenerate } from "./activation";
+import { readOrGenerate, validateInteractionResponse } from "./activation";
+import { InteractionGenerationTasks } from "./generation-tasks";
 import { useEffect, useRef, useState } from "react";
 import {
   mapAnalysisInteractionResponseToInsightViewState,
@@ -54,11 +55,13 @@ export function useReadingInteractionMenuController() {
   const [criticalThinkingStateByTarget, setCriticalThinkingStateByTarget] =
     useState<CriticalThinkingStateByTarget>({});
   const requestIdRef = useRef(0);
+  const [generationTasks] = useState(() => new InteractionGenerationTasks());
   const activationRef = useRef<{ controller: AbortController; targetKey: string; kind: ReadingInteractionKind } | null>(null);
   useEffect(() => () => {
     activationRef.current?.controller.abort();
+    generationTasks.dispose();
     requestIdRef.current += 1;
-  }, []);
+  }, [generationTasks]);
 
   function cancelActivation() {
     const active = activationRef.current;
@@ -84,7 +87,7 @@ export function useReadingInteractionMenuController() {
     const key = selection.targetKey;
     // The same guard covers both phases, including notifications and failures.
     async function run<T extends { envelope: ReadingInteractionResponseEnvelope; payload?: unknown }, S>(
-      interactionType: string, read: () => Promise<T>, generate: () => Promise<T>,
+      interactionType: string, read: () => Promise<T>, generate: (signal: AbortSignal) => Promise<T>,
       begin: (key: string, status: "loading" | "generating") => number,
       map: (response: T) => S, apply: (key: string, state: S, id: number) => void,
       fail: (key: string, id: number, message: string, status: ReturnType<typeof normalizeReadingInteractionThrownError>["status"]) => void,
@@ -93,8 +96,14 @@ export function useReadingInteractionMenuController() {
       let generated = false;
       const isCurrent = () => !signal.aborted && activationRef.current === activation && isLatestInteractionRequest(requestId);
       try {
-        const response = await readOrGenerate({ target, interactionType, read, generate, isCurrent, retryGeneration,
-          onGenerating: () => { generated = true; requestId = begin(key, "generating"); } });
+        const taskKey = JSON.stringify([interactionType, key]);
+        const pending = generationTasks.find<T>(taskKey, retryGeneration);
+        const onGenerating = () => { generated = true; requestId = begin(key, "generating"); };
+        if (pending) onGenerating();
+        const response = await (pending ?? readOrGenerate({ target, interactionType, read,
+          generate: () => generationTasks.start(taskKey, async taskSignal =>
+            validateInteractionResponse(await generate(taskSignal), target, interactionType)),
+          isCurrent, retryGeneration, onGenerating }));
         if (response && isCurrent()) {
           apply(key, map(response), requestId);
           if (generated && selection.kind === "critical_thinking" && response.envelope.status === "question_generated") {
@@ -111,15 +120,15 @@ export function useReadingInteractionMenuController() {
       }
     }
     if (selection.kind === "insight") {
-      await run("analysis", () => service.readInsight(target, signal), () => service.generateInsight(target, { signal }),
+      await run("analysis", () => service.readInsight(target, signal), taskSignal => service.generateInsight(target, { signal: taskSignal }),
         beginInlineInsightRequest, response => mapAnalysisInteractionResponseToInsightViewState(selection.target, response),
         applyInlineInsightState, failInlineInsightRequest);
     } else if (selection.kind === "quiz") {
-      await run("quiz", () => service.readQuiz(target, signal), () => service.generateQuiz(target, { signal }),
+      await run("quiz", () => service.readQuiz(target, signal), taskSignal => service.generateQuiz(target, { signal: taskSignal }),
         beginQuizRequest, response => mapQuizInteractionResponseToQuizViewState(selection.target, response), applyQuizState, failQuizRequest);
     } else if (selection.kind === "critical_thinking") {
       await run("critical_thinking_session", () => service.readCriticalThinkingSession(target, { signal }),
-        () => service.generateCriticalThinkingQuestion(target, { signal }), beginCriticalThinkingRequest,
+        taskSignal => service.generateCriticalThinkingQuestion(target, { signal: taskSignal }), beginCriticalThinkingRequest,
         response => mapCriticalThinkingSessionResponseToViewState(selection.target, response), applyCriticalThinkingState, failCriticalThinkingRequest);
     }
   }
@@ -436,6 +445,7 @@ export function useReadingInteractionMenuController() {
   }
 
   return {
+    generationTasks,
     activateInteraction,
     resetInteractions,
     interactionMenuTarget,

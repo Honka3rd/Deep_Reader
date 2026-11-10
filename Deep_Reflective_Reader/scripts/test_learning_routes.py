@@ -168,6 +168,100 @@ class HttpCases:
         error = self.post(BASE+'generate', self.payload(), 422)['detail']
         self.assertEqual(error['reasons'][0]['code'], 'learning_mode_not_active')
 
+    def test_r2_mode_roundtrip_retries_current_settings_and_fences_old_worker(self):
+        selection = self.post(BOOK+'read', {'doc_name': 'book'})['saved_settings'][0]['selection']
+        entered, release, finished = Event(), Event(), Event()
+        dispatched = []
+        complete = self.provider.complete_text_once_with_output_budget
+
+        def held_complete(*args):
+            dispatched.append(args)
+            first = len(dispatched) == 1
+            if first:
+                entered.set()
+                if not release.wait(8):
+                    raise TimeoutError('test release missing')
+            try:
+                return complete(*args)
+            finally:
+                if first:
+                    finished.set()
+
+        with patch.object(self.provider, 'complete_text_once_with_output_budget', side_effect=held_complete):
+            try:
+                original = self.post(BASE+'generate', self.payload('old-mode'))
+                self.assertTrue(entered.wait(5))
+                self.apply()
+                current = self.apply(2, selection=selection)
+                self.assertEqual(current['revision'], 3)
+                handle = {'handle': original['operation']}
+                before = self.snapshot()
+                status = self.post(BASE+'operations/read', handle)
+                self.assertEqual(status['state'], 'stale')
+                self.assertEqual(status['durable_state'], 'running')
+                self.assertFalse(status['settings_current'])
+                self.assertTrue(status['source_current'])
+                self.assertEqual(before, self.snapshot(), 'stale observation is read-only')
+                self.post(BASE+'operations/reconcile', handle)
+                self.assertEqual(self.post(BASE+'operations/read', handle)['durable_state'], 'stale')
+                body = self.payload('no-consent', intent='retry', retry_operation=original['operation'])
+                body['expected_book_revision'] = current['revision']
+                self.assertEqual(self.post(BASE+'generate', body)['outcome'], 'reconcile')
+                self.assertEqual(len(dispatched), 1)
+                body.update(command_id='consented-current', acknowledge_possible_duplicate_cost=True)
+                self.assertEqual(self.post(BASE+'generate', body)['outcome'], 'claimed')
+                self.assertEqual(self.finish('consented-current'), 'succeeded')
+                saved = self.read()['blocks'][0]['components'][0]['saved']
+                self.assertEqual(len(dispatched), 2)
+            finally:
+                release.set()
+            self.assertTrue(finished.wait(5))
+        self.service.shutdown()
+        self.assertEqual(self.read()['blocks'][0]['components'][0]['saved'], saved)
+        self.assertEqual(self.post(BASE+'operations/read', handle)['durable_state'], 'stale')
+
+    def test_r3_reimport_requires_explicit_apply_preserves_cas_and_read_purity(self):
+        selection = self.post(BOOK+'read', {'doc_name': 'book'})['saved_settings'][0]['selection']
+        for selected in ({'mode_id': 'normal', 'version': '1'}, selection):
+            with self.subTest(mode=selected['mode_id']):
+                previous = self.post(BOOK+'read', {'doc_name': 'book'})
+                self.assertTrue(self.docs.delete_document('book'))
+                tombstone = self.prefs.read_book('book')
+                self.assertTrue(tombstone.deleted)
+                before = self.snapshot()
+                self.post(BOOK+'apply', {'doc_name': 'book', 'expected_revision': tombstone.revision,
+                    'expected_workspace_revision': 1, 'mutation_id': 'absent', 'selection': selected}, 404)
+                self.assertEqual(before, self.snapshot())
+                self.docs.save_reparsed_document(fixture(), 'book')
+                before = self.snapshot()
+                read = self.post(BOOK+'read', {'doc_name': 'book'})
+                self.assertIsNone(read['effective_mode'])
+                self.assertIn('book_deleted', [r['code'] for r in read['active_reasons']])
+                self.assertEqual(before, self.snapshot(), 'reimport reads must not restore tombstone')
+                body = {'doc_name': 'book', 'expected_revision': previous['revision'],
+                    'expected_workspace_revision': 1, 'mutation_id': 'old-settings', 'selection': selected}
+                self.post(BOOK+'apply', body, 409)
+                body.update(expected_revision=read['revision'], mutation_id='reapply-'+str(read['revision']))
+                restored = self.post(BOOK+'apply', body)
+                self.assertEqual(restored['effective_mode'], selected['mode_id'])
+                self.assertEqual(restored['revision'], read['revision']+1)
+                self.assertFalse(self.prefs.read_book('book').deleted)
+                # HTTP reapply requires a fresh revision even when an older
+                # mutation ID is replayed; reads reconcile a lost acknowledgement.
+                self.post(BOOK+'apply', body, 409)
+                self.assertEqual(self.post(BOOK+'read', {'doc_name': 'book'}), restored)
+                self.post(BOOK+'apply', {**body, 'mutation_id': 'obsolete'}, 409)
+                if selected['mode_id'] == 'language_learning':
+                    command = self.payload('old-source'); command['expected_book_revision'] = restored['revision']
+                    # SQL recreation can allocate a new block ID; separately test
+                    # old-command rejection and a current block with an old token.
+                    rejected = self.client.post(BASE+'generate', json=command)
+                    self.assertIn(rejected.status_code, (404, 409))
+                    self.assertIn(rejected.json()['detail']['code'], ('learning_block_missing', 'learning_source_changed'))
+                    command['content_block_id'] = self.repo.read_sources('book').blocks[0].source.content_block_id
+                    self.assertEqual(self.post(BASE+'generate', command, 409)['detail']['code'], 'learning_source_changed')
+        self.assertEqual(self.provider.calls, [])
+
     def test_apply_preserves_learning_settings_and_override_omission(self):
         result = self.apply(source_language_override='fr')
         self.assertEqual(result['active_mode'], 'normal')

@@ -1,5 +1,13 @@
 # Deep_Reader_UI Checklist
 
+## External review corrections (2026-11-10)
+
+- [x] UI-AUDIT-E7073: Correct R1 generation ownership, R2 settings-stale retry and R3 explicit reimport reapply.
+  Owner: Deep_Reader_UI. Status: Implemented and locally verified; external re-review required.
+  Acceptance: No duplicate generation on close/reopen; current-source/settings retry with uncertain-cost consent and old-worker fencing; explicit CAS reapply after same-name reimport, no read mutation.
+  Evidence: R1/R2/R3 red regressions reproduced before fixes; 21 controller groups, 1280/390 interaction/settings/display/lifecycle and actual preference/learning API mode-control suites pass. Type/build passes; 448 file/PostgreSQL backend tests and two unchanged real-book excerpts with offline providers pass. Desktop/mobile inspected. See design for limits; no Docker deployment or push.
+  Timestamp: 2026-11-10
+
 ## Reader reading-mode control (2026-11-10)
 
 - [x] Show the current reading mode and open its settings directly from the reader.

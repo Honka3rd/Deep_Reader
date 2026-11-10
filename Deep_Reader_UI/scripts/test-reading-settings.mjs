@@ -23,11 +23,13 @@ for (const width of [1280, 390]) {
   if (!workspace.native_language) reasons.push(issue("native_language_required", "native_language", "Set your native language."));
   if (source === workspace.native_language) reasons.push(issue("same_language", "source_language", "Original and native languages must differ."));
   if (!b.learning || b.learning.language_code !== source) reasons.push(issue("proficiency_required", "proficiency", "Choose a reading level."));
-  const activeReasons = b.active_mode === "normal" ? [] : b.active_mode === "future_mode" ? [issue("mode_unknown", "active_mode", "This saved mode is not supported.")] : reasons;
+  const deletion = b.deleted ? [issue("book_deleted", "document_id", "These preferences belong to a deleted book identity.")] : [];
+  reasons.unshift(...deletion);
+  const activeReasons = b.active_mode === "normal" ? deletion : b.active_mode === "future_mode" ? [issue("mode_unknown", "active_mode", "This saved mode is not supported.")] : reasons;
   return { doc_name: doc, revision: b.revision, workspace: { ...workspace }, active_mode: b.active_mode,
    effective_mode: activeReasons.length ? null : b.active_mode, source_language_override: b.override, source_language: source,
    source_origin: b.override ? "override" : "profile", active_reasons: activeReasons,
-   modes: [{ mode_id: "normal", label: "Normal reading", description: "Read with the usual tools.", settings_version: "1", eligible: true, reasons: [] },
+   modes: [{ mode_id: "normal", label: "Normal reading", description: "Read with the usual tools.", settings_version: "1", eligible: !deletion.length, reasons: deletion },
     { mode_id: "language_learning", label: "Language learning", description: "Learn the original language.", settings_version: "1", eligible: !reasons.length, reasons },
     ...(hiddenUnknown ? [{ mode_id: "future_mode", label: "Future mode", description: "A future feature.", settings_version: "2", eligible: b.active_mode !== "future_mode", reasons: b.active_mode === "future_mode" ? activeReasons : [] }] : [])],
    saved_settings: b.learning ? [{ mode_id: "language_learning", version: "1", supported: true, selection: b.learning }] : [] };
@@ -51,7 +53,7 @@ for (const width of [1280, 390]) {
   } else if (path.endsWith("/apply")) {
    const b = books[body.doc_name];
    assert.equal(body.expected_revision, b.revision); assert.equal(body.expected_workspace_revision, workspace.revision);
-   b.active_mode = body.selection.mode_id; b.override = body.source_language_override; b.revision++;
+   b.active_mode = body.selection.mode_id; b.override = body.source_language_override; b.revision++; b.deleted = false;
    if (body.selection.mode_id === "language_learning") b.learning = body.selection;
   }
   if (fail === "unknown") { fail = null; return route.fulfill({ status: 503, json: { detail: { kind: "unknown", code: "preference_commit_unknown", recovery: "read_preferences" } } }); }
@@ -78,7 +80,9 @@ for (const width of [1280, 390]) {
   check("candidate dirty", model.draftChanged(draft, book));
   check("missing native/level", model.learningProblems(draft, { book, options }).length === 2);
   const blocked = { ...book, modes: [{ ...book.modes[0], reasons: [{ code: "book_deleted", field: "document_id", message: "Deleted book" }] }] };
-  check("server deletion blocks", model.serverBlockers(blocked, "normal")[0] === "Deleted book");
+  check("explicit reapply can resolve tombstone", model.serverBlockers(blocked, "normal").length === 0);
+  blocked.modes[0].reasons.push({ code: "future_policy", field: "document_id", message: "Unknown policy" });
+  check("unknown reasons still block", model.serverBlockers(blocked, "normal")[0] === "Unknown policy");
   check("profile is not guessed", model.sourceLanguage({ ...draft, override: null }, { ...book, source_origin: "override" }) === null);
   return failures;
  }, { options, book: project("Book") });
@@ -100,6 +104,24 @@ for (const width of [1280, 390]) {
  assert.equal(await page.getByRole("option").count(), options.language_codes.length + 1);
  await page.getByRole("option", { name: "Chinese (zh)", exact: true }).click();
  await save(); assert.equal(workspace.native_language, "zh"); await dismiss(); await back();
+ // R3: a canonical reimport is present, but preferences retain a deletion tombstone.
+ for (const chosen of ["Normal reading", "Language learning"]) {
+  Object.assign(books.Other,{deleted:true,active_mode:"normal",learning:null}); books.Other.revision++;
+  const before=calls.filter(c=>c.path.endsWith("/apply")).length, revision=books.Other.revision;
+  await open("Other"); await mode(chosen);
+  if(chosen==="Language learning") await select("Reading level",options.proficiency_schemes.find(s=>s.language_code==="en").levels[0].label);
+  assert.equal(calls.filter(c=>c.path.endsWith("/apply")).length,before,"reimport read must not restore settings");
+  assert.equal(books.Other.deleted,true);
+  assert.match(await surface.locator(".reading-mode-active-reason").innerText(), /re-imported.*Save and apply/);
+  assert.equal(await surface.locator(".reading-settings-save").isEnabled(),true,"R3 explicit reapply must be available");
+  if(chosen==="Normal reading") await page.screenshot({path:`/tmp/audit-e7073/reimport-settings-${width}.png`,fullPage:true,animations:"disabled"});
+  await save(); await dismiss();
+  assert.equal(books.Other.deleted,false); assert.equal(books.Other.revision,revision+1);
+  assert.equal(calls.filter(c=>c.path.endsWith("/apply")).length,before+1);
+  await back();
+ }
+ if(process.env.REIMPORT_ONLY){assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);console.log(`PASS reimport ${width}: explicit normal/learning apply, read purity, CAS`);await page.close();continue;}
+ Object.assign(books.Other,{active_mode:"normal",learning:null});
  await open("Book");
  await mode("Language learning");
  assert.equal(await surface.locator(".reading-settings-save").isEnabled(), false);

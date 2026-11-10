@@ -7,7 +7,7 @@ try {
  await page.goto(process.env.UI_URL || "http://127.0.0.1:5173");
  const results = await page.evaluate(async () => {
   const { LearningPageSession } = await import("/src/features/learning-reader/session.ts");
-  const { LearningSessionMemory, itemKey, pageSources, pageProgress, emptyPage } = await import("/src/features/learning-reader/model.ts");
+  const { LearningSessionMemory, itemKey, pageSources, pageProgress, emptyPage, componentAction } = await import("/src/features/learning-reader/model.ts");
   const { LearningService, LearningFailure, validRead, validOperation } = await import("/src/services/LearningService.ts");
   const f = await import("/scripts/learning-controller-fixtures.mjs");
   const check = (v, message) => { if (!v) throw Error(message); };
@@ -38,6 +38,49 @@ try {
    return { session, calls, ops, commands, memory, settings, state: () => state, item: (id = "b1", c = "translation") => state?.items[itemKey(id,c)],
     count: endpoint => calls.filter(c => c.endpoint === endpoint).length };
   }
+  await test("R2 settings-stale work permits explicit current-settings retry with cost consent", async () => {
+   for (const durable of ["running", "stale"]) {
+    const b=f.block(); f.save(b,"hints");
+    let op={...f.operation(b,"translation",durable,"old"),state:"stale",settings_current:false,outcome_uncertain:true};
+    f.attach(b,op);
+    const settings={...f.book(),revision:3};
+    const h=harness([b],{book:settings,respond:(e)=>{
+     if (["operations/read","operations/wait"].includes(e) && op) return {ok:true,status:200,payload:copy(op)};
+     if(e==="operations/reconcile") {op={...op,durable_state:"stale"};return {ok:true,status:200,payload:f.submission({doc_name:"Book",command_id:"old"},"stale",op.handle)};}
+     if(e==="generate") op=null;
+    }});
+    await h.session.start();await until(()=>h.item()?.phase==="stale"&&!h.item()?.busy);
+    check(["retry","confirm"].includes(componentAction(h.item())),"stale UI must expose retry, not only Check progress");
+    check(h.count("generate")===0,"no implicit retry on mode return");
+    h.session.enqueue(itemKey("b1","translation"),"retry");await until(()=>!h.item().busy);
+    check(h.item().phase==="unknown"&&h.count("generate")===0,"uncertain stale retry requires confirmation");
+    h.session.enqueue(itemKey("b1","translation"),"retry",true);await until(()=>h.item().phase==="ready"&&!h.item().busy);
+    const commands=h.calls.filter(c=>c.endpoint==="generate");check(commands.length===1,"one retry only");
+    const cmd=commands[0].body;check(cmd.expected_book_revision===3&&cmd.retry_operation.operation_id==="old"&&cmd.intent==="retry"&&cmd.acknowledge_possible_duplicate_cost,"fresh revisions and explicit cost consent");
+    check(h.count("operations/reconcile")===(durable==="running"?1:0),"invalidate live stale work before claiming replacement");
+   }
+  });
+  await test("R2 stale retry keeps source, ownership, fresh settings and reconciliation guards", async () => {
+   for(const fault of ["source","slot","settings","reconcile-unknown","reconcile-slot","certain","current-stale"]) {
+    const b=f.block();f.save(b,"hints");
+    let op={...f.operation(b,"translation",fault.startsWith("reconcile")?"running":"stale","old"),state:"stale",settings_current:false,outcome_uncertain:fault.startsWith("reconcile")};
+    if(fault==="current-stale")op.settings_current=true;
+    if(fault==="source")op.source_current=false;
+    if(fault==="slot")op.owns_current_slot=false;
+    f.attach(b,op);let initial=true;
+    const h=harness([b],{respond:(e,body,{settings})=>{
+     if(e==="read"&&fault==="settings"&&!initial)return {ok:true,status:200,payload:{doc_name:"Book",settings:{...settings,revision:99},blocks:[b]}};
+     if(["operations/read","operations/wait"].includes(e)&&op)return {ok:true,status:200,payload:copy(op)};
+     if(e==="operations/reconcile") {if(fault==="reconcile-slot")op={...op,durable_state:"stale",owns_current_slot:false};return {ok:true,status:200,payload:f.submission({doc_name:"Book",command_id:"old"},fault==="reconcile-unknown"?"unknown":"stale",op.handle)};}
+     if(e==="generate")op=null;
+    }});
+    await h.session.start();await until(()=>h.item()?.phase==="stale"&&!h.item().busy);initial=false;
+    if(["source","slot"].includes(fault))check(componentAction(h.item())==="check","invalid operation cannot offer retry");
+    h.session.enqueue(itemKey("b1","translation"),"retry");await until(()=>!h.item().busy);
+    check(h.count("generate")===(["certain","current-stale"].includes(fault)?1:0),`${fault}: fail-closed retry`);
+    if(fault==="certain")check(h.item().phase==="ready"&&!h.calls.find(c=>c.endpoint==="generate").body.acknowledge_possible_duplicate_cost,"known-cost stale retry needs no duplicate-cost consent");
+   }
+  });
   await test("source identity and DTOs fail closed, code-point spans", async () => {
    const b = f.block("b1", "😀 Hello."); const read = { doc_name: "Book", settings: f.book(), blocks: [b] };
    check(validRead(read), "valid Unicode source"); b.sentences[0].end++; check(!validRead(read), "UTF16 mismatch");

@@ -1,5 +1,44 @@
 # Deep_Reader_UI Detailed Design
 
+## External review corrections for e7073bb (2026-11-10)
+
+R1 preserves dispatched interaction work across surface teardown with identity-scoped
+session ownership and guarded observers. Reads may be cancelled before generation;
+reopening pending work attaches to the existing generation. Explicit retry reconciles
+saved state first after failure; no automatic paid retry.
+
+R2 distinguishes old operation settings from the freshly verified page settings.
+A settings-stale operation on the current source and current slot exposes Retry;
+retry first rereads current page/source/settings and operation identity. Explicit
+reconcile fences a still-active stale operation before a replacement command is
+submitted. A second operation read must confirm terminal durable state and continued
+slot/source ownership. New retry uses current revisions and the old operation handle;
+uncertain cost requires the existing confirmation dialog. Source mismatch, missing
+operation and replaced slots never authorize generation. No retry on mode return.
+
+R3 keeps deleted preferences unavailable on read and shows an explicit reapply hint
+for a canonical reimport. Save and apply uses the existing backend CAS command,
+which clears the tombstone and advances revision even for unchanged Normal settings.
+Language learning still requires registry-valid language/level and different native
+language; unknown blockers remain blocking. No hidden read repair or new import API.
+
+Validation: all three red regressions failed before production changes (R1 produced
+four HTTP requests instead of two; R2 had no stale retry; R3 blocked explicit apply).
+Summary independently reproduced R1 before sharing the same task owner. Green:
+21 controller groups, interaction activation/settings/display/lifecycle browser suites
+at 1280/390, and actual production preference/learning API mode-switch browser tests
+with temporary file storage and an offline provider. `npm run check` passes with the
+existing bundle-size warning. Backend regression: 448 file/real PostgreSQL tests,
+including explicit stale-worker fencing, uncertain-cost consent, pure reimport reads,
+CAS reapply and old-source rejection; disposable test DB removed. Two hash-verified
+English/Chinese excerpts reuse aligned results with one offline call each; backups
+unchanged. Desktop/mobile layouts inspected. Evidence: `/tmp/audit-e7073/`.
+
+Limits: no paid provider/semantic evaluation, production data mutation or full PDF
+upload/reimport browser journey. Interaction deduplication ends at App unmount and
+is not cross-tab/backend-wide. External APPROVED is required before Docker or push;
+this correction does not claim deployment acceptance.
+
 ## Reader reading-mode control (2026-11-10)
 
 Implemented after maintainer-authorized documentation governance. A compact button
@@ -281,7 +320,9 @@ A local typed `features.tsx` registry resolves mode ID/version to its panel and 
 mounts. Unsupported modes/versions remain visible and unapplied until an explicit supported
 selection is saved. Normal reading requires no learning fields; saved learning settings
 are retained by the existing backend contract. Known editable eligibility reasons can be
-resolved in the draft; deleted identities and unknown reasons stay blocking.
+resolved in the draft. A canonical document returned by the book settings API may
+retain a deletion tombstone after same-name reimport: explicit Save and apply may
+reactivate it using current book/workspace revisions. Unknown reasons stay blocking.
 
 Library provides Workspace preferences and a Reading mode action per book. It replaces
 its dialog with the settings surface, so no Library/settings modals are stacked. Desktop
@@ -560,10 +601,14 @@ stale critical-thinking session. Neither exception applies to initial activation
 Refresh remains an explicit replacement command; Note remains read-only on open.
 
 Deduplicate in-flight activation for the same action/target. Abort obsolete reads
-and suppress subsequent generation and late results on close, target/document
-change, reset or unmount. React Strict Mode must not duplicate requests. HTTP
-cancellation does not guarantee rollback of generation already accepted by the
-server; reopening reconciles through read. Passive menu opening, navigation and
+and suppress subsequent generation and late UI results on close, target/document
+change, reset or unmount. Once dispatched, Insights/Summary/Quiz/Critical thinking generation
+is owned by the mounted App interaction controller, independently of the visible
+observer. Close/reopen joins that pending promise without another read/generate;
+completion never reopens hidden UI. Failed transport outcomes remain tracked until
+explicit retry reads persisted state. Unmount releases tracking and aborts HTTP,
+which does not prove server rollback; this is session-local deduplication, not a
+backend exactly-once or cross-tab guarantee. React Strict Mode must not duplicate requests. Passive menu opening, navigation and
 layout loading never generate. Read endpoints remain read-only; the feature
 controller orchestrates the separate existing read/generate APIs. UI state never
 becomes hierarchy or artifact truth. This supersedes older two-click descriptions.

@@ -106,7 +106,11 @@ export class LearningPageSession {
       this.verifyOperation(op, block, item.component);
     }
     if (op.state === "missing" || !op.source_current || !op.settings_current || !op.owns_current_slot) {
-      this.patch(key, { phase: "stale", awaitingCompletion: false, message: "This operation is no longer current. Read the page again; no new generation was started." }); return;
+      const retryableStale = op.state === "stale" && op.source_current && op.owns_current_slot;
+      this.patch(key, { phase: "stale", awaitingCompletion: false, retryableStale,
+        view: { ...this.state.items[key].view, operation: h, operation_state: op.durable_state },
+        message: retryableStale ? "Settings changed while this task was running. Retry with current settings; possible duplicate cost will require confirmation."
+          : "This operation is no longer current. Read the page again; no new generation was started." }); return;
     }
     this.patch(key, { awaitingCompletion: !terminal.has(op.state) });
     if (op.state === "succeeded") {
@@ -114,6 +118,7 @@ export class LearningPageSession {
     }
     const pending = !terminal.has(op.state);
     this.patch(key, { phase: op.state === "claimed" || op.state === "running" ? "pending" : op.state,
+      retryableStale: op.state === "stale",
       view: { ...this.state.items[key].view, operation: h, operation_state: op.durable_state },
       message: pending ? "Still in progress. Select Check progress to wait again; generation has not been restarted."
         : op.failure_code === "invalid_output" ? "The generated response could not be read. Existing saved content is retained." : "" });
@@ -156,13 +161,27 @@ export class LearningPageSession {
     let h = committed && !recovery ? null : view.operation ?? recovery?.handle;
     if (h) {
       if (action !== "retry" && action !== "refresh") { await this.observe(key, h, action === "check"); return; }
-      const op = await this.api.operation(h, this.signal); if (this.signal.aborted) return; this.verifyOperation(op, block, item.component);
+      let op = await this.api.operation(h, this.signal); if (this.signal.aborted) return; this.verifyOperation(op, block, item.component);
       this.patch(key, { awaitingCompletion: !terminal.has(op.state) && op.source_current && op.settings_current && op.owns_current_slot });
       if (action === "refresh" && op.state === "succeeded" && op.source_current && op.settings_current && op.owns_current_slot) {
         h = null; // A confirmed completed operation permits a new explicit regeneration.
       } else {
-        if (action === "refresh" || !op.source_current || !op.settings_current || !op.owns_current_slot || !["failed", "unknown", "stale"].includes(op.state)) {
+        if (action === "refresh" || !op.source_current || !op.owns_current_slot || !["failed", "unknown", "stale"].includes(op.state)) {
           await this.observe(key, h, true); return;
+        }
+        // A stale projection can still represent a running old worker. Fence it
+        // explicitly, then recheck identity/ownership before replacing the slot.
+        if (op.state === "stale" && !["failed", "unknown", "stale"].includes(op.durable_state ?? "")) {
+          const result = await this.api.reconcile(h, this.signal); if (this.signal.aborted) return;
+          if (result.outcome === "unknown") {
+            this.patch(key, { phase: "unknown", message: "Recovery outcome is unknown. Check progress before retrying." }); return;
+          }
+          op = await this.api.operation(h, this.signal); if (this.signal.aborted) return;
+          this.verifyOperation(op, block, item.component);
+          if (!op.source_current || !op.owns_current_slot || !["failed", "unknown", "stale"].includes(op.state)
+            || !["failed", "unknown", "stale"].includes(op.durable_state ?? "")) {
+            await this.observe(key, h, false); return;
+          }
         }
         if (op.outcome_uncertain && !consent) { this.patch(key, { phase: "unknown", message: "Retry may incur duplicate cost. Explicit confirmation is required." }); return; }
       }

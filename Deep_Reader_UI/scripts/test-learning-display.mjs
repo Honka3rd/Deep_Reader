@@ -39,6 +39,7 @@ try{for(const width of [1280,390]){
    return route.fulfill({json:{doc_name:"Book",settings:settings(),blocks:body.content_block_ids.map(id=>blocks.find(b=>b.content_block_id===id))}});
   }
   if(["operations/read","operations/wait"].includes(endpoint))return route.fulfill({json:ops.get(body.handle.operation_id)});
+  if(endpoint==="operations/reconcile"){const op=ops.get(body.handle.operation_id);op.durable_state="stale";return route.fulfill({json:f.submission({doc_name:"Book",command_id:op.handle.operation_id},"stale",op.handle)});}
   if(endpoint==="operations/partial"){const b=blocks.find(b=>ops.get(body.handle.operation_id).content_block_id===b.content_block_id);return route.fulfill({json:{handle:body.handle,component:"translation",source_token:b.source_token,offset:0,completed_batches:1,total_batches:2,next_offset:null,batches:[{component:"translation",batch_index:0,rows:[{sentence_id:b.sentences[0].sentence_id,translated_text:"ترجمة جزئية"}]}]}});}
   if(endpoint==="generate"){
    if(hold){hold=false;await new Promise(r=>release=r);}
@@ -94,6 +95,21 @@ try{for(const width of [1280,390]){
  await changeMode("normal");await b(0).locator(".reader-inline-translation-text").waitFor();assert.equal(await page.locator(".learning-sentence-pairs").count(),0,"no duplicated sources");
  await openMenu();await page.getByRole("menuitem",{name:"View translations",exact:true}).waitFor();await page.keyboard.press("Escape");
  await changeMode("language_learning");await retry.waitFor({state:"hidden"});await action().waitFor();assert.equal(await page.locator(".reader-inline-translation-text").count(),0);assert.equal(gen().length,4);
+ // R2: return to learning with a settings-stale in-flight operation. Nothing
+ // auto-restarts; Retry revalidates, and the existing cost dialog remains Cancel-first.
+ const old={...f.operation(b1,"translation","running","mode-roundtrip"),state:"stale",settings_current:false};
+ ops.set(old.handle.operation_id,old);f.attach(b1,old);
+ await changeMode("normal");await changeMode("language_learning");
+ await retry.waitFor();await until(async()=>await retry.isEnabled());assert.equal(gen().length,4);
+ await retry.click();await until(async()=>await retry.isEnabled());assert.equal(gen().length,4);
+ await retry.click();await dialog.waitFor();
+ await until(async()=>await dialog.getByRole("button",{name:"Cancel",exact:true}).evaluate(e=>document.activeElement===e));
+ await dialog.getByRole("button",{name:"Cancel",exact:true}).click();assert.equal(gen().length,4);
+ await retry.click();await dialog.getByRole("button",{name:"Retry with possible duplicate cost",exact:true}).click();
+ await action().waitFor();await until(async()=>await action().isEnabled());assert.equal(gen().length,5);
+ assert.equal(gen().at(-1).body.expected_book_revision,version);
+ assert.equal(gen().at(-1).body.retry_operation.operation_id,old.handle.operation_id);
+ await page.screenshot({path:`/tmp/audit-e7073/learning-retry-${width}.png`,fullPage:true});
  const highlights=await page.evaluate(async ({book,b})=>{
   const {default:React}=await import("/node_modules/.vite/deps/react.js");
   const {default:Client}=await import("/node_modules/.vite/deps/react-dom_client.js");

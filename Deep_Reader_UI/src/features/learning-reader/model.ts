@@ -4,7 +4,7 @@ import type { ReaderContentBlock } from "../reader-content/model";
 
 export interface PageSource { id: string; text: string }
 export type Phase = "queued" | "reading" | "pending" | "ready" | "empty" | "partial" | "failed" | "unknown" | "stale" | "unavailable" | "error";
-export interface LearningItem { blockId: string; component: LearningComponent; phase: Phase; busy?: boolean; awaitingCompletion?: boolean; view: LearningView; message: string; partial?: PartialRead }
+export interface LearningItem { blockId: string; component: LearningComponent; phase: Phase; busy?: boolean; awaitingCompletion?: boolean; retryableStale?: boolean; view: LearningView; message: string; partial?: PartialRead }
 export interface LearningPageState { loading: boolean; error: string; blocks: Record<string, LearningBlock>; items: Record<string, LearningItem> }
 export const emptyPage = (): LearningPageState => ({ loading: true, error: "", blocks: {}, items: {} });
 const activeOperations = new Set(["claimed", "running", "partial"]);
@@ -50,7 +50,7 @@ export type ComponentAction = "refresh" | "retry" | "confirm" | "check";
 export function componentAction(item: LearningItem): ComponentAction {
   if (item.phase === "ready" && item.view.saved) return "refresh";
   if (item.phase === "unknown" && item.view.operation) return "confirm";
-  if (item.phase === "failed" || (item.phase === "unavailable" && item.view.state === "missing")) return "retry";
+  if (item.phase === "failed" || (item.phase === "stale" && item.retryableStale) || (item.phase === "unavailable" && item.view.state === "missing")) return "retry";
   return "check";
 }
 export function learningRows(item?: LearningItem) {

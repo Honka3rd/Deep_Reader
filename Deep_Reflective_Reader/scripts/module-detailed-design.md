@@ -1,5 +1,28 @@
 # scripts Detailed Design
 
+## External audit e7073bb regression scope (2026-11-10)
+
+`test_learning_routes.py` adds file/PostgreSQL HTTP cases for R2 and R3. R2 holds
+an old provider call across Normal → Learning, observes stale settings without
+read mutation, explicitly reconciles/fences the old worker, checks consent before
+retry under current revisions, and rejects late overwrite. R3 deletes/reimports
+the canonical same-name document, proves missing-document apply and stale revisions
+remain rejected, verifies pure tombstone reads, then explicitly applies Normal or
+Learning with a revision advance. Old source commands remain invalid. HTTP applies
+require current revisions even when replaying a former mutation ID; lost replies
+are reconciled through reads. No backend production contract is changed.
+
+Validation: 448 tests passed with no failures/errors/skips across preference service,
+lifecycle, generation policy, orchestration, API schemas/DI/routes, backend integration,
+shared translation and ordinary translation. Four new HTTP cases (R2/R3 × file/SQL)
+verify the existing backend contracts. PostgreSQL recreation may allocate new block
+IDs: old requests fail with missing block (404) or changed source (409); current block
+with old token always fails source validation. The disposable database was removed.
+Actual API/React mode control passes at 1280/390 with two offline calls total. Two
+hash-verified English/Chinese excerpts save/reuse with one offline call each and
+unchanged backups. Evidence: `/tmp/audit-e7073/`; no deployment, push, production
+mutation or live model claim. UI red/green evidence is owned by its module design.
+
 ## Shared sentence translation (2026-11-09)
 
 test_shared_translation.py exercises bidirectional reuse on real file and disposable

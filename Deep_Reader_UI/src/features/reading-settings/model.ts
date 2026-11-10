@@ -59,10 +59,11 @@ export interface SettingsFeaturePolicy {
 }
 
 // These server reasons can be resolved by the form fields before applying. Other
-// reasons (deleted identity, unknown policy) remain blocking until a fresh read.
+// Unknown policy remains blocking. The API has verified canonical book existence;
+// explicit CAS apply can reactivate preferences after same-name reimport.
 const editableReasons = new Set(["profile_missing", "profile_invalid", "profile_unavailable", "source_language_required", "source_language_invalid",
   "native_language_required", "native_language_invalid", "same_language", "proficiency_required", "proficiency_language_mismatch", "proficiency_invalid", "settings_unsupported"]);
 export function serverBlockers(book: BookPreferences, mode: string): string[] {
   const reasons = book.modes.find(m => m.mode_id === mode)?.reasons ?? [];
-  return reasons.filter(r => mode !== "language_learning" || !editableReasons.has(r.code)).map(r => r.message);
+  return reasons.filter(r => r.code !== "book_deleted" && (mode !== "language_learning" || !editableReasons.has(r.code))).map(r => r.message);
 }

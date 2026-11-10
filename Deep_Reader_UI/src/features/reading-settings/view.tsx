@@ -69,7 +69,9 @@ export function ReadingSettingsView({ controller: c, origin = "library" }: { con
           <Chip size="small" label={book.effective_mode ? "Active" : "Unavailable"} />
         </Stack>
         {!book.effective_mode && <Typography className="reading-mode-active-reason" variant="body2">
-          {book.active_reasons.map(reason => reason.message).join(" ")}
+          {book.active_reasons.map(reason => reason.code === "book_deleted"
+            ? "This book was re-imported. Review its settings, then Save and apply to activate a reading mode."
+            : reason.message).join(" ")}
         </Typography>}
         <Box className="reading-mode-columns" sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "minmax(180px, 1fr) minmax(0, 2fr)" }, gap: 2 }}>
           {(!narrow || !c.detail) && <List className="reading-mode-list" component="nav" aria-label="Reading modes" disablePadding>

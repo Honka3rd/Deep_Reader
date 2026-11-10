@@ -7,7 +7,8 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import type { ReadingInteractionTargetRequest } from "../../types/api";
 import { SummaryNoteService, type NoteResponse, type SummaryResponse } from "../../services/SummaryNoteService";
 
-import { readOrGenerate } from "./activation";
+import { readOrGenerate, validateInteractionResponse } from "./activation";
+import type { InteractionGenerationTasks } from "./generation-tasks";
 
 const service = new SummaryNoteService();
 export interface SummaryNoteSelection {
@@ -16,10 +17,11 @@ export interface SummaryNoteSelection {
   breadcrumb: string[];
 }
 
-export function SummaryNoteDrawer({ selection, onClose, dirtyRef }: {
+export function SummaryNoteDrawer({ selection, onClose, dirtyRef, generationTasks }: {
   selection: SummaryNoteSelection;
   onClose: () => void;
   dirtyRef: { current: boolean };
+  generationTasks: InteractionGenerationTasks;
 }) {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [note, setNote] = useState<NoteResponse | null>(null);
@@ -59,14 +61,21 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef }: {
       await Promise.resolve();
       if (controller.signal.aborted) return;
       if (selection.kind === "summary") {
-        const result = operation === "open"
-          ? await readOrGenerate({ target: selection.target, interactionType: "summary", retryGeneration,
+        const target = selection.target;
+        const taskKey = JSON.stringify(["summary", target.doc_name, target.target_type,
+          target.chapter_id, target.section_id, target.task_unit_id, target.content_block_id]);
+        const generate = (action: "generate" | "refresh") => generationTasks.start(taskKey, async signal =>
+          validateInteractionResponse(await service.summary(target, action, signal), target, "summary"));
+        const pending = generationTasks.find<SummaryResponse>(taskKey, retryGeneration);
+        const result = await (pending ?? (operation === "open"
+          ? readOrGenerate({ target: selection.target, interactionType: "summary", retryGeneration,
             read: () => service.summary(selection.target, "read", controller.signal),
-            generate: () => service.summary(selection.target, "generate", controller.signal),
+            generate: () => generate("generate"),
             isCurrent: () => !controller.signal.aborted && requestRef.current === controller,
             onGenerating: () => {},
           })
-          : await service.summary(selection.target, operation as "read" | "generate" | "refresh", controller.signal);
+          : operation === "read" ? service.summary(target, "read", controller.signal)
+            : generate(operation === "refresh" ? "refresh" : "generate")));
         if (!result || controller.signal.aborted || requestRef.current !== controller) return;
         if (result.envelope.status === "completed" || operation === "read" || operation === "open") setSummary(result);
         if (!["completed", "not_generated"].includes(result.envelope.status)) {

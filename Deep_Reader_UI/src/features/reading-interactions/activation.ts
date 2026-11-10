@@ -2,6 +2,18 @@ import type { ReadingInteractionResponseEnvelope, ReadingInteractionTargetReques
 
 type InteractionResponse = { envelope: ReadingInteractionResponseEnvelope; payload?: unknown };
 
+export function validateInteractionResponse<T extends InteractionResponse>(response: T, target: ReadingInteractionTargetRequest, interactionType: string): T {
+  const envelope = response?.envelope, actual = envelope?.target;
+  if (!actual || envelope.interaction_type !== interactionType
+    || actual.doc_name !== target.doc_name || actual.target_type !== target.target_type
+    || (["chapter_id", "section_id", "task_unit_id", "content_block_id"] as const).some(key => target[key] && target[key] !== actual[key])
+    || typeof envelope.status !== "string"
+    || (envelope.status === "not_generated" && (response.payload !== null || envelope.artifact_id != null || envelope.session_id != null))) {
+    throw new Error("Invalid interaction response. Reopen the current target.");
+  }
+  return response;
+}
+
 /** A user-selected action, never a passive read or navigation effect. */
 export async function readOrGenerate<T extends InteractionResponse>({
   target, interactionType, read, generate, isCurrent, onGenerating, retryGeneration = false,
@@ -14,19 +26,7 @@ export async function readOrGenerate<T extends InteractionResponse>({
   isCurrent: () => boolean;
   onGenerating: () => void;
 }): Promise<T | undefined> {
-  const validate = (response: T) => {
-    const envelope = response?.envelope;
-    const actual = envelope?.target;
-    if (!actual || envelope.interaction_type !== interactionType
-      || actual.doc_name !== target.doc_name || actual.target_type !== target.target_type
-      || (["chapter_id", "section_id", "task_unit_id", "content_block_id"] as const)
-        .some(key => target[key] && target[key] !== actual[key])
-      || typeof envelope.status !== "string"
-      || (envelope.status === "not_generated" && (response.payload !== null || envelope.artifact_id != null || envelope.session_id != null))) {
-      throw new Error("Invalid interaction response. Reopen the current target.");
-    }
-    return response;
-  };
+  const validate = (response: T) => validateInteractionResponse(response, target, interactionType);
   const saved = await read();
   if (!isCurrent()) return;
   validate(saved);
