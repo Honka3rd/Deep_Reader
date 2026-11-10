@@ -1,5 +1,6 @@
 // All API requests are intercepted. No real prepare, generation or data writes.
 import assert from "node:assert/strict";
+import { book as readingBook } from "./learning-controller-fixtures.mjs";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const browser = await chromium.launch({ headless: true,
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
@@ -27,6 +28,7 @@ try {
     const request = route.request();
     const path = decodeURIComponent(new URL(request.url()).pathname);
     const body = request.postDataJSON();
+    if (path.endsWith("/reading-preferences/read")) return route.fulfill({ json: readingBook(body.doc_name, "normal") });
     if (path.endsWith("/reading-content")) return route.fulfill({ json: {
       revision: 0, source_token: "fixture", disposition: "accepted", can_undo: false,
       max_chars: 10000, regions: [], blocks: [],
@@ -59,8 +61,8 @@ try {
       interactions.push(body.target);
       return route.fulfill({ json: { envelope: {
         target: { ...body.target, target_id: body.target.section_id, document_id: body.target.doc_name, title: "one" },
-        interaction_type: "analysis", status: "not_generated", schema_version: "analysis_interaction_v1",
-      }, payload: null } });
+        interaction_type: "analysis", status: "completed", schema_version: "analysis_interaction_v1",
+      }, payload: { summary: "Saved insight", reasoning: "Reason", interpretation: "Interpretation" } } });
     }
     unexpected.push(path);
     return route.fulfill({ status: 500, json: { detail: "Unexpected API call" } });
@@ -96,7 +98,7 @@ try {
   // Section interactions still work after content failures, independently of content state.
   await page.locator(".hierarchy-section-interaction-trigger").first().click();
   await page.getByRole("menuitem", { name: "Insights", exact: true }).click();
-  await page.locator(".inline-insight-status-not_generated").waitFor();
+  await page.locator(".inline-insight-status-completed").waitFor();
   assert.equal(interactions.at(-1).doc_name, "Book");
   assert.equal(interactions.at(-1).section_id, "Book-one");
 

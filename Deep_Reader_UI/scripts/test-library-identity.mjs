@@ -1,6 +1,7 @@
 // Run against a local Vite server; all API traffic is intercepted, no backend writes.
 // PLAYWRIGHT_MODULE may point to an existing Playwright installation.
 import assert from "node:assert/strict";
+import { book } from "./learning-controller-fixtures.mjs";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const browser = await chromium.launch({
   headless: true,
@@ -25,6 +26,8 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/api/documents/reading-preferences/read") return route.fulfill({ json: book(route.request().postDataJSON().doc_name, "normal") });
+      if (path === "/api/documents/reparse-structure/status") return route.fulfill({ json: { status: "idle" } });
       const body = route.request().postDataJSON();
       let data;
       if (path === "/api/documents" || path === "/api/documents/management") {
@@ -120,6 +123,8 @@ try {
     const guidance = "Task layout is not ready (missing_task_units). Prepare the document in Library or call POST /documents/prepare-task-layout with the same split options.";
     await page.route("**/api/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/api/documents/reading-preferences/read") return route.fulfill({ json: book(route.request().postDataJSON().doc_name, "normal") });
+      if (path === "/api/documents/reparse-structure/status") return route.fulfill({ json: { status: "idle" } });
       if (path === "/api/documents" || path === "/api/documents/management") {
         return route.fulfill({ json: { items: [{ doc_name: "Book", title: "Book", source: "raw", source_type: "txt", source_status: "available", preparation_status: "ready" }], total: 1 } });
       }

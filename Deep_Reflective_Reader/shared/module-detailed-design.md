@@ -1,5 +1,60 @@
 # shared Detailed Design
 
+## Vocabulary assessment contract (2026-11-09)
+
+`learning_hint_assessment.py` defines immutable `HintAssessment` and `HintIssue`.
+Nonnegative integer counts satisfy candidate = accepted + filtered + rejected;
+accepted equals the saved item's count. Omitted sentences are counted separately;
+allowlisted content-free issue codes have positive counts and no duplicates.
+`LearningHints.assessment` is optional and appended after existing constructor
+fields. Legacy payloads without it remain readable as unknown assessment, not
+fabricated zero omissions. Combining batches sums counts/reasons; any legacy
+unassessed batch makes the aggregate assessment unknown. Domain selection remains
+in section_tasks; shared performs no IO, language detection or policy decisions.
+The DTO/codec/filtering tests verify round trips, counts and legacy compatibility.
+
+## Explicit document rename references (LLRN-12)
+
+`SentenceResource.with_document_id(new_id)` 是純 identity migration helper：保留 namespace/hierarchy/epochs/hash、segmentation/schema version、source length、sentence spans，只更新 document binding 並重新計算 deterministic sentence/resource IDs。不讀寫資料、不切句、不驗證目前來源。Lifecycle owner 需在來源與偏好鎖／交易內驗證 rename 並遷移所有 typed key/result/operation/receipt/checkpoint references；不可把新 DTO 當作有效來源授權。
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+**[Code-Confirmed; LLRN-03 complete]** [Canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。已交付純資料契約與結構驗證；切句算法、生成、儲存、API 和 UI 仍由後續任務實作。
+
+`learning_source.py` 定義來源與句子資源，`learning_results.py` 定義完整對齊譯文與詞語提示 payload。皆為 immutable dataclasses，只依賴標準庫及 shared；不查 profile/registry、不讀寫檔案、不呼叫 LLM。句子不成為 navigation hierarchy 或新的 artifact target level；`TaskUnit`、`TaskUnitContentBlock`、既有 common artifact types 及序列化保持相容。
+
+### Source identity and exact projection
+
+- `LearningSourceBinding` 包含 `scope_kind="workspace"`、server-resolved namespace/document/chapter/section/task-unit/content-block IDs、`structure_version`、`document_epoch`、`content_epoch`、`effective_content_hash`。Source hash 為 effective block 原文 UTF-8 SHA-256，不 normalize、trim 或改換行。Epoch 為既有 mutation token 類型的 opaque string，非可比較的整數；legacy 無值時明確為 None。DTO 不自行建立 epoch，實際 edit/Undo/reparse 已由 LLRN-12 source owner 持久化不回退的 identity 並在提交時重驗；DTO 本身仍不是 lifecycle 或生成授權。
+- `SourceSpan(start,end)` 使用 **effective block-local Unicode code-point `[start,end)`**，不可為空或負值，不接受 bool/float/string coercion。不是舊 `TaskUnit.content` 的全單元 quote span，也不是 OCR page coordinates 或 UTF-16 index。
+- `SentenceResource` 保存 schema_version=1、source binding、segmentation_version、可空 segmentation_language、source_length、ordered `SentenceSpan` tuple。`from_spans` 僅替既定 spans 賦予可重現 ID，不選擇切句邊界。ID 依 source binding、切句版本/語言、位置順序與 span 計算；resource reference 另包含完整 ordered spans 的 digest。來源 ownership/epoch、切句規則/語言或邊界改變會產生不同 reference，不按能力級別複製句子。
+- Spans 必須依序、不重疊、不越界，decode 驗證 ID 是 backend deterministic ID。`project(effective_text)` 檢查原文 hash/length，產生 `SourceTextPart(sentence_id, span, text)`，以 sentence_id=None 表示前後及句間空白。Gaps 只允許 whitespace，遺漏標點或文字拒絕；每個句子不得純空白。所有 parts 串接精確還原正文。空字串/純空白來源可沒有句子，不製造 synthetic sentence。
+- 前端後續只接收 backend 文字投影與 ID，不用 JS UTF-16 重新切片。Code-point 不等於 grapheme；實際切句器仍需自行避免不合理語言邊界。DTO 不判斷某組 spans 是否具語言學意義。
+
+### Result payload contracts
+
+| Contract | Contents / invariant |
+| --- | --- |
+| `SentenceResourceRef` | 完整 source binding + resource_id；不複製正文或全部 sentence spans |
+| `LearningResultContext` | resource ref、source/explanation languages、policy_version、正整數 result_revision、provider/model/prompt_version provenance；原文與解釋語言字串不能相同 |
+| `AlignedTranslation` | schema_version=1、context、ordered `TranslatedSentence(sentence_id, translated_text)`；文字型別且非空，ID 不重複，validate_against 要求與來源 ID 完整同序相等 |
+| `LearningHints` | schema_version=1、context、`LearningProficiencyRef(scheme_id,scheme_version,level_id)`、items tuple；空 items 是有效已存結果，不等於 missing |
+| `VocabularyHint` | sentence_id、block-local span、source_form、language_code、kind（word/phrase/idiom）、母語語境 meaning、可空 lemma/part_of_speech；同位置不重複，宣告語言須與 context.source_language 相同 |
+
+Hints `validate_against` 要求 reference 相符、原文 hash 正確、每個詞語 span 在指定句子內且原文切片精確等於 source_form。重複出現的詞以明確位置識別，不用全文搜尋猜測。這只驗證來源與宣告語言一致；實際混語識別與能力適用性由 LLRN-11 處理，不把宣告 language_code 當成語言判定證據。
+
+譯文不含 proficiency；提示不依賴任何 translation result revision。Result revision、model/prompt provenance 不改 sentence reference；完整 cache/admission key 與 operation 狀態仍屬 LLRN-05。本契約只描述完整結果，不能把部分 rows 當成完整 AlignedTranslation；chunk/partial/progress 契約由 LLRN-05/10 另定，不先發明不明確狀態。
+
+### Validation and serialization boundary
+
+`to_dict/from_dict` 提供 detached JSON-compatible copies，內部集合為 tuple、傳輸為 arrays。Schema version 必須明確等於 1，除上述向後相容的 assessment 外，未知/缺失/額外欄位與錯誤型別拒絕，不 coercion 或 read-time migration；錯誤碼不回顯正文。底層 JSON parser 的重複 key/資源限制由後續 transport/storage 邊界處理。
+
+**反序列化只驗證資料結構，不證明來源仍有效。** Repository/service 使用順序：先以 hierarchy 解析 authoritative source binding 與 effective text，再呼叫 `sentences.validate_source(expected_source, effective_text)`，最後對譯文或提示呼叫 `validate_against(sentences[, effective_text])`。本層不能證明傳入 IDs 確實有該 parent 關係、持久化 epoch 已更新、語言/scheme/level 在 registry 有效，或翻譯語義正確。這些分別由 hierarchy repository、lifecycle、language/section_tasks 與生成驗收 owner 負責。Internal DTO 不是 client 可提交的 source-authority schema；API 欄位由 LLRN-14 固定。
+
+### Verification (2026-10-28)
+
+`scripts/test_learning_contracts.py`：25 項單元測試，涵蓋 Unicode/emoji/組合字/CRLF exact projection、empty/whitespace、source ownership/hash/epoch/reference、illegal spans/IDs/alignment、提示定位/空結果/級別分離、strict schema、immutability 與舊 TaskUnit 相容性。另執行既有 `test_shared_task_unit_content_blocks` 19 項與 `test_reading_interaction_common_artifact_model` 6 項函式回歸。無實際切句演算法、LLM、DB 或 UI 行為改動，不以此宣稱語義或端到端驗收完成。
+
 ## Generated Unit Identity Binding (2026-10-23)
 
 Supporting CLEAN-10: pure `TaskUnit.with_unit_id` rebinds exact generated
@@ -27,6 +82,8 @@ normalizers and real SQL projection/Undo after allocation.
 | `shared/artifact_target_model.py` | artifact target level/ref shared contract | single source of truth for target-level enum **[Code-Confirmed]** |
 | `shared/common_artifact_model.py` | common artifact entity DTO for typed interaction outputs | one entity shape using `artifact_type` rather than category-specific artifact tables **[Code-Confirmed]** |
 | `shared/task_artifacts.py` | summary/quiz/task artifacts schema | section/task-unit/document-level contracts **[Code-Confirmed]** |
+| `shared/learning_source.py` | source-bound sentence DTOs、exact source projection、deterministic IDs | LLRN-03 **[Code-Confirmed]** |
+| `shared/learning_results.py` | aligned translation / vocabulary hint typed payloads、reference validation | LLRN-03 **[Code-Confirmed]** |
 | `shared/task_unit_model.py` | `TaskUnit` 與 `TaskUnitContentBlock` schema | parent_section_id、artifact nested fields、string->block adapter foundation **[Code-Confirmed]** |
 
 ## 4. Main Responsibilities

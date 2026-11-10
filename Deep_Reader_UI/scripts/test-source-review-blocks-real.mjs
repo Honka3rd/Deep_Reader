@@ -37,10 +37,10 @@ try {
     const region = review.locator(`.source-review-region[data-region-id="${regionId}"]`);
     const row = region.locator(`.source-review-block[data-block-id="${blockId}"]`);
     const open = async () => {
-      await page.getByRole("button", { name: "Review source", exact: true }).click();
+      await page.getByRole("button", { name: "Review extracted text", exact: true }).click();
       await review.getByLabel("Loading content changes").waitFor({ state: "hidden" });
-      await review.getByRole("tab", { name: "Source regions", exact: true }).click();
-      while (!await region.count()) await review.getByRole("button", { name: "Next source regions", exact: true }).click();
+      await review.getByRole("tab", { name: "Flagged areas", exact: true }).click();
+      while (!await region.count()) await review.getByRole("button", { name: "Next flagged areas", exact: true }).click();
       if (!await region.locator(".source-review-blocks").count()) await region.getByRole("button", { name: /^Related blocks/ }).click();
       await region.getByLabel("Loading region blocks").waitFor({ state: "hidden" });
     };

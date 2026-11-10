@@ -1,5 +1,27 @@
 # shared Checklist
 
+## Vocabulary filtering and completion observation (2026-11-09)
+
+- [x] Add backward-compatible vocabulary assessment DTOs.
+  Owner: shared. Status: Implemented and verified.
+  Acceptance: Immutable counts/reasons validate aggregate and accepted-item consistency; legacy missing assessment remains unknown; aggregation does not invent legacy coverage.
+  Evidence: DTO/hints tests and legacy codec digest/round-trip regression; downstream file/SQL save/reuse checks.
+  Timestamp: 2026-11-09
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**LLRN-03 implemented and verified; downstream integration pending.** [Shared dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 shared 的唯一 checklist；資料契約完成不代表完整模式已可用。
+
+### LLRN-03
+
+- [x] LLRN-03: Source-bound sentence and learning DTOs.
+  Owner: shared. Status: Implemented and verified (pure DTO foundation).
+  Depends on: None.
+  Deliverable: 新增純資料契約：source binding、block 內 sentence ID/span、aligned translation、詞語提示與版本；保留現有 TaskUnit/content block 相容性。
+  Acceptance: 句子不是 hierarchy/navigation 層；offset 明定 Unicode code-point、block-local 半開區間，附原文 hash/epoch；前端不以 UTF-16 直接重切來源。
+  Evidence: `shared/learning_source.py`、`shared/learning_results.py`；`scripts/test_learning_contracts.py` 25 tests passed，覆蓋 exact Unicode projection、hash/epoch/ownership/reference、非法 span/alignment ID、hint source、strict serialization 與 legacy compatibility。既有 content-block 19 項及 common-artifact 6 項回歸通過。無新增 hierarchy level、source lookup、LLM/persistence/API/UI 行為。
+  Timestamp: 2026-10-28
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `shared` module.

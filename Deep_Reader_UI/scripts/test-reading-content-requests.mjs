@@ -9,7 +9,7 @@ const layout = name => ({ document_id: name, title: name, chapters: [{
   }],
 }] });
 const readingState = (name, canUndo = false) => ({ revision: 1, source_token: name,
-  disposition: "ready", can_undo: canUndo, max_chars: 10000, regions: [], blocks: [],
+  disposition: "ready", ocr_review_available: true, can_undo: canUndo, max_chars: 10000, regions: [], blocks: [],
   cleanup_audit: { total: 0, offset: 0, limit: 10, items: [] } });
 try {
   for (const width of [1280, 390]) {
@@ -53,10 +53,10 @@ try {
       await page.getByRole("combobox").fill(name);
       await page.getByRole("option", { name, exact: true }).click();
     };
-    const review = page.getByRole("button", { name: "Review source", exact: true });
+    const review = page.getByRole("button", { name: "Review extracted text", exact: true });
     const panel = page.locator('[aria-labelledby="reading-content-dialog-title"]');
     const settled = () => page.waitForFunction(() =>
-      document.querySelector('button[aria-label="Review source"]')?.disabled === false);
+      document.querySelector('button[aria-label="Review extracted text"]')?.disabled === false);
     const requests = () => page.evaluate(() => window.readingRequests);
     const expectCount = async (count, message) => {
       await page.waitForTimeout(150);
@@ -70,7 +70,8 @@ try {
     await page.getByRole("combobox").press("Escape");
     await expectCount(1, "Unrelated parent renders must not reload reading state");
     await review.click();
-    await panel.getByText("No unresolved OCR regions recorded.").waitFor();
+    await panel.getByRole("tab", { name: "Flagged areas", exact: true }).click();
+    await panel.getByText("No flagged areas recorded. You can still review previous cleanup changes.").waitFor();
     await expectCount(2, "Opening review loads audit once");
     assert.equal(new URLSearchParams((await requests())[1].query).get("include_cleanup_audit"), "true");
     await page.screenshot({ path: `/tmp/reading-requests-${width}.png`, fullPage: true });
@@ -83,7 +84,7 @@ try {
     await expectCount(4, "Failure must not cause automatic duplicate retry");
     failReview = false;
     await panel.getByRole("button", { name: "Reload", exact: true }).click();
-    await panel.getByText("No unresolved OCR regions recorded.").waitFor();
+    await panel.getByText("No flagged areas recorded. You can still review previous cleanup changes.").waitFor();
     await expectCount(5, "Explicit retry must fetch fresh state once");
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
     await settled();

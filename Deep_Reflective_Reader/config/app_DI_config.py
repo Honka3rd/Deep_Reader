@@ -95,8 +95,26 @@ class LLMSectionPreviewPolicyConfig:
 
 
 @dataclass(frozen=True)
+class LearningRuntimeConfig:
+    """Operational resources only; reader language/level live in preferences."""
+    preferences_base_dir: str = "data/reading-preferences"
+    results_base_dir: str = "data/learning"
+    max_workers: int = 4
+    lease_ms: int = 600_000
+
+    def __post_init__(self):
+        for value in (self.preferences_base_dir, self.results_base_dir):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("learning_storage_path_invalid")
+        for value in (self.max_workers, self.lease_ms):
+            if type(value) is not int or value <= 0:
+                raise ValueError("learning_runtime_policy_invalid")
+
+
+@dataclass(frozen=True)
 class AppDIConfig:
     """Application-level DI configuration values."""
+    learning_runtime: LearningRuntimeConfig = field(default_factory=LearningRuntimeConfig)
     # Structured document persistence backend. ``file`` preserves local JSON behavior;
     # ``postgres`` stores current StructuredDocument payloads in the configured DB.
     structured_storage_backend: str = field(
@@ -448,6 +466,7 @@ class AppDIConfig:
         enhanced_parse_policy = self.enhanced_parse_policy()
         llm_section_preview_policy = self.llm_section_preview_policy()
         return {
+            "learning_runtime": self.learning_runtime,
             "structured_storage_backend": self.structured_storage_backend,
             "postgres_dsn": self.postgres_dsn,
             "postgres_namespace": self.postgres_namespace,

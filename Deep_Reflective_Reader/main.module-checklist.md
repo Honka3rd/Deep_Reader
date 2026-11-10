@@ -1,5 +1,36 @@
 # main.py Checklist
 
+## Shared sentence translation (2026-11-09)
+
+- [x] Preserve ordinary translation transport over canonical aligned results.
+  Owner: main.py. Status: Implemented and verified.
+  Acceptance: Existing successful response shape, actual prompt version, safe unresolved-outcome error and no migration/generation on reads.
+  Evidence: 470 backend tests, shared file/PostgreSQL HTTP assertions and actual API/React roundtrips at 1280/390; local API rebuilt and healthy.
+  Timestamp: 2026-11-09
+
+
+## Vocabulary filtering and completion observation (2026-11-09)
+
+- [x] Expose bounded learning completion observation.
+  Owner: main.py. Status: Implemented and verified.
+  Acceptance: Add operations/wait using existing handle/result projection and no-store/error handling; disconnect cancels observer tasks while backend retains accepted jobs.
+  Evidence: File/PostgreSQL HTTP wait and missing-operation tests, OpenAPI registration, real API Reader at 1280/390; app cancellation regressions.
+  Timestamp: 2026-11-09
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**Implemented and verified: LLRN-16.** [Shared dependency queue](section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 main.py 的唯一 checklist；UI、完整整合與語義品質 gate 仍待後續任務。
+
+### LLRN-16
+
+- [x] LLRN-16: Learning and settings route integration.
+  Owner: main.py. Status: Implemented and verified (production route registration and application lifespan; deployment/UI pending).
+  Depends on: LLRN-13, LLRN-14, LLRN-15.
+  Deliverable: 註冊 settings/options、saved read、explicit generation/refresh 與 operation status routes，委派 learning 並映射安全錯誤。
+  Acceptance: 既有 task-layout/content/catalog reads 不生成、不寫設定；新讀取亦純讀。成功代表 durable commit，pending/unknown 不冒充 saved；無 transport 層業務/SQL。
+  Evidence: `learning_routes.py`、`learning_route_errors.py`、`main.py` 及 learning read/source/partial snapshot ports；`scripts/test_learning_routes.py` 50 tests passed（23 file + 23 real PostgreSQL HTTP，4 main/OpenAPI/lifespan）。涵蓋 11 routes、strict/sanitized/no-store、同語與未啟用拒絕、source/settings CAS、mode/override retention/no-op revision、missing/storage distinction、read purity、claim/preference/response lost ack、lookup/reconcile、unknown retry consent、partial failure/race、雙 client coalescing、source invalidation、shutdown drain/restart。201 schema/orchestration/preferences 回歸、35 ordinary translation/content、11 layout readiness passed；layout 首次 sibling import 失敗後以正確 PYTHONPATH 重跑通過。兩本 immutable 備份短段落以 production router/DI/SDK offline fixtures 保存及 restart reuse，2/4 rows、各一次 transport，backups unchanged；`/tmp/llrn16-books.json`。未部署使用者 DB、未重啟 production、未實作 UI 或宣稱 live LLM 語義品質通過。
+  Timestamp: 2026-11-10
+
 ## Persisted Block Translation (2026-10-26)
 
 Implemented and verified: 1/1 owned task. [Shared queue](section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).

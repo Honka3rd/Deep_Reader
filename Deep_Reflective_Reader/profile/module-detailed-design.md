@@ -1,5 +1,15 @@
 # profile Detailed Design
 
+## Learning source-only reader (LLRN-15, 2026-10-28)
+
+`VersionedDocumentProfileStore.load_source(config)` 直接讀既有 profile JSON，供 learning
+在偏好／source 鎖內重驗 source language；不查 document repository 的 structure
+invalidation、不重入交易、不生成或寫回。Caller 必須使用 readonly path resolver，
+僅消費 source metadata，不能把此方法返回的 derived structure advice 當作目前 hierarchy。
+普通 `load` 的 derived-field invalidation 保持原樣。Profile 仍是獨立 file snapshot，
+不宣稱與 SQL/file learning transaction 原子或新增 workspace profile 隔離。
+證據：`scripts/test_learning_container_wiring.py` source-only/read-only/missing/alias tests。
+
 ## Persistent Profile Ownership (2026-10-21)
 
 Supporting CONTENT-02: profile topic, summary and language are stable document

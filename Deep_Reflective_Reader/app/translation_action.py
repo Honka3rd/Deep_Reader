@@ -13,6 +13,9 @@ from section_tasks.translation_records import (
     translation_languages, translation_snapshot,
 )
 from section_tasks.translation_service import TranslationService
+from section_tasks.translation_prompt import TRANSLATION_PROMPT_VERSION
+from section_tasks.learning_translation_service import LearningTranslationError
+from shared.learning_source import LearningContractError
 
 
 @dataclass(frozen=True)
@@ -21,17 +24,40 @@ class TranslationActionResult:
     translation: TranslationResult
     effective_content_hash: str
     record: dict | None = None
+    prompt_version: str = TRANSLATION_PROMPT_VERSION
 
 
 class TranslationAction:
     def __init__(self, repository: DocumentArtifactRepository, profile_store: DocumentProfileStore,
-                 translator: TranslationService):
+                 translator: TranslationService | None = None, shared_translation=None, shared_translation_factory=None):
         self._repository = repository
         self._profiles = profile_store
         self._translator = translator
+        from app.shared_translation import SharedTranslation
+        self._shared_instance = (SharedTranslation(repository, self._default_language, shared_translation)
+                                 if shared_translation is not None else None)
+        self._shared_factory = shared_translation_factory
+
+    @property
+    def _shared(self):
+        from app.shared_translation import SharedTranslation
+        return (SharedTranslation(self._repository, self._default_language, self._shared_factory())
+                if self._shared_factory is not None else self._shared_instance)
 
     def generate(self, *, doc_name: str, content_block_id: str, target_language: str,
                  source_language: str | None = None, mutation_id: str | None = None) -> TranslationActionResult:
+        shared = self._shared
+        if shared is not None:
+            try:
+                return shared.generate(doc_name=doc_name, content_block_id=content_block_id,
+                    target_language=target_language, source_language=source_language, mutation_id=mutation_id)
+            except LearningTranslationError as error:
+                code = error.code.replace('learning_translation_', 'translation_')
+                raise TranslationError(code) from None
+            except LearningContractError as error:
+                code = 'translation_source_changed' if str(error) in (
+                    'learning_source_changed', 'learning_block_missing', 'learning_binding_stale') else 'translation_service_unavailable'
+                raise TranslationError(code) from None
         target_language = interactive_language(target_language, field="target_language")
         snapshot = translation_snapshot(self._repository.load_document(doc_name), content_block_id)
         if source_language is not None:
@@ -85,13 +111,16 @@ class TranslationAction:
         except Exception:
             raise TranslationError("translation_profile_unavailable") from None
         try:
-            return interactive_language(profile.document_language, field="source_language")
+            return str(interactive_language(profile.document_language, field="source_language"))
         except TranslationError:
             return None
 
     def read(self, *, doc_name, content_block_id):
         snapshot = translation_snapshot(self._repository.load_document(doc_name), content_block_id)
+        default_source = self._default_language(doc_name)
+        records = (self._shared.read_records(doc_name, snapshot, default_source)
+                   if self._shared is not None else snapshot.records())
         return {"target": snapshot.target, "language_codes": list(translation_languages()),
-            "default_source_language": self._default_language(doc_name),
+            "default_source_language": default_source,
             "reading_revision": snapshot.target.reading_revision,
-            "effective_content_hash": snapshot.content_hash, "translations": snapshot.records()}
+            "effective_content_hash": snapshot.content_hash, "translations": records}

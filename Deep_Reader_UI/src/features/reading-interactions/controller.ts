@@ -1,5 +1,12 @@
-import { useRef, useState } from "react";
+import type { ReadingInteractionTargetRequest, ReadingInteractionResponseEnvelope } from "../../types/api";
+import type { ReadingInteractionService } from "../../services/ReadingInteractionService";
+import { readOrGenerate } from "./activation";
+import { useEffect, useRef, useState } from "react";
 import {
+  mapAnalysisInteractionResponseToInsightViewState,
+  mapQuizInteractionResponseToQuizViewState,
+  mapCriticalThinkingSessionResponseToViewState,
+  normalizeReadingInteractionThrownError,
   buildReadingInteractionBreadcrumb,
   buildReadingInteractionTargetKey,
   createInitialCriticalThinkingViewState,
@@ -47,6 +54,75 @@ export function useReadingInteractionMenuController() {
   const [criticalThinkingStateByTarget, setCriticalThinkingStateByTarget] =
     useState<CriticalThinkingStateByTarget>({});
   const requestIdRef = useRef(0);
+  const activationRef = useRef<{ controller: AbortController; targetKey: string; kind: ReadingInteractionKind } | null>(null);
+  useEffect(() => () => {
+    activationRef.current?.controller.abort();
+    requestIdRef.current += 1;
+  }, []);
+
+  function cancelActivation() {
+    const active = activationRef.current;
+    active?.controller.abort();
+    activationRef.current = null;
+    requestIdRef.current += 1;
+    if (active?.kind === "insight") {
+      setOpenInlineInsightsByTarget(current => {
+        const insight = current[active.targetKey];
+        if (!insight || !["loading", "generating"].includes(insight.status)) return current;
+        return { ...current, [active.targetKey]: { ...insight, status: "idle" } };
+      });
+    }
+  }
+
+  async function activateInteraction(selection: ReadingInteractionMenuSelection,
+    target: ReadingInteractionTargetRequest, service: ReadingInteractionService,
+    onError: (message: string) => void, retryGeneration = false, onQuestionGenerated?: (key: string) => void) {
+    cancelActivation();
+    const activation = { controller: new AbortController(), targetKey: selection.targetKey, kind: selection.kind };
+    activationRef.current = activation;
+    const signal = activation.controller.signal;
+    const key = selection.targetKey;
+    // The same guard covers both phases, including notifications and failures.
+    async function run<T extends { envelope: ReadingInteractionResponseEnvelope; payload?: unknown }, S>(
+      interactionType: string, read: () => Promise<T>, generate: () => Promise<T>,
+      begin: (key: string, status: "loading" | "generating") => number,
+      map: (response: T) => S, apply: (key: string, state: S, id: number) => void,
+      fail: (key: string, id: number, message: string, status: ReturnType<typeof normalizeReadingInteractionThrownError>["status"]) => void,
+    ) {
+      let requestId = begin(key, "loading");
+      let generated = false;
+      const isCurrent = () => !signal.aborted && activationRef.current === activation && isLatestInteractionRequest(requestId);
+      try {
+        const response = await readOrGenerate({ target, interactionType, read, generate, isCurrent, retryGeneration,
+          onGenerating: () => { generated = true; requestId = begin(key, "generating"); } });
+        if (response && isCurrent()) {
+          apply(key, map(response), requestId);
+          if (generated && selection.kind === "critical_thinking" && response.envelope.status === "question_generated") {
+            onQuestionGenerated?.(key);
+          }
+        }
+      } catch (error) {
+        if (!isCurrent()) return;
+        const failure = normalizeReadingInteractionThrownError(selection.target, error);
+        fail(key, requestId, failure.message, failure.status);
+        onError(failure.message);
+      } finally {
+        if (activationRef.current === activation) activationRef.current = null;
+      }
+    }
+    if (selection.kind === "insight") {
+      await run("analysis", () => service.readInsight(target, signal), () => service.generateInsight(target, { signal }),
+        beginInlineInsightRequest, response => mapAnalysisInteractionResponseToInsightViewState(selection.target, response),
+        applyInlineInsightState, failInlineInsightRequest);
+    } else if (selection.kind === "quiz") {
+      await run("quiz", () => service.readQuiz(target, signal), () => service.generateQuiz(target, { signal }),
+        beginQuizRequest, response => mapQuizInteractionResponseToQuizViewState(selection.target, response), applyQuizState, failQuizRequest);
+    } else if (selection.kind === "critical_thinking") {
+      await run("critical_thinking_session", () => service.readCriticalThinkingSession(target, { signal }),
+        () => service.generateCriticalThinkingQuestion(target, { signal }), beginCriticalThinkingRequest,
+        response => mapCriticalThinkingSessionResponseToViewState(selection.target, response), applyCriticalThinkingState, failCriticalThinkingRequest);
+    }
+  }
 
   function openInteractionMenu(target: ReadingInteractionTarget) {
     setInteractionMenuTarget(target);
@@ -65,6 +141,13 @@ export function useReadingInteractionMenuController() {
       closeInteractionMenu();
       return null;
     }
+
+    const active = activationRef.current;
+    if (active && active.kind === kind && active.targetKey === buildReadingInteractionTargetKey(target)) {
+      closeInteractionMenu();
+      return null;
+    }
+    cancelActivation();
 
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
@@ -314,10 +397,12 @@ export function useReadingInteractionMenuController() {
   }
 
   function clearSelectedInteraction() {
+    cancelActivation();
     setSelectedInteraction(null);
   }
 
   function resetInteractions() {
+    cancelActivation();
     requestIdRef.current += 1;
     setInteractionMenuTarget(null);
     setSelectedInteraction(null);
@@ -327,6 +412,7 @@ export function useReadingInteractionMenuController() {
   }
 
   function closeInlineInsight(targetKey: ReadingInteractionTargetKey) {
+    if (activationRef.current?.kind === "insight" && activationRef.current.targetKey === targetKey) cancelActivation();
     setOpenInlineInsightsByTarget((current) => {
       const { [targetKey]: _removed, ...next } = current;
       return next;
@@ -350,6 +436,7 @@ export function useReadingInteractionMenuController() {
   }
 
   return {
+    activateInteraction,
     resetInteractions,
     interactionMenuTarget,
     selectedInteraction,

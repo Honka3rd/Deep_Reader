@@ -54,7 +54,7 @@ try {
       }
       await cleanup.getByRole("button", { name: /Cancel|Close/, exact: true }).click();
     }
-    await page.getByRole("button", { name: "Review source", exact: true }).click();
+    await page.getByRole("button", { name: "Review extracted text", exact: true }).click();
     const panel = page.locator('div[aria-labelledby="reading-content-dialog-title"]');
     await panel.getByLabel("Loading content changes").waitFor({ state: "hidden" });
     const state = async () => (await page.request.get(api + "/documents/book/reading-content?include_cleanup_audit=true")).json();

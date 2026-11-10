@@ -48,7 +48,7 @@ export function EnhancementDialog({ open, docName, tocHint, onClose, onCommitted
       const phase = superseded ? "done" : result.phase === "layout" ? "resume" : needsReload ? "reload" : "done";
       const message = superseded ? "This result belongs to an earlier reading version. Current content and edits are retained."
         : result.phase === "layout" ? "Changes are saved. Reading layout still needs to finish. Resume without repeating smart structuring."
-        : `${change === "unchanged" ? "No structure changes." : change === "titles_only" ? "Titles updated." : "Structure saved."} ${cleanupMessage(result.cleanup)}${result.review_required ? " Some source regions still need review." : ""}`;
+        : `${change === "unchanged" ? "No structure changes." : change === "titles_only" ? "Titles updated." : "Structure saved."} ${cleanupMessage(result.cleanup)}${result.review_required ? " Some extracted text still needs review." : ""}`;
       publish(name, { ...operation, change, result, phase, message, layoutPrepared: result.phase === "complete" });
       return true;
     }
@@ -180,7 +180,7 @@ export function EnhancementDialog({ open, docName, tocHint, onClose, onCommitted
       if (!live()) return;
       if (operation.result?.phase) {
         publish(name, { ...operation, phase: "done", message:
-          `${operation.change === "unchanged" ? "No structure changes." : operation.change === "titles_only" ? "Titles updated." : "Structure saved."} ${cleanupMessage(operation.result.cleanup)}${operation.result.review_required ? " Some source regions still need review." : ""}` });
+          `${operation.change === "unchanged" ? "No structure changes." : operation.change === "titles_only" ? "Titles updated." : "Structure saved."} ${cleanupMessage(operation.result.cleanup)}${operation.result.review_required ? " Some extracted text still needs review." : ""}` });
         return;
       }
       operations.current.delete(name);

@@ -12,7 +12,7 @@ services:
       DEEP_READER_STRUCTURED_STORAGE_BACKEND: ${DEEP_READER_STRUCTURED_STORAGE_BACKEND:-postgres}
       DEEP_READER_POSTGRES_DSN: postgresql://${POSTGRES_USER:-deep_reader}:${POSTGRES_PASSWORD:-deep_reader_dev}@postgres:5432/${POSTGRES_DB:-deep_reader}
       DEEP_READER_PDF_OCR_ENABLED: ${DEEP_READER_PDF_OCR_ENABLED:-1}
-      DEEP_READER_PDF_OCR_LANGUAGE: ${DEEP_READER_PDF_OCR_LANGUAGE:-eng+chi_sim+chi_tra}
+      DEEP_READER_PDF_OCR_LANGUAGE: ${DEEP_READER_PDF_OCR_LANGUAGE:-registry}
       DEEP_READER_PDF_RENDERER_CMD: ${DEEP_READER_PDF_RENDERER_CMD:-pdftoppm}
       DEEP_READER_PDF_RENDER_DPI: ${DEEP_READER_PDF_RENDER_DPI:-200}
     ports:
@@ -46,6 +46,8 @@ services:
       - ./Deep_Reflective_Reader/db/migrations/001_phase_1_core_hierarchy.sql:/docker-entrypoint-initdb.d/001_phase_1_core_hierarchy.sql:ro
       - ./Deep_Reflective_Reader/db/migrations/002_ocr_runs.sql:/docker-entrypoint-initdb.d/002_ocr_runs.sql:ro
       - ./Deep_Reflective_Reader/db/migrations/003_interaction_version_guards.sql:/docker-entrypoint-initdb.d/003_interaction_version_guards.sql:ro
+      - ./Deep_Reflective_Reader/db/migrations/004_reading_preferences.sql:/docker-entrypoint-initdb.d/004_reading_preferences.sql:ro
+      - ./Deep_Reflective_Reader/db/migrations/005_learning_persistence.sql:/docker-entrypoint-initdb.d/005_learning_persistence.sql:ro
     healthcheck:
       test:
         [

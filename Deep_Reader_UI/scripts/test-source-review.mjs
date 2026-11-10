@@ -49,8 +49,8 @@ try {
       await region().locator('.source-review-blocks[aria-busy="false"]').waitFor();
     };
     const openReview = async () => {
-      await page.getByRole("button", { name: "Review source", exact: true }).click();
-      await review.getByRole("tab", { name: "Source regions", exact: true }).click();
+      await page.getByRole("button", { name: "Review extracted text", exact: true }).click();
+      await review.getByRole("tab", { name: "Flagged areas", exact: true }).click();
       const toggle = region().getByRole("button", { name: /^Related blocks/ });
       await toggle.waitFor();
       if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();

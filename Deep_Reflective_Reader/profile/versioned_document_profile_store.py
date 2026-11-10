@@ -12,6 +12,14 @@ class VersionedDocumentProfileStore(DocumentProfileStore):
         return (self.repository is repository
                 and callable(getattr(repository, "profile_structure_invalidated", None)))
 
+    def load_source(self, config):
+        """Read saved source metadata without reentering a document transaction.
+
+        Learning uses only source language. Derived structure advice returned by
+        this method must not be consumed as current hierarchy advice.
+        """
+        return super().load(config)
+
     def load(self, config):
         profile = super().load(config)
         reader = getattr(self.repository, "profile_structure_invalidated", None)

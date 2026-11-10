@@ -6,31 +6,101 @@ This repository is the persistent engineering memory for Deep Reader.
 
 Agents must treat markdown files as controlled project memory, not casual notes.
 
-## Required global reading
+## Delivery workflow
 
-Before any task that changes code or documentation, read:
+For implementation delivery, follow [.codex/workflow.md](.codex/workflow.md).
+It defines the prompt-driven prototype: scope and clarification, documentation
+before implementation, tested units with developer confirmation before the next
+unit of a large task, local review commit, external quality-review/fix loop, then
+Docker rebuild, deployment acceptance and verified remote task-branch push.
 
-- `Deep_Reflective_Reader/proposal.md`
-- `Deep_Reflective_Reader/high-level-design.md`
-- `Deep_Reflective_Reader/docs/modules/index.md` if present
-- the target module `module-detailed-design.md`
-- the target module `module-checklist.md`
+External review must explicitly approve the latest candidate SHA before Docker
+work. Self-validation is not external approval. Subsequent changes return to the
+review gate, with affected deployment checks repeated before delivery. Do not
+create a PR or merge as part of this prototype.
 
-For `Deep_Reader_UI` tasks, the target module documents are:
+Use [.codex/templates/main-agent-instructions.md](.codex/templates/main-agent-instructions.md)
+as the reusable entry prompt. Explicitly limited planning, audit, documentation or
+instruction-maintenance requests end at their requested, validated deliverable;
+they do not automatically authorize commit, deployment or push. The workflow does
+not override architecture contracts, Markdown ownership or read-only skill limits.
+
+## Scope-first repository reading
+
+Read applicable `AGENTS.md` instructions first. Then determine which modules the
+request is likely to change before loading their design documents and checklists.
+Do not read every module's documentation to discover the task's scope.
+
+### 1. Determine affected modules
+
+Use the request, supplied paths, `rg --files`, targeted code searches, interfaces
+and nearby callers/tests to identify likely owners. This read-only reconnaissance
+is allowed before module-memory loading. Consult relevant entries in
+`Deep_Reflective_Reader/docs/modules/index.md` when ownership or document locations
+are unclear; the UI module is documented separately below.
+
+Briefly identify modules likely to change, supporting modules whose contracts must
+be understood, and any uncertainty. A supporting dependency does not automatically
+become an implementation target. Routing is provisional: revise it when evidence
+changes. Do not require the user to name modules that repository inspection can
+identify, or pause an authorized implementation merely to approve the routing.
+
+### 2. Load the relevant contracts before editing
+
+For each affected module, inspect its document headings, then read its current
+ownership/boundary rules, the complete design sections governing the feature and
+the relevant checklist items with their dependencies and evidence requirements.
+Use the module index's paths for root-file modules; do not assume every owner is a
+directory. `Deep_Reader_UI` owns:
 
 - `Deep_Reader_UI/module-detailed-design.md`
 - `Deep_Reader_UI/module-checklist.md`
 
+Supporting modules need only the contracts consumed or potentially affected by the
+change; read their checklists when delivery status or task dependencies matter.
+Read enough surrounding context and current corrections to avoid applying a
+historical design as today's contract. Search hits alone are not a contract read.
+Whole-file reads are appropriate when the scope spans the file or targeted reading
+cannot establish the rules, not the default for a small change.
+
+Read relevant sections of `Deep_Reflective_Reader/proposal.md` and
+`Deep_Reflective_Reader/high-level-design.md` when the work affects architecture,
+cross-module contracts, persistence/source ownership or lifecycle, or when module
+memory is ambiguous or conflicting. Their authority is unchanged; they need not
+be reread wholesale for a local implementation detail. Read `progress.md` only for
+progress/status work or a specific unresolved delivery dependency. Historical
+acceptance, README and future-work files are loaded only when relevant.
+
+For repository instructions or skill maintenance, identify the governance area
+instead of inventing an application module. Read the affected instructions/skills
+and relevant referenced policies; unrelated application checklists are unnecessary.
+
+### 3. Expand or reuse context deliberately
+
+If a new module or contract becomes affected, update the scope and load its relevant
+memory before editing it. Within the same task, reuse sections already read if they
+remain current; reread after relevant file changes, changed scope, missing context
+or conflicting evidence. Do not treat a summary or filename listing as having read
+a previously unread contract. Report the files/sections actually inspected and any
+material gaps; do not claim a whole-file or repository-wide audit from partial reads.
+
+This policy applies to implementation, documentation, audit and validation workflows.
+It supersedes blanket read-all sequences in repository skills, including mandatory
+`progress.md` loading. Retain additional task-specific reads that are necessary for
+correctness, and all existing write-authorization and validation requirements.
+
 ## Required development standards
 
-Before every implementation task, read both files from the repository, even if
-they were read in an earlier task or summarized in conversation:
+Before implementation, read the standards applicable to the identified scope:
 
-- [Frontend development standards](docs/standards/frontend-development.md)
-- [Backend development standards](docs/standards/backend-development.md)
+- Frontend/UI changes: [Frontend development standards](docs/standards/frontend-development.md).
+- Backend changes: [Backend development standards](docs/standards/backend-development.md).
+- Changes spanning both: read both. Governance-only work reads standards only when
+  their rules are being changed or interpreted.
 
-Apply each standard to its respective frontend or backend scope and check the
-implementation against the applicable standards before reporting completion.
+Reuse unchanged standards already read within the same task; load newly applicable
+standards before expanding the implementation scope. Check the implementation
+against the applicable standards before reporting completion.
 If a standards file is empty, do not invent missing rules.
 Existing architecture and governance rules still apply.
 

@@ -32,7 +32,7 @@ export function useSourceReviewBlocks(docName: string, regionId: string, activat
       for (const expected of [owner.snapshot, latest.current.snapshot]) {
         if (next.source_token !== expected.source_token || next.revision < expected.revision
           || (next.structure_version ?? null) !== (expected.structure_version ?? null)) {
-          throw new Error("Content changed. Refresh source review.");
+          throw new Error("Content changed. Refresh text review.");
         }
       }
     };
@@ -47,7 +47,7 @@ export function useSourceReviewBlocks(docName: string, regionId: string, activat
       if (!valid()) return;
       assertCurrentSnapshot(next);
       const region = next.regions.find(item => item.id === owner.regionId);
-      if (!region) throw new Error("This region changed. Refresh source review.");
+      if (!region) throw new Error("This region changed. Refresh text review.");
       const limit = next.block_page?.limit || 20;
       const total = next.block_page?.total ?? next.blocks.length;
       const lastOffset = Math.max(0, Math.floor((total - 1) / limit) * limit);

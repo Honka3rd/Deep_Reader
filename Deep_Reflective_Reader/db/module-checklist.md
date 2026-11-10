@@ -1,5 +1,40 @@
 # db Checklist
 
+## Shared sentence translation (2026-11-09)
+
+- [x] Load translation projections with bounded SQL selections and verify file/SQL parity.
+  Owner: db. Status: Implemented and verified.
+  Acceptance: Follow the shared sentence translation contract in section_tasks; preserve reads, compatibility and explicit generation boundaries.
+  Evidence: 470 backend tests pass, including 35 shared file/PostgreSQL cases; actual API/React mode roundtrips at 1280/390, two backed-up real-source offline cases and type/build checks pass. No duplicate aggregate is persisted.
+  Timestamp: 2026-11-09
+
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**LLRN-07/08 implemented and verified; lifecycle delivered by LLRN-12 and runtime DI by LLRN-15.** [Shared dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 db 的唯一 checklist；完成狀態依下列實作及驗收證據。
+
+### LLRN-07
+
+- [x] LLRN-07: Preference persistence and explicit migration.
+  Owner: db. Status: Implemented and verified; lifecycle and runtime DI delivered by LLRN-12/15.
+  Depends on: LLRN-02.
+  Deliverable: 實作 reading_preferences port 的 SQL adapter、workspace/book identity/revision 約束與 migration。
+  Acceptance: 資料可跨重啟讀回；單人 scope 非多用戶 auth；namespace、rename/delete 跟既有 lifecycle 一致。Migration/rollback 明確，不在讀取或 import 時建表。
+  Evidence: `postgres_reading_preferences_repository.py`、004 forward/explicit destructive rollback migration、共用 `reading_preferences/commands.py`；36 項 disposable PostgreSQL tests 通過，包含 migration/reapply/rollback/backup restore、原 documents 保留、target-bounded reads、typed/file parity、scope/registry、CAS/replay、多程序首次競爭、rename/delete race、workspace lock、第二筆寫入及 deferred COMMIT 失敗、lost ack 與程序退出。連同原 file 28 項及其它相關回歸共 250 tests passed、無 skips；另 PostgreSQL server restart 後讀回/replay 通過。未部署使用者資料庫或接入 document lifecycle/API/UI。
+  Deployment follow-up (2026-10-29): local 004/005 tables were missing. After verified backup/restore, the unchanged additive migrations were applied explicitly in one transaction. Preference/workspace/learning reads now return 200; all 12 existing-table fingerprints match, seven new tables stay empty on read. Startup/fresh-volume wiring corrected; evidence in `data/maintenance/preference-schema-20261029/` and owner design.
+  Timestamp: 2026-10-29
+
+### LLRN-08
+
+- [x] LLRN-08: Learning artifact and operation persistence.
+  Owner: db. Status: Implemented and verified; lifecycle/orchestration/runtime integration delivered by LLRN-12/13/15, API/lifespan delivered by LLRN-16, UI pending.
+  Depends on: LLRN-05, LLRN-06, LLRN-07 (SQL preference schema/transaction coordination).
+  Deliverable: 落實 typed artifact payload、sentence resource 與 operation claim/commit 的 SQL 儲存、索引、唯一約束和 migration；物理 schema 在本任務具體化。
+  Acceptance: 不為每語言/等級建表，不把全書結果塞進單一巨大 JSON；短交易取得生成權，LLM 在交易外，提交再核對 source/claim/result revision；同 key 原子替換並保留其它 cache。
+  Evidence: `postgres_learning_repository.py`、`learning_rows.py`、005 forward/rollback migrations、共用 `learning_repository_behavior.py` 與兩個 owner 的 caller-owned transaction helpers。47 PostgreSQL 專測通過；連同回歸共 279 個不同 tests 有通過證據、無 skips。涵蓋六程序 claim/四程序 dispatch、同/不同 key、row-lock/source/settings races、MVCC reads、stale worker/fence、partial/empty hints、receipt/checkpoint/final rollback、lost ack、三階段 COMMIT 前後程序中斷、bounded queries、file parity、migration/backup restore/constraints。另 PostgreSQL server restart 保存 result/running operation/replay 通過。全來源物理失效、rename 協調與 runtime/API/UI 待後續任務；未部署使用者資料庫。
+  Deployment follow-up (2026-10-29): local 004/005 tables were missing. After verified backup/restore, the unchanged additive migrations were applied explicitly in one transaction. Preference/workspace/learning reads now return 200; all 12 existing-table fingerprints match, seven new tables stay empty on read. Startup/fresh-volume wiring corrected; evidence in `data/maintenance/preference-schema-20261029/` and owner design.
+  Timestamp: 2026-10-29
+
 ## Independent Smart Cleanup Backlog (2026-10-23)
 
 Owned tasks 1/1. [Shared order](../document_structure/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23).

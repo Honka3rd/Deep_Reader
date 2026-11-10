@@ -89,7 +89,7 @@ try {
       const result = await page.evaluate(() => ({ error: window.reviewTest.hook.error,
         state: window.reviewTest.hook.state, published: window.reviewTest.published, navigated: window.reviewTest.navigated,
         blocks: window.reviewTest.reader.contentBlocks, target: window.reviewTest.reader.navigationTarget }));
-      assert.equal(result.error, "Content changed. Refresh source review.");
+      assert.equal(result.error, "Content changed. Refresh text review.");
       if (phase === "refresh" || phase === "navigation") {
         assert.equal(result.state, null);
         assert.deepEqual(result.published, []);

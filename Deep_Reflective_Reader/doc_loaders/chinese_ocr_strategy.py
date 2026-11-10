@@ -14,12 +14,16 @@ import numpy as np
 from PIL import Image
 
 from .pdf_extraction_contract import PdfExtractionError, PdfExtractionFailureReason
+from .pdf_ocr_language_policy import (
+    VERTICAL_MODEL_HASHES, get_tesseract_language_for_document_language,
+    normalize_tesseract_language_config,
+)
 
 logger = logging.getLogger(__name__)
 POLICY_VERSION = "chinese-columns-v3-preserve-text"
 MODEL = "chi_tra_vert"
-MODEL_SHA256 = "1df02a4b210e5c217b783819538b63e9dfe6904e2b5e53b62664f1b9f7a989d0"
-SIMPLIFIED_SHA256 = "20590de84725bab69cde93bd6e8ed360a13cc5421a7e7364ddeb93e9af53d6da"
+MODEL_SHA256 = VERTICAL_MODEL_HASHES[MODEL]
+SIMPLIFIED_SHA256 = VERTICAL_MODEL_HASHES["chi_sim_vert"]
 
 
 def prefer_cjk_consensus(candidates):
@@ -36,8 +40,46 @@ def prefer_cjk_consensus(candidates):
                 "consensus_pool_count=%s rule=strong_cjk_consensus",
                 len(candidates), len(nonempty), len(supported),
             )
+        broad = [candidate for candidate in supported if candidate.psm != "6:zh"]
+        refined = next((candidate for candidate in supported if candidate.psm == "6:zh"), None)
+        if broad and refined is not None:
+            baseline = max(broad, key=lambda candidate: (candidate.passed, candidate.score))
+            # Fragmentation is advisory, not a reason to discard a fuller,
+            # higher-scoring transcription established by observed Han evidence.
+            # Never let a short/invalid refinement erase the broad result.
+            allowed = {"fragmented_latin", "quality_rejected", "quality_passed", "too_short"}
+            if (set(refined.reasons) <= allowed and refined.score >= baseline.score
+                    and refined.cjk_ratio >= baseline.cjk_ratio
+                    and len(re.findall(r"\S", refined.text)) >= .9 * len(re.findall(r"\S", baseline.text))
+                    and len(re.findall(r"[\u3400-\u9fff]", refined.text))
+                    >= len(re.findall(r"[\u3400-\u9fff]", baseline.text))):
+                logger.info("ocr_candidate_consensus rule=observed_han_refinement")
+                return [refined]
         return supported
     return nonempty
+
+
+def horizontal_refinement_language(candidates, configured_language):
+    """One bounded Chinese candidate after broad recognition establishes script.
+
+    Installed packs alone never select this path. Preserve all broad candidates;
+    Meaningful kana/Hangul evidence or substantial Latin content prevents narrowing;
+    isolated cross-script recognition noise does not establish another script.
+    """
+    if configured_language != normalize_tesseract_language_config(None):
+        return None
+    nonempty = [candidate for candidate in candidates if candidate.text.strip()]
+    for candidate in nonempty:
+        other = len(re.findall(r"[\u3040-\u30ff\uac00-\ud7af]", candidate.text))
+        if other >= 6 and other / max(1, sum(c.isalpha() for c in candidate.text)) >= .10:
+            return None
+    supported = [c for c in nonempty if c.cjk_ratio >= .65 and c.latin_ratio <= .20
+                 and len(re.findall(r"[\u3400-\u9fff]", c.text)) >= 80]
+    if len(supported) >= 2 and len(supported) * 3 >= len(nonempty) * 2:
+        allowed = set(get_tesseract_language_for_document_language("zh").split("+"))
+        # Preserve registry priority; changing model order changes transcription.
+        return "+".join(model for model in configured_language.split("+") if model in allowed)
+    return None
 
 
 def model_path():

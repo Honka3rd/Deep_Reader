@@ -38,6 +38,7 @@ export type ReadingBlock = { block_id: string; content: string; deleted: boolean
   chapter_id?: string; section_id?: string; task_unit_id?: string };
 export type ReviewNavigationBlock = ReadingBlock & { chapter_id: string; section_id: string; task_unit_id: string };
 export type ReadingState = { document_id?: string; revision: number; source_token: string; disposition: string; can_undo: boolean;
+  ocr_review_available?: boolean;
   refresh?: ReadingRefresh | null;
   structure_version?: string | null;
   undo_action?: string | null; cleanup_audit?: CleanupHistory; block_page?: { total: number; offset: number; limit: number };
@@ -46,7 +47,7 @@ export type RegionRepairAction = "region_edit" | "region_apply" | "region_delete
 export type RegionRepairCommand = { region_id: string; text?: string; discard_interactions?: boolean };
 export type ReviewBlockAction = "review_block_edit" | "review_block_delete" | "review_block_keep";
 export type ReviewBlockCommand = { region_id: string; block_id: string; text?: string; discard_interactions?: boolean };
-export type ReadingMutation = { action: "edit" | "delete" | "undo" | "discard_region" | "cleanup_edit" | "cleanup_restore" | "cleanup_delete" | RegionRepairAction | ReviewBlockAction;
+export type ReadingMutation = { action: "edit" | "delete" | "undo" | "discard_region" | "discard_all_regions" | "cleanup_edit" | "cleanup_restore" | "cleanup_delete" | RegionRepairAction | ReviewBlockAction;
   expected_revision: number; source_token: string; mutation_id: string; block_id?: string;
   region_id?: string; text?: string; discard_interactions?: boolean; cleanup_record_id?: string };
 

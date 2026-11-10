@@ -1,6 +1,525 @@
 # section_tasks Detailed Design
 
+## Shared sentence translation across reading modes (2026-11-09)
+
+Implemented under maintainer authorization. Ordinary reading retains its
+existing Translate/View translations, language selection, aggregated text and
+inline/highlight presentation. New ordinary generation uses the same deterministic
+sentence resources, aligned translation generator, versioned TranslationKey and
+learning repository as language learning. Learning sentence-pair presentation and
+ability-specific vocabulary remain unchanged. Translation identity is source
+binding/epoch + segmentation + exact source/target languages + policy/prompt
+versions; it contains neither reading mode nor proficiency. Reuse is within the
+existing workspace/document scope, not a new cross-user global cache.
+
+Persist one canonical aligned result; aggregate sentences in source order at read
+and response projection, without saving a duplicate paragraph string in document
+artifacts. Ordinary read includes learning-created translations. Both directions
+must reuse complete compatible results without provider/tokenizer calls. Different
+language pairs or changed source epochs are distinct. Do not interpret partial
+checkpoints, failed reads or unknown operations as reusable complete translations.
+
+Ordinary explicit commands use the existing durable claim/dispatch/checkpoint/
+commit and central admission machinery. They do not require learning mode, native
+language or proficiency. Their source/language binding is independent of subsequent
+mode changes; hints and existing learning command settings guards remain intact.
+Concurrent same-key requests share accepted work; uncertain dispatch never permits
+automatic paid retry. Ordinary synchronous transport observes completion with one
+bounded notification wait; timeout retains durable work for later read/recovery.
+
+Legacy paragraph-only records remain readable and are not silently deleted or
+fabricated into sentence mappings. New ordinary generation writes only aligned
+results. A matching canonical result takes display precedence over its legacy
+counterpart. Legacy-only paragraphs cannot provide sentence alignment to learning
+without a new explicit learning generation; no automatic bulk migration is planned.
+No schema migration or new source hierarchy is required. Source mutation, Undo,
+rename/delete and reparse continue using the existing learning lifecycle.
+
+Delivery order: domain/repository projection and admission; application integration
+and runtime wiring; file/PostgreSQL/API bidirectional reuse and lifecycle tests;
+ordinary/learning UI regression and backed-up real-source offline acceptance.
+
+
+Validation: 470 backend tests pass, including 35 shared file/PostgreSQL cases,
+legacy translation, domain policy, alignment, repository/lifecycle, app, runtime and
+route regressions. Includes SQL commit rollback, explicit retry after lost claim
+acknowledgement, failed refresh preserving saved output, concurrent completion/reuse,
+unknown/timeout without dispatch replay and source races. Actual API/React at
+1280/390 verifies both mode directions: two paragraphs use exactly two translation
+and two hints calls; later switches reuse results. Existing ordinary inline/highlight
+and learning display suites pass. Type/build passes with the existing bundle-size
+warning. Hash-verified English/Chinese backup excerpts yield 2/4 aligned sentences
+with one offline provider call each and unchanged backups. No live-model semantic
+quality claim or bulk migration.
+
+Local deployment: rebuilt the API image and recreated only the API service after
+confirming zero unexpired active learning operations. Existing DB/schema/data were
+retained; no migration or live model generation. The replacement service is healthy.
+
+### Reuse and storage rationale (2026-11-10)
+
+Reading mode selects a presentation of the same translation resource. This avoids
+paying for another translation solely because the reader changes modes, and avoids
+persisting a second aggregate paragraph for new results. Sentence resources,
+checkpoints, operation receipts and result provenance still occupy storage; this
+optimization does not mean that all translation-related data lives in one row.
+Sentence alignment also does not imply one LLM call per sentence: the existing
+generator batches sentences according to configured model capacity.
+
+| Concern | Current contract |
+| --- | --- |
+| Shared identity | Same workspace/document, current block source binding/epoch, sentence resource, exact source/target pair and policy/prompt versions. Mode and proficiency are not translation-key fields. |
+| Ordinary presentation | Backend `paragraph_record` validates alignment, preserves sentence order and newline-containing source gaps, and otherwise joins translated rows with a space. UI receives its existing paragraph DTO. |
+| Learning presentation | Read the aligned rows and backend sentence IDs; source text remains authoritative. Vocabulary uses its own proficiency-dependent key and can generate or fail independently. |
+| Saved-result reuse | Either entrypoint can consume a complete compatible result created by the other. Ordinary `generate` checks the exact key before provider work; learning reads return saved results before the controller considers missing components. |
+| Ordinary language grouping | The drawer still exposes one section per target language. The read adapter prefers current aligned output over legacy output, then the current default source, update time and cache ID when selecting among aligned candidates. This display grouping is not backend cache identity. |
+| Invalidated or missing result | Source changes or incompatible versions/pairs do not reuse the old key. Missing learning content may trigger the existing explicit current-page generation flow; a mode change is not a promise of zero calls for uncached content or vocabulary. |
+| Legacy paragraph output | Remains ordinary-readable. Without sentence mappings it cannot satisfy learning translation; do not claim zero-cost conversion or bulk migration. |
+
+The ordinary UI can focus an already returned target-language section without a
+generate request; it shows that record's actual source provenance. This existing
+display behavior must not be described as backend authorization to reuse a
+different source-language key on an explicit generate command.
+
+### Manual reuse acceptance (2026-11-10)
+
+Use an already saved aligned English-to-Chinese paragraph. The local reference
+case is `Madame Bovary`, Part I / Chapter One / first page, block
+`17516:content:0`, opening “We were in class when the head-master came in”.
+These IDs identify this local fixture, not portable document identities.
+
+1. In Language learning, view the paragraph's two source/translation pairs.
+2. In Library, select Normal reading, reopen the same paragraph and use View
+   translations, or select its already saved Chinese translation through Translate.
+   Expect the same two translated sentences as one paragraph.
+3. Optionally return to Language learning; expect the same sentence pairs. Keep
+   source/target and content unchanged; do not request a translation refresh or
+   vocabulary retry while measuring reuse.
+4. Correlate API request IDs with the observation window. Compare saved result
+   revision/operation identity and aggregate text against aligned rows; compare
+   cache/operation payloads before and after. Check both generation requests and
+   `learning_translation operation=generate_batch` events. Fast rendering or an
+   HTTP 200 alone is insufficient proof of reuse.
+
+Observed user run, 2026-11-10, UTC+8:
+
+| Time | Evidence |
+| --- | --- |
+| 09:07:07 | `learning/read` returned 200; request ID `2692bbd3d5094ef6bf435258d5aa5c3e`. |
+| 09:07:39 | `reading-preferences/apply` returned 200; subsequent preference read confirmed `normal`. |
+| 09:08:00 | `translate/read` returned 200 in 666.2 ms; request ID `c4cfe068ff6f49c89ad79bc7a08ef407`. |
+
+The captured user-operation window contained zero ordinary/learning generation
+requests and zero translation batch-generation events. Separate read-only API/SQL
+comparison of the reference block confirmed identical aggregation, result revision
+`1`, shared operation `5a9b505c-0b08-4cac-8390-5ea934279e80`, and unchanged cache and
+operation payloads against the pre-test baseline. The API container had been
+replaced before the user operations; logs were recovered from the replacement.
+
+Evidence limits: HTTP logs omit request bodies, so they cannot alone identify the
+clicked block. The user performed learning-to-normal; the optional return step and
+new-result creation were not part of this manual run. Bidirectional creation/reuse
+remains covered by the earlier automated API/React acceptance above. The measured
+latency is one observation, not an SLA; no semantic-quality claim is made. Vocabulary
+failure/retry is separate from translation reuse. Local raw evidence is in
+`/tmp/shared-translation-manual/{api-after-user.log,user-verification.json,baseline.json}`;
+those temporary files are supplementary, and this section preserves the result and
+limits when they expire. No new cache-hit logging field was added by this audit.
+
+## Vocabulary filtering and completion waiting (2026-11-09)
+
+Implemented under maintainer authorization. This supersedes the earlier
+whole-batch rejection of individual malformed vocabulary candidates. Keep strict
+top-level JSON/source/settings validation, but isolate candidate/annotation errors.
+Retain grounded eligible hints, deduplicate identical occurrences and exclude
+conflicting duplicates. Order annotations by their authoritative sentence IDs.
+Keep proficiency/name/mixed-language selection policy; these are normal filters.
+Optional lexical metadata may be discarded independently. Persist counts and
+content-free issue categories alongside checkpoints/results, preserving legacy
+records and exact source guards. Zero retained hints with validation omissions
+must not be presented as a verified absence of useful vocabulary. No automatic
+paid retry is introduced; prompt/model selection stays unchanged.
+
+Replace the UI's one-second status polling with one bounded completion wait per
+observation. Backend-owned work signals completion; storage remains authoritative
+and the UI reads the committed result once afterward. Cancellation detaches the
+observer without cancelling accepted work. Timeout/disconnect requires explicit
+status recovery, never an automatic new generation. Learning owns notification state;
+transport owns the wait endpoint; UI owns abort/stale-response guards.
+
+Policy is now `learning-hints-5`; prompt stays `learning-hints-prompt-4` and the
+configured model is unchanged. The new key prevents reuse under the old rejection
+policy; old records remain stored. On the selected reading page, a missing v5 key
+follows the existing read-before-generate flow. No whole-book regeneration occurs.
+A successfully committed filtered result, including an empty result with omissions,
+replaces the previous result on explicit refresh. An unreadable envelope or failed
+commit preserves the previous saved result. Assessments record candidate, accepted,
+normal-filtered and validation-rejected counts, omitted sentence count, and safe
+reason codes; they are not a semantic-quality score.
+
+Verification: targeted hints, DTO, file/PostgreSQL repository, orchestration and
+HTTP/schema regressions cover filtering, report durability, legacy digests, guarded
+commit and notification waits. Controller/display/lifecycle and actual API Reader
+checks pass at 1280/390. Captured raw outputs from both backed-up real books plus
+mixed-language control pass API/SQL/restart/Reader replay with zero live provider
+calls and unchanged backups: ignored
+`data/test-books/learning-live/vocabulary-filter-20261109/report.json`.
+Historical semantic-quality findings below remain unchanged.
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+**[Maintainer-Confirmed; system scope complete, 2026-10-29]** 本節為語言學習模式的唯一跨模組規格。LLRN-01–22 系統交付及驗收完成；唯一 owner、依賴及證據見 [LLRN queue](module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。模式設定、逐句閱讀、registry 分級、獨立 cache、來源生命週期、API/runtime 與 UI 已實作，偏好及 learning 表已有顯式 migrations；本機資料庫已於 2026-10-29 完成 [004/005 部署補正](../db/module-detailed-design.md#local-reading-mode-schema-deployment-correction-2026-10-29)。
+
+依 maintainer 最新指示，LLRN-22 只處理系統可控制的來源定位、輸出格式驗證、失敗分類、保存／恢復與閱讀流程。模型選擇、提示詞調整及語義評分移出此任務，歷史語義觀察保留、不改判通過。Scripts 記錄器現在保留原始回應，返回的 malformed JSON 交由正式服務判為 known invalid output；真正 provider exception 仍是 unknown。原始文字重播不消除 duplicate keys，舊報告重播明示 legacy JSON；沒有新增模型請求、parser bypass 或自動 retry。765 項後端回歸及隔離 SQL/Reader 重播證據見 [scripts owner](../scripts/module-detailed-design.md#llrn-22-system-acceptance-scope-2026-10-29)。以下 follow-up 小節保留當時的驗收歷史，現行完成條件以本段為準。
+
+LLRN-14 的 public request/response、12 個 route 契約命名（含 2026-11-09 completion wait）、來源 token、mode apply 保留語意及 error union 見 [API owner design](../api_schemas.module-detailed-design.md#language-learning-reading-mode-contracts-llrn-14-2026-10-28)。Response 將已保存結果與刷新 operation 分開，unknown 先查 command/operation；schema 不替代 source/settings/admission guards。56 項專測與 154 項底層回歸通過，LLRN-15 DI 已交付，LLRN-16 production routes 已交付，LLRN-17 settings UI 已交付，逐句 reader 已由 LLRN-19 交付。
+
+LLRN-15 的 [composition contract](../config/module-detailed-design.md#llrn-15-composition-and-lifecycle) 組裝同一 file/SQL repositories、集中 admission、唯讀 source profile reader 與 lazy single-attempt provider。Provider 沿用模型能力，SDK hidden retries 停用於 learning 專用入口；普通閱讀不變。Resource shutdown 會 drain accepted jobs，LLRN-16 已接到 application lifespan；file journal 與未知 operation 仍需明確 recovery/reconcile，不由 startup/read 自動執行。33 項新專測及既有回歸通過，完整模式／語義品質仍須後續驗收。
+
+LLRN-17 的 [UI owner 設計](../../Deep_Reader_UI/module-detailed-design.md#llrn-17-implemented-settings-ui-2026-10-28) 已接入集中母語及每書 list/detail 設定，包含 registry 級別、candidate/active、dirty navigation、CAS/unknown 先 read、同語/未知模式防護。1280/390 Actual App 受控 HTTP 及實際 API + temporary file persistence 通過；保存設定不生成，未有 reader/語義品質完成聲明。讀回原文 override 只含 effective source；清除 override 時先顯式保存普通模式，再依讀回 profile 語言設定學習，不由 UI 猜測。
+
+LLRN-18 的 [UI owner 設計](../../Deep_Reader_UI/module-detailed-design.md#llrn-18-implemented-current-page-controller-2026-10-28) 已交付當頁 read-before-generate、50-block 分批讀取、2 個 frontend workflows、獨立 translation/hints 狀態、單次有界 completion wait（2026-11-09 取代原 20 次輪詢）及 command/operation 回查。Library 返回先確認模式；離頁 abort/停止排隊，未確認命令由 App session 持有。14 組 controller 專測、1280/390 Actual App 與 temporary file-backed 真 API/固定 provider 驗收通過；後者兩個可見段落共 4 calls，reload/reuse 不重送。這不是 backend job 數量限制、付費 provider 品質或 LLRN-19 逐句呈現驗收；普通翻譯入口切換已由 LLRN-19 交付。
+
+LLRN-19 的 [UI owner 設計](../../Deep_Reader_UI/module-detailed-design.md#llrn-19-implemented-sentence-pair-display-2026-10-28) 已交付原文/母語逐句排列、段落詞語置於 Insight 前、獨立 refresh/retry 與 unknown duplicate-cost 確認；學習模式隱藏普通翻譯入口/inline 並暫停其 reads，回普通模式恢復 session 選擇。1280/390 Actual App 驗證 Unicode/RTL/長文、partial/empty/失敗保留、模式往返、focus/scroll/highlight；真 API＋臨時 file/固定 provider 驗證已存逐句/詞語 DOM 及重用。LLRN-20 的 [scripts owner 驗收](../scripts/module-detailed-design.md#llrn-20-backend-integration-acceptance-2026-10-28) 已交付 14 個 file/真 SQL/ASGI 連續流程及 724 項去重後既有回歸，738 項全數通過、零 skips。驗證設定往返/cache reuse、runtime restart、source/Undo/reparse、rename/delete、unknown/replay、並行 recovery、rollback/fencing 與普通翻譯回歸；provider 計數和來源/profile/設定 hashes 保留，隔離 SQL 資源已清理。LLRN-21 已依 [UI owner 驗收](../../Deep_Reader_UI/module-detailed-design.md#llrn-21-reader-lifecycle-and-accessibility-acceptance-2026-10-28) 通過 type/build 與 10 組 controller/browser suites：1280/390 的設定到閱讀/edit/Undo 連續流程、第三種測試模式 list/detail、keyboard/focus、競態、長文/RTL/scroll 及臨時 file/固定 provider 真 API。修正離開確認卸載 active settings panel 導致取消後步驟重置；本地隱藏保留狀態不新增模式或 backend mutation。LLRN-22 現依上述系統範圍完成，未宣稱真模型品質通過。
+
+### LLRN-22 quality follow-up (2026-10-28)
+
+The [scripts-owned live gate](../scripts/module-detailed-design.md#llrn-22-live-acceptance-and-open-quality-gate-2026-10-28)
+now has real provider/API/SQL/Reader evidence, but **semantic acceptance failed**.
+The 2026-10-28 translation and hints prompt/policy versions advanced to 2: general role ambiguity,
+historical verb senses, whole-sentence language purity, known-level vocabulary,
+proper-name exclusion and lexical-expression selection are stated explicitly.
+Versioned keys prevent old-policy cache reuse; old records are not deleted or
+silently rewritten. The configured model, capacity source, parser/schema,
+single-attempt dispatch and unknown-recovery policy are unchanged.
+
+These prompt refinements are not a demonstrated semantic fix. Final bounded
+gpt-4.1-mini outputs still misinterpret contextual meaning and select elementary
+or nonlexical hints; English/French mixed-sentence classification is unstable.
+`data/test-books/learning-live/llrn22-20261028-v3/semantic-review.json` records the
+rejected findings. At that historical checkpoint, semantic correction and live
+reacceptance were required; the system-only scope above supersedes that gate.
+The existing LLRN-10/11 reports below remain historical failed-quality evidence.
+At that checkpoint LLRN-22 was unchecked (21/22); see the current scope above.
+
+### LLRN-22 deterministic hint selection follow-up (2026-10-29)
+
+Hints advance to policy/prompt v3: the provider proposes sentence language sets and
+candidate familiarity/lexical/name assessments, while the backend applies registry
+ordering and whole-sentence exclusions. See the LLRN-11 implementation below for
+the exact internal wire contract. Public DTOs, SQL schemas, translation policy v2,
+configured model/capacity and single-attempt recovery remain unchanged. Optional
+lemma/part-of-speech may be omitted and become null; grounding and required
+assessment fields remain strict. This does not certify model assessments as facts.
+
+The bounded final hints run saved 5 A1, 0 C2 and 12 TOCFL-1 hints with reuse and
+unchanged backups. TOCFL-6 failed because the provider used occurrence 1 for words
+that occur only once; the backend rejected it instead of silently relocating them.
+An independent current-prompt English/French control correctly returned both
+language codes and the backend excluded all candidates. One successful control
+is not evidence of stable identification across passages. Low-level meanings still
+invent roles and literalize context; translation semantic failures persist.
+Final regression: 744 distinct backend tests passed with zero failures/skips, including 35 hints tests (six new rules/metadata tests) and 24 translation tests; disposable SQL schemas were cleaned.
+The scripts-owned follow-up retains all reports and the remaining acceptance work.
+The experimental extra translation paraphrase was not retained: its live evidence
+showed no demonstrated quality benefit. That checkpoint was 21/22.
+
+### LLRN-22 exact-text hint anchors (2026-10-29)
+
+**[Historical v4 grounding contract; rejection behavior superseded by the 2026-11-09 filtering policy above.]** Provider wire/policy v4 removes numeric
+`occurrence` from hint candidates. `source_form` remains exact source text;
+optional `left_context` and `right_context` are exact immediately adjacent source
+strings, defaulting to empty strings when omitted. They are text anchors, not
+semantic descriptions. The backend searches only the referenced sentence for
+`left_context + source_form + right_context`, including overlapping matches,
+and requires exactly one match. It then computes the source-form code-point span
+from the matched anchor plus the left-context length. A unique form needs no
+context. A repeated form requires enough adjacent context to select one location;
+an ambiguous/missing/normalized/cross-sentence anchor rejects the batch, even for
+a candidate that would be filtered out. No first-match fallback, fuzzy matching,
+index correction or paid repair call is permitted. Old `occurrence` fields are
+rejected, not silently ignored.
+
+This changes only the internal provider contract and hint policy/prompt cache
+version. Public VocabularyHint spans, SQL schema, sentence/resource IDs and
+source ownership remain unchanged. Optional nullable lemma/POS retain v3 behavior;
+context fields accept strings only, including empty strings (not null). Historical
+v3 occurrence failures remain evidence; the new contract must be revalidated on
+backed-up real-book excerpts. This grounding change does not fix semantic meanings
+or independently verify lexical/language/proficiency assessments.
+
+Verification: six new grounding regressions cover unique/repeated/overlapping
+anchors, exact Unicode/whitespace, sentence-local containment, malformed or
+ambiguous filtered candidates, legacy-index rejection and duplicate final spans.
+The combined hints/translation suite passes 65 tests, including a rerun after the final prompt clarification. Full backend regression passes 750 distinct tests with zero failures/errors/skips; disposable SQL schemas/container are cleaned. The v4 integrated live run
+completed all eight calls across both real books (A1/C2 and TOCFL-1/6) plus the
+mixed control, SQL save/reuse, runtime restart and 1280/390 Reader reload without
+new generation. Hint counts were 6/0, 14/0 and 0 respectively; backups unchanged.
+A separate repeated-bank control initially failed on missing anchors; after the
+prompt example explicitly showed context fields, both meanings were grounded to
+their correct distinct spans. This prompt clarification does not change the v4
+wire; the eight-call run precedes it. All attempts are retained, not retried by
+production. Contextual role/figurative-meaning errors still fail semantic review;
+LLRN-22 was still open at that checkpoint. See current scripts-owned system acceptance.
+
+### Confirmed product scope
+
+- 每書從可擴充的模式清單選用一種模式；初期清單僅含普通閱讀與語言學習，未設定沿用普通閱讀。每個模式可有自己的設定與閱讀互動，不把模式建模為語言學習開關或寫死兩個分支。
+- 學習的是**書籍原文語言**，母語譯文輔助理解。中文母語者讀英文書：英文原文 + 中文譯文；讀中文書不能啟用學中文。原文語言、母語均受系統 registry 約束且必須不同。
+- 母語集中儲存在暫時的單人 workspace；每書 mode、原文 override、能力等級也屬於同一 scope。未有用戶系統，不偽造 user identity 或多用戶隔離。新增 `reading_preferences` owner 已有基礎契約/file adapter，未來可遷移至用戶設定；不是普通翻譯 Reading display 的 session preference。
+- 原文語言預設讀既有 profile；缺失或錯誤允許在書籍設定明確校正。Override 是閱讀偏好，不回寫 parser/profile，不重新偵測、prepare 或 reparse。單書只設一種學習語言與一個目前能力等級。
+- 能力由 Library 每書設定。`language` 以現有 codes 建立獨立 proficiency definitions：scheme/version、穩定 level ID/順序、易懂標籤與可給 LLM 的閱讀能力描述。不把所有語言硬套 A1–C2，不要求不同考試等值。LLRN-01 已交付全部 19 registry 語言的 [方案與來源表](../language/module-detailed-design.md#curated-language-assignments)，包含版本化定義及嚴格 selection validation；Library 設定已由 LLRN-17 實作。
+- 閱讀次序：逐句原文/母語譯文 → 當段單字與固定片語/慣用語提示 → Insight（如有）。一行表示相鄰邏輯文字列，長句可自然換行。學習模式隱藏普通 Translate/View translations 及普通 inline translation 顯示；保存的普通譯文不刪除，回普通模式恢復原 session display 邏輯。
+- 選用模式後，只對**正在讀的 reader 分頁**先讀已存結果，再明確生成有效 missing 項。不是 OCR 實體頁；不預處理整書、不預抓下一頁。Library 顯示/保存設定、task-layout/content/catalog 純讀均不偷偷生成。
+- 詞語提示挑選超出目前能力且有助理解當段的詞或慣用語。資料含 source form、適用時 lemma、詞性/片語類型及母語語境義；可為空，不固定數量，不擴大為完整文法教學。
+- 英文書中法文引文仍翻成母語，但不能套用英文能力生成法文難字清單。外語/不確定語言片段不得硬套本書分級；可保留完整理解用翻譯。
+- 保存昂貴生成結果；不同能力等級的提示分別 cache，只生成真正請求的等級。更改等級不複製原文/切句或重譯。
+- 暫時允許段落級重新生成；翻譯與目前等級提示各自操作，成功提交才替換舊結果，失敗保留。集中保留未來按用戶限制生成的 policy 接點；本期不發明角色、配額或計費數值。
+
+### Extensible reading modes
+
+**[Maintainer-Confirmed direction; settings/controller/display implemented, acceptance gates pending]** 模式清單共用選擇入口，各模式獨立管理設定和閱讀互動；具體 UI 流程見 [mode list design](../../Deep_Reader_UI/module-detailed-design.md#extensible-mode-list-and-interaction-ownership)。不是複選，也不是同時執行多種模式。
+
+`reading_preferences` 擁有系統支援模式 catalog 和設定驗證契約，catalog 以穩定 mode ID 識別，帶用途與設定版本等必要資料；LLRN-09 backend 已根據目前書籍/workspace 與既有 profile 計算 availability/eligibility，返回原因及原始設定/revisions；runtime/API/settings UI 與當頁 controller 已由 LLRN-15/16/17/18 接線。Book preferences 分開保存 active mode ID 與各模式的 typed/versioned settings；普通模式無需語言欄位。LLRN-02 已固定 domain/file 欄位（見偏好設計），LLRN-14 transport schema 已交付，正式 routes 已由 LLRN-16 交付；不以布林值或無驗證任意 JSON 表示模式。母語是 workspace 值，原文 override 是共用 book reading 值，proficiency 放在語言學習設定，避免重複保存不同真值。
+
+本期只註冊兩種已規劃模式；不虛構未來模式或動態插件協議。保留不活躍模式的已保存設定和有效衍生資料，不活躍模式不能自行排隊生成。讀 catalog/選取候選/編輯 draft 都不啟用；明確保存 active mode 與該模式設定為一次 CAS 寫入。讀取不認識的 persisted mode 時不回寫普通值，顯示 unavailable 並保留基本原文閱讀；提交未知 mode 或不匹配的 settings 需拒絕。
+
+任務邊界：LLRN-02 定義 catalog/settings port 與 file persistence；LLRN-09 實作 eligibility、模式相符驗證及原子套用；LLRN-14 定義 transport 的 mode catalog/typed settings；LLRN-17 實作 list/detail 共用介面與語言學習設定；LLRN-18/19 負責模式 controller 生命週期及 reader 組裝；LLRN-21 驗收候選切換、dirty draft、桌面/手機及不支援模式。仍沿用 22 項唯一 owner 任務，不新增重複清單。
+
+### Existing foundation and gaps
+
+**[Code-Confirmed baseline, 2026-10-28]** `shared/task_unit_model.py` 已有 content blocks、來源 hash/span 與 paragraph/list-item segmentation；不是學習句子層。`sentence_terminal_boundary_normalizer.py` 只處理候選切點的句末標點，不能直接當作完整多語切句器。
+
+普通翻譯由 `translation_records.py` 保存於 document artifact metadata 的 block/target-language 記錄，只有 `translated_text`，沒有 verified sentence alignment 或 learner level。`app/translation_action.py` 先調 provider 再 guarded commit；現有 CAS/replay 保護提交，**不保證併發請求只付費一次**。不得以現有 receipt 或 256 筆歷史限制替代新的生成 admission 設計。
+
+`document_structure/reading_content_artifacts.py` 已對來源改動清理普通 translations/summaries；新增資料型別須顯式接入。普通模式 UI 目前正文 → Insight → 普通 inline translations；一般 session display 只做當頁 saved reads，不能誤認為學習模式已提供自動生成。既有普通翻譯的 no-force、read-only drawer 與 session 顯示規則保持原適用範圍；本規劃另立模式，不把舊譯文切開冒充句子對齊。
+
+### Planned ownership and logical data
+
+以下為邏輯設計；LLRN-02 已有偏好 domain/file 契約，LLRN-03 已有 sentence/translation/hint DTO，LLRN-05 已有操作策略、LLRN-06 已有 repository/file adapter、LLRN-07/08 已有 preference/learning SQL schemas，其餘依任務隊列交付。LLRN-14 已補齊 API transport schema，並已由 LLRN-16 接入 production endpoints；邏輯實體數量不等於 SQL table 數量。
+
+| Logical resource | Required identity/content | Owner |
+| --- | --- | --- |
+| Workspace preferences | server-resolved workspace scope、母語、revision | `reading_preferences` domain/port/file；`db` SQL |
+| Book preferences | scope + authoritative document identity、active mode ID、可空共用 source override、各模式 typed/versioned settings、revision | `reading_preferences`；`learning` 消費有效偏好，`document_structure` 協調 document lifecycle，既有 profile reader 由 `config` 注入 |
+| Sentence resource | block source binding、segmentation version、ordered sentence IDs、source spans | `shared` DTO；`section_tasks` 切句；`document_structure` repository/file；`db` SQL |
+| Aligned translations | source/segmentation key、learning/explanation languages、sentence IDs + translated rows、generation policy/version、result revision | `section_tasks` domain；repository/SQL 同上 |
+| Learning hints | source/segmentation key、learning/explanation languages、scheme/version/level、rules version、定位詞語列表（可空） | `section_tasks` domain；repository/SQL 同上 |
+| Generation operation | scope/target/component/key、command ID、claim/fencing token、state、result revision/receipt、timestamps | `section_tasks` policy；`learning` 執行；repository/SQL 持久化 |
+
+`reading_preferences` 已成為 Python package，交付 domain/catalog/port/file adapter 及 LLRN-09 有效設定服務，已由 LLRN-15 組裝，LLRN-16 已提供 production API，尚非用戶系統；[偏好設計](../reading_preferences/module-detailed-design.md) 記錄 CAS、read-only defaults、保留未知設定、rename/delete tombstone 和 file recovery 邊界。LLRN-12 已串接偏好與 document lifecycle ports，正式 DI 已由 LLRN-15 交付；file journal 不宣稱跨資源瞬間原子性。Registry/proficiency 在 language；shared 只有無副作用契約；learning 協調而不承包 prompt/SQL；api_schemas/main 只負責 transport；config 只組裝。UI 以 backend 回應為權威，App 保持 composition shell。
+
+### Sentence identity and alignment
+
+1. `chapters[].sections[].task_units[]` 保持 hierarchy truth。句子只是 block 內部來源定位，不新增導航層或 `ArtifactTargetLevel`。不得依 LLM 語義重寫 parser structure。
+2. 對 **effective reading text**（包含已套用的修正）切句；source binding 包含 scope/document、完整 parent ownership、structure version、block identity、effective hash 及不隨 Undo 倒退的 content epoch。原始 OCR/page provenance 可引用但不能冒充目前 block offsets。
+3. 新句子 spans 採 block-local Unicode code-point `[start,end)`；保留標點、空白和 gap 的來源引用以精確重組原文。跨 Python/JS 傳輸使用 backend 產生的文字投影/ID，不讓瀏覽器用 UTF-16 index 推導來源。IDs 在相同來源與 segmentation version 下可重現，來源改變不保證跨版穩定。
+4. LLM 看完整段落、backend sentence IDs 與必要語言設定，一次回覆多句對齊；不每句獨立付費。Backend 驗證 ID 集合、順序、覆蓋、無重複/遺漏及輸出型別。原文永遠由 backend source 提供。
+5. 過大段落在既有配置的模型能力內有界分批並保留 ID/上下文與明確進度；不新增手寫猜測 token/字數上限。分批成功可以分項呈現，但未完成整組不得標為完整成功。LLRN-05 已固定 ordered batch/checkpoint/partial 狀態；LLRN-10 已交付翻譯容量分批與 payload 驗證；LLRN-11 已交付提示生成技術基礎（語義品質未通過）。
+
+LLRN-03 已交付 [shared DTO 與驗證邊界](../shared/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)：source binding 包含完整 ownership、可空 legacy structure/document/content epochs 與 exact UTF-8 hash；block-local code-point spans、版本化 deterministic sentence IDs、含空白的精確文字投影，以及完整譯文/提示 reference 驗證。`from_spans` 只接受既定邊界，不是切句算法。反序列化不證明來源有效；consumer 必須用目前 hierarchy/source 做 validate_source，再驗證結果 reference/alignment。LLRN-06 已有 source-guarded file 寫入；LLRN-08 已有 source-guarded SQL 寫入，全來源 epoch lifecycle 已由 LLRN-12 接入 source ports；LLRN-05 已定義 partial progress，翻譯 chunk payload/生成已交付 LLRN-10，提示生成已交付 LLRN-11 技術基礎；完整模式/品質 gate 仍待後續任務。
+
+### Implemented aligned translation generation (LLRN-10)
+
+**[Code-Confirmed, 2026-10-28]** `learning_translation_service.py` 提供 provider-injected `LearningTranslationService`，消費已解析的 `SentenceResource`、完整 effective text 與 registry language pair；使用 `learning_translation_prompt.py` 的 `learning-translation-2` policy 與 `learning-translation-prompt-2` prompt version（LLRN-22 強化通用語境限制，品質仍未通過）。輸出直接符合既有 public `BatchPayload` / `AlignedTranslation` 契約，不創建另一份儲存 schema、句子 ID 或原文真值。普通入口的新生成也已接入此服務（2026-11-09）；原 `TranslationService`/prompt 保留作既有獨立服務與歷史相容用途，不再代表普通入口的 production 生成管線。
+
+- `prepare` 驗來源 hash/完整 spans、segmentation language 與 source language 相符、registry/distinct pair。Empty/whitespace resource 返回 `None`（no_content），不查容量、不生成假譯文。一般完整段落、全部 backend sentence IDs/原句及 source/explanation language 一次送模型。母語作 output language，外語引文也翻譯；不攜帶能力級別、不生成提示，translation key 不因 level 改變。
+- 容量來自注入 provider 的 `LLMModelCapabilities`：每次 request 使用配置 `max_output_tokens`，並用 `input_token_limit(max_output_tokens)` 計算可用輸入；只從 shared context 扣一次輸出 reserve，再取獨立 input ceiling。沿用 ordinary translation 的 256-token transport framing reserve，不是單次文字上限或譯文長度估計。無新的 token/字數硬上限、chars-per-token ratio、output expansion forecast 或百分比縮減。
+- 本服務要求現有離線 `count_input_tokens` 可提供正整數；None/失敗回報 `learning_translation_capacity_unavailable`，不誤報用量不足、不猜字元比例或下載 tokenizer。Preflight 與 dispatch 使用同一 prompt/count/output ceiling，dispatch 再核對模型能力與 tokenizer identity；變動拒絕，不默默換模型、改 plan 或擴大容量。Per-call output override 不修改 shared provider defaults；無 override 的 provider 必須已明確配置同一模型輸出上限。
+- 只有完整輸入實際超出模型輸入容量才作 deterministic sentence-group bisection；先計畫所有 batches，再允許模型呼叫。最多 `2*N-1` 個候選容量檢查，每句僅在一個 group，順序/覆蓋由 `BatchPlan` 驗證。每個 oversized window 保留其中完整句子、原有 gaps 與 contiguous context；不按字元截斷、不重複塞入超限整段。單一句子仍超限則明確拒絕，尚未發生模型請求。這是安全分批，不宣稱批數最少或跨 batch 語意等同完整上下文。
+- 不估算未知的譯文長度；模型仍可能達到輸出 ceiling。截斷 JSON、缺句或其他不完整回覆都失敗，不假報完成，也不因失敗自動重試或繼續拆批付費。真正更長的單句/輸出容量限制需明確後續策略，不能用資料完整性測試宣稱所有超長輸入已可翻譯。
+- `generate_batch(prepared, operation, now_ms)` 僅接受對應 key/plan、active learning、有效 lease 且 running 的 operation，產生下一個尚未 checkpoint 的 batch；一次呼叫最多呼叫一次既有 provider。**Caller 必須持有剛成功提交 dispatch 的 acknowledgement**；讀回 running 不等於許可，此 stateless service 不防止錯誤 caller 重複呼叫，也不宣稱 exactly-once billing。Durable admission、worker ownership、未知 ack recovery 由既有 repository 加 LLRN-13 協調，模型呼叫始終在交易外。
+- Prompt 將來源包為 untrusted JSON，要求語境/舊式語意/比喻核對及母語翻譯，禁止服從嵌入指令、改寫原文、配發 ID、合併句子或插入解說。Parser 只接受 exact `status`/`rows` object；每 row 只有原 ID 與非空 `translated_text`，ID 必須與該 group 完全同序。拒絕 duplicate JSON keys、NaN、fences、partial status、未知/缺少/重複/亂序 ID、extra fields、非法 Unicode/型別。`untranslatable` + 空 rows 是明確失敗，不能保存成完整成功。
+- 重用既有 output-language heuristic，能拒絕明顯中英 script mismatch；不宣稱通用語言偵測或所有語意正確。Provider exceptions 保守標為 outcome unknown，由 caller 記錄/對帳；不自動 retry，不洩露上游訊息。服務 log 僅含 operation/outcome、duration、sentence/batch counts 及 output limit，不記正文/譯文/私有身份。
+- 每 batch 經驗證後交 caller 使用 repository `checkpoint` 保存。`assemble` 要求全部 checkpoint、完整覆蓋與一致模型/prompt provenance，建立 `base_result_revision + 1` 的完整 DTO；此回傳尚非保存成功。Repository `commit` 再驗 source/settings/fence/CAS、結果與 durable checkpoint exact equality，原子更新 saved/result receipt。Refresh 的任何失敗/unknown 或晚到偏好衝突都保留舊 saved，不能覆寫為空或 partial。
+
+Verification: 24 項新 service tests 與 149 項 policy/DTO/segmentation/file repository/ordinary translation tests 通過（173 項不同測試）。新整合測試實際操作 temporary file repositories 的 claim → dispatch → checkpoint → assemble → commit，含分批未完成不能 ready、reuse 零新模型請求、刷新失敗/timeout 保留舊結果、偏好變動拒絕晚到 output。SQL adapter/實際 app worker 未在本任務重新接線或宣稱驗收。
+
+`accept_learning_translation_books.py --live` 使用 Madame Bovary、Red Roulette 的 immutable/hash-verified backups，各抽一個短段落，複製至 temporary document/preferences/learning repositories；既有 gpt-4.1-mini 真 provider 以模型上限 32768 輸出，2 次 batch 請求產生 2 + 4 句且成功保存，備份 bytes 不變。驗收明確停用 provider adapter retry；private evidence 位於 `data/test-books/learning-translation/`，不進 git。兩輪均通過對齊/保存檢查，但語義抽查未通過：Bovary 的舊式 surprised at his work 語意偏直譯，最終樣本還將 new fellow 譯為新來的老師；Red Roulette 的比喻也有直譯。補強通用語境提示後仍未消除，不能將本次 smoke 當翻譯品質通過。最終 private report 為 `data/test-books/learning-translation/20261028T053446Z-53f1bccc/report.json`，初輪 `20261028T053223Z-7c2edda2/report.json` 保留。語義品質修正及更廣語料驗收依最新系統範圍移出 LLRN-22，不能因此默認 provider 品質已足夠。這只證明短段落的格式/對齊/保存與抽查，不是全文翻譯品質、所有語言、API/UI 或 LLRN-22 完整驗收。
+
+### Implemented ability-aware hints generation (LLRN-11)
+
+**[Code-Confirmed, 2026-10-29; technical foundation, semantic quality not accepted]** `LearningHintsService` 消費已解析的 effective block、`SentenceResource`、異語 language pair 與 `LearningProficiencyRef`。`learning_hints_prompt.py` 使用 `learning-hints-5` / `learning-hints-prompt-4`；每次解析目前 registry scheme/version/level，把實際 `reading_description`、label、scope note 及該 scheme 全部級別的 ID/order/描述放入 prompt，不只傳級別名稱。輸出 `BatchPayload(hints)` / `LearningHints`，附加可空 assessment；不新增 SQL migration 或翻譯依賴。
+
+- 一般段落一次請求；提示無最低/固定數量，provider wire 的 `completed` + 完整句子語言判定 + `candidates: []` 是有效結果；候選全部被規則排除也可保存空 hints，需 checkpoint/commit 後才 ready。`unavailable`、截斷或頂層格式錯誤仍失敗；缺少句子判定則記錄 omitted_sentences 並排除該句候選，不冒充完整評估的空結果。空白來源直接 no_content，不查模型容量。
+- `learning_generation_capacity.py` 抽取翻譯/提示實際共用的模型能力、離線精確 token 計數及句子分批政策；既有翻譯 prompt/output/key 不變。沿用模型配置的完整 output ceiling、256 transport framing reserve、最多 `2*N-1` preflight candidates；不估算字數或輸出膨脹、不手設單次文字上限。不可拆長句超限、tokenizer 不可用或模型/計數器改變會明確拒絕。輸出截斷不自動重試/拆批。
+- 模型回覆既定 sentence IDs 的語言判定，backend 按 ID 對應，不要求陣列同序，不能重抄/改寫正文。來源仍來自 backend；不建立新 profile、語言偵測請求或 parser truth。每句 `language_codes` 必須是非空的 registered codes/null 陣列；重複 code 去重後，只有集合精確等於 `{source_language}` 才 eligible。缺失、重複或無效 annotation 只排除受影響句子。非學習語言、混語/包含不確定（JSON null）的句子**整句不選提示**，即使其中有有效學習語言詞語；這是保守粒度，未提供句內混語定位。每句的語言判斷仍是模型語義證據，不是已證實的語言識別；既有 script registry 只補強明顯 script 矛盾檢查，無法區分同 script 的法文/英文。不能宣稱所有外語片段必被識別。
+- `learning_hints_output.py` 對 malformed JSON、duplicate JSON keys、NaN、fences、非 completed 或無法讀取的頂層 envelope 仍回傳失敗。獨立 candidate 的欄位、定位、解釋語言錯誤只排除該項；sentence annotation 依 ID 對應，缺失／衝突只影響該句。先套用 registry 分級、lexical_unit、proper_name 及整句語言 eligibility，再驗證需要保留的詞語。正常排除項不必通過無關 grounding。source_form 必須精確位於指定句內；唯一出現已足以定位，忽略無用 context。重複出現仍須足夠精確的相鄰 left_context/right_context，否則排除該項；不做 fuzzy matching、normalize、任選第一個位置或採納模型 offsets。相同位置的相同提示去重；相同位置內容互相矛盾則全數排除，保留其它合格項。結果按來源位置排序。
+- `lemma`/`part_of_speech` 缺失或不合型別時丟棄該 optional detail，保留其餘有效項；額外 candidate 欄位忽略，不具任何 source/offset authority。必需欄位不合格以安全 reason code 計數。`assessment` 隨 checkpoint 和 final result 保存，candidate_count = accepted_count + filtered_count + rejected_count；omitted_sentences 另計，issue counts 可包含 metadata／annotation 原因，不能當作另一份 candidate 總數。零保留且有 validation omissions 時，UI 明確顯示無法保留，不宣稱沒有難詞。語言／熟悉度／詞類仍依模型評估；系統不保證語義正確。新 policy 隔離 cache，不刪舊結果、不自動重試或補足數量。
+- Hints key 包含 source/resource、語言 pair、policy/prompt 及 scheme/version/level；改 level 分別保存並重用同一句子 resource。`prepare`/生成/組裝均不讀取 translation 或依賴其 result revision。翻譯失敗不阻止提示；提示失敗/刷新不更動 saved translation。
+- 服務只有 preflight、一次 provider invocation、batch 驗證與完整結果組裝。Caller 仍必須取得 fresh durable dispatch acknowledgement；僅查到 running 不代表可再次付費呼叫。未知 provider outcome 不自動重試，模型在 repository 交易外；完整 checkpoint、同 provenance、source/settings/fence/CAS 及結果和 durable batches 相符才可提交。刷新失敗/unknown 保留原 saved；level 改變後晚到結果不可提交。Durable application ownership/admission 已由 LLRN-13 交付；正式 runtime DI 已由 LLRN-15 交付，LLRN-16 已提供 API，LLRN-17/18/19 UI 已交付；這些實作不證明語義品質或 exactly-once billing。
+
+Historical LLRN-11 verification (2026-10-28): `scripts/test_learning_hints_service.py` **29 tests passed**，另 169 項 translation、policy、DTO、segmentation、file repository、proficiency 回歸，共 **198 passed，零 skips**。涵蓋 registry 所有 19 語言、實際能力描述、版本/級別 key、Unicode/重複 occurrence、異語/null 排除、惡意輸出、source/mode/lease guards、模型容量、無重試與實際 file claim → dispatch → checkpoint → assemble → commit → reload/reuse。包含空提示與分批空結果、不同級別共存、source resource 不複製、級別競爭、refresh/unknown 保留及與翻譯的雙向失敗隔離。SQL adapter 本輪無變更，未重新宣稱真 SQL/runtime 驗收。
+
+`accept_learning_hints_books.py --live` 對 hash-verified Madame Bovary（A1/C2）與 Red Roulette（1/6）各一個短段落，以及一個英法混語控制，使用配置 gpt-4.1-mini、臨時 repositories，停用 adapter retry。最終 5 次請求產生 5/4/6/5/1 hints，原文定位、保存、reload/reuse 通過，備份 bytes 不變；private report `data/test-books/learning-hints/20261028T055725Z-c517abe9/report.json`。**語義抽查未通過**：new fellow 被推定為老師；C2 仍提示 rose 等基礎詞；中文有專名與過長非固定片語；混語控制雖未選法文詞，整句仍被誤標 en，未遵循 mixed→null 的保守規則。`semantic-review.json` 明列問題，不能將此 smoke 宣稱能力適配、語意或混語識別品質合格；這些品質觀察保留；依最新系統範圍，品質修正與人工語義驗收已移出 LLRN-22。
+
+初輪 `20261028T055416Z-a81dd64c` 1 call、次輪 `20261028T055450Z-ac362008` 3 calls 的 failed reports 保留；初版要求 echo 完整語言片段，模型改標點/換行及返回非法 kind，已被拒絕，沒有提交為成功。改為 sentence-ID 語言判定，避免重抄原文；這些是開發者明確驗收重跑，production 無自動重試。三輪合計 9 次 provider invocations，不能推斷 provider 計費的 exactly-once。
+
+### Implemented multilingual sentence segmentation (LLRN-04)
+
+**[Code-Confirmed, 2026-10-28]** `learning_sentence_segmenter.segment_learning_block(source, effective_text, source_language)` 接收 caller 已解析的單一 effective block，返回 LLRN-03 `SentenceResource`。先驗 exact registry code 與 source hash，再產生 block-local Unicode code-point spans；保留來源全文上下文，只有 spans/IDs 投影，不修改正文或 hierarchy。不查 profile、偵測語言、prepare、呼叫模型或寫入 repository；尚未接入 reader/API。
+
+演算法版本為 `reader-sentences-1/rules-1/ucd-<Python Unicode data version>`；包含演算法、language tailoring 與 Unicode character classification 版本，與 source/epoch/language 一起參與 sentence/resource identity。任何影響邊界的修改必須提升對應版本；重跑同版本同來源可重現。未做 token/字數容量估算，不因段落長度硬切句子；未來生成分批由 LLRN-05/10 配置模型能力控制。
+
+規則（本期保守 baseline）：
+
+- `.!?。！？؟।॥…` 為候選句末，支援混合 script 標點；分號（含 Arabic `؛`）、逗號、冒號不當完整句末。無標點尾段保留為一個 fragment；空白/空字串不製造句子。
+- 連續標點、相鄰右引號/括號、附著 combining marks 隨前句保留；French horizontal space + directional closing quote 也一起保留。括號未閉合時保守合併；blank paragraph 重設 bracket 狀態。閉引號/括號後接小寫敘述、CJK 無空格引述延續、ellipsis 延續等情況保守保留。同一引號內的多個完整句子仍可分開。
+- 點號若在 alphanumeric token 內不拆（小數、版本、email/domain）；HTTP(S)/www URL 內的問號等保留，剔除 URL 外尾標點後再判界。Initial/initialism 與語言專屬 prefix abbreviations 保守保護。ASCII period/ellipsis 後接小寫可能是延續；不宣稱所有縮寫的句尾語境都可正確判別。
+- Blank line 與 U+2029 是強段落界；單一 LF/CRLF/CR/U+2028 視為 soft wrap，不據此拆句。Line-leading bullets、空白分隔數字/字母列表及中文數字頓號建立 item 邊界，marker 保留在 item 的第一句，縮排續行保留。沒有標點或段落證據的泰文等文字不以空格或字數猜句界。
+- 每個輸出 span trim 的只有外圍 whitespace 位置，不改原字串；`SentenceResource.project` 提供 gap/sentence parts，可逐字重組原文。19 registry languages 均有明確 fixture；混語支援共用標點，不是句內語言分類，prefix tailoring 仍依書籍有效 source language。
+
+#### Dependency decision and limits
+
+選擇標準庫 `re`/`unicodedata` 加版本化產品規則，不新增 native NLP dependency、模型下載或 provider 請求。這是本期可審閱、可驗證 exact offsets 的產品取捨，不是效能優於其它方案的基準測試，也**不宣稱完整 UAX #29 conformity**。
+
+- 已檢查 [Unicode UAX #29](https://www.unicode.org/reports/tr29/)：句界有標點/縮寫歧義，不能僅靠文字保證所有語境正確；本實作以保守合併為取向，未複製完整 Unicode sentence-break property/rule tables。
+- 已評估 [ICU Boundary Analysis](https://unicode-org.github.io/icu/userguide/boundaryanalysis/)：可提供標準 sentence boundary 與 abbreviation filters，但仍有語言學準確度限制；dictionary word/line segmentation 不能直接等同無標點句子識別。本期不引入該 dependency，未做 ICU runtime benchmark。未來替換需保留 DTO/source invariants、重跑 corpus 並提升 segmentation version。
+- 既有 `SentenceTerminalBoundaryNormalizer` 只修正已選 cut，不能直接充當切句器；保留舊 task-unit pipeline，避免把此新行為悄悄套入 parser/hierarchy。
+
+已知限制：縮寫出現在句末可能合併相鄰句；未收錄縮寫可能過切；無標點/部分泰文段落可能保持整段；句首小寫、引述後的 CJK 敘述或未閉括號可能被保守合併。不是完整 grapheme tokenizer、語意分句或混語識別器。Fragment 仍保有原文，後續模型可讀完整 block context；不能拿資料完整性測試冒充所有語言的句法準確度。
+
+#### Verification evidence
+
+- `python -m unittest scripts.test_learning_sentence_segmenter scripts.test_learning_contracts -v`：44 tests passed（新切句 19 + DTO 25），新 suite 含全部 19 語言 expected-boundary fixtures、registry 增減/非法 code、縮寫/數字/URL/引號/括號/列表/空白規則、epoch/version rebuild、150 組 seeded Unicode exact-reconstruction，以及 50,000 字無空格正文與 1,000 列清單。
+- 既有 executable `test_task_unit_boundary_quality` 12 項、`test_shared_task_unit_content_blocks` 19 項通過；舊 normalizer 的故意無標點 hard-cut warning 屬既有測試案例。
+- `python -m scripts.accept_learning_sentence_books --report <private-path>`：Madame Bovary 與 Red Roulette hash-verified backups，各取敘事正文起點後 6 個 150–2,000 字元 effective blocks，共 12 blocks / 320 sentences；source projection、stable IDs、round-trip、document/backups unchanged 均通過。字數範圍只限定驗收樣本，非 production 分句上限。
+- 私有證據：`data/test-books/learning-segmentation/llrn04-20261028-v2/report.json`。抽查各 block 起始兩句，未見截字/遺字；不等同完整 320 句人工語法標註，亦不代表其它語言真書/LLM/API/SQL/reader 已驗收。初輪含前言/目錄的報告另留存，v2 改選明確正文 anchor。
+
+### Cache and persistence rules
+
+| Resource | Cache dimensions beyond scope/document/block source binding | Reuse rule |
+| --- | --- | --- |
+| Sentences | segmentation algorithm/schema version（及算法實際使用的語言設定） | 同來源同算法重用，不按能力複製 |
+| Translation | sentence resource version、effective source language、母語、translation policy/prompt version | 與能力無關；顯式 refresh 可換 result revision |
+| Hints | sentence resource version、學習語言、解釋母語、scheme ID/version、level ID、hint policy/prompt version | 各等級分存；空列表仍是 saved ready |
+
+Result revision/operation ID 與 cache key 分離。保存模型/生成版本 provenance；模型策略需換 cache 時顯式提升 policy version，不以時間戳任意失效。詞語提示直接依原文/能力生成，不依某次譯文 result revision，因此翻譯 refresh 不強制重做提示。
+
+DB 是部署模式下生成結果與偏好的真實儲存，不把 browser cache/session 當持久化。延續專案 file adapter 的相同契約以支援既有 backend；SQL/file 各自原子性必須有證據，不宣稱跨資源交易。LLRN-07 已交付 bounded preference SQL、workspace lock/CAS、原子 rename/delete receipts 與顯式升降版；36 項真 PostgreSQL tests 涵蓋 rollback/concurrency/file parity，LLRN-12 已補上 document lifecycle 同交易協調。依 common artifact typed payload 邊界，評估 bounded row/query 與 source resource reference，避免每等級重存原文、每語言建表或全書巨大 metadata JSON。偏好 tables/constraints/migration 已由 LLRN-07 交付，learning tables/indexes/migration 已由 LLRN-08 交付；讀取不 lazy-create/repair/清理舊資料。
+
+### Generation, retries and future restrictions
+
+1. UI 的當前頁 controller 先讀設定/來源綁定與已存資料；只有 verified missing 才明確送 generate。讀取錯誤、無效版本、pending/unknown 不是 missing；失敗後顯示可重試狀態，禁止自動無限重試。
+2. Backend 驗證有效模式、distinct language pair、level、source/settings revision、reuse，再透過集中 admission policy 與原子 claim 決定是否呼叫 provider。同 cache key 的不同 command 也需合併/返回現有 operation，不只防同 mutation ID 重放。
+3. Claim 的短交易 → 交易外 LLM → 驗證結果 → 短交易 revalidate source/settings/key/claim fencing/result CAS 並提交 output + receipt；不在長交易內等待網路。刷新保留舊的 committed output，只有新版本成功才切換。
+4. 翻譯、提示是獨立 component；某項失敗不刪另一項。Pending、失敗、partial、stale、unknown 分清楚；已接受工作的 owner 在 backend，UI 離頁停止排隊/取消 HTTP 並丟棄晚到投影，不宣稱 server 已 rollback。
+5. Operation lookup 是 read-only。斷線/重啟/lost acknowledgement 先 reconcile。外部 provider 若無 idempotency 支援，worker crash 可能留下未確認用量；不可承諾 exactly-once billing，也不可自動接管後盲重送。LLRN-05 已固定失聯工作 recovery/expiry/fencing 與人工重試策略；LLRN-06 已實作 file 持久化及並行保護，LLRN-08 SQL 已有 durable claim/operation/receipt/checkpoint/output 及真 DB 並行、回滾、重啟證據。
+6. 暫時生成/refresh policy 預設允許有效請求，但一般技術容量/並發保護仍存在。未來限制只集中在 backend admission；cache reads 不消耗新生成權限。此接點不是已實作的用戶 auth/配額/計費。
+
+### Implemented cache and generation policy (LLRN-05)
+
+**[Code-Confirmed, 2026-10-28]** `learning_cache.py` 與 `learning_generation_policy.py` 提供 immutable domain contracts、純 decision/transition functions；不讀寫檔案/SQL、不呼叫 provider、不啟動 worker，也不改普通翻譯路徑。本節為 LLRN-05 純策略證據；LLRN-06 file 與 LLRN-08 SQL durable claim/receipt 已另行交付，LLRN-13 已另交付 backend worker 與 application 協調，正式 runtime DI 已由 LLRN-15 接線，不代表已部署或 exactly-once billing 保證。
+
+#### Cache identity and read semantics
+
+- `TranslationKey` 包含完整 `SentenceResourceRef`、source/explanation language、policy/prompt version；`HintsKey` 再含 proficiency scheme/version/level。`cache_id` 是 explicit schema=1、component discriminator 與上述欄位的 canonical JSON SHA-256。全文不按等級複製；result revision、model provenance、operation ID、時間與 settings revision 都不在 cache identity。
+- Key constructor 保留結構合法的歷史版本；開始生成及 dispatch/commit 時再驗證現行 language/proficiency registry。未知語言、同語言、失效分級不得呼叫 provider。LLRN-09 已從 workspace/book/注入的既有 profile reader 解析語言、eligibility 與 revisions；LLRN-13 已把有效設定服務接入 admission/dispatch/commit 的權威來源重新驗證，不能把 client binding 或設定 snapshot 當生成授權。
+- `GenerationBinding` 帶 key、workspace/book revisions、active mode；這些是提交防護，不是 cache 維度。能力改變後 translation key 可重用，舊 operation 的 settings guard 仍失效。`validate_complete_result` 驗 source/hash/resource reference、component、語言、policy/prompt、級別、完整句序或 hints source spans。
+- `read_entry` 是純投影：saved result 是 `ready`（包括空 hints），同時另列 refresh operation state；沒有 saved/operation 才是 `missing`。`read_error`、`unsupported`、`stale` 不可降格為 missing；success receipt 缺 output 是 `unavailable`。讀者必須先驗證目前來源及 payload，才傳 `verified`；讀取不會自動 expire、修復或生成。
+- `get_or_generate` 優先重用有效 saved；`regenerate` 明確要求刷新；`retry` 必須指向目前 failed/stale/unknown operation。Failed/stale 無 saved 不自動再次生成；saved 存在時仍可讀。空/全空白 block 返回 `no_content`，不呼叫模型。
+
+#### Admission, command receipts and transaction requirements
+
+`plan_request` 返回 `RequestDecision(expected_entry_revision, next_entry?, receipt, replay)`，不是 provider 呼叫權。有效 missing/refresh 經 `GenerationAdmission.evaluate` 後才提出 claimed operation；預設 `AllowValidGeneration` 允許有效請求。此接點同步且無外部 IO，不在 domain 內建立用戶、配額或計費。Reuse/coalesce/replay 不消耗新的 admission；拒絕返回 `denied` 及 policy reason，不修改 cache。
+
+同 key 的 claimed/running/partial 工作合併到原 operation，即使 command ID 不同。已過期或 binding 不同的工作返回 `reconcile`，不自行接管。Command receipt 以 `(scope, document, command_id)` 跨 component/key 唯一；同 ID 同命令返回原 receipt，不同 key/intent/revision/retry consent 拒絕。Receipt 可能引用歷史 operation，重放不能因新工作已佔 slot 而改指向新工作；查歷史狀態/結果才可確認最終成功。Receipt/operation 歷史若需要清理，須保留明確 tombstone 或其它防重放機制，不能無聲遺忘後再付費；本期沒有沿用普通翻譯的 256 筆限制。
+
+Repository 必須維持以下原子邊界（LLRN-05 為純策略；LLRN-06 file 與 LLRN-08 SQL 均已驗證）：
+
+1. 在短交易/鎖內解析權威 source/settings、讀 key slot 與 command receipt，驗 expected entry revision；對 key 建唯一 claim，保存 proposed entry + receipt + operation history 一起提交。同一 receipt 被其它 request 搶先寫入須重新讀/replay，不能覆寫。
+2. Worker 以 operation ID + monotonically increasing fence 呼叫 `dispatch_batch`；再次比較 binding/entry revision，**持久化 running 成功後**才在交易外送一次指定 batch。只有取得這次成功 commit acknowledgement 的 caller 可送出；失去 acknowledgement 必須查 operation，不重放 dispatch。查到 running 也不代表可再送一次。
+3. Provider 結果經 LLRN-10/11 驗證後，batch payload 與 `checkpoint_batch` marker 同交易保存。最後 `commit_result` 重驗 source/settings/key/fence/base result revision、完整結果，再把 saved output 與 succeeded operation/result receipt/history 一起提交。任何 CAS/驗證/交易失敗都保留原 saved output。
+4. Domain 沒有鎖也沒有持久化，回傳的 `Transition` 只有 expected entry revision 和 proposed entry。Adapter 必須在同一交易核對當下 binding；不能把 transaction 外讀到的 current 值當成已驗證。來源 mutation/epoch 推進、全等級 binding 作廢已由 LLRN-12 串入原子來源寫入；歷史 receipts/payloads 不於讀取時清理。
+
+#### Operation states, expiry and partial progress
+
+| State | 意義及後續規則 |
+| --- | --- |
+| `claimed` | 尚未 dispatch；持久化 dispatch 才能送模型。Lease 到期明確 expire 為 failed，沒有正在執行的 provider call。 |
+| `running` | 已持久化 dispatch，一個 batch 可能已付費；重複 dispatch 拒絕。斷線/逾時/失聯為 unknown，不直接重送。 |
+| `partial` | 至少一個已驗證 batch checkpoint；可以在有效 lease 內 dispatch 下一 batch。最後 batch 完成後仍須完整驗證/commit，不能直接標 ready。 |
+| `succeeded` | 完整 output 和 result revision 已提出原子提交；對外成功必須等 repository commit。 |
+| `failed` | 已知無在途請求/明確拒絕或無效回覆，或 claimed/partial lease 到期；只接受新 command 的明確 retry。 |
+| `unknown` | 在途結果/用量未確認；先 reconcile。相同 operation/fence 的回覆若找回，可驗證 checkpoint/完成，不重送模型。 |
+| `stale` | source/settings guard 改變，禁止舊 writer；不表示 provider 已取消或費用回滾。Running/unknown 轉 stale 仍保留 `outcome_uncertain`。 |
+
+時間由 server/repository 傳入整數 epoch milliseconds，domain 不讀時鐘也不硬寫 lease 秒數。`renew_lease` 僅允許尚未過期的同 owner/fence/binding 延長；saved reads 不續租。`expire_operation` 是明確寫命令，running 到期為 unknown；claimed/partial 到期為 failed。過期後找回同 fence 的合法最後 batch 仍可完成提交；不再 dispatch 新 batch。已失去 slot/fence 的晚到結果一律拒絕。
+
+`BatchPlan.groups` 是完整、有序、不重複的 sentence ID partition，不可漏句/換序/跨 source。每個 checkpoint 是該 operation + batch index 對應的已保存 payload digest；只允許按 prefix 推進，不允許跳過或重複批次。實際分批策略、模型容量、局部 translation/hints payload 與驗證屬 LLRN-10/11；本期不猜 token/字數上限，也不以 digest 宣稱內容已驗證。Partial payload 由 repository 分開保存，不能當完整 `AlignedTranslation` 或 empty ready hints。
+
+明確 retry 以新 command/operation ID 和更大 fence 重啟該 component 的完整 batch plan；不自動混合舊 operation 的 partial payload。若仍有 `outcome_uncertain`（包含 stale），必須明確提交 `acknowledge_possible_duplicate_cost=True`，並指向目前 operation；缺少時返回 reconcile。這是未能恢復結果時的人工再生成條件，不是 exactly-once billing 保證。已知失敗重試也可能重新生成已完成批次；UI/API 後續需清楚呈現重啟範圍。翻譯和 hints 獨立 slot/操作，任一失敗不刪另一項。
+
+#### Verification and boundaries
+
+`python -m unittest scripts.test_learning_generation_policy scripts.test_learning_contracts scripts.test_learning_sentence_segmenter scripts.test_reading_preferences scripts.test_language_proficiency_registry -q`：**128 tests passed**（本項 38 + 既有 90）。包括 cache 全維度、空 hints reuse、registry/version/source guards、同 ID 衝突/歷史 receipt、12 個並行競爭者模擬 CAS 只接受 1 claim/11 coalesce、dispatch CAS、lost commit acknowledgement、刷新失敗保留、partial coverage/進度、unknown/expiry/recovery、人工重試 fence、設定變更保留未確認用量及 admission deny。
+
+測試中的 `MemoryCAS` 僅驗證所要求的條件提交協議，不證明 PostgreSQL/file durability、crash recovery 或供應商計費。沒有 parser/LLM/普通翻譯/UI 行為改動，不新增真書/provider acceptance；LLRN-06/08/10/11/12/13/20/22 保留各自整合責任。
+
+### Implemented learning file repository (LLRN-06)
+
+**[Code-Confirmed, 2026-10-28]** `document_structure` 已交付 storage-neutral port、hierarchy/effective source resolution、strict versioned codec 與 POSIX file adapter，詳見 [owner design](../document_structure/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。來源/結果/切句/checkpoint reads 有界且不建檔；實際 JSON backend 仍需載入該書 snapshot，不宣稱 SQL 局部查詢效能。
+
+每書獨立 learning snapshot，不把全文按 level 複製或塞回 document metadata。Preferences → document → learning 固定鎖序下驗 source/settings 與 operation CAS；claim/receipt、checkpoint/payload、完整 output/success history 各自原子 replace。讀取/晚到提交檢查既有 epoch/hash；來源更動後的 binding 作廢、rename/delete/跨檔案寫入協調已由 LLRN-12 交付，有效偏好服務已交付 LLRN-09，LLRN-13 已在 source/preference 鎖內重驗 effective profile binding，獨立 profile 儲存仍非同一原子 snapshot。
+
+45 新 file tests 通過，另有 162 既有基礎/來源回歸；包含實際多程序 claim/dispatch、程序終止與 replace 前後 faults、lost acknowledgement、跨書/namespace、partial/empty hints、snapshot corruption 及零寫入讀取。SQL/provider/runtime/API/UI 尚未接入，本輪不重啟部署或呼叫真模型。
+
+### Implemented learning SQL repository (LLRN-08)
+
+[DB owner design](../db/module-detailed-design.md#implemented-learning-sql-persistence-llrn-08) 定義五張按 resource/key/operation 拆分的表、explicit 005 migration/downgrade，以及 preferences → document → learning 的單一短交易。File/SQL 共用 `LearningRepositoryBehavior` 與原 LLRN-05 policy/typed codec；SQL 結果／operation／receipt 原子提交，unknown 不重新派工，saved reads 不補寫。語言／level 不分建表，句子不依級別複製。
+
+SQL reads 在同一 readonly MVCC snapshot 驗 source/results；依請求 keys 載入 current/saved/referenced operation，沒有全書生成歷史掃描；checkpoint payload 用 SQL range/LIMIT 分頁。既有 source hierarchy projection 仍會載入該書 hierarchy，完整結果驗證成本隨該結果的 batches 增長，不宣稱固定 bytes 或已完成 source SQL pagination。
+
+47 真 PostgreSQL tests 通過；連同既有回歸有 279 個不同 tests 通過證據，另 server restart 保留已存結果與 running refresh/replay。覆蓋同/不同 key claim、重複 dispatch、row-lock races、rollback、lost ack、程序中斷、stale writer、file parity、備份還原與 source-only reads。完整來源失效／rename 已交付 LLRN-12；provider/runtime/API/UI 留給後續 owner；本項不宣稱已部署、實際計費 exactly-once 或完整模式可用。
+
+### Implemented source lifecycle (LLRN-12)
+
+[Source owner design](../document_structure/module-detailed-design.md#implemented-source-and-document-lifecycle-llrn-12) 定義 effective text/ownership 比較、同一來源寫入的 epoch 推進、Keep 不豁免及 Undo/legacy save/reparse 不復活；改文採全語言／全級別 binding 作廢，保留歷史 payload/receipts，不在 reads 做物理清理。No-op、OCR draft、Ignore/Keep 與僅歷史編輯保留有效結果。
+
+Rename 遷移全書 historical sentence IDs、keys、result references、operation/checkpoint digests、receipts 與偏好，active operations stale 且保留未知費用；delete 清除該書 learning 並留下偏好 tombstone。SQL 同一 connection/transaction；file 明確 coordinator 以持久化 journal、固定鎖序與顯式 forward recovery 協調，journal 存在時拒絕相關讀寫。File runtime 已由 LLRN-15 注入 coordinator，不宣稱所有未組裝 legacy instance 或跨 SQL/filesystem 原子性。未新增 API/UI、provider 呼叫或品質驗收；LLRN-13 已交付 application admission/dispatch ownership；正式 runtime DI 已由 LLRN-15 交付。
+
+### Implemented application integration support (LLRN-13)
+
+`LearningTranslationService.key_for`／`LearningHintsService.key_for` 提供純 key projection，不讀模型能力或 tokenizer；learning 純讀因此可查保存結果而不執行 generation preflight。`learning_generation_policy.mark_binding_stale` 在明確 source/settings/profile mismatch 下以 operation/fence/CAS 作廢 active/unknown，保留費用不確定性。集中 admission 由 repository 在 claim 及每次 dispatch 評估；read/reuse 不消耗新生成許可。
+
+`learning_assembly.assemble_checkpoints` 只處理完整 durable batches，驗證計畫順序、句子定位、共同原 provenance 及完整結果，讓恢復不依賴目前 provider/tokenizer 或重建模型分批。它不發模型請求、寫 repository 或替代提交時的來源／設定 guards。Learning 的明確 reconcile／backend worker、81 項 file/真 SQL 專測與 290 項回歸見 [owner design](../learning/module-detailed-design.md#llrn-13-implementation-contract-2026-10-28)。兩本備份固定回應流程驗證不改變上述 LLRN-10/11 live-provider 語義品質未通過結論。
+
+### Settings and source lifecycle
+
+| Trigger | Required behavior |
+| --- | --- |
+| 第一次啟用/設定不足 | 母語、有效原文、合法分級齊備且異語才進入學習；未準備好顯示原因，原文仍可讀 |
+| 只改 level | 切換對應 hints cache；translation/sentences 不重做；missing 只於目前閱讀頁生成 |
+| 改母語/source override | 重新計算 eligibility/cache key；不能拿舊 key 當目前結果，不回寫 profile。新語言不能默認繼承舊 scheme/level |
+| 新母語等於某書原文 | 該書有效學習投影停用並提示調整；不批量覆寫每書偏好或刪 cache |
+| 切回普通閱讀 | 隱藏學習資料，保留仍有效 cache；恢復普通翻譯入口與 session display |
+| 同文提交/OCR draft/僅 Ignore flag | 未變 effective text 不使學習資料失效；來源有效性仍需校驗 |
+| 實際 edit/OCR apply/cleanup | 和來源 mutation 同一原子邊界清除或 stale 受影響 block 的所有切句/語言/等級輸出，advance epoch；Keep 不保留已失效的衍生結果 |
+| Block/document delete、reparse | 依既有確認及 ownership 清理/作廢衍生資料與 operations；拒絕晚到 writer，不觸發隱式 reparse |
+| Undo/rename | Undo 不能復活舊 epoch 譯文/詞語；rename 依既有身份契約遷移 references，不改學習內容或丟掉偏好 |
+
+設定 revision 及 source epoch 都參與生成提交檢查；設定變更後在途舊命令不得覆寫目前視圖。對仍有效的舊 key cache 可保留，讀取只選目前有效 key；物理清理不能藏在 saved read 中。
+
+### Delivery phases and completion gate
+
+1. 文檔契約與邊界：規劃已完成；後續僅對有實作證據的 owner checkbox 更新狀態（目前 LLRN-01–22 系統範圍完成）。
+2. 設定/語言基礎：LLRN-01/02/07/09；資料契約 LLRN-03/05/14 可依 queue 依賴並行。
+3. 句子與儲存：LLRN-04/06/08/12，先建立 source identity、claim/commit 與失效能力。
+4. 生成與 API：LLRN-10/11/13/15/16；provider 與 schema 可依已穩定契約提前開發，不繞過整合依賴。
+5. 閱讀介面：LLRN-17/18/19；在實際 backend 契約可用後整合。
+6. 驗收：LLRN-20/21/22。單元/mock/build 不代替 disposable PostgreSQL、實際 API、有限真書/模型與桌面手機閱讀流程證據。
+
+Queue 的 Depends on 才是逐項啟動/整合 gate，phase 是工作分組，不是新一份重複待辦。每項具唯一 owner、交付、驗收與 evidence required；完整模式需全部任務完成，未滿足前不宣稱交付。當前 22 項系統任務已交付；API/SQL/Reader 有限真書與重播驗收見 scripts owner。模型品質不屬目前 gate，使用者資料庫未執行 migration/deployment；backend progress 由 checklist-progress-sync 同步，UI 不併入其計數。
+
 ## Persisted Block Translation Plan (2026-10-26)
+
+Historical TRUI delivery and legacy artifact contract. The [shared sentence
+contract](#shared-sentence-translation-across-reading-modes-2026-11-09) supersedes
+the target-only generation identity, independent provider and artifact write path
+described below. Current ordinary display still groups by target language, but new
+generation uses exact language-pair keys and the aligned repository. Preserve this
+section's dated evidence and legacy source-cleanup rules; do not implement it as a
+second current generation pipeline.
 
 **[Code-Confirmed: TRUI-01..11]** Implemented and verified. The block API now
 persists language-keyed results and exposes readonly saved-result/options reads;

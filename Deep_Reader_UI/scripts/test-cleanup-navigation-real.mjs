@@ -39,7 +39,7 @@ try {
       await page.waitForFunction(() => document.querySelector('.cleanup-history')?.getAttribute('aria-busy') === 'false');
     };
     const open = async () => {
-      await page.getByRole("button", { name: "Review source", exact: true }).click();
+      await page.getByRole("button", { name: "Review extracted text", exact: true }).click();
       await ready();
       await review.getByRole("button", { name: `Expand cleanup ${fixture.batch_revision}`, exact: true }).click();
       for (let i = 0; i < Math.floor(fixture.record_index / 10); i++) {

@@ -15,6 +15,11 @@ This file records:
 - which files each skill may modify
 - what output each skill must report
 
+The delivery sequence is defined in [workflow.md](workflow.md). Skills remain
+narrow units within that workflow; they do not replace its next-unit confirmation
+or external commit-review gates. Follow AGENTS.md for scope-first reading and
+Markdown permissions. This registry does not authorize a read-only skill to write.
+
 ## Design Principles
 
 ### 1. Repository memory comes before chat context
@@ -128,7 +133,10 @@ Examples:
 
 ### Documentation Synchronization Skills
 
-Documentation synchronization skills update markdown project memory after completed work.
+Documentation synchronization skills maintain authorized markdown project memory.
+The delivery agent updates design and acceptance criteria before implementation,
+then reconciles implementation evidence and completion status afterward. Do not
+postpone all documentation until after coding.
 
 Examples:
 
@@ -140,8 +148,8 @@ Examples:
 | Skill | Status | Category | Write Authority | Purpose |
 |---|---|---|---|---|
 | `checklist-progress-sync` | Active | Documentation Synchronization | Controlled markdown write | Synchronize module checklist state with `progress.md` |
-| `module-memory-loader` | Planned | Memory Loader | Read-only | Load required global and module-level memory before a module task |
-| `implementation-validation` | Planned | Validation | Read-only by default | Validate changed files, module boundaries, checklist/progress sync, and forbidden regressions |
+| `module-memory-loader` | Active | Memory Loader | Read-only | Identify affected owners, then load only relevant contracts under AGENTS.md |
+| `implementation-validation` | Active | Validation | Read-only | Validate changed files, module boundaries, checklist/progress sync, and forbidden regressions; does not replace external review |
 | `documentation-sync` | Planned | Documentation Synchronization | Controlled markdown write | Synchronize markdown documentation after implementation or governance tasks |
 | `grill-me` | Active | Design Challenge | Read-only | Stress-test implementation plans and architecture decisions before coding |
 
@@ -191,7 +199,9 @@ Result:
 
 Remaining concerns:
 - ...
-Markdown Governance Rule
+```
+
+## Markdown Governance Rule
 
 Markdown files are persistent project memory.
 
@@ -200,10 +210,13 @@ They must not be edited casually.
 A markdown file may be modified only when:
 
 1. the active skill explicitly owns that markdown file type, or
-2. the user explicitly requested that exact markdown update, or
-3. the update is necessary to keep checklist/progress/design state synchronized.
+2. the user explicitly requested a maintainer documentation/governance update
+   covering it.
 
-Skill Evolution Rule
+Synchronization need alone does not authorize writes. Respect AGENTS.md's separate
+progress ownership and checklist timestamp requirements.
+
+## Skill Evolution Rule
 
 Do not create a new skill until one of these is true:
 
@@ -212,14 +225,7 @@ Do not create a new skill until one of these is true:
 3. the workflow protects important repository memory
 4. the workflow will be reused across backend, web, or mobile development
 
-Current Milestone
-
-Milestone 1 focuses on stabilizing workflow memory before React Web and React Native development.
-
-Required skills for Milestone 1:
-
-1. module-memory-loader
-2. implementation-validation
-3. documentation-sync
-
-Do not expand into frontend/mobile skills until the Python backend workflow is stable.
+The delivery prototype composes existing skills and prompts. It does not require
+a new all-purpose CI/CD skill or automatic CI platform. Verify skill availability
+from the session catalog and actual paths; a planned registry entry is not an
+installed capability.

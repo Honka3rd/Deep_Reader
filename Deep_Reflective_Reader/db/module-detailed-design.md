@@ -1,5 +1,141 @@
 # db Detailed Design
 
+## Shared sentence translation (2026-11-09)
+
+No new tables or migration: ordinary and learning translation use the same
+learning_sentences/cache_entries/operations/commands/checkpoints storage. A bounded
+block/type/cache-cursor selection loads only complete translation keys and their
+required current/saved operation evidence; it excludes vocabulary and unrelated
+book history. Existing transaction scope and preference→document lock order remain.
+Ordinary translation-purpose binding does not require a native-language preference;
+source validation and dispatch/commit fences still run within the existing transaction.
+There is no additional aggregate paragraph row. This removes cross-mode duplication,
+not the existing durable checkpoint/operation evidence needed for recovery.
+
+Validation: 470 backend tests and actual API/React mode-switch acceptance pass; detailed evidence and limits are recorded in the shared section_tasks design.
+
+
+## Local reading-mode schema deployment correction (2026-10-29)
+
+The local API was running the learning routes against a database containing only
+001..003. All seven tables from 004/005 were absent; reading workspace preferences
+therefore returned `preference_storage_unavailable` (503). Missing tables remain
+a storage failure, not empty settings or a read-time schema repair.
+
+The existing database was backed up with `pg_dump -Fc`, restored and verified in
+a disposable PostgreSQL instance before applying the unchanged 004/005 SQL in
+one explicit transaction. The local `Madame Bovary` preference read, workspace
+read and learning read now return 200 without restarting the API or generating
+content. Counts and content fingerprints of all 12 pre-existing tables match;
+the seven added tables remain empty after reads. No book/profile/settings content
+was rewritten. Private backup and evidence:
+`data/maintenance/preference-schema-20261029/` (backend-relative).
+
+[Local startup](../../scripts/start_local_dev.sh) now applies reviewed 003..005
+with `psql -X`, `ON_ERROR_STOP` and one transaction before API startup. Compose
+initialization mounts 001..005 for fresh volumes; existing volumes require the
+explicit startup upgrade, because PostgreSQL initdb scripts do not rerun there.
+Fresh initialization, backup restore, upgrade/reapply and failed-startup controls
+are verified by the scripts owner. This is a local schema deployment correction;
+the earlier isolated acceptance reports remain historical evidence.
+
+## Learning composition ports (LLRN-15, 2026-10-28)
+
+`PostgresLearningRepository` 可注入同一 `documents` store 與 `preferences` repository，
+建構時驗 scope/DSN；未注入仍保留原 constructor compatibility。公開 `document_store` /
+`preference_repository` 供組裝核對；store 的 `namespace` / `dsn` 與 preferences 的 `dsn`
+只供 server composition，不能下發或記錄 DSN。交易內仍借用同一 connection，無第二筆
+write transaction、schema 變更或 constructor DDL/read。Config 使用實際 SQL store identity，
+不用 SQL artifact repository 繼承的 file namespace。真 SQL container tests 驗證共享實例、
+非 default scope、保存/reuse/lifecycle、缺 migration 明確失敗且零自動建表。
+
+## Application orchestration verification (LLRN-13)
+
+Learning SQL adapter 沿用共用 repository behavior 的 bounded block/operation reads、transaction-local effective-binding validator、每次 dispatch 的集中 admission 與明確 invalidation。沒有 SQL schema/migration 變更，也不在 read 補寫；callback 借用已鎖定偏好 snapshot，不另開 write transaction。Provider 執行始終在已提交 dispatch 的交易外。
+
+`scripts/test_learning_orchestration.py` 有 40 項 file + 41 項真 PostgreSQL cases，SQL 額外驗證刷新 final persist 執行 SQL 後拋錯，全交易 rollback 保留舊 saved，且不重送模型；雙 client claim/reconcile、source/settings/profile race、lost ack 也在 disposable schema 驗證。另 290 項既有回歸通過。此證據不是 production migration、route/runtime composition 或獨立 profile 儲存的原子性保證。
+
+## Document lifecycle transaction integration (LLRN-12)
+
+`learning_lifecycle.py` 提供 transaction-local rename/delete 協調，`PostgresReadingPreferencesRepository.apply_document_lifecycle` 借用 caller 的同一 connection，無獨立 commit 或 DDL。Lock order 為 workspace preferences → canonical document → learning rows；rename 同交易遷移設定、舊名 tombstone、所有 sentence/key/result/operation/checkpoint/receipt references。Active operations 轉 stale，保留 unknown 費用，entry CAS revision 推進。全書歷史遷移使用五個集合查詢，成本隨書籍歷史增長；這是明確 lifecycle 維護，不能等同一般有界 saved-read。Delete 的 learning FK cascade 與 preference tombstone 同交易提交／回滾；不存在文件的 retry 不建立偏好。
+
+`save` 初次／reparse 使用新 document epoch，普通 metadata save 保留 authoritative epoch/reading state，並使用真實目前 hierarchy 比對 effective source。`mutate_reading_content`、cleanup transaction、legacy save 同步保存 content epoch；改文作廢所有語言／級別，Undo 不能復活。舊 learning rows 保留歷史但 read/commit guards 拒絕使用。Cleanup snapshot 依 documents.current_structure_version 精確讀寫，不再選取／覆蓋其它歷史版本。沒有新 migration、read-time repair、LLM 或 profile 寫入。
+
+File/SQL 共用矩陣及 SQL rollback／rename-late-writer、delete-preference-save concurrency 見 `scripts/test_learning_lifecycle.py`；真 PostgreSQL 使用 disposable schema。File coordinator 的恢復限制見 [owner design](../document_structure/module-detailed-design.md#implemented-source-and-document-lifecycle-llrn-12)。LLRN-13 application orchestration 已交付；LLRN-15 composition 已交付，LLRN-16 API/lifespan 已交付，UI 尚未交付。
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+**[Code-Confirmed: LLRN-07/08 complete]** [Canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。偏好及學習 artifact/operation SQL 已交付；LLRN-12 lifecycle 與 LLRN-13 application integration 已交付；LLRN-15 runtime DI 已交付，LLRN-16 production API 已交付，UI 仍待後續任務。
+
+兩項獨立責任：reading_preferences 的 SQL adapter/migration，以及學習 artifact/operation 的 SQL adapter/migration。Domain ports 不帶 SQL；資料保持 namespace/document/hierarchy ownership，生成前 atomic claim，provider 在短交易外，結果與 receipt 原子提交並驗證 source、設定與 fencing。沿用 common artifact typed payload 原則；以 bounded rows/query 支援當頁，不為每語言/等級建表，也不預先承諾固定表數或擴大成全書 JSON。需明確 migration/rollback、唯一約束及 real SQL failure/concurrency 證據；不得以 read/import 執行 DDL。
+
+### Implemented preference SQL persistence (LLRN-07)
+
+`postgres_reading_preferences_repository.PostgresReadingPreferencesRepository(dsn, scope)` 實作既有 reading_preferences port。建構只保存配置；read 使用唯讀 transaction，缺資料回傳 revision=0 的 typed defaults，不 INSERT、DDL、repair 或載入全書庫偏好。未部署 migration 時回報 storage error，不冒充 missing。`reading_preferences/commands.py` 集中 file/SQL 共用 command signature、最後 receipt replay 與 revision guards；typed codec、mode/registry/proficiency 規則仍由原 domain 擁有。
+
+顯式 `migrations/004_reading_preferences.sql` 新增兩張表：
+
+- `reading_workspace_preferences`：exact namespace primary key、固定 workspace scope kind、schema_version=1、非負 BIGINT revision、可空 native_language 及最後 receipt。
+- `reading_book_preferences`：namespace/document_id composite primary key、schema_version=1、revision、typed/versioned settings JSONB、deleted tombstone、最後 receipt；namespace FK 指向 workspace。使用 C collation 保留 exact identity，不去副檔名、不正規化 Unicode、不複製正文或按語言建表。Tombstone settings 必須是空的普通模式。SQL constraints 管物理形狀與唯一性，完整 payload/registry 語意由 domain codec 驗證；未知 persisted modes/versions 可讀並保留，不能新建或啟用。
+
+偏好 document_id 是 port 接收的 authoritative logical identity，未與 documents 的 numeric surrogate ID 混用。刻意不設 document FK/cascade：缺省偏好可先存在，tombstone 必須在實際書籍刪除後保留，以拒絕遲到寫入。LLRN-12 已由 structured document store 同交易串接 rename/delete（見下節）；runtime composition 已由 LLRN-15 交付。
+
+每次 mutation 以同一 connection/transaction 執行 workspace `INSERT ... ON CONFLICT DO NOTHING`（只在顯式寫入）→ workspace `FOR UPDATE` → 讀取/驗證需要的 book rows → 保存 settings/revision/receipt → COMMIT。Workspace row lock 涵蓋首次寫入競爭；同 workspace 寫入序列化，不同 namespace 獨立。最多讀一個 workspace 與兩個 book rows；沒有 workspace-wide snapshot。Book save 同時核對 workspace/book revision；rename 兩端 CAS、source tombstone、destination 及雙端 receipt 一次提交，反向 rename 也遵循同一鎖序。未提供可任意繞過鎖的 public raw writer、獨立 helper commit 或 provider 工作。
+
+同值 save 不增 revision，但保存最後 command receipt；同命令 replay 不重寫設定。僅保證最後 receipt，非永久操作歷史；book replay 仍先驗 workspace revision，rename replay 必須兩端 receipt 仍相符。Delete 保留單調 tombstone，重新建立需最新 revision。資料壞損、SQL 失敗與 conflict 分別回報，已確認 server rejection 回滾整筆交易；COMMIT 階段連線失聯/結果不明回報 `PreferenceCommitUnknown`，由 read 與同命令 reconcile，禁止盲目 retry。Logs 僅 operation/outcome/duration，不包含 namespace、書名、設定、DSN 或私有 SQL 錯誤。
+
+#### Explicit migration and downgrade procedure
+
+由部署者選定正確 database/search_path，在維護流程執行 001..003 後，以 `psql -X --set ON_ERROR_STOP=1 --single-transaction --file db/migrations/004_reading_preferences.sql` 套用 004；連線由外部安全環境配置。Forward glob 僅取 migrations 頂層 SQL。004 可對其已完成的同版本 schema 重跑；不是任意舊/壞 schema 自動修復器，也不自動匯入既有 file preferences。
+
+Downgrade 前停用偏好讀寫、備份兩張表及驗證可還原；顯式以同樣 single-transaction/ON_ERROR_STOP 方式執行 `db/migrations/rollback/004_reading_preferences.sql`。此檔會**刪除兩張偏好表及其資料**，不碰原 document/hierarchy/profile 表；不使用 CASCADE，未來依賴需先顯式降版。要保留設定，重新套用 004 後按 workspace → book 順序還原先前備份，再啟用服務。DDL 本身的交易失敗可回滾；成功 DROP 的資料不會自動復原。沒有 read/import/constructor DDL，也未修改既有啟動流程。
+
+#### LLRN-07 validation
+
+`scripts/test_reading_preferences_postgres.py` 36 項真 PostgreSQL 專測通過，包含直接沿用 file contract assertions、receipt/file parity、schema 升級/重跑/失敗回滾/降版/備份還原、原 documents 保留、scope/Unicode identity、無資料純讀、未知版本、CAS、兩程序首次競爭及同命令 replay、不同書保留、workspace race、rename/delete race、第二筆 SQL 失敗及 deferred COMMIT constraint rollback、commit lost acknowledgement、程序在 COMMIT 前後退出、target-bounded queries（另有 200 筆無關紀錄）及 log privacy。本輪連同 file preferences、learning repository/contracts/policy、語言分級及既有 SQL translation/reading-content 回歸共 250 tests passed，無 skips。另實際重啟 disposable PostgreSQL container 後，新連線仍可讀回 workspace/book settings 及 replay receipt。測試只用 disposable PostgreSQL container/random schemas，未套用使用者資料庫 migration；完整 runtime/API/UI 和 learning SQL 不在本項。
+
+### Implemented learning SQL persistence (LLRN-08)
+
+`PostgresLearningRepository(dsn, WorkspaceScope, admission=...)` 實作 LLRN-06 的 `LearningRepository` port；建構不連線或建表。共用 `document_structure/learning_repository_behavior.py` 的來源／設定驗證、claim/replay、checkpoint/commit assembly 和 LLRN-05 純策略。File/SQL 各自提供受保護的 storage context hooks，沒有公開任意 state writer；共用 codec 僅允許列舉的 typed DTO。本 adapter 不承包 provider/worker/API；LLRN-13 已協調，LLRN-15 已接線 runtime DI，production API 已由 LLRN-16 交付。
+
+`migrations/005_learning_persistence.sql` 定義五張按 resource/key/operation 分開的表，不為語言／等級建表，也不存整書 learning JSON：
+
+| Table | Identity and payload |
+| --- | --- |
+| learning_sentences | document_row_id + resource_id；唯一 sentence resource/typed spans，供多個 cache 重用 |
+| learning_cache_entries | document_row_id + cache_id；resource FK、entry revision、last fence、result revision 及 typed current entry（含 saved output/current operation 投影） |
+| learning_operations | document_row_id + operation_id；cache FK、fence/result revision、typed operation/plan/checkpoint digests；每 cache 的 fence 與非空成功 result revision 唯一 |
+| learning_commands | document_row_id + command_id；跨 key 唯一 command receipt，可空 operation FK，保存 claimed/reuse/coalesce/denied 等結果 |
+| learning_checkpoints | document_row_id + operation_id + batch_index；operation FK、typed partial payload，按 batch index 排序／分頁 |
+
+每表有 schema_version=1、JSON object 形狀與對應非負 revision/index 等約束；完整 type/field、hash、scope、receipt、payload assembly 規則由共用 codec 驗證。複合主鍵／唯一索引支援 document/key lookup 和 checkpoint range；沒有任意 client SQL identifier。document_row_id 由當下 exact `(namespace, document_name)` 查詢取得，是現有 documents numeric ownership；所有 learning rows 有 document FK/ON DELETE CASCADE，child FK 保證同文件 resource/cache/operation 歸屬。Source binding 仍保留 authoritative logical document 與 hierarchy IDs，不把 SQL ID 塞入 transport。
+
+#### Transactions and source/settings coordination
+
+每次 mutation 使用同一 connection：`SET TRANSACTION ... READ COMMITTED` → `PostgresReadingPreferencesRepository.lock_snapshot(document_id, connection=...)` 取得 workspace row lock／當下 book 設定 → documents row `FOR UPDATE` → `PostgresStructuredDocumentStore.load_in_transaction(target, connection=...)` 載入 canonical hierarchy → 有界 learning state → 純策略／版本檢查 → 只寫改變的 rows → COMMIT。兩個 owner helper 都要求 caller-owned active transaction，不另開連線或 commit。首次 workspace 缺省 row 只可能在顯式寫入協調中建立；失敗時一起 rollback，不增加設定 revision。
+
+固定鎖序 preferences → document → learning；現有偏好與正文寫者不能穿過 revalidation 與 COMMIT。即使 cache row 尚不存在，document lock 也防止重複 claim；同 namespace 目前沿用 workspace lock 序列化，沒有宣稱高吞吐量或逐 key 平行度。不同 key 保存自己的 rows，不覆蓋其它 cache；claim 的 sentence/entry/operation/receipt、checkpoint marker/payload、final output/succeeded history 都各自在一筆短交易內提交。Provider IO 必須在成功 dispatch 返回之後、交易外執行。
+
+同命令 replay 返回 durable receipt，不重新取得執行權；同 key 不同命令 coalesce，未知結果需 reconcile／明確 retry，新 fence 拒絕舊 writer。成功保存的舊結果在 refresh pending/failed 時保留。提交前驗 current source/epoch、workspace/book revision、mode/language/proficiency、operation/fence/entry revision、batch alignment/digest/provenance 及最終結果組合。SQL/constraint 錯誤回滾所有 rows；COMMIT 連線失聯等未明結果回報 `LearningCommitUnknown`，先 lookup/reconcile，不能自動重送 provider。Read/constructor 不 expire、續租、清理或執行 DDL。Logs 記 stage、duration、counts、outcome，不記正文、key、書籍身份或 DSN。
+
+#### Bounded reads and remaining lifecycle work
+
+Saved reads 使用同一 `REPEATABLE READ READ ONLY` snapshot 同時讀來源與 learning rows，避免來源讀完後又取到另一版本結果。`db/learning_rows.py` 只載入請求 keys/references、其 current operation、保存結果對應的 successful operation，以及必要時單一明確查詢的歷史 operation/command；不遍歷整書所有 command/refresh/level 歷史。一次最多 100 keys/references，集合查詢無逐 key N+1；receipt/resource/checkpoint 只跟隨這個有界依賴集合。完整結果驗證會讀取所選 operation 的所有已存 batch payloads，成本與該結果大小相關，並非固定 bytes 保證。
+
+`read_checkpoints` 另走 SQL batch-index range + LIMIT 1–100，僅驗證當頁 payload/digest 與目前 source，不載入其它 checkpoint payload。完整 canonical hierarchy/effective source projection 仍沿用既有 document loader，會讀取該書 hierarchy；本項不宣稱整個 source projection 已 SQL 分頁或完成大型書庫效能驗收。相同未知 schema/type、遺失 receipt、壞 digest 是 storage failure，不能當 missing 或 read-time repair。
+
+現有內容修改／Undo／reparse 的 source/epoch guard 已阻擋舊 key 讀取與晚到提交；document DELETE 由 FK 清除 SQL-owned rows，刪除後重建的 numeric identity 不會復用舊結果。LLRN-12 已補齊全語言／全級別 source binding 作廢、rename references 與偏好交易協調；保留歷史證據而不要求每次改文物理刪除 learning rows。Runtime 尚未組裝完整模式。
+
+#### Migration and validation evidence
+
+在 001..004 之後，由部署者對正確 database/search_path 顯式以 `psql -X --set ON_ERROR_STOP=1 --single-transaction --file db/migrations/005_learning_persistence.sql` 套用；同版本可重跑，不修復任意舊 schema。沒有改動啟動流程或自動匯入 file sidecar。實作依賴 LLRN-07 的偏好 schema/transaction helper，任務 DAG 已補上此依賴。
+
+Downgrade 需先停 learning writers 並備份五表，顯式執行 `db/migrations/rollback/005_learning_persistence.sql`（同樣 single-transaction/ON_ERROR_STOP）；會刪除 learning rows，包括昂貴生成結果。保留資料需重新套用 005，再按 sentences → entries → operations → commands/checkpoints 還原備份。Rollback 檔不在 forward glob 中，不使用 CASCADE，不碰原 document/profile/preference 表；未來依賴先各自降版。交易內的失敗 DDL 可 rollback，已成功 DROP 不會自行恢復資料。
+
+`scripts/test_learning_postgres_repository.py` **47 tests passed**；279 項 aggregate 初輪 278 通過，file/SQL 對照 fixture 因兩 backend 初始 epoch 不同失敗；統一該 fixture 的來源身份後重跑全部 47 SQL 專測通過。合計 **279 個不同測試**有通過證據、無 skips（47 新 SQL + 232 既有）。另實際重啟 disposable PostgreSQL container，保存結果、成功 receipt、running refresh 及 replay 均保留，未重新授權 dispatch。
+
+涵蓋六程序同 key claim（一勝五 coalesce）、同 command replay、不同 key 保留、四程序 dispatch（一勝三 conflict）、source/preferences 真 row-lock wait、read snapshot 競爭、CAS/fence/source/settings/stale worker、partial/empty hints、失敗 refresh、receipt/checkpoint/deferred COMMIT rollback、lost ack、claim/dispatch/result COMMIT 前後 `os._exit`、跨 scope/書、corruption/遺失 receipt、bounded queries/page、直接 file/SQL 對照、005 升降版/失敗 rollback/昂貴結果備份還原、FK/unique constraints 與 log privacy。全部為隔離 PostgreSQL/random schemas；未改真書、未部署使用者資料庫、未呼叫真 provider 或重啟正式服務。
+
 ## Translation And Same-Text Persistence (2026-10-26)
 
 Supporting TRUI-02..06, counted in the shared translation queue, not a new DB task.
@@ -1081,7 +1217,7 @@ Phase 1 may keep an optional full `StructuredDocument` JSONB snapshot alongside 
 
 ### 16.7 Ownership Boundaries
 
-1. `db/` owns this logical schema proposal as documentation memory. It does not own runtime implementation.
+1. `db/` owns logical schema memory, SQL adapters and explicit migrations; domain rules remain with their owning modules and runtime backend composition remains in `config`. The earlier planning-only boundary is superseded by implemented PostgreSQL adapters, including LLRN-07 preferences.
 2. `document_structure` owns hierarchy semantics, current-state hierarchy persistence meaning, parse lifecycle semantics, and artifact persistence semantics against validated hierarchy targets.
 3. `shared` owns DTO vocabulary for `TaskUnit`, `TaskUnitContentBlock`, `ArtifactTargetLevel`, `ArtifactTargetRef`, and artifact payload shapes.
 4. `config` owns future backend selection, rollout flags, and DI policy, not domain semantics.

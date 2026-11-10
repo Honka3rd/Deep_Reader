@@ -1,5 +1,27 @@
 # app Checklist
 
+## Shared sentence translation (2026-11-09)
+
+- [x] Share durable translation generation and reuse across ordinary and learning entrypoints.
+  Owner: app. Status: Implemented and verified.
+  Acceptance: Follow the shared sentence translation contract in section_tasks; preserve reads, compatibility and explicit generation boundaries.
+  Evidence: 470 backend tests pass, including 35 shared file/PostgreSQL cases; actual API/React mode roundtrips at 1280/390, two backed-up real-source offline cases and type/build checks pass. No duplicate aggregate is persisted.
+  Follow-up (2026-11-10): Local user flow returned 200 for learning/read and translate/read with no generation request/batch event. Reference-block API/SQL comparison retained the same operation and revision 1; docs distinguish exact-key generation from target-grouped reads and mark prior artifact orchestration historical. Evidence and log attribution limits: [manual acceptance](../section_tasks/module-detailed-design.md#manual-reuse-acceptance-2026-11-10).
+  Timestamp: 2026-11-10
+
+
+## Vocabulary filtering and completion observation (2026-11-09)
+
+Owned checklist moved to [learning](../learning/module-checklist.md#vocabulary-filtering-and-completion-observation-2026-11-09).
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+### LLRN-13
+
+The single owned checkbox and original evidence moved to
+[learning](../learning/module-checklist.md#llrn-13). App retains ordinary translation
+integration; this historical anchor does not count as another completed task.
+
 ## Persisted Block Translation (2026-10-26)
 
 Implemented and verified: 1/1 owned task. [Shared queue](../section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).

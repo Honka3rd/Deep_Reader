@@ -1,5 +1,345 @@
 # scripts Detailed Design
 
+## Shared sentence translation (2026-11-09)
+
+test_shared_translation.py exercises bidirectional reuse on real file and disposable
+PostgreSQL repositories, ordinary generation without learning preferences, concurrent
+requests, source races, claim acknowledgement loss, timeout/unknown safety, legacy
+compatibility, bounded projection, failed refresh and SQL rollback. The real DI test
+now exercises the shared single-attempt route and runtime reinitialization.
+accept_shared_translation.py uses hash-verified backed-up English/Chinese excerpts,
+temporary storage and a deterministic offline provider. It checks source binding,
+sentence alignment and reuse, not semantic model quality; backups remain unchanged.
+UI test-shared-translation-api.mjs drives actual React and production preference,
+translation and learning routes against temporary file storage at desktop/mobile
+sizes, asserting no translation generation after a mode switch.
+
+Validation: 470 backend tests and actual API/React mode-switch acceptance pass; detailed evidence and limits are recorded in the shared section_tasks design.
+
+
+## Reading-mode deployment prerequisites (2026-10-29)
+
+The running local API exposed a deployment gap: migration 004/005 tables were
+missing even though isolated acceptance applied them. Root `start_local_dev.sh`
+now pipes the explicit reviewed 003/004/005 upgrade files to one `psql -X`
+`ON_ERROR_STOP` / `--single-transaction` execution before starting/building API.
+Shell pipefail stops startup on SQL/input failure. Compose mounts both new SQL
+files in initdb for fresh volumes; existing volumes are upgraded explicitly by
+the startup script. No application startup/read-time DDL or fallback file storage.
+
+Validation: bash syntax and Compose configuration pass. A disposable container
+using the actual Compose init mounts creates all 19 tables. A custom-format
+backup of the existing local database was restored into a second disposable
+database; the actual startup script upgraded and reapplied without changing any
+of its 12 existing table fingerprints. A simulated psql failure prevents API
+startup; API build/start and connectivity calls are mocked in these script tests.
+The unchanged 004/005 migrations were then explicitly applied to the current local
+database in one transaction. Actual Vite-proxied preference/workspace/learning
+reads return 200 for `Madame Bovary`; no provider calls, settings initialization,
+API restart or existing-data rewrite. Evidence/backup:
+`data/maintenance/preference-schema-20261029/`; DB owner records deployment scope.
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+### LLRN-22 system acceptance scope (2026-10-29)
+
+Maintainer direction: only address system-controlled behavior. This supersedes
+the historical semantic blocking gate below; model choice, prompt tuning and
+semantic scoring are excluded from this task. Historical quality observations
+remain evidence, not a claim of semantic acceptance.
+
+Implemented: `RecordingProvider` stores exact provider-returned `response_text`
+before optional diagnostic JSON decoding. Malformed output returns unchanged to
+production validation and becomes a known `invalid_output` failure; actual
+provider exceptions remain unknown. SDK request IDs/model/usage and the existing
+eight-call acceptance bound remain intact. No retry or production limit change.
+`ReplayProvider` prefers raw text, preserves syntax/duplicate keys and remaps only
+JSON string values of sentence references. Unknown/malformed shapes pass through
+to production validation; absent historical output fails explicitly. Decoded-only
+legacy reports are tagged `legacy_json`, and chained replay retains request IDs.
+These are serial acceptance adapters, not installed in the production provider.
+
+System acceptance is complete. Fifteen new regressions cover raw forwarding,
+invalid/deep JSON, actual SDK receipt observation on both endpoint families,
+exception identity/no retries, call bounds, raw/legacy replay and strict duplicate
+key rejection. Actual file/SQL/API tests cover translation and hints: failed
+refresh preserves saved output, read/command replay makes no call, known failure
+allows explicit retry, and unknown still requires reconciliation/consent.
+The full runner includes these tests: 765 distinct tests, zero failures/errors/skips.
+
+Private evidence: `data/test-books/learning-live/llrn22e-legacy-replay/` replays the
+eight successful v4 real-book calls from `llrn22c-20261029-v1/report.json`;
+`llrn22e-raw-replay/` replays the resulting new report format. Both pass production
+API/disposable SQL, two proficiency levels, mixed control, runtime restart and
+actual Reader at 1280/390; zero live invocations and zero reload generation,
+unchanged source/backup hashes, owned schemas removed. Screenshots inspected.
+The chained raw-format run does not recover the historical provider bytes lost
+by the old recorder; exact raw preservation is separately covered by controlled
+malformed/duplicate-key tests. The earlier failed `llrn22d-20261029-full` raw
+response is unrecoverable and its original JSON defect remains unknown.
+Final regression/cleanup review: `learning-live/llrn22e-review/`.
+Production data/services and model/prompt configuration are unchanged.
+
+**[LLRN-20/22 system acceptance complete]** [Canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。下述 dated follow-ups 為歷史記錄；當時的 semantic gate 已由上方系統範圍取代。
+
+負責 LLRN-20 跨模組 backend 驗收與 LLRN-22 真書/真模型整合，不重複擁有各 module 的單元實作。SQL/file/API 驗收涵蓋 atomic claim、call counts、unknown/replay、設定與來源競爭、所有等級失效、read purity；真書使用不可變備份的有限段落和隔離 DB，保留 source/profile hashes。UI lifecycle 驗收由 UI LLRN-21 唯一負責，最終 live 報告彙合其實際 reader 證據。無模型/DB 前提時記錄缺口並保留未完成，不以 mock/JSON/build 認定語義或端到端通過。
+
+### LLRN-22 live acceptance and open quality gate (2026-10-28)
+
+**Historical checkpoint: implemented harness; semantic acceptance failed.**
+`accept_learning_live.py` composes production learning routes/lifespan/DI, a
+configured single-attempt provider, and a random schema in an explicitly supplied
+disposable PostgreSQL database. It imports one hash-verified paragraph each from
+Madame Bovary and Red Roulette, plus a synthetic English/French sentence. No user
+Library/DB/profile is modified and no whole book is generated. The fixture records
+both backup excerpts and repository-normalized effective text; Reader must receive
+the latter to satisfy its source guard.
+
+Final live run `data/test-books/learning-live/llrn22-20261028-v3/report.json` passed
+technical checks: 8 actual provider requests, 7 aligned translated sentences,
+A1/C2 and TOCFL 1/6 independently saved hints, command replay, return-to-level
+reuse, new DI/lifespan over persisted SQL, and 1280/390 Reader reload without new
+generation. Request IDs, actual model/usage, operation receipts, source/backup
+hashes and explicit migration hashes are retained privately. The final live run
+used 8,121 input and 3,078 output tokens; all three development runs total 17
+invocations, 16,369 input and 5,985 output tokens. Early runs are retained: the
+first exposed a harness replay-flag assertion, the second exposed raw/extracted
+text mismatch in the browser fixture. The spending bound of eight invocations per
+run belongs only to this acceptance harness, not production model capacity.
+
+`accept_learning_live_reader.mjs` renders the actual App with production learning
+HTTP responses; ancillary Library/task-layout/content routes are fixture projections
+from isolated source data. It checks exact sentence rows, hint counts, saved state,
+desktop/mobile containment and no generate command on reload. It does not certify
+production Library/content endpoint integration or all-language accessibility.
+
+Visual inspection revealed that observing a historical succeeded operation after
+a settings roundtrip incorrectly replaced current Saved state with stale. The
+[UI owner correction](../../Deep_Reader_UI/module-detailed-design.md#llrn-22-saved-result-reuse-correction-2026-10-28)
+uses the current saved read while retaining recovery for unresolved commands and
+active/failed/unknown refreshes. Post-fix API/SQL/browser verification uses explicit
+`--replay-report` from the captured live run; it reports `replay_checks_passed`,
+zero live invocations, and cannot satisfy semantic/live acceptance. Evidence:
+`data/test-books/learning-live/llrn22-20261028-replay/`.
+
+**Historical quality gate was open.** `semantic-review.json` records implementing-agent
+manual inspection, not independent teacher/user sign-off. Historical/figurative
+meanings and role inference remain wrong; C2 still receives basic vocabulary;
+Chinese hints include proper names and arbitrary clauses; mixed-sentence
+classification changed from null in one run to en in the final run. Prompt/policy
+version 2 strengthens general rules but does not establish quality or reliable
+language identification. No book-specific output filters, model change, repair
+calls or automatic provider retries were added. At that checkpoint LLRN-22 was
+unchecked pending semantic reacceptance; the current system scope supersedes it.
+
+Reproduction from the backend directory (load local provider credentials only for
+the live mode; set `DEEP_READER_TEST_POSTGRES_DSN` to a disposable database):
+
+```sh
+.venv/bin/python -m scripts.accept_learning_live --live --report-dir /tmp/learning-live-new
+.venv/bin/python -m scripts.accept_learning_live --replay-report /path/to/private/report.json --report-dir /tmp/learning-replay-new
+```
+
+Browser requires the running Vite UI plus `PLAYWRIGHT_MODULE`, `CHROMIUM_PATH` and
+optional `UI_URL`. Missing DSN fails closed before provider/storage use; evidence
+`llrn22-missing-dsn/report.json`. Reports are private and never overwritten. Each
+run drains its runtime and drops only its own schema, including failure paths.
+Release checks rerun all 738 backend tests with zero failures/skips and verified
+schema cleanup, including explicit migration/rollback and unknown/checkpoint
+recovery. UI type/build and all 10 acceptance suites pass after the saved-state
+fix (15 controller groups). Final missing-DSN and unavailable-DB controls fail
+without provider calls. The disposable container was removed after confirming an
+empty test-schema inventory. Private combined evidence:
+`data/test-books/learning-live/llrn22-20261028-validation/`.
+Production migration/deployment remains unperformed. This run restarts
+application runtimes, not the database server. Recorded replay and UI tests do not
+erase the live semantic failures.
+
+### LLRN-22 hint policy v3 follow-up (2026-10-29)
+
+The [section_tasks owner](../section_tasks/module-detailed-design.md#llrn-22-deterministic-hint-selection-follow-up-2026-10-29)
+now validates candidate assessments and executes level/name/lexical/mixed-sentence
+exclusions. `accept_learning_live.py` remaps candidate IDs during explicit replay;
+captured reports must match the current provider wire. Replay does not migrate old
+outputs or prove live quality. `accept_learning_hints_books.py` now requires the
+whole mixed-sentence result to be empty, not merely absence of French words.
+
+Three integrated attempts (`data/test-books/learning-live/llrn22b-20261029-v1/`,
+`v2/`, `v3/` with the same full prefix) used 2, 5 and 2 calls respectively. They
+failed on wrong explanation language or omitted lexical metadata. The second
+completed Bovary API/SQL generation and A1/C2 reuse before failing in Chinese;
+none completed the new full browser gate. Missing optional lemma/part-of-speech
+is now normalized to null; invalid provided values and all required fields remain
+strict. No wrong-language or incorrectly grounded response was accepted to make
+the gate pass.
+
+Final current-policy hints evidence:
+`data/test-books/learning-hints/20261028T164758Z-e658643d/report.json` (UTC directory;
+local run date 2026-10-29). Four calls saved/reused 5 A1, 0 C2 and 12 TOCFL-1 hints;
+TOCFL-6 returned invalid occurrence indices and was rejected. Backups unchanged.
+`data/test-books/learning-live/llrn22b-mixed-final/report.json` adds one synthetic
+provider/parser check: en/fr were both reported and all candidates excluded. It
+has no API/SQL/browser scope and does not establish repeated mixed-language quality.
+
+Six earlier diagnostic calls are preserved in `llrn22b-probe`,
+`llrn22b-model-probe`, and `llrn22b-structured-probe` under `learning-live`.
+The two gpt-4.1 diagnostic calls and the extra-paraphrase experiment did not resolve
+contextual meaning, so neither model configuration nor the translation wire was
+changed. This turn made 20 explicit development invocations in total; recorded
+request IDs/usage cover 16 calls, while the older hints harness records only its
+four invocation responses/output limits. Total billed usage is therefore unknown.
+No automatic repair/retry or book-specific answer filter was introduced.
+
+Final regression reran 744 distinct backend tests with zero failures/errors/skips.
+Schema inventory returned to its baseline and the disposable container was removed.
+Evidence: `learning-live/llrn22b-review/backend-final.json`. UI code was unchanged
+in this follow-up; no new complete browser pass is claimed.
+
+**Historical LLRN-22 checkpoint remained open.** The then-required follow-up was
+contextual role/figurative meaning, reliability of lexical/familiarity assessments,
+provider occurrence compliance, and repeated bounded API/SQL/browser acceptance.
+The current system scope supersedes that gate. Deterministic filtering and legal JSON do not establish
+linguistic quality. Private consolidated findings: `learning-live/llrn22b-review/`.
+
+### LLRN-22 exact-anchor verification (2026-10-29)
+
+The [section_tasks v4 contract](../section_tasks/module-detailed-design.md#llrn-22-exact-text-hint-anchors-2026-10-29)
+replaces model-counted occurrences with exact unique sentence-local text anchors.
+No acceptance thresholds or runtime output guards were relaxed. The existing
+live harness requires no wire-specific change for these optional candidate fields.
+
+`data/test-books/learning-live/llrn22c-20261029-v1/report.json` passes the full
+technical gate: eight configured gpt-4.1-mini calls, both immutable real-book
+excerpts at two levels, seven aligned translated sentences, command replay,
+level-return cache reuse, new application runtime over SQL and 1280/390 actual
+Reader screenshots/traces. Hint counts: Bovary A1/C2 6/0; Red Roulette TOCFL-1/6
+14/0; mixed en/fr 0. Sources/backups unchanged, schema removed, zero provider calls
+on restart/browser reload. The former TOCFL-6 occurrence failure is absent under
+the new contract. This is bounded technical evidence, not whole-book or general
+language-quality certification; ancillary Library/content browser routes remain
+fixture projections as described above.
+
+Two additional one-call synthetic repeated-bank provider/parser controls are
+retained under `learning-live/llrn22c-anchor-control/` and
+`learning-live/llrn22c-anchor-control-v2/`. The first omitted context and was
+rejected. The prompt example was then clarified to show left/right context
+fields; the second produced exact distinct financial-bank and river-bank spans.
+No numeric fallback, fuzzy relocation or automatic repair retry was added.
+The integrated eight-call evidence precedes this final prompt clarification;
+the v4 parser/wire did not change. Total explicit development calls this turn: 10,
+all with request IDs/model/usage recorded. The single successful repeated-word
+control does not establish compliance on every model response.
+
+Final backend acceptance passes 750 distinct tests with zero failures/errors/skips;
+65 focused hints/translation tests pass again after the prompt clarification.
+Disposable SQL schema inventory was restored and the test container removed.
+Private report: `learning-live/llrn22c-20261029-v1/backend-report.json`.
+UI code is unchanged; this turn uses the integrated Reader browser checks above.
+
+**Semantic acceptance still fails.** Bovary's historical expression remains
+mistranslated, its new-fellow hint invents teacher/colleague roles, and Red
+Roulette's access/metaphor is still literalized. Candidate lexical/familiarity
+judgments were not accepted. At that checkpoint remaining work was semantic
+quality and live reacceptance; it is now outside the system task scope.
+Implementing-agent review and run accounting are retained beside the integrated
+report in `semantic-review.json`. That checkpoint had a 21/22 queue and scripts
+67 checked / 1 unchecked; current completion is recorded above and in the checklist.
+
+### LLRN-20 backend integration acceptance (2026-10-28)
+
+`test_learning_backend_integration.py` adds seven continuous journeys, each run
+through the production learning/preferences ASGI routes, runtime DI and either
+temporary file storage or migrated disposable PostgreSQL. The fixed provider
+implements the single-attempt contract and counts dispatches; it does not contact
+a paid model. Source resolution, registry, segmentation, generation validation,
+workers, persistence and response projection use their actual implementations.
+
+| Journey | Verified outcome | Provider calls per adapter |
+| --- | --- | ---: |
+| Level/native/source/mode roundtrips and fresh runtime | Translation survives level changes; hints vary by level; native/source select independent caches; returning settings reuses saved output without provider availability; repeated reads do not write | 6 |
+| A1/B1/C2, edit, Undo, reparse | Every previously generated level becomes missing; same text after Undo cannot revive old bindings; reparse uses current backend block identities | 6 |
+| Edit then Undo during dispatch | Late output cannot commit against an obsolete source epoch | 1 |
+| Level roundtrip during dispatch | Same cache key does not bypass settings revision fencing | 1 |
+| Timeout, runtime restart, replay, reconcile, explicit retry | Read/replay/reconcile do not resend; only a new consented retry dispatches again | 2 |
+| Lost claim acknowledgement and concurrent reconcile after restart | Durable command lookup recovers the accepted operation; concurrent recovery dispatches once | 1 |
+| Rename, delete, recreation | Rename rebinds sentence IDs while preserving aligned text/revision; deletion/recreation restores normal defaults without reviving saved learning data | 2 |
+
+`accept_learning_backend.py` runs those 14 new cases and 724 existing regressions
+as **738 distinct test IDs**, deduplicating imported TestCase classes. Existing
+evidence is rerun, not recounted as new implementation. The selection covers all
+cache identity fields and registry rules, file/SQL rollback, worker fences,
+claim/dispatch/checkpoint/commit acknowledgement loss, bounded partial recovery,
+source/OCR/document lifecycle, strict transport, ordinary translation and explicit
+migrations. There were **zero failures, errors, skips or expected failures**.
+
+Reproduce from `Deep_Reflective_Reader`, with `DEEP_READER_TEST_POSTGRES_DSN`
+explicitly pointing to a disposable test database:
+
+```sh
+.venv/bin/python -m scripts.accept_learning_backend --report /tmp/learning-backend-report.json
+```
+
+Each SQL fixture creates a random schema, applies reviewed migrations, and drops
+its schema during cleanup. The runner compares schema inventories before/after,
+fails on skipped tests or missing prerequisites, and records suite SHA-256,
+unique test IDs, per-journey provider counts and phase hashes for source bindings,
+injected profile and persisted settings. Hashes are logical snapshots; the profile
+is a controlled read-only fixture, not evidence about private production profile
+files. Reuse commands may persist receipts; pure reads may not. No startup/read
+repair, user database migration or runtime policy change is introduced.
+
+Final run: 159.071 seconds on an isolated PostgreSQL 16 container; all disposable
+schemas removed and the container subsequently removed. Missing-DSN negative
+control exits 1 with `Needs Confirmation`, without a default database fallback.
+Private evidence: `data/test-books/learning-backend/llrn20-20261028/report.json`,
+`acceptance.log`, `missing-database.json`. `--integration-only` is a diagnostic
+subset and explicitly reports `subset passed`, never the full acceptance gate.
+
+Limits: this validates backend contracts with deterministic model output and
+in-process HTTP transport. It does not certify browser lifecycle/accessibility,
+live translation quality, universal segmentation accuracy or exactly-once billing.
+LLRN-21 and LLRN-22 remain pending, including the previously recorded semantic
+quality failures. The tests restart application runtimes, not the PostgreSQL
+server; earlier server restart evidence remains owned by LLRN-08.
+
+## OCR Registry Packaging Validation (2026-10-27)
+
+Implemented supporting delivery for loader-owned OCR-LANG-01: build model package
+names from the loader adapter over the system registry. Verify complete engine,
+renderer and model availability offline before OCR-enabled startup; build-time
+real-engine loading detects corrupt data. Setup/build is the only acquisition
+phase. `.env.local.example` and Compose use `registry`, and local OCR hints must
+not reduce the packaged capability set. Unit fault tests and disposable-image
+real-engine/immutable-book checks are required; no production book reparse is
+authorized or needed. This does not certify all-language transcription accuracy.
+
+`verify_ocr_assets.py` verifies engine/renderer inventory, pinned vertical hashes
+and each required model with an independent Tesseract initialization; independent
+loads detect Tesseract's partial-model success behavior. Docker build and
+OCR-enabled `tokenizer_startup.py` both run this gate without downloading assets.
+The system registry supplies the install set regardless of a narrowed env hint.
+
+Validation: 108 focused tests (including real offline tokenizer/image opt-ins)
+and 214 PDF tests pass without skips. Offline disposable startup checks missing
+and corrupt `fra` with hint `en`: both prevent child launch; complete 23-model
+startup succeeds. `accept_ocr_registry.py --font <Unicode TTF> --report <path>`
+uses only generated temporary PDFs and passes eight French/German/Russian/Japanese
+hint/default cases. It requires an explicitly supplied font rather than adding
+font packages to production OCR dependencies. All-source models are installed;
+these four examples do not establish universal layout/transcription accuracy.
+
+Existing `accept_ocr_preservation.py --image deep-reader-ocr-registry:test` passes
+three backed-up real-book cases; receipt
+`data/test-books/ocr-keep-20261025/20261027T071751060918Z/report.json`.
+Source mounts are read-only, network disabled, writes confined to new private
+reports/temporary storage. Loader design records exact coverage and latency limits.
+
+Local delivery: `docker compose --env-file .env.local up -d --no-deps --build
+--wait api` rebuilt the development API. Live read-only verification reports
+`registry`, 19 registered languages, 23 verified models and HTTP health 200;
+the five changed runtime Python files match workspace SHA-256 values. No Library
+book re-extraction or production data migration was performed.
+
 ## Persisted Translation Acceptance Plan (2026-10-26)
 
 **[Code-Confirmed]** TRUI-06 owns backend acceptance for the
@@ -815,9 +1155,10 @@ at 1280px/390px. Requires running UI_URL (default 5173), PLAYWRIGHT_MODULE and o
 CHROMIUM_PATH. Planner/unit resolver are deterministic fixtures. All tests and opt-in
 case passed; screenshots inspected. No paid provider or production deployment claim.
 
-Root scripts/start_local_dev.sh waits for PostgreSQL, then applies migration 003 with
-psql ON_ERROR_STOP and --single-transaction before starting API. Fresh Compose volumes
-mount the same migration; existing-volume upgrades do not rely on initdb. Failure
+Root scripts/start_local_dev.sh waits for PostgreSQL, then applies reviewed migrations
+003..005 with psql -X, ON_ERROR_STOP and --single-transaction before starting API
+(extended for reading-mode storage on 2026-10-29). Fresh Compose volumes mount
+001..005; existing-volume upgrades do not rely on initdb. Failure
 stops startup. SQL is exercised in disposable schemas, shell syntax passes, installed
 Compose supports --wait. Startup was not run against user services in this task.
 Completion belongs to document_preparation, not a new scripts checklist item.
@@ -1246,8 +1587,9 @@ cases verify ordered spans and mode-specific persisted reuse; typed failures
 verify no storage mutation. Unexpected typed failures are recorded and execution
 continues through the remaining modes; the aggregate result exits nonzero.
 
-Run from `Deep_Reflective_Reader` in an isolated environment with the three OCR
-language packs and renderer installed:
+Run from `Deep_Reflective_Reader` in an isolated environment with the registry OCR
+model set and renderer installed. This historical harness explicitly selects
+English/simplified/traditional Chinese; it does not define runtime support:
 
 ```bash
 python scripts/accept_pdf_modes.py --pdf 'data/raw/20250515-为什么中式思维既不产生科学，也不产生民主.pdf'

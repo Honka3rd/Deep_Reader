@@ -1,5 +1,50 @@
 # scripts Checklist
 
+## Shared sentence translation (2026-11-09)
+
+- [x] Verify shared translation on file/PostgreSQL/API and backed-up real sources.
+  Owner: scripts. Status: Implemented and verified.
+  Acceptance: Both modes reuse compatible aligned output; ordinary aggregation and learning sentence pairs retain their UI behavior. No automatic legacy migration or duplicate aggregate storage.
+  Evidence: 470 backend tests (35 shared cases); actual API/React at 1280/390 uses four offline calls for two paragraphs across both modes. Existing display/inline suites and type/build pass; backed-up English/Chinese excerpts remain unchanged.
+  Timestamp: 2026-11-09
+
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**2/2 owned system tasks complete: LLRN-20/22 verified (2026-10-29).** [Shared dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 scripts 的唯一 checklist。
+
+### LLRN-20
+
+- [x] LLRN-20: Backend integration acceptance.
+  Owner: scripts. Status: Implemented and verified with deterministic providers and disposable SQL/file storage.
+  Depends on: LLRN-12, LLRN-16.
+  Deliverable: 整合 SQL/file/API、切句/registry/生成服務與 document/settings lifecycle 的故障和並行驗收；各 owner 的單元證據不重複計數。
+  Acceptance: 驗證 read purity、單次 admission、全部 cache 維度、設定失效、rollback/unknown/replay/worker fencing、全等級來源失效與正常翻譯回歸。
+  Evidence required: 可重跑 isolated suites、provider call counters、before/after source/profile/setting hashes、disposable SQL 清理；缺前提記錄 skipped/Needs Confirmation。
+  Evidence: `test_learning_backend_integration.py` adds 14 continuous ASGI/DI/file/SQL journeys. `accept_learning_backend.py` passes 738 distinct tests (14 new + 724 regressions), zero failures/skips; source/profile/settings phase hashes and dispatch counts recorded. Covers settings roundtrips, runtime restart/reuse, source/Undo/reparse, rename/delete/recreation, unknown consent and concurrent acknowledgement recovery; existing suites rerun cache/registry/rollback/fencing/migration/ordinary translation cases. All temporary schemas and the isolated PostgreSQL container removed. Private evidence: `data/test-books/learning-backend/llrn20-20261028/report.json`; missing-DSN control fails closed. At this historical checkpoint LLRN-21/22 were still open; current system acceptance is recorded below and in the shared queue.
+  Timestamp: 2026-10-29
+
+### LLRN-22
+
+- [x] LLRN-22: Real-book and provider system acceptance.
+  Owner: scripts. Status: Implemented and verified within the maintainer-confirmed system scope (2026-10-29).
+  Depends on: LLRN-20, LLRN-21.
+  Deliverable: 隔離資料、不可變真書有限段落、實際 API/SQL/配置 provider/Reader 的系統驗收；保留 migration/recovery 與 request evidence。
+  Acceptance: 來源及逐句覆蓋、registry/級別規則、格式驗證、保存／重用、失敗分類及無自動付費重送。依最新指示，模型選擇、提示詞調整及語義評分移出此任務；歷史語義抽查不改判通過。
+  Evidence required: 已捕捉的實際 provider 報告、backup/source hashes、API/SQL/browser 操作收據、故障控制及資源清理；不以 JSON 合法證明翻譯品質，不整書預生成或修改 production。
+  Evidence: `accept_learning_live.py` now retains exact returned text and optional decoded diagnostics. Malformed output reaches production validation as known `invalid_output`; provider exceptions stay unknown. Raw replay preserves duplicate keys/formatting while remapping sentence references; decoded-only legacy replay is labelled, missing output is not fabricated, chained replay retains original request IDs. No provider, prompt, capacity or production schema change.
+  Validation: `test_learning_live_recording.py` adds 15 regressions including actual SDK mock transport and file/SQL/HTTP failed refresh, saved preservation, explicit retry, command replay and unknown consent. Full backend runner passes 765 distinct tests, zero failures/errors/skips. `learning-live/llrn22e-legacy-replay/` and `llrn22e-raw-replay/` pass two-book/two-level/mixed API/SQL, runtime restart and actual Reader at 1280/390, with zero live calls or reload generation; backups unchanged, owned schemas removed. Final evidence: `data/test-books/learning-live/llrn22e-review/`.
+  Historical evidence: the eight-call v4 live technical pass remains in `learning-live/llrn22c-20261029-v1/`; earlier semantic failures and v3/v4 follow-ups remain in the owner design/private reports. The raw-format replay derives from a legacy report and cannot recover original provider bytes; controlled raw/duplicate-key tests cover lossless preservation. The llrn22d malformed response was lost by the old recorder and cannot be reconstructed. Historical semantic observations are outside this system closure.
+  Deployment follow-up (2026-10-29): corrected local startup to apply reviewed 003..005 in one transaction before API; fresh Compose mounts 001..005. Verified fresh initialization, restored-backup upgrade/reapply, failure stopping API and unchanged old rows. Current local 004/005 deployment restores the reported Vite preference request to 200; backup/private evidence: `data/maintenance/preference-schema-20261029/`.
+  Timestamp: 2026-10-29
+
+## OCR Registry Packaging (2026-10-27)
+
+- [x] OCR-LANG-02: Package and verify all registry OCR dependencies.
+  Acceptance: Registry-derived build installation, offline startup completeness gate, real model loading and missing/corrupt dependency tests; isolated real-book checks preserve immutable backups. No request-time downloads or duplicate language list in deployment configuration.
+  Evidence: Dockerfile derives apt model packages from pdf_ocr_language_policy; verify_ocr_assets.py independently loads all 23 models at build/OCR-enabled startup. Compose/template/local configuration use registry. 108 focused and 214 PDF tests pass; eight generated multilingual OCR cases and three immutable-book cases pass. Real offline missing/corrupt French model controls prevent startup even with en hint; complete startup succeeds. No runtime acquisition or production book reparse.
+  Timestamp: 2026-10-27
+
 ## Persisted Block Translation (2026-10-26)
 
 Implemented and verified: 1/1 owned task. [Shared queue](../section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).

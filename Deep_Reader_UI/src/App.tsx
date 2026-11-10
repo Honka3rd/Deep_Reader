@@ -75,7 +75,6 @@ import {
   mapAnalysisInteractionResponseToInsightViewState,
   mapCriticalThinkingSessionResponseToViewState,
   mapQuizInteractionResponseToQuizViewState,
-  normalizeReadingInteractionThrownError,
   QuizDrawerCommands,
   QuizDrawerContent,
   ReadingInteractionsView,
@@ -85,6 +84,9 @@ import {
   type ReadingInteractionTarget,
   useReadingInteractionMenuController,
 } from "./features/reading-interactions";
+
+import { LearningSessionMemory } from "./features/learning-reader";
+import { useReadingSettingsController } from "./features/reading-settings";
 
 import { BlockTranslationView, useBlockTranslation } from "./features/block-translation";
 
@@ -145,6 +147,9 @@ export default function App() {
       }
     },
   });
+  const readingSettings = useReadingSettingsController(fileManagement.open);
+  const [readerModeSettingsOpen, setReaderModeSettingsOpen] = useState(false);
+  const [learningMemory] = useState(() => new LearningSessionMemory());
   const {
     selectedSection,
     contentBlocks,
@@ -172,6 +177,7 @@ export default function App() {
     criticalThinkingStateByTarget,
     selectedInteraction,
     selectInteractionAction,
+    activateInteraction,
     beginInlineInsightRequest,
     applyInlineInsightState,
     failInlineInsightRequest,
@@ -500,75 +506,10 @@ export default function App() {
     );
   }
 
-  async function readInlineInsight(selection: ReadingInteractionMenuSelection) {
-    const requestId = beginInlineInsightRequest(selection.targetKey, "loading");
-    try {
-      const response = await readingInteractionService.readInsight(
-        toReadingInteractionTargetRequest(selection.target),
-      );
-      applyInlineInsightState(
-        selection.targetKey,
-        mapAnalysisInteractionResponseToInsightViewState(selection.target, response),
-        requestId,
-      );
-    } catch (error) {
-      const failure = normalizeReadingInteractionThrownError(selection.target, error);
-      failInlineInsightRequest(
-        selection.targetKey,
-        requestId,
-        failure.message,
-        failure.status,
-      );
-      showNotification(failure.message, "error");
-    }
-  }
-
-  async function readQuiz(selection: ReadingInteractionMenuSelection) {
-    const requestId = beginQuizRequest(selection.targetKey, "loading");
-    try {
-      const response = await readingInteractionService.readQuiz(
-        toReadingInteractionTargetRequest(selection.target),
-      );
-      applyQuizState(
-        selection.targetKey,
-        mapQuizInteractionResponseToQuizViewState(selection.target, response),
-        requestId,
-      );
-    } catch (error) {
-      const failure = normalizeReadingInteractionThrownError(selection.target, error);
-      failQuizRequest(selection.targetKey, requestId, failure.message, failure.status);
-      showNotification(failure.message, "error");
-    }
-  }
-
-  async function readCriticalThinkingSession(
-    selection: ReadingInteractionMenuSelection,
-  ) {
-    const requestId = beginCriticalThinkingRequest(selection.targetKey, "loading");
-    try {
-      const response = await readingInteractionService.readCriticalThinkingSession(
-        toReadingInteractionTargetRequest(selection.target),
-      );
-      applyCriticalThinkingState(
-        selection.targetKey,
-        mapCriticalThinkingSessionResponseToViewState(selection.target, response),
-        requestId,
-      );
-    } catch (error) {
-      const failure = normalizeReadingInteractionThrownError(selection.target, error);
-      failCriticalThinkingRequest(
-        selection.targetKey,
-        requestId,
-        failure.message,
-        failure.status,
-      );
-      showNotification(failure.message, "error");
-    }
-  }
-
   function selectReadingInteraction(
     target: ReadingInteractionTarget | null,
     kind: ReadingInteractionKind,
+    retryGeneration = false,
   ) {
     if (!target) {
       return;
@@ -581,6 +522,7 @@ export default function App() {
     try {
       const request = toReadingInteractionTargetRequest(target);
       if (!closeSummaryNote()) return;
+      closeNotification();
       if (kind === "summary" || kind === "note") {
         closeReadingInteractionDrawer();
         setSummaryNoteSelection({ kind, target: request, breadcrumb: target.breadcrumb });
@@ -588,12 +530,12 @@ export default function App() {
       }
       const selection = selectInteractionAction(kind, target);
       if (selection) {
-        if (selection.kind === "insight") {
-          void readInlineInsight(selection);
-        } else if (selection.kind === "quiz") {
-          void readQuiz(selection);
-        } else if (selection.kind === "critical_thinking") {
-          void readCriticalThinkingSession(selection);
+        if (["insight", "quiz", "critical_thinking"].includes(selection.kind)) {
+          void activateInteraction(selection, request, readingInteractionService,
+            message => showNotification(message, "error"), retryGeneration, key => {
+              setCriticalThinkingDraftAnswersByTarget(current => ({ ...current, [key]: "" }));
+              setCriticalThinkingDraftDirty(false);
+            });
         } else {
           notifyReadingInteractionSelection(selection);
         }
@@ -824,28 +766,9 @@ export default function App() {
     return successful;
   }
 
-  async function generateInlineInsight(targetKey: string) {
-    const insight = openInlineInsightsByTarget[targetKey];
-    if (!insight) {
-      return;
-    }
-
-    const requestId = beginInlineInsightRequest(targetKey, "generating");
-    try {
-      const response = await readingInteractionService.generateInsight(
-        toReadingInteractionTargetRequest(insight.target),
-      );
-      applyInlineInsightState(
-        targetKey,
-        mapAnalysisInteractionResponseToInsightViewState(insight.target, response),
-        requestId,
-      );
-      notifyInteractionResult(response, requestId, "Insight generated.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failInlineInsightRequest(targetKey, requestId, message);
-      showNotification(message, "error");
-    }
+  function generateInlineInsight(targetKey: string) {
+    const target = openInlineInsightsByTarget[targetKey]?.target;
+    if (target) selectReadingInteraction(target, "insight", true);
   }
 
   async function refreshInlineInsight(targetKey: string) {
@@ -892,28 +815,9 @@ export default function App() {
     }));
   }
 
-  async function generateQuiz(targetKey: string) {
-    const quiz = quizStateByTarget[targetKey];
-    if (!quiz) {
-      return;
-    }
-
-    const requestId = beginQuizRequest(targetKey, "generating");
-    try {
-      const response = await readingInteractionService.generateQuiz(
-        toReadingInteractionTargetRequest(quiz.target),
-      );
-      applyQuizState(
-        targetKey,
-        mapQuizInteractionResponseToQuizViewState(quiz.target, response),
-        requestId,
-      );
-      notifyInteractionResult(response, requestId, "Quiz generated.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failQuizRequest(targetKey, requestId, message);
-      showNotification(message, "error");
-    }
+  function generateQuiz(targetKey: string) {
+    const target = quizStateByTarget[targetKey]?.target;
+    if (target) selectReadingInteraction(target, "quiz", true);
   }
 
   async function refreshQuiz(targetKey: string) {
@@ -940,33 +844,9 @@ export default function App() {
     }
   }
 
-  async function generateCriticalThinkingQuestion(targetKey: string) {
-    const session = criticalThinkingStateByTarget[targetKey];
-    if (!session) {
-      return;
-    }
-
-    const requestId = beginCriticalThinkingRequest(targetKey, "generating");
-    try {
-      const response = await readingInteractionService.generateCriticalThinkingQuestion(
-        toReadingInteractionTargetRequest(session.target),
-      );
-      applyCriticalThinkingState(
-        targetKey,
-        mapCriticalThinkingSessionResponseToViewState(session.target, response),
-        requestId,
-      );
-      if (!notifyInteractionResult(response, requestId, "Critical-thinking question generated.")) return;
-      setCriticalThinkingDraftAnswersByTarget((current) => ({
-        ...current,
-        [targetKey]: "",
-      }));
-      setCriticalThinkingDraftDirty(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failCriticalThinkingRequest(targetKey, requestId, message);
-      showNotification(message, "error");
-    }
+  function generateCriticalThinkingQuestion(targetKey: string) {
+    const target = criticalThinkingStateByTarget[targetKey]?.target;
+    if (target) selectReadingInteraction(target, "critical_thinking", true);
   }
 
   async function submitCriticalThinkingAnswer(targetKey: string) {
@@ -1184,6 +1064,7 @@ export default function App() {
         </Box>
       </Paper>
       <FileManagementView
+        readingSettings={readingSettings}
         canOpenDocument={fileManagement.canOpenDocument}
         openingDocName={fileManagement.openingDocName}
         openError={fileManagement.openError}
@@ -1309,6 +1190,7 @@ export default function App() {
               path="/"
               element={
                 <ReaderContentView
+                  readingMode={{ docName, suspended: fileManagement.open || enhancementOpen || cleanupOpen || !!contentEditSelection, revision: readingRefresh, memory: learningMemory, onSettingsOpenChange: setReaderModeSettingsOpen, onBeforeSettingsOpen: () => confirmReadingNavigation() && closeSummaryNote() }}
                   getInlineTranslationState={translations.getInlineTranslationState}
                   onVisibleTranslationBlocksChange={translations.onVisibleTranslationBlocksChange}
                   navigationTarget={navigationTarget}
@@ -1338,6 +1220,7 @@ export default function App() {
               path="/documents/:routeDocName"
               element={
                 <ReaderContentView
+                  readingMode={{ docName, suspended: fileManagement.open || enhancementOpen || cleanupOpen || !!contentEditSelection, revision: readingRefresh, memory: learningMemory, onSettingsOpenChange: setReaderModeSettingsOpen, onBeforeSettingsOpen: () => confirmReadingNavigation() && closeSummaryNote() }}
                   getInlineTranslationState={translations.getInlineTranslationState}
                   onVisibleTranslationBlocksChange={translations.onVisibleTranslationBlocksChange}
                   navigationTarget={navigationTarget}
@@ -1418,7 +1301,7 @@ export default function App() {
         key={`${summaryNoteSelection.kind}:${JSON.stringify(summaryNoteSelection.target)}`}
         selection={summaryNoteSelection} dirtyRef={noteDirtyRef} onClose={() => { closeSummaryNote(); }} />}
       <BlockTranslationView controller={translations} />
-      <AppNotification notification={{ ...notification, open: notification.open && !enhancementOpen && !cleanupOpen && !translations.notification.open && !translations.surface }} onClose={closeNotification} />
+      <AppNotification notification={{ ...notification, open: notification.open && !readerModeSettingsOpen && !readingSettings.target && !enhancementOpen && !cleanupOpen && !translations.notification.open && !translations.surface }} onClose={closeNotification} />
     </Box>
   );
 }

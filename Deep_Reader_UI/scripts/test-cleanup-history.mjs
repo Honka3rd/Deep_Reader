@@ -20,7 +20,7 @@ try {
       links: [link], status: "cleaned", can_restore: true, can_delete: true, restore_reason: null }));
     rows[2].links = [{ ...link, can_navigate: false }];
     const state = query => ({ document_id: "Book", revision, structure_version: "1", source_token: "source",
-      disposition: "completed", can_undo: false, max_chars: 10000, regions: [],
+      disposition: "completed", ocr_review_available: true, can_undo: false, max_chars: 10000, regions: [],
       blocks: query?.has("block_id") ? [{ ...link, content, deleted: false, modified: false, manually_edited: false }] : [],
       ...(query?.has("include_cleanup_audit") ? { cleanup_audit: { total: 1, offset: 0, limit: 10, items: [{
         revision: 1, at: "2026-10-25T10:00:00Z", applied_count: rows.length, skipped_count: 0,
@@ -104,7 +104,7 @@ try {
     await page.locator(".hierarchy-chapter-interaction-trigger").first().click();
     await page.getByRole("menuitem", { name: "Note", exact: true }).click();
     await page.getByRole("textbox", { name: "Note", exact: true }).fill("Keep my unsaved Note");
-    await page.getByRole("button", { name: "Review source", exact: true, includeHidden: true }).evaluate(el => el.click()); await expand();
+    await page.getByRole("button", { name: "Review extracted text", exact: true, includeHidden: true }).evaluate(el => el.click()); await expand();
     assert.equal(await review.locator(".cleanup-history-record").count(), 10);
     assert.equal(await row(2).getByRole("button", { name: "Go to content for block b" }).isDisabled(), true, "Non-navigable history remains visible");
     assert.equal(await row(0).locator('.source-review-navigate-action [data-testid="ArrowForwardIcon"]').count(), 1);
@@ -114,14 +114,14 @@ try {
     await page.keyboard.press("Escape");
     await edit(0); await row(0).getByRole("textbox", { name: "Restoration text", exact: true }).fill("Restored passage");
     const historyTab = review.getByRole("tab", { name: "OCR cleanup history", exact: true });
-    const regionsTab = review.getByRole("tab", { name: "Source regions", exact: true });
+    const regionsTab = review.getByRole("tab", { name: "Flagged areas", exact: true });
     assert.equal(await historyTab.getAttribute("aria-selected"), "true");
     const draftNode = await row(0).elementHandle(), tabReads = reviewReads;
     const scroll = review.locator('.source-review-dialog-content');
     await scroll.evaluate(el => { el.scrollTop = 120; });
     const savedScroll = await scroll.evaluate(el => el.scrollTop);
     await regionsTab.click();
-    await review.getByText("No unresolved OCR regions recorded.").waitFor();
+    await review.getByText("No flagged areas recorded. You can still review previous cleanup changes.").waitFor();
     assert.equal(await row(0).isVisible(), false, "Only the selected panel is visible");
     await regionsTab.focus();
     await page.keyboard.press("ArrowLeft");
@@ -179,7 +179,7 @@ try {
     const updatedBody = await page.locator('.reader-content-block-list [data-block-id="b"] .reader-content-block-body').textContent();
     assert.equal(updatedBody.includes("History remains editable"), true);
     assert.equal(updatedBody.includes("Restored passage"), false);
-    await page.getByRole("button", { name: "Review source", exact: true }).click(); await expand();
+    await page.getByRole("button", { name: "Review extracted text", exact: true }).click(); await expand();
     await edit(0); await row(0).getByRole("textbox", { name: "Restoration text", exact: true }).fill("Third replacement");
     await cleanupAction(page, row(0), "Keep it"); await expand();
     await page.waitForFunction(() => document.querySelector('[aria-labelledby="reading-content-dialog-title"]')?.contains(document.activeElement)).catch(async error => {
@@ -276,13 +276,13 @@ try {
     await page.waitForTimeout(250);
     assert.equal(await review.isVisible(), false);
     legacy = true;
-    await page.getByRole("button", { name: "Review source", exact: true }).click(); await expand();
+    await page.getByRole("button", { name: "Review extracted text", exact: true }).click(); await expand();
     for (const action of ["Keep it", "Edit", "Delete"]) {
       assert.equal(await cleanupDisabled(page, review.locator(".cleanup-history-record").first(), action), true);
     }
     await review.getByRole("button", { name: "Close content editor" }).click();
     legacy = false; rows.splice(1);
-    await page.getByRole("button", { name: "Review source", exact: true }).click(); await expand();
+    await page.getByRole("button", { name: "Review extracted text", exact: true }).click(); await expand();
     const lastReads = reviewReads;
     await cleanupAction(page, review.locator(".cleanup-history-record"), "Delete");
     await confirmation.getByRole("button", { name: "Delete record", exact: true }).click();

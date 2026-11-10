@@ -1,5 +1,22 @@
 # Deep Reflective Reader Progress
 
+## Scripts Learning Backend Acceptance (2026-10-29)
+
+Scripts-owned learning tasks: **2/2 system tasks complete**.
+[LLRN-20](scripts/module-checklist.md#llrn-20) supplies continuous file/SQL/API
+integration; [LLRN-22](scripts/module-checklist.md#llrn-22) supplies bounded
+real-book/provider evidence and the recording/replay system correction.
+The current backend runner passes **765 distinct tests**, zero failures/errors/skips.
+Legacy/new-format captured-output replay passes API/SQL, runtime restart and
+1280/390 Reader reuse without paid calls. Backups remain unchanged and disposable
+schemas/container are removed; evidence: `data/test-books/learning-live/llrn22e-review/`.
+Per the 2026-10-29 maintainer direction, model semantic scoring is outside this
+task; historical quality observations remain, without a semantic-pass claim.
+UI progress remains separately governed and is not aggregated here.
+Direct scripts checklist recount: **68 checked / 0 unchecked**; only this owner's
+aggregate row is synchronized. Older dated delivery counts below remain historical.
+Timestamp: 2026-10-29
+
 ## Persisted Block Translation Delivery (2026-10-26)
 
 **Backend implementation and acceptance: 6/6 (100%)**.
@@ -419,7 +436,7 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 50 | 0 | Persisted translation delivered; 11 historical unchecked |
+| `app/` | package | `app/module-checklist.md` | 51 | 11 | LLRN-13/completion ownership moved to learning; remaining unchecked items retained (2026-11-10 recount) |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -430,12 +447,13 @@ It is used to:
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `learning/` | application package | `learning/module-checklist.md` | 3 | 0 | Extraction locally verified; LLRN-13/completion evidence transferred; external review/Docker/push pending |
 | `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
 | `profile/` | package | `profile/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `scripts/` | package | `scripts/module-checklist.md` | 65 | 0 | TRUI-06 accepted; no unchecked items |
+| `scripts/` | package | `scripts/module-checklist.md` | 68 | 0 | LLRN-20/22 system acceptance verified (recounted 2026-10-29) |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 97 | 0 | TRUI-01 complete; quality caveat retained |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |

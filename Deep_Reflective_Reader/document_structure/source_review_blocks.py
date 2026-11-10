@@ -62,11 +62,12 @@ def _excluded_from_body(provenance, region):
 def active_review_regions(provenance):
     """One eligibility rule for Library, reader and generation, including legacy data."""
     decisions = provenance.get("reading_content", {}).get("regions", {})
+    permanent = provenance.get("reading_content", {}).get("permanently_ignored_regions", {})
     kept = provenance.get("reading_content", {}).get("review_kept_blocks", {})
     proof = provenance.get(MAPPING_KEY, {})
     mappings = proof.get("regions", {}) if proof.get("source_key") == _source_key(provenance) else {}
     return [r for r in provenance.get("source_review", {}).get("regions", [])
-            if not decisions.get(r["id"]) and not _excluded_from_body(provenance, r)
+            if not decisions.get(r["id"]) and r["id"] not in permanent and not _excluded_from_body(provenance, r)
             and not (mappings.get(r["id"], {}).get("block_ids")
                      and all(key in kept for key in mappings[r["id"]]["block_ids"]))]
 

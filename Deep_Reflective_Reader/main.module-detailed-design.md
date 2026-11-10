@@ -1,5 +1,54 @@
 # main.py Detailed Design
 
+## Shared sentence translation (2026-11-09)
+
+Ordinary translate/read and translate/generate retain their existing request and
+successful response schemas. Saved records can be read-only aggregates of canonical
+aligned results; persisted means the aligned result was durably committed, not that
+another paragraph string was written. The response reports the actual generation
+prompt version. translation_outcome_unconfirmed is a 503 response for unresolved
+accepted work, preserving the same command identity for explicit recovery. Reads
+never migrate legacy records or start generation. Learning routes remain unchanged.
+
+Validation: 470 backend tests and actual API/React mode-switch acceptance pass; detailed evidence and limits are recorded in the shared section_tasks design.
+
+
+## Learning completion wait route (2026-11-09)
+
+POST `/documents/reading-interactions/learning/operations/wait` uses the existing
+operation handle and response projection. The async route races the learning service's bounded
+completion observation against ASGI disconnect; cancellation cleans observer tasks
+without cancelling accepted generation. It shares the existing no-store/error
+mapping and performs no generation, mutation, retry or recovery. An acceptance
+receipt remains distinct from completion; callers read the saved result after
+verified success. Existing status/read/reconcile endpoints remain available for
+explicit recovery. File/PostgreSQL HTTP and real API Reader tests verify the new
+route, committed revision, missing operation and no duplicate model dispatch.
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+**[Code-Confirmed: LLRN-16 implemented and verified]** [Canonical design](section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。Production source 已註冊 API/lifespan；未宣稱已部署或完成 UI／LLRN-20..22 整合及語義品質 gate。
+
+`learning_routes.py` 在 `main.app` 註冊 [12 個正式 endpoints（原 LLRN-14 加上 completion wait）](api_schemas.module-detailed-design.md#fixed-transport-surface)：options、workspace read/save、book read/apply、learning read/generate、operation read/wait/reconcile/partial、command lookup。既有 `/api` browser proxy 前綴不變。Routes 只驗 DTO、呼叫 learning/preferences services、使用既有純 projections；不實作 prompt、切句、SQL 或 claim policy。成功及錯誤回應均 `Cache-Control: no-store`。Saved read/options/status 不改設定、不啟動模型或 recovery；task-layout/content/catalog 仍維持原責任。
+
+### Runtime ownership and request handling
+
+`main` 將既有 container 綁到 app state；`learning_lifespan` 在接受並行 HTTP 前建立並發布唯一 runtime，避免第一批請求競爭建立 worker。Resource construction 不初始化 provider/tokenizer、建表、修復 journal 或生成。依賴只取得已發布 runtime，缺 runtime 明確 503，不在 request 再建一份。Shutdown 在 threadpool 執行 `container.shutdown_resources()` 並等待已接受工作完成，再移除 app state；browser/request cancellation 不擁有 worker。再次啟動同一 app 可重建 worker，storage instance 保留。Process crash／unknown 仍須明確 reconcile，沒有 startup 自動接管。
+
+Book read/apply 透過 learning 的 `read_book_preferences` 先驗 canonical document 存在，再讀偏好；不存在返回 404，不建幽靈設定。Apply 使用 server 讀到且同 expected revision 的 book 做 `to_settings` 純 merge；override 省略保留、null 清除，inactive/unknown modes 保留。兩個 revisions 與 eligibility 仍由 preference owner 在保存邊界驗證；同語拒絕。No-op 不推進 revision；unknown preference commit 必須 read_preferences 對帳，不可把錯誤當 rollback 或盲重送不同 payload 的同一 mutation ID。
+
+Generate 的 server learning `source_binding` 從 hierarchy 解出實際 block；DTO 比對 opaque source token，然後將 actual binding 交既有 `LearningService.request`。語言／級別／模型仍由 server 決定。Claimed/coalesced/resuming 只是已接受／進行中，沒有 result_revision；reuse 從 durable receipt 取得 revision，reconcile succeeded 從已成功 operation 取得證明。Receipt 保留原接受結果，不把原 claimed receipt 改成 saved；前端另查 operation/current result。Unknown 先用 command ID lookup，必要時明確 reconcile；unknown retry 必須新 command 及可能重複費用確認，HTTP 層不自動重送。
+
+Operation handle 按書籍及 server scope 查找，不跨書搜尋。找不到 operation 的 read/reconcile 是 typed missing outcome；不存在的 document/block 讀取／生成是 404。Partial 使用 learning `read_partial_snapshot` 的 status → bounded checkpoints → status 樂觀一致性檢查；來源／設定／operation 改變回報 409，不回傳互相矛盾的 count/batches。這不是跨 profile/SQL 原子 snapshot；完整 checkpoints 仍不能冒充 final committed result。
+
+`learning_route_errors.py` 的 route-local wrapper 使用 LLRN-14 error union：422 invalid/ineligible/capacity、404 missing、409 source/settings/operation/preference CAS、503 provider/storage/worker unavailable 或 unknown。未啟用 learning 回傳 domain 的 `learning_mode_not_active` 原因；active learning 不再 eligible 時保留實際原因（例如 same_language）。RequestValidationError 不回顯 raw input，未知 exception 不回傳 stack/provider body。Unexpected mutation failure 採 unknown + lookup_command/read_preferences，避免已提交後的 response/projection failure 被誤報 rollback。日誌只有 route name、安全 code/status；其它 API error shape 保持原樣。
+
+### LLRN-16 verification (2026-10-28)
+
+`scripts/test_learning_routes.py` 50 tests passed：23 file + 23 真 PostgreSQL HTTP cases，以及 4 application registration/lifespan cases。包括正式 main/OpenAPI、11 契約、no-store、read purity、same-language、mode retention、CAS、missing/storage distinction、provider unavailable、admission、雙 client coalescing、lost claim/preference/response ack、unknown retry consent、partial failure/race、source edit invalidation、shutdown drain/restart。另 201 schema/orchestration/preferences tests、35 ordinary translation/content tests、11 task-layout readiness tests passed；舊 layout test 的 sibling import 需 `PYTHONPATH=.:scripts`。沒有改現有讀取為生成入口。
+
+兩本 hash-verified immutable 備份短段落經 production router/lifespan/DI 與真 SDK HTTP fixture，完成 workspace/book apply、read→generate、shutdown drain、restart→saved/reuse，分別 2/4 aligned rows、各一次 offline transport；backups unchanged。外部證據 `/tmp/llrn16-books.json`，不是 live-provider 語義驗收。SQL 使用 disposable PostgreSQL/random schemas；沒有使用者 migration、production restart、UI 或模型品質完成宣稱。
+
 ## Persisted Translation API Plan (2026-10-26)
 
 **[Code-Confirmed]** TRUI-05 implements the

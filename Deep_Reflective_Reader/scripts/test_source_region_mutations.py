@@ -154,7 +154,9 @@ class RegionMutations(unittest.TestCase):
         self.assertEqual(self.service.mutate("book", **command), first)
         with self.assertRaises(ReadingContentConflict):
             self.service.mutate("book", **{**command, "text": "Different"})
-        command.update(expected_revision=first["revision"])
+        # Race a real body change: identical reapply is intentionally a no-op
+        # and does not consume the source revision.
+        command.update(expected_revision=first["revision"], text="Concurrent correction")
         def attempt(_):
             try:
                 self.service.mutate("book", **{**command, "mutation_id": uuid4().hex})

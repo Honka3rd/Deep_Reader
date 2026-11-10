@@ -39,7 +39,7 @@ try {
       }
       ReactDOM.createRoot(host).render(React.createElement(Harness));
     }, blockId);
-    await page.getByRole("button", { name: "Review source", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Review extracted text", exact: true }).waitFor();
     await page.evaluate(() => window.selectBlock("edit"));
     const field = page.getByLabel("Block text");
     await field.waitFor();
@@ -79,7 +79,7 @@ try {
     assert.equal(state.blocks[0].deleted, true);
     await page.getByRole("button", { name: "Undo last content change" }).click();
     await page.waitForResponse(r => r.request().method() === "POST" && r.url().includes("reading-content"));
-    await page.getByRole("button", { name: "Review source", exact: true }).click();
+    await page.getByRole("button", { name: "Review extracted text", exact: true }).click();
     await page.getByRole("button", { name: "Original", exact: true }).first().click();
     await page.getByRole("img").waitFor();
     await page.waitForFunction(() => [...document.images].some(i => i.complete && i.naturalWidth > 0));
@@ -96,7 +96,7 @@ try {
     if (await unresolved.count()) {
       await unresolved.click();
       await page.getByRole("dialog").last().getByRole("button", { name: "Ignore region", exact: true }).click();
-      await page.getByText("No unresolved OCR regions recorded.", { exact: true }).waitFor();
+      await page.getByText("No flagged areas recorded. You can still review previous cleanup changes.", { exact: true }).waitFor();
       assert.equal(await page.getByRole("img").count(), 0);
       assert.equal(await page.getByRole("button", { name: "Original", exact: true }).count(), 0);
       const afterIgnore = await (await page.request.get(api + "/documents/book/reading-content")).json();

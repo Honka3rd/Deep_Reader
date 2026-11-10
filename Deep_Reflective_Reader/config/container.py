@@ -1,4 +1,7 @@
 from dependency_injector import containers, providers
+from config.learning_storage import build_learning_storage
+from config.learning_runtime import open_learning_runtime
+from section_tasks.learning_generation_policy import AllowValidGeneration
 
 from bundle_provider import BundleProvider
 from bundle_factory import BundleFactory
@@ -310,12 +313,36 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         PostgresStructuredDocumentArtifactRepository,
         store=postgres_structured_document_store,
     )
-    structured_document_artifact_repository = providers.Selector(
+    raw_structured_document_artifact_repository = providers.Selector(
         config.structured_storage_backend,
         file=file_structured_document_artifact_repository,
         postgres=postgres_structured_document_artifact_repository,
     )
+    learning_admission = providers.Singleton(AllowValidGeneration)
+    learning_storage = providers.Singleton(
+        build_learning_storage,
+        backend=config.structured_storage_backend,
+        documents=raw_structured_document_artifact_repository,
+        policy=config.learning_runtime,
+        dsn=config.postgres_dsn,
+        namespace=config.postgres_namespace,
+        admission=learning_admission,
+    )
+    structured_document_artifact_repository = learning_storage.provided.documents
+    reading_preferences_repository = learning_storage.provided.preferences
+    learning_repository = learning_storage.provided.learning
     document_profile_store.add_kwargs(repository=structured_document_artifact_repository)
+    learning_runtime = providers.Resource(
+        open_learning_runtime,
+        storage=learning_storage,
+        documents=structured_document_artifact_repository,
+        profile_store=document_profile_store,
+        config_factory=storage_config_factory.provider,
+        provider_factory=llm_provider.provider,
+        policy=config.learning_runtime,
+    )
+    reading_preferences_service = learning_runtime.provided.preferences
+    learning_service = learning_runtime.provided.service
 
     bundle_provider = providers.Singleton(
         BundleProvider,
@@ -493,7 +520,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         TranslationAction,
         repository=structured_document_artifact_repository,
         profile_store=document_profile_store,
-        translator=translation_service,
+        shared_translation_factory=learning_service.provider,
     )
     reading_interaction_artifact_store = providers.Singleton(
         DocumentReadingInteractionArtifactStore,

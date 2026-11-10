@@ -1,6 +1,61 @@
 # app Detailed Design
 
+## Shared sentence translation (2026-11-09)
+
+Ordinary TranslationAction now delegates production generation to SharedTranslation,
+using the existing learning runtime, aligned generator and canonical repository.
+Its internal translation-purpose binding has zero preference revisions and keeps
+exact source/language identity; ordinary translation does not require learning
+eligibility. Existing learning requests and hints retain their settings checks.
+Read/list and both generate entrypoints reuse compatible saved TranslationKey data.
+No second aggregate is written into document artifacts. Legacy aggregate records
+remain readable; canonical aligned results take precedence. Same mutation ID with
+a different key is rejected before reuse. Known failures allow a new explicit retry;
+unknown work is not redispatched. Repeating a known command may explicitly reconcile
+safe claimed/partial work. One subscribe-before-status bounded notification wait
+replaces any need for polling in the synchronous ordinary API. Timed-out requests
+leave backend work intact. Source changes reject late output; partial/failed refresh
+keeps the earlier complete result. Service restart resolves the new runtime owner.
+
+Validation: 470 backend tests and actual API/React mode-switch acceptance pass; detailed evidence and limits are recorded in the shared section_tasks design.
+
+Read/reuse clarification (2026-11-10): `SharedTranslation.catalog` accepts only
+current compatible complete aligned results; `paragraph_record` derives the
+ordinary DTO and retains the saved operation identity/result revision. The read
+adapter exposes one record per target language for UI compatibility, while explicit
+generation checks the exact source/target key before provider work. It does not
+require learning preferences. An omitted source must resolve to a supported
+existing default; otherwise generation requires an explicit source, even when
+ordinary saved results can still be listed. No aggregate artifact copy is written.
+
+The [manual acceptance](../section_tasks/module-detailed-design.md#manual-reuse-acceptance-2026-11-10)
+records the user's learning-to-normal flow: both reads succeeded, no generation
+request/batch event occurred, and the reference block retained its saved operation,
+revision and SQL payloads. Request IDs and database comparison are complementary;
+request logs alone omit the selected block and do not report an explicit cache hit.
+
+
+## Learning completion observation (2026-11-09)
+
+Contract and evidence moved to [learning](../learning/module-detailed-design.md#learning-completion-observation-2026-11-09).
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+Learning application orchestration is owned by the sibling [learning module](../learning/module-detailed-design.md).
+App retains ordinary translation orchestration and consumes that shared runtime.
+
+### LLRN-13 implementation contract (2026-10-28)
+
+Moved to the [single owner contract](../learning/module-detailed-design.md#llrn-13-implementation-contract-2026-10-28).
+This anchor is retained only for historical links; it is not a duplicate contract.
+
 ## Persisted Translation Orchestration Plan (2026-10-26)
+
+Historical TRUI-04 implementation and legacy compatibility evidence. Current
+production wiring uses [Shared sentence translation](#shared-sentence-translation-2026-11-09).
+The target-only reuse, `TranslationService` generation, `commit_translation` artifact
+writes and absent-source reuse described in this dated section are superseded for
+the shared production path. Retain the historical tests, not a second runtime policy.
 
 **[Code-Confirmed]** TRUI-04 extends the historical stateless action below.
 Shared contract/lifecycle: [translation plan](../section_tasks/module-detailed-design.md#persisted-block-translation-plan-2026-10-26).

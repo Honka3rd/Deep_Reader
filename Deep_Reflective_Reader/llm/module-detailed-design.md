@@ -1,5 +1,21 @@
 # llm Detailed Design
 
+## Learning single-attempt dispatch (LLRN-15, 2026-10-28)
+
+`OpenAILLMProvider.complete_text_once_with_output_budget` 是既有 provider 的一次請求入口。
+Learning durable dispatch acknowledgement 只授權一次付費呼叫，因此此入口使用
+request-local OpenAI SDK client、`max_retries=0`；成功／失敗後均 close，避免 adapter
+與 SDK 隱藏 retry。沿用目前 provider 的 model capability、API base、key、temperature
+和原有 output-budget timeout policy，不添加 model/key/env 配置來源，也不改普通
+`complete_text_with_output_budget` 的 shared client／retry 行為。DI lazy adapter 只接受
+這個公開契約，缺契約或能力時 preflight 明確 unavailable。
+
+`scripts/test_learning_provider_once.py` 四項測試以真 SDK + HTTP mock transport 覆蓋
+Responses/chat-completions 成功、429/500/503/timeout、budget rejection、client close
+及原 shared defaults 保持。每個 failure case 只有一次 transport call；不宣稱真模型
+語義品質、exactly-once billing 或 provider 已接受請求的已知結果，unknown 仍須 durable
+operation 查詢／明確重試。沒有修改 learning prompt 或語義品質 gate。
+
 ## Offline Preflight Follow-up (2026-10-24)
 
 **[Code-Confirmed: WAIT-02/03; WAIT-05 accepted 2026-10-24]** Request-time token

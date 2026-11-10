@@ -1,23 +1,20 @@
-Please refresh your Deep Reflective Reader context.
+# Resume Deep Reader Delivery Work
 
-Repository:
+Read applicable `AGENTS.md`, `.codex/templates/main-agent-instructions.md` and
+`.codex/workflow.md`. Use the repository's current instructions and the user's
+active request; do not restore the retired Main Agent V2 stage-by-stage handoff.
 
-https://github.com/Honka3rd/Deep_Reader
+Inspect the actual branch, HEAD and working-tree changes. Recover the latest task
+checkpoint: scope/base commit, current unit/stage, pre-existing work, test evidence,
+latest reviewed SHA, approved SHA and any Docker acceptance revision. Load only
+the module contracts relevant to the next action, following scope-first reading.
 
-Working Branch:
-workflow/codex-cli-skills-milestone-0
+Briefly report the current state, any discrepancy and the first unmet gate.
+Continue already-authorized work from there. Preserve pending next-unit confirmation
+and external-review gates; never infer approval from an interruption or silence.
+If a necessary checkpoint decision cannot be recovered, ask for that missing
+information only. Do not repeat completed expensive operations without cause.
 
-Read:
-
-- .codex/templates/main-agent-instructions.md
-
-Then:
-
-1. Summarize the current Main Agent V2 workflow.
-2. Summarize task classification rules.
-3. Summarize module resolution rules.
-4. Summarize Codex CLI workflow.
-5. Identify any recent instruction changes.
-6. Explain how future requests will be handled.
-
-Do not use historical chat context if it conflicts with the instruction file.
+If the request is context refresh only, report the state and stop. Do not begin
+implementation, commit, Docker work or remote push solely because this prompt was
+loaded. Never assume a fixed historical branch or unverified GitHub snapshot.

@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.translation_action import TranslationAction
-from config.app_DI_config import AppDIConfig
+from config.app_DI_config import AppDIConfig, LearningRuntimeConfig
 from config.container import ApplicationLookupContainer
 from config.faiss_storage_config import FaissStorageConfig
 from document_structure.reading_content import ReadingContentService
@@ -273,13 +273,28 @@ class TranslationActionTests(unittest.TestCase):
         self.assertEqual(self.post().status_code, 503)
 
     def test_container_wires_existing_provider_repository_profile(self):
-        container = ApplicationLookupContainer.build(AppDIConfig())
+        self.repo.save_reparsed_document(replace(self.repo.load_document("book"), document_id="book"), "book")
+        config = AppDIConfig(structured_storage_backend='file', learning_runtime=LearningRuntimeConfig(
+            str(self.directory/'preferences'), str(self.directory/'learning')))
+        container = ApplicationLookupContainer.build(config)
+        self.addCleanup(container.shutdown_resources)
+        self.provider.complete_text_once_with_output_budget = Mock()
+        self.provider.complete_text_once_with_output_budget.side_effect = lambda prompt, budget: json.dumps({
+            'status': 'completed', 'rows': [{'sentence_id': row['sentence_id'], 'translated_text': 'Bonjour.'}
+                for row in json.loads(prompt.split('INPUT_JSON:\n', 1)[1])['sentences']]})
         with container.llm_provider.override(providers.Object(self.provider)), \
-             container.structured_document_artifact_repository.override(providers.Object(self.repo)), \
+             container.file_structured_document_artifact_repository.override(providers.Object(self.repo)), \
              container.document_profile_store.override(providers.Object(self.profiles)):
-            self.app.state.translation_action = container.translation_action()
+            action = container.translation_action()
+            self.app.state.translation_action = action
+            response = self.post()
+            self.assertEqual(response.status_code, 200, response.text)
+            self.provider.complete_text_once_with_output_budget.assert_called_once()
+            self.provider.complete_text.assert_not_called()
+            container.shutdown_resources()
+            # The action resolves the current runtime after reinitialization, not a closed worker.
             self.assertEqual(self.post().status_code, 200)
-            self.provider.complete_text.assert_called_once()
+            self.provider.complete_text_once_with_output_budget.assert_called_once()
 
     def test_main_registers_route_and_service(self):
         import main

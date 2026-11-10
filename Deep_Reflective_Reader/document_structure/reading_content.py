@@ -53,7 +53,8 @@ def advance_layout_revision(metadata, expected_revision, revision):
 
 
 def review_regions(document):
-    decisions = state_for(document).get("regions",{})
+    state = state_for(document)
+    decisions = {**state.get("regions", {}), **dict.fromkeys(state.get("permanently_ignored_regions", {}), True)}
     return [{**r,"status":("resolved" if decisions.get(r["id"]) == "cleanup_resolved" else
                            "discarded" if decisions.get(r["id"]) else "unresolved")}
             for r in document.parse_provenance.get("source_review",{}).get("regions",[])]
@@ -150,6 +151,7 @@ class ReadingContentService:
 
     def snapshot(self,document):
         from document_structure.source_review_blocks import region_block_mapping, region_manual_change
+        from document_structure.ocr_review_availability import ocr_review_available
         state = state_for(document)
         edits = state.get("blocks",{})
         projected = {b.block_id: b for _,_,_,b in original_blocks(project_document(document))}
@@ -170,8 +172,9 @@ class ReadingContentService:
                 "source_token":source_token_for(document),"max_chars":MAX_CHARS,
                 "disposition":"needs_review" if pending else "completed",
                 "regions":regions,"can_undo":bool(state.get("undo")),
+                "ocr_review_available": ocr_review_available(document),
                 "undo_action":next((e.get("action") for e in reversed(state.get("audit", []))
-                                    if e.get("action") not in {"cleanup_edit", "cleanup_delete", "region_edit", "review_block_keep"}), None) if state.get("undo") else None,
+                                    if e.get("action") not in {"cleanup_edit", "cleanup_delete", "region_edit", "review_block_keep", "discard_all_regions"}), None) if state.get("undo") else None,
                 "blocks":[{"block_id":b.block_id,"task_unit_id":u.unit_id,"section_id":s.section_id,
                            "chapter_id":c.chapter_id,"content":edits.get(b.block_id,{}).get("content",
                                projected[b.block_id].content if b.block_id in projected else b.content),
@@ -245,7 +248,7 @@ class ReadingContentService:
     def mutate(self,doc_name,*,action,expected_revision,source_token: str,mutation_id,
                block_id=None,text=None,region_id=None,discard_interactions=None,cleanup_record_id=None):
         self.validate_name(doc_name)
-        if action not in {"edit","delete","undo","discard_region","cleanup_edit","cleanup_restore","cleanup_delete",
+        if action not in {"edit","delete","undo","discard_region","discard_all_regions","cleanup_edit","cleanup_restore","cleanup_delete",
                           "region_edit", "region_apply", "region_delete",
                           "review_block_edit", "review_block_delete", "review_block_keep"}:
             raise ValueError("unsupported_reading_action")
@@ -258,7 +261,10 @@ class ReadingContentService:
         cleanup_action = action in {"cleanup_edit", "cleanup_restore", "cleanup_delete"}
         region_action = action in {"region_edit", "region_apply", "region_delete"}
         review_block_action = action in {"review_block_edit", "review_block_delete", "review_block_keep"}
-        history_only = action in {"cleanup_edit", "cleanup_delete", "region_edit", "review_block_keep"}
+        history_only = action in {"cleanup_edit", "cleanup_delete", "region_edit", "review_block_keep", "discard_all_regions"}
+        if action == "discard_all_regions" and any(value is not None for value in (
+                block_id, region_id, text, discard_interactions, cleanup_record_id)):
+            raise ValueError("invalid_discard_all_regions_command")
         if review_block_action:
             if (not isinstance(block_id, str) or not 1 <= len(block_id) <= 200
                     or not isinstance(region_id, str) or not 1 <= len(region_id) <= 100
@@ -310,6 +316,7 @@ class ReadingContentService:
                 ("cleanup_record_applications", {}), ("region_applications", {}))}
             cleanup_affected = []
             region_cleared = []
+            ignored_regions = []
             if review_block_action:
                 from document_structure.source_review_block_repair import validate_review_block
                 validate_review_block(document, block_id, region_id, action)
@@ -357,11 +364,21 @@ class ReadingContentService:
                 if not any(r["id"]==region_id for r in pending_review_regions(document)):
                     raise ReadingContentConflict("review_region_missing")
                 state.setdefault("regions",{})[region_id] = True
+            elif action == "discard_all_regions":
+                from document_structure.ocr_review_availability import ocr_review_available
+                if not ocr_review_available(document):
+                    raise ReadingContentConflict("ocr_review_unavailable")
+                ignored_regions = [r["id"] for r in pending_review_regions(document)]
+                if not ignored_regions:
+                    raise ReadingContentConflict("review_regions_missing")
+                state.setdefault("permanently_ignored_regions", {}).update(dict.fromkeys(ignored_regions, mutation_id))
+                state.setdefault("regions", {}).update(dict.fromkeys(ignored_regions, True))
             else:
                 undo = state.get("undo")
                 if not undo:
                     raise ReadingContentConflict("nothing_to_undo")
                 state.update(undo)
+                state.setdefault("regions", {}).update(dict.fromkeys(state.get("permanently_ignored_regions", {}), True))
             from document_structure.reading_refresh import changed_blocks
             affected_body = changed_blocks(document, replace(document, parse_provenance={
                 **document.parse_provenance, STATE_KEY: state})) if not history_only else []
@@ -393,7 +410,7 @@ class ReadingContentService:
                                                      and discard_interactions is False)
             state.setdefault("audit",[]).append({"action":action,"block_id":block_id,"region_id":region_id,
                 "affected_block_ids":affected,"mutation_id":mutation_id,
-                "ignored_regions":[],"invalidate_generated":invalidate,"cleared_block_id":clear_block,
+                "ignored_regions":ignored_regions,"invalidate_generated":invalidate,"cleared_block_id":clear_block,
                 "body_changed": body_changed, "summaries_invalidated": body_changed,
                 "translation_block_ids": affected_body,
                 "refresh_source_token": source_token,

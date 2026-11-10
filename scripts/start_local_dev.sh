@@ -48,10 +48,14 @@ else
   printf 'API outbound proxy: direct connection.\n'
 fi
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --wait postgres
-printf 'Applying interaction version guards before API startup...\n'
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T postgres \
-  sh -c 'exec psql -v ON_ERROR_STOP=1 --single-transaction -f - -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
-  < "${ROOT_DIR}/Deep_Reflective_Reader/db/migrations/003_interaction_version_guards.sql"
+printf 'Applying interaction guards and reading-mode storage migrations before API startup...\n'
+# Existing volumes do not rerun initdb scripts. Apply the reviewed additive
+# upgrades together; a failure must roll back and stop before starting the API.
+cat "${ROOT_DIR}/Deep_Reflective_Reader/db/migrations/003_interaction_version_guards.sql" \
+    "${ROOT_DIR}/Deep_Reflective_Reader/db/migrations/004_reading_preferences.sql" \
+    "${ROOT_DIR}/Deep_Reflective_Reader/db/migrations/005_learning_persistence.sql" \
+  | docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T postgres \
+      sh -c 'exec psql -X -v ON_ERROR_STOP=1 --single-transaction -f - -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 printf 'Building verified tokenizer assets; API startup will verify them offline...\n'
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --build --wait api
 

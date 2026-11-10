@@ -1,5 +1,104 @@
 # section_tasks Checklist
 
+## Shared sentence translation (2026-11-09)
+
+- [x] Allow ordinary commands to use aligned generation and aggregate validated sentence rows.
+  Owner: section_tasks. Status: Implemented and verified.
+  Acceptance: Follow the shared sentence translation contract in section_tasks; preserve reads, compatibility and explicit generation boundaries.
+  Evidence: 470 backend tests pass, including 35 shared file/PostgreSQL cases; actual API/React mode roundtrips at 1280/390, two backed-up real-source offline cases and type/build checks pass. No duplicate aggregate is persisted.
+  Follow-up (2026-11-10): Canonical design now records storage/reuse rationale, exact-key versus target-display grouping, legacy limitations and the manual acceptance procedure. Learning-to-normal user run plus separate API/SQL comparison confirms aggregation, unchanged saved identity/revision/payloads and zero observed translation generation; no new-creation or semantic claim. See [manual acceptance](module-detailed-design.md#manual-reuse-acceptance-2026-11-10).
+  Timestamp: 2026-11-10
+
+
+## Vocabulary filtering and completion observation (2026-11-09)
+
+- [x] Filter independent vocabulary candidates and preserve usable siblings.
+  Owner: section_tasks. Status: Implemented and verified.
+  Acceptance: Candidate/annotation errors are local; exact source grounding and strict envelopes remain. Persist safe assessment, distinguish all-invalid from no hints, and introduce no automatic refill/retry. Policy v5 retains prompt v4.
+  Evidence: Hints regression suite; file/SQL service save/reuse; 357 backend tests plus SQL assessment commit regression; captured real-book API/SQL/Reader replay with zero live calls.
+  Timestamp: 2026-11-09
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**Implementation status: 22/22 system tasks complete (2026-10-29).** Language proficiency foundation 已有 18 項專測；偏好契約/file adapter 已有 28 項專測，均有語言 registry 回歸證據；句子/學習 DTO 已有 25 項專測及 25 項舊 shared 契約回歸。多語切句已有 19 項專測、既有邊界回歸與兩本備份正文驗收。Cache/operation 純策略已有 38 項專測及 90 項基礎回歸。Learning repository/file adapter 已有 45 項專測及既有來源回歸。偏好 SQL/migration 已有 36 項真 PostgreSQL 專測。Learning SQL 已有 47 項真 PostgreSQL 專測與重啟/回復證據。偏好有效設定服務已有 64 項 file/真 SQL 專測及 82 項基礎回歸。逐句翻譯生成已有 24 項專測、149 項相關回歸及兩本備份短段落真模型對齊/保存檢查（語義品質未通過）。能力提示生成已有 29 項專測及 169 項回歸，兩本備份/混語案例定位保存通過、語義品質未通過。來源／文件生命週期已有 43 file/真 SQL 專測及來源回歸，含 rollback/concurrency/file process recovery；LLRN-13 application orchestration 已有 81 項 file/真 SQL 專測、290 項回歸及兩本備份固定 provider 流程驗證；runtime DI 已由 LLRN-15 交付，API 已由 LLRN-16 交付，LLRN-17 settings UI 與 LLRN-18 當頁 controller 已交付，LLRN-19 逐句呈現也已交付。LLRN-14 transport schemas/pure projections 已有 56 項專測、154 項底層回歸及五份既有 schema scripts 證據；LLRN-15 dependency composition 已有 33 項 file/真 SQL/SDK HTTP mock 專測與既有回歸；LLRN-16 routes/lifespan 已有 50 項 file/真 SQL HTTP/main 專測及相關回歸，兩本備份經 offline HTTP fixtures 保存/reuse；LLRN-17 settings UI 在 1280/390 通過受控 API 與實際 API/temporary file persistence 驗收，詳見 UI owner evidence；LLRN-18 當頁 controller 的 14 組專測、1280/390 Actual App 及真 API/temporary file/offline provider 驗收通過；LLRN-19 逐句顯示/分項 action、1280/390 Actual App 與真 API/固定 provider 顯示驗收通過；LLRN-20 backend integration 的 738 項不同測試通過（14 新流程 + 724 回歸），零 skips，隔離 SQL 已清理；LLRN-21 已通過 type/build 及 10 組 controller/browser suites，含 1280/390 第三種測試模式、設定到 edit/Undo 的連續流程、keyboard/traces/截圖與臨時 file/固定 provider 真 API；LLRN-22 依 maintainer 指示完成系統驗收：765 項 backend tests、原始回應／legacy 重播與 API/SQL/1280/390 Reader 證據；模型語義評分移出本任務，歷史抽查不改判通過。每項 checkbox 僅放在唯一 owner checklist，此表不重複計數；既有普通翻譯證據不能代替此模式驗收。
+
+[Canonical design](module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28) 定義產品決策、資料/生成/生命週期；各項交付、驗收與 evidence required 見 owner 連結。Depends on 是完成整合的必要前提，契約及 mock 開發可提前但不能跳過驗收 gate。無依賴的工作可獨立進行。
+
+| ID | 唯一 Owner / checkbox | Deliverable | Depends on |
+| --- | --- | --- | --- |
+| LLRN-01 | [language](../language/module-checklist.md#llrn-01) | Registry-bound proficiency definitions — complete | — |
+| LLRN-02 | [reading_preferences](../reading_preferences/module-checklist.md#llrn-02) | Workspace and book preference contracts/file adapter — complete | LLRN-01 |
+| LLRN-03 | [shared](../shared/module-checklist.md#llrn-03) | Source-bound sentence and learning DTOs — complete | — |
+| LLRN-04 | [section_tasks](module-checklist.md#llrn-04) | Multilingual sentence segmentation — complete | LLRN-01, LLRN-03 |
+| LLRN-05 | [section_tasks](module-checklist.md#llrn-05) | Learning cache and generation operation policy — complete | LLRN-02, LLRN-03 |
+| LLRN-06 | [document_structure](../document_structure/module-checklist.md#llrn-06) | Hierarchy-aware learning repository and file adapter — complete | LLRN-03, LLRN-05 |
+| LLRN-07 | [db](../db/module-checklist.md#llrn-07) | Preference persistence and explicit migration — complete | LLRN-02 |
+| LLRN-08 | [db](../db/module-checklist.md#llrn-08) | Learning artifact and operation persistence — complete | LLRN-05, LLRN-06, LLRN-07 |
+| LLRN-09 | [reading_preferences](../reading_preferences/module-checklist.md#llrn-09) | Validated reading preferences service — complete | LLRN-01, LLRN-02, LLRN-07 |
+| LLRN-10 | [section_tasks](module-checklist.md#llrn-10) | Aligned paragraph translation generation — complete | LLRN-01, LLRN-03, LLRN-04, LLRN-05 |
+| LLRN-11 | [section_tasks](module-checklist.md#llrn-11) | Ability-aware words and phrases — technical foundation complete | LLRN-01, LLRN-03, LLRN-04, LLRN-05 |
+| LLRN-12 | [document_structure](../document_structure/module-checklist.md#llrn-12) | Learning source and document lifecycle — complete | LLRN-06, LLRN-08 |
+| LLRN-13 | [learning](../learning/module-checklist.md#llrn-13) | Learning orchestration and admission integration — complete | LLRN-08, LLRN-09, LLRN-10, LLRN-11, LLRN-12 |
+| LLRN-14 | [api_schemas.py](../api_schemas.module-checklist.md#llrn-14) | Learning and preference transport schemas — complete | LLRN-02, LLRN-03, LLRN-05 |
+| LLRN-15 | [config](../config/module-checklist.md#llrn-15) | Learning dependency composition — complete | LLRN-08, LLRN-09, LLRN-10, LLRN-11, LLRN-13 |
+| LLRN-16 | [main.py](../main.module-checklist.md#llrn-16) | Learning and settings route integration — complete | LLRN-13, LLRN-14, LLRN-15 |
+| LLRN-17 | [Deep_Reader_UI](../../Deep_Reader_UI/module-checklist.md#llrn-17) | Workspace and per-book reading settings UI — complete | LLRN-01, LLRN-16 |
+| LLRN-18 | [Deep_Reader_UI](../../Deep_Reader_UI/module-checklist.md#llrn-18) | Current-page learning controller — complete | LLRN-16, LLRN-17 |
+| LLRN-19 | [Deep_Reader_UI](../../Deep_Reader_UI/module-checklist.md#llrn-19) | Sentence-pair reading display — complete | LLRN-18 |
+| LLRN-20 | [scripts](../scripts/module-checklist.md#llrn-20) | Backend integration acceptance — complete | LLRN-12, LLRN-16 |
+| LLRN-21 | [Deep_Reader_UI](../../Deep_Reader_UI/module-checklist.md#llrn-21) | Reader lifecycle and accessibility acceptance — complete | LLRN-17, LLRN-18, LLRN-19, LLRN-20 |
+| LLRN-22 | [scripts](../scripts/module-checklist.md#llrn-22) | Real-book and provider system acceptance — complete; semantic scoring outside scope | LLRN-20, LLRN-21 |
+
+工作分組：設定/語言 01/02/07/09；資料契約 03/05/14；切句/儲存/失效 04/06/08/12；生成/API 10/11/13/15/16；UI 17/18/19；驗收 20/21/22。分組非嚴格流水線，依上表 DAG 執行。各 owner 實作時必須同時交付自己的必要測試，20/21/22 為整合關卡。
+
+模式清單補充：02/09 擁有 catalog 與分模式設定/套用；14 擁有 transport；17 擁有 list/detail shell 和學習設定，18/19 擁有 active mode controller/reader feature 組裝，21 驗收複雜切換與擴充。仍是 22 項任務，依賴不變。
+
+完成規則：保留可審閱實作、對應驗收證據與限制後，才可在 owner checklist 勾選並更新該項 Timestamp；不得批次關閉或拿文檔完成冒充功能完成。偏好與 learning SQL/schema/migrations 已交付 LLRN-07/08；LLRN-14 transport schemas 已交付，production endpoints/lifespan 已由 LLRN-16 交付，尚未宣稱部署；LLRN-17 settings UI 與 LLRN-18 當頁 controller 已交付，LLRN-19 逐句呈現與 LLRN-20 backend integration 已交付，LLRN-21 reader lifecycle/accessibility 已驗證，LLRN-22 品質仍待後續 gate。08 的實際 SQL 整合依賴 07 的 preference transaction coordination，故補列依賴。LLRN-20 已同步 scripts owner 計數；LLRN-22 已交付真 provider/API/SQL/Reader 工具與失敗語義紀錄；修正已存結果在設定往返後被舊操作誤標 stale。完成數仍為 21/22，scripts 仍 67 checked / 1 unchecked，backend `progress.md` 計數不變。
+
+### LLRN-04
+
+- [x] LLRN-04: Multilingual sentence segmentation.
+  Owner: section_tasks. Status: Implemented and verified (conservative offline segmentation foundation).
+  Depends on: LLRN-01, LLRN-03.
+  Deliverable: 對 backend resolved effective block 產生可重現的句子清單；保留完整段落上下文與原文 span，支援 registry 語言及混語。
+  Acceptance: 原文覆蓋、順序、標點與空白無遺漏重複；縮寫、數字、引號、無空格語言、清單及空段落有明確規則。既有 terminal normalizer 不等於完整切句器。
+  Evidence: `learning_sentence_segmenter.py` 與 `language/learning_sentence_rules.py`；19 新專測 + 25 DTO 回歸 + 12 舊 boundary + 19 content-block checks passed。含 19 registry 語言預期句界與 150 組 Unicode 重組案例；兩本備份敘事正文 12 blocks / 320 sentences 驗收通過，backups/document unchanged。私有報告 `data/test-books/learning-segmentation/llrn04-20261028-v2/report.json`；設計記錄標準庫方案、Unicode/ICU 參考與保守合併限制。未接入生成/儲存/API/UI。
+  Timestamp: 2026-10-28
+
+### LLRN-05
+
+- [x] LLRN-05: Learning cache and generation operation policy.
+  Owner: section_tasks. Status: Implemented and verified (pure cache/admission/state-machine foundation).
+  Depends on: LLRN-02, LLRN-03.
+  Deliverable: 定義分離的 translation/hints cache key、read/get-or-generate/regenerate 語義、operation 狀態與 pre-provider admission 契約。
+  Acceptance: 同 key 請求合併；成功提交才取代舊結果；翻譯不含能力等級 key；提示按 scheme/version/level 分存。Unknown 不可盲重試，集中保留未來用戶生成限制接點。
+  Evidence: `learning_cache.py`、`learning_generation_policy.py` 及 `scripts/test_learning_generation_policy.py`；38 新專測 + 90 LLRN-01..04 基礎回歸，共 128 passed。涵蓋 key 維度、12 競爭者模擬 CAS 合併、command/history replay、dispatch/commit CAS、lost ack、source/settings/version guards、partial checkpoints、failed refresh 保留、unknown recovery/expiry/明確重試 fencing 及 admission deny。設計已固定 repository 原子邊界與人工重試條件；實際 file/SQL durable claim、provider、API/UI 待後續任務，未宣稱 exactly-once billing。
+  Timestamp: 2026-10-28
+
+### LLRN-10
+
+- [x] LLRN-10: Aligned paragraph translation generation.
+  Owner: section_tasks. Status: Implemented and verified (provider-injected service; runtime orchestration pending).
+  Depends on: LLRN-01, LLRN-03, LLRN-04, LLRN-05.
+  Deliverable: 傳完整段落與 backend sentence IDs 給現有 provider，驗證逐句翻譯並交給 repository commit；用母語解釋其它語言引文。
+  Acceptance: 不得由 LLM 改寫原文/分配 ID；對齊覆蓋、順序、非空輸出驗證，失敗不假報完成；避免每句一個模型請求，僅過大輸入用可追蹤的 bounded 分批。
+  Evidence: `learning_translation_prompt.py`、`learning_translation_service.py`；`scripts/test_learning_translation_service.py` 24 tests passed，另 149 項 policy/DTO/segmentation/file repository/普通翻譯回歸通過。涵蓋嚴格 JSON/完整 ID 順序、缺句/重複/未知 ID、模型容量/分批/不可拆長句、模型及 tokenizer 變更、混語/Unicode、不自動重試、真 file checkpoint/commit、刷新失敗保留舊結果與偏好競爭。`scripts/accept_learning_translation_books.py --live` 使用兩本 hash-verified 備份短段落、既有 gpt-4.1-mini provider 與臨時 repositories；6 句對齊並成功保存，原始備份不變。容量使用配置模型輸出上限及離線 tokenizer；語義品質限制見設計。API/worker/完整 lifecycle 尚待 LLRN-13 等任務。
+  Timestamp: 2026-10-28
+
+### LLRN-11
+
+- [x] LLRN-11: Ability-aware words and phrases.
+  Owner: section_tasks. Status: Implemented and technically verified (provider-injected foundation; runtime integrated; semantic quality not accepted).
+  Depends on: LLRN-01, LLRN-03, LLRN-04, LLRN-05.
+  Deliverable: 依段落、學習語言、母語和能力描述挑選理解當段值得注意的單字/固定片語/慣用語，生成 source form、適用時 lemma、詞性/類型與母語語境義。
+  Acceptance: 不強制數量；空列表是有效已生成結果。非學習語言的引文不套用本書能力分級；原文定位可驗證，不生成完整文法課；提示不依賴譯文修訂。
+  Evidence: `learning_hints_service.py`、`learning_hints_prompt.py`、`learning_hints_output.py` 及共用容量策略；29 項專測 + 169 項回歸通過。實際 file 測試覆蓋級別 cache 分離、空結果 reuse、原文 occurrence/code-point 定位、foreign/null 排除、版本 guards、分批/刷新/unknown 與翻譯雙向失敗隔離。真模型兩本備份各兩等級及混語控制共 5 calls，定位、保存及重用通過，backups unchanged；report `data/test-books/learning-hints/20261028T055725Z-c517abe9/report.json`。能力適配、詞義與混語判斷仍有錯誤，設計及 private semantic-review 明列限制；未宣稱品質通過或 API/UI 可用，LLRN-22 保留品質 gate。
+  Follow-up (2026-10-29): hints policy/prompt v3 adds registry-ordered candidate filtering, language-set exclusion and optional lexical metadata normalization; public DTO/storage unchanged. Current live hints save/reuse 5 A1, 0 C2 and 12 TOCFL-1 items; TOCFL-6 invalid occurrence rejected. Separate en/fr control yields no hints. Model role/meaning errors remain; LLRN-22 stays open. See owner design and scripts follow-up for retained evidence.
+  Validation: 744 distinct backend tests passed, zero failures/errors/skips; includes 35 hints tests and 24 translation tests. Disposable SQL schemas cleaned; live semantic gate remains open.
+  Anchor follow-up (2026-10-29): v4 replaces occurrence counts with exact unique source anchors; six new grounding tests, 65 hints/translation tests pass. Eight-call two-book/two-level/mixed live API/SQL/Reader technical gate passes (6/0, 14/0, 0 hints), including TOCFL-6, runtime restart and 1280/390 reload with zero extra calls. Two synthetic repeated-word calls retain initial missing-anchor rejection and final distinct-span success after prompt-example clarification. Semantic role/figurative errors remain; LLRN-22 is not closed. Evidence: `data/test-books/learning-live/llrn22c-20261029-v1/` and owner design.
+  Anchor validation: 750 distinct backend tests pass with zero failures/errors/skips; 65 focused tests pass after final prompt clarification. Disposable SQL schemas/container removed. Queue/progress counts unchanged.
+  Timestamp: 2026-10-29
+
 ## Persisted Block Translation Queue (2026-10-26)
 
 Implemented and verified: **11/11 (100%)**, backend 6/6, frontend 5/5.

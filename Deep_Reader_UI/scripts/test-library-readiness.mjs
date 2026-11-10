@@ -1,5 +1,6 @@
 // All API traffic is mocked; this suite must not invoke real preparation.
 import assert from "node:assert/strict";
+import { book } from "./learning-controller-fixtures.mjs";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const browser = await chromium.launch({ headless: true,
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
@@ -14,6 +15,7 @@ try {
     page.on("pageerror", e => errors.push(e.message));
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/api/documents/reading-preferences/read") return route.fulfill({ json: book(route.request().postDataJSON().doc_name, "normal") });
       if (path === "/api/documents/reparse-structure/status") return route.fulfill({ json: {
         doc_name: new URL(route.request().url()).searchParams.get("doc_name"), status: "idle",
       } });

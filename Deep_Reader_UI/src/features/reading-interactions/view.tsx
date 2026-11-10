@@ -104,8 +104,7 @@ export function ReadingInteractionsView({
               contentSlot
             ) : (
               <Typography color="text.secondary" variant="body2">
-                No interaction content has been loaded. Opening this drawer does not call
-                generation or refresh APIs.
+                Loading saved content, or generating it if none exists.
               </Typography>
             )}
           </Box>
@@ -136,8 +135,8 @@ export function CriticalThinkingDrawerCommands({
         Critical-thinking session
       </Typography>
       <Typography color="text.secondary" variant="body2">
-        Opening this drawer reads the current session first. Question generation,
-        answer submission, and retry are explicit actions.
+        Loads your saved session, or generates a question if none exists.
+        Submit your answer when ready.
       </Typography>
       {statusView.showCommands ? (
         <Stack direction="row" spacing={1} className="critical-thinking-actions">
@@ -317,7 +316,7 @@ export function QuizDrawerCommands({
         Quiz artifact
       </Typography>
       <Typography color="text.secondary" variant="body2">
-        Read-first placeholder. Opening this drawer does not generate or refresh a quiz.
+        Loads your saved quiz, or generates one if none exists.
       </Typography>
       {statusView.showCommands ? (
         <Stack direction="row" spacing={1} className="quiz-drawer-actions">

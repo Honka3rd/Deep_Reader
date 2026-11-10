@@ -14,6 +14,7 @@ import { SourceReviewBlockEditor, type ReviewBlockMode } from "./SourceReviewBlo
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { CleanupAudit } from "./CleanupAudit";
+import { IgnoreAllRegionsDialog } from "./IgnoreAllRegionsDialog";
 import { sameReadingSnapshot } from "./sourceReviewModel";
 import { SourceReviewBlocks, SourceReviewManualChange } from "./SourceReviewBlocks";
 import type { ReviewNavigate } from "./useSourceReviewBlocks";
@@ -34,10 +35,12 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
 }) {
   const [state, setState] = useState<ReadingState | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const reviewTrigger = useRef<HTMLButtonElement | null>(null);
+  const restoreReviewFocus = useRef(false);
   const [reviewTab, setReviewTab] = useState<"history" | "regions">("history");
   const reviewScroll = useRef<HTMLDivElement | null>(null);
   const tabScroll = useRef({ history: 0, regions: 0 });
-  useEffect(() => { setReviewTab("history"); tabScroll.current = { history: 0, regions: 0 }; }, [docName]);
+  useEffect(() => { setReviewTab("history"); tabScroll.current = { history: 0, regions: 0 }; restoreReviewFocus.current = false; }, [docName]);
   useEffect(() => { if (reviewScroll.current) reviewScroll.current.scrollTop = tabScroll.current[reviewTab]; }, [reviewTab]);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [regionActivation, setRegionActivation] = useState(0);
@@ -51,6 +54,9 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
   const [preview, setPreview] = useState<string | null>(null);
   const [loadedPreview, setLoadedPreview] = useState<string | null>(null);
   const [confirmRegion, setConfirmRegion] = useState<string | null>(null);
+  const [confirmIgnoreAll, setConfirmIgnoreAll] = useState(false);
+  const flaggedHeading = useRef<HTMLHeadingElement | null>(null);
+  const ignoreAllCompleted = useRef(false);
   const [refresh, setRefresh] = useState(0);
   const [auditOffset, setAuditOffset] = useState(0);
   const [cleanupDirty, setCleanupDirty] = useState(false);
@@ -83,6 +89,24 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
   const dirty = cleanupDirty || regionDirty || (selection?.action === "edit" && text !== saved);
   const ready = Boolean(state) && loadedKey === selectionKey && !busy
     && (!selection || Boolean(state?.blocks.some(block => block.block_id === selection.blockId && !block.deleted)));
+  useEffect(() => {
+    if (confirmIgnoreAll || !ignoreAllCompleted.current || !reviewOpen || !ready) return;
+    const frame = requestAnimationFrame(() => {
+      ignoreAllCompleted.current = false;
+      flaggedHeading.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [confirmIgnoreAll, reviewOpen, ready]);
+  useEffect(() => {
+    if (!restoreReviewFocus.current || reviewOpen || selection || !ready) return;
+    const frame = requestAnimationFrame(() => {
+      restoreReviewFocus.current = false;
+      if (document.activeElement === document.body || document.activeElement?.closest('[aria-labelledby="reading-content-dialog-title"]')) {
+        reviewTrigger.current?.focus({ preventScroll: true });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [reviewOpen, selection, ready]);
   useEffect(() => { if (state) onReviewState?.(state.disposition === "needs_review"); }, [state, onReviewState]);
   useEffect(() => {
     const guard = () => !dirty || window.confirm("Discard unsaved changes?");
@@ -95,6 +119,7 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
     const controller = new AbortController();
     const current = ++generation.current;
     setState(null); setLoadedKey(null); setError(""); setBusy(true); setPreview(null); setLoadedPreview(null); setConfirmRegion(null); setConfirmEdit(false);
+    setConfirmIgnoreAll(false); ignoreAllCompleted.current = false;
     const query = new URLSearchParams();
     if (selection) query.set("block_id", selection.blockId);
     else if (reviewOpen) { query.set("include_cleanup_audit", "true"); query.set("cleanup_offset", String(auditOffset)); }
@@ -121,7 +146,7 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
     readingContentService.read(docName, new URLSearchParams({ include_cleanup_audit: "true",
       cleanup_offset: String(auditOffset) }), controller.signal).then(next => {
       if (controller.signal.aborted) return;
-      if (!sameReadingSnapshot(expected, next)) throw new Error("Content changed. Refresh source review.");
+      if (!sameReadingSnapshot(expected, next)) throw new Error("Content changed. Refresh text review.");
       setState(current => current && sameReadingSnapshot(current, next)
         ? { ...current, cleanup_audit: next.cleanup_audit } : current);
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Unable to load cleanup history."); });
@@ -130,7 +155,9 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
 
   function close() {
     if ((busy && Boolean(selection)) || mutating.current || !confirmReadingNavigation()) return;
+    restoreReviewFocus.current = reviewOpen && !selection;
     setReviewOpen(false); setConfirmRegion(null); setPreview(null); setLoadedPreview(null); setError(""); onCloseSelection();
+    setConfirmIgnoreAll(false); ignoreAllCompleted.current = false;
     setRegionEditor(null); setRegionDirty(false);
   }
   async function finishRefresh(signal: AbortSignal, current: number) {
@@ -161,7 +188,7 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
       ...((regionId ?? selection?.regionId) ? { region_id: regionId ?? selection?.regionId } : {}) };
     if (retry.current) {
       const previous = JSON.parse(retry.current.command) as typeof payload;
-      if (previous.action.startsWith("review_block_")) {
+      if (previous.action.startsWith("review_block_") || previous.action === "discard_all_regions") {
         if (["action", "region_id", "block_id", "text", "discard_interactions"].some(key =>
           previous[key as keyof typeof payload] !== payload[key as keyof typeof payload])) {
           mutating.current = false;
@@ -182,10 +209,11 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
       const mutationId = retry.current.id;
       const regionAction = action.startsWith("review_block_");
       const regionUndo = action === "undo" && ["region_apply", "region_delete", "review_block_edit", "review_block_delete"].includes(state.undo_action ?? "");
-      const historyOnly = action === "cleanup_edit" || action === "cleanup_delete" || action === "review_block_keep";
+      const ignoreAll = action === "discard_all_regions";
+      const historyOnly = action === "cleanup_edit" || action === "cleanup_delete" || action === "review_block_keep" || ignoreAll;
       const bound = next.refresh?.mutation_id === mutationId && next.refresh.revision === next.revision
         && next.refresh.source_token === next.source_token ? next.refresh : null;
-      if (regionAction && (!bound?.scope_current || next.source_token !== state.source_token
+      if ((regionAction || ignoreAll) && (!bound?.scope_current || next.source_token !== state.source_token
           || next.document_id !== state.document_id || (next.structure_version ?? null) !== (state.structure_version ?? null))) {
         retry.current = null;
         throw new Error("Content changed. Reload before continuing.");
@@ -207,6 +235,12 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
       retry.current = null; setSaved(text); setConfirmRegion(null); setConfirmEdit(false);
       if (!next.regions.some(region => region.id === preview)) {
         setPreview(null); setLoadedPreview(null);
+      }
+      if (ignoreAll) {
+        setSelectedRegion(null); setRegionEditor(null); setRegionDirty(false); setRegionPage(0);
+        setConfirmIgnoreAll(false); ignoreAllCompleted.current = true;
+        pendingRefresh.current = { kind: "history" }; setReadingRefreshFailed(false);
+        return true;
       }
       if (cleanup) setCleanupDirty(false);
       if (bound?.scope_current && bound.body_changed === false && next.revision === state.revision) {
@@ -232,6 +266,8 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
       setConfirmEdit(false);
       const reason = e instanceof Error ? e.message : "";
       const cleanupErrors: Record<string, string> = {
+        review_regions_missing: "No pending OCR flags remain. Refresh text review before continuing.",
+        ocr_review_unavailable: "OCR review is no longer available. Refresh text review before continuing.",
         block_manually_edited: "A related block was edited in the reader. Region changes cannot be applied.",
         block_manually_deleted: "A related block was deleted in the reader. Region changes cannot be applied.",
         cleanup_block_edited: "The block was manually edited. Reload before continuing.",
@@ -260,22 +296,27 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
     finally { mutating.current = false; if (current === generation.current) setBusy(false); }
   }}>Retry reading</Button>}>Changes saved. Reading refresh failed.</Alert>;
   const count = Array.from(text).length;
-  return <Box className="reader-content-actions" sx={{ px: 1, py: .5 }}>
-    <Stack direction="row" alignItems="center" spacing={1}>
+  return <Box className="reader-content-actions" sx={{ px: state?.ocr_review_available === true ? 1 : 0, py: state?.ocr_review_available === true ? .5 : 0 }}>
+    {state?.ocr_review_available === true && <Stack direction="row" alignItems="center" spacing={1}>
       {state?.disposition === "needs_review" && <Alert severity="warning" sx={{ flex: 1 }}>OCR needs review</Alert>}
-      <Tooltip title="Review source"><span><IconButton aria-label="Review source" onClick={() => { setAuditOffset(0); setNavigated(false); setReviewOpen(true); }} disabled={busy}><FactCheckOutlinedIcon /></IconButton></span></Tooltip>
+      <Tooltip title="Review extracted text"><span><IconButton ref={reviewTrigger} aria-label="Review extracted text" onClick={() => { setAuditOffset(0); setNavigated(false); setReviewOpen(true); }} disabled={busy}><FactCheckOutlinedIcon /></IconButton></span></Tooltip>
       {!reviewOpen && !selection && undoButton}
-      {error && !reviewOpen && !selection && <Alert severity="error">{error}</Alert>}
-    </Stack>
+    </Stack>}
+    {error && !reviewOpen && !selection && <Alert severity="error">{error}</Alert>}
     {!reviewOpen && !selection && refreshNotice}
     <Dialog open={reviewOpen || Boolean(selection)} onClose={close} disableRestoreFocus={navigated} fullWidth maxWidth="md"
-      PaperProps={{ sx: !selection ? { height: "min(880px, calc(100dvh - 64px))" } : undefined }} aria-labelledby="reading-content-dialog-title">
-      <DialogTitle id="reading-content-dialog-title" sx={{ display: "flex", justifyContent: "space-between" }}>
-        {selection ? (selection.action === "edit" ? "Edit block" : "Delete block?") : "Source review"}
+      PaperProps={{ sx: !selection ? { height: "min(880px, calc(100dvh - 64px))" } : undefined }} aria-labelledby="reading-content-dialog-title"
+      aria-describedby={!selection && reviewOpen ? "reading-content-review-description" : undefined}>
+      <DialogTitle id="reading-content-dialog-title" sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+        {selection ? (selection.action === "edit" ? "Edit block" : "Delete block?") : "Extracted text review"}
         <IconButton aria-label="Close content editor" disabled={(busy && Boolean(selection)) || mutating.current} onClick={close}><CloseIcon /></IconButton>
       </DialogTitle>
+      {!selection && reviewOpen && <Typography id="reading-content-review-description" className="source-review-description"
+        variant="body2" color="text.secondary" sx={{ px: 3, pb: 1 }}>
+        Compare extracted text with the original page, correct or confirm flagged text, and review cleanup changes.
+      </Typography>}
       {!selection && reviewOpen && <Stack className="source-review-tab-bar" direction="row" alignItems="center" sx={{ px: { xs: 1, sm: 3 }, flexShrink: 0 }}>
-        <Tabs className="source-review-tabs" value={reviewTab} aria-label="Source review views" variant="fullWidth"
+        <Tabs className="source-review-tabs" value={reviewTab} aria-label="Extracted text review views" variant="fullWidth"
           sx={{ flex: 1, minWidth: 0 }} onChange={(_, next: "history" | "regions") => {
             if (busy || mutating.current || next === reviewTab) return;
             tabScroll.current[reviewTab] = reviewScroll.current?.scrollTop ?? 0;
@@ -284,15 +325,15 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
           <Tab className="source-review-tab" id="source-review-history-tab" aria-controls="source-review-history-panel"
             value="history" label="OCR cleanup history" disabled={busy} sx={{ textTransform: "none", minWidth: 0, px: 1 }} />
           <Tab className="source-review-tab" id="source-review-regions-tab" aria-controls="source-review-regions-panel"
-            value="regions" label="Source regions" disabled={busy} sx={{ textTransform: "none", minWidth: 0, px: 1 }} />
+            value="regions" label="Flagged areas" disabled={busy} sx={{ textTransform: "none", minWidth: 0, px: 1 }} />
         </Tabs>
-        <Tooltip title="Refresh source review"><span><IconButton aria-label="Refresh source review" disabled={busy}
+        <Tooltip title="Refresh text review"><span><IconButton aria-label="Refresh text review" disabled={busy}
           onClick={() => { if (confirmReadingNavigation()) setRefresh(value => value + 1); }}><RefreshIcon /></IconButton></span></Tooltip>
       </Stack>}
       <DialogContent ref={reviewScroll} className="source-review-dialog-content" dividers
         sx={{ overflowWrap: "anywhere", position: "relative", bgcolor: selection ? "background.paper" : "grey.50", minHeight: 0 }}>
         {busy && <CircularProgress size={22} aria-label="Loading content changes" sx={{ position: "absolute", top: 8, right: 12 }} />}
-        {error && !regionEditor && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
+        {error && !regionEditor && !confirmIgnoreAll && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
         {refreshNotice}
         {selection?.action === "edit" && <TextField label="Block text" multiline minRows={8} maxRows={18} fullWidth value={text} disabled={!ready}
           onChange={e => setText(e.target.value)} error={count > 10000} helperText={`${count} / 10000`} />}
@@ -314,8 +355,12 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
           <Box className="source-review-tab-panel" id="source-review-regions-panel" role="tabpanel"
             aria-labelledby="source-review-regions-tab" hidden={reviewTab !== "regions"}>
           <Stack spacing={2}>
-            <Typography component="h3" variant="subtitle1">Source regions ({state.regions.length})</Typography>
-          {state.regions.length === 0 && <Typography>No unresolved OCR regions recorded.</Typography>}
+            <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1} flexWrap="wrap">
+              <Typography ref={flaggedHeading} tabIndex={-1} component="h3" variant="subtitle1" className="source-review-flagged-heading">Flagged areas ({state.regions.length})</Typography>
+              <Button className="source-review-ignore-all" color="warning" disabled={!ready || readingRefreshFailed || state.ocr_review_available !== true || state.regions.length === 0}
+                onClick={() => { if (confirmReadingNavigation()) { setError(""); setConfirmIgnoreAll(true); } }}>Ignore all</Button>
+            </Stack>
+          {state.regions.length === 0 && <Typography>No flagged areas recorded. You can still review previous cleanup changes.</Typography>}
           {state.regions.slice(regionPage * 20, (regionPage + 1) * 20).map(region => <Paper variant="outlined" key={region.id} className="source-review-region" data-region-id={region.id}
             sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 1, minWidth: 0 }}>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
@@ -358,10 +403,10 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
               onError={() => { setPreview(null); setLoadedPreview(null); setError("Original source is unavailable or changed. Reload before continuing."); }} />}
           </Paper>)}
           {state.regions.length > 20 && <Stack className="source-regions-pagination" direction="row" alignItems="center">
-            <IconButton aria-label="Previous source regions" disabled={busy || regionPage === 0}
+            <IconButton aria-label="Previous flagged areas" disabled={busy || regionPage === 0}
               onClick={() => { if (confirmReadingNavigation()) setRegionPage(value => Math.max(0, value - 1)); }}><ChevronLeftIcon /></IconButton>
             <Typography>{regionPage + 1} / {Math.ceil(state.regions.length / 20)}</Typography>
-            <IconButton aria-label="Next source regions" disabled={busy || (regionPage + 1) * 20 >= state.regions.length}
+            <IconButton aria-label="Next flagged areas" disabled={busy || (regionPage + 1) * 20 >= state.regions.length}
               onClick={() => { if (confirmReadingNavigation()) setRegionPage(value => value + 1); }}><ChevronRightIcon /></IconButton>
           </Stack>}
           </Stack>
@@ -390,9 +435,11 @@ export function ReadingContentActions({ docName, selection, onCloseSelection, on
         <Button disabled={busy} color="error" onClick={() => void mutate("edit", undefined, true)}>Delete interactions and save</Button>
       </DialogActions>
     </Dialog>
+    <IgnoreAllRegionsDialog open={confirmIgnoreAll} count={state?.regions.length ?? 0} busy={busy}
+      error={error} onCancel={() => setConfirmIgnoreAll(false)} onConfirm={() => void mutate("discard_all_regions")} />
     <Dialog open={Boolean(confirmRegion)} onClose={() => !busy && setConfirmRegion(null)}>
       <DialogTitle>Ignore this OCR region?</DialogTitle>
-      <DialogContent>This acknowledges the OCR region and removes it from pending source review. Existing body content and generation input stay unchanged. To delete content, use Delete in the body block menu. The original image is retained. This can be undone.</DialogContent>
+      <DialogContent>This acknowledges the OCR region and removes it from pending text review. Existing body content and generation input stay unchanged. To delete content, use Delete in the body block menu. The original image is retained. This can be undone.</DialogContent>
       <DialogActions><Button disabled={busy} onClick={() => setConfirmRegion(null)}>Cancel</Button><Button disabled={busy} color="warning" onClick={() => void mutate("discard_region", confirmRegion!)}>Ignore region</Button></DialogActions>
     </Dialog>
   </Box>;

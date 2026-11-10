@@ -33,6 +33,10 @@ export class SummaryNoteService {
     if (!result.payload?.envelope || result.payload.envelope.interaction_type !== "summary") {
       throw new Error("Summary could not be loaded. Please retry.");
     }
+    if (!result.ok && !([409, 422, 502, 503].includes(result.status)
+      && ["stale_target", "insufficient_content", "generation_failed", "validation_failed"].includes(result.payload.envelope.status))) {
+      throw new Error("Summary could not be loaded. Please retry.");
+    }
     this.validateTarget(target, result.payload.envelope.target);
     const payload = result.payload.payload;
     if (result.payload.envelope.status === "completed" && (!payload || typeof payload.headline !== "string"

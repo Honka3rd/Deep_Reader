@@ -1,5 +1,642 @@
 # Deep_Reader_UI Detailed Design
 
+## Reader reading-mode control (2026-11-10)
+
+Implemented after maintainer-authorized documentation governance. A compact button
+beside the reading-content heading combines current mode and the switching entry:
+`Mode: Normal reading` / `Mode: Language learning`, with a full Reading mode accessible
+name. Use the existing
+authoritative reader preference observation; loading, failed reads and unavailable
+saved modes remain explicit, never guessed as normal. The control is present in
+ordinary and fullscreen reading and wraps within narrow screens.
+
+Click opens the existing mode list/detail settings dialog directly over the reader,
+without navigating to Library. Candidate selection is still a preview; Save and
+apply validates and persists through the existing preference service/CAS contract.
+After a confirmed book save, close the dialog, reread the applied mode and resume
+the same section/page. First-time learning setup, workspace language, registry
+levels, unsupported/ineligible modes and unknown-save recovery reuse existing
+settings behavior. Back to reader/Escape preserves dirty-draft confirmation and
+restores focus to the mode button. No optimistic mode activation or implicit save.
+
+The reader owns this settings session by document identity. Opening it suspends
+new current-page learning work; accepted backend work is not claimed cancelled.
+Close/reopen, Library/other reader dialogs, book changes and unmount abort obsolete
+observations and guard late saves. A fresh authoritative mode read precedes resumed
+learning requests. Keep the selected section/page and source container mounted;
+mode-specific content can change its height. Opening/closing settings in ordinary
+reading preserves the reading scroll position. Merely
+opening settings does not generate translations; compatible saved results follow
+the existing shared-translation reuse contract. Backend hierarchy and task-layout
+remain authoritative and no backend API/schema or preference lifetime is changed.
+
+Acceptance: type/build and actual-App browser tests at desktop/mobile widths cover
+normal/learning labels, mode roundtrip without Library, initial setup, preview and
+dirty cancel, save/read failure and unknown recovery, duplicate save, stale responses
+on owner change, keyboard/focus, fullscreen, long labels and overflow. Check relevant
+Library settings and learning display/lifecycle regressions; report mock versus
+real API evidence separately.
+
+Implementation: `ReaderModeControl` renders the shared settings feature in the
+reader header. `ReaderModeBoundary` reuses its current preference observation and
+suspends page work while the dialog is open. The shared settings controller accepts
+a document-scoped owner and optional close-on-confirmed-book-save behavior; Library
+retains its original behavior. Request identity includes owner and target, so late
+responses cannot update a different book. Reader notifications defer to the settings
+dialog while it owns focus; source-edit/Note departure guards run before opening.
+
+Validation: `npm run check` passes (existing bundle-size warning). New
+`scripts/test-reader-mode-control.mjs` runs the actual App with production
+preference/learning routes, temporary file persistence and an offline provider at
+1280/390. Mode roundtrip, draft/keyboard/focus, duplicate save, known rejection,
+unknown-save readback, failed/late reads, delayed save after owner replacement,
+page/source-container retention, fullscreen and long-label wrapping pass. Across
+both widths the fixture makes two provider calls total (translation plus vocabulary);
+later observations/switches reuse results. Existing reading-settings, Library
+reading-mode labels, learning display and learning lifecycle browser suites pass
+at both widths. Desktop/mobile screenshots were inspected. A read-only smoke on
+the local Madame Bovary API verifies the normal-mode label and settings open/close
+without preference mutation or generation requests. Evidence: `/tmp/reader-mode-control/`;
+no live-book mode save or paid-model acceptance is claimed.
+
+## Shared translation presentation (2026-11-09)
+
+Ordinary translation keeps its existing language dialog, saved-translation drawer,
+session inline placement and highlight behavior. Its API now projects complete
+sentence-aligned results as one aggregate paragraph; the frontend neither joins
+sentence rows nor writes a duplicate result. Learning mode keeps sentence pairs
+and independent vocabulary. Compatible saved translations are reused in both
+directions; switching modes alone does not regenerate them. Legacy paragraph-only
+records remain ordinary-readable but do not fabricate learning sentence alignment.
+Acceptance uses existing display suites and test-shared-translation-api.mjs against
+actual routes/temporary storage with an offline provider at 1280/390.
+
+Mode-switch acceptance (2026-11-10): the user opened the existing English-to-Chinese
+learning result in Madame Bovary, then switched to Normal reading and opened a saved
+translation. Server logs show `learning/read` and `translate/read` returning 200,
+with no translation-generation requests or batch events during the operation
+window. Separate API/SQL checks verified the reference paragraph's aggregate equals
+its two aligned translations and retains the same operation/revision. The ordinary
+read took 666.2 ms in this run; this is not a response-time guarantee.
+
+Reproducible steps, request IDs and evidence limits belong to the backend
+[manual acceptance](../Deep_Reflective_Reader/section_tasks/module-detailed-design.md#manual-reuse-acceptance-2026-11-10).
+The logs omit request bodies and cannot identify the clicked paragraph by themselves.
+This user run covers learning-to-normal reuse; both directions remain covered by
+the earlier automated test. Vocabulary generation/failure is an independent
+component and is not evidence of translation regeneration.
+
+The existing target-language drawer grouping is presentation state. Backend exact
+language-pair/source/version keys determine generation reuse; the frontend must not
+treat a displayed section as authority to merge backend keys. Returning to ordinary
+mode restores the existing session display/highlight behavior, not another persisted
+translation. Hierarchy/content and saved results remain backend-owned projections.
+
+
+## Library reading-mode label freshness (2026-11-09)
+
+Implemented under maintainer authorization: every Library row has a mode-status
+surface on first open, without requiring a prior settings visit. Visible rows read
+the existing authoritative book-preferences endpoint with at most two concurrent
+requests. Offscreen rows wait until visible; Library rendering never generates
+learning content or writes preferences. Unknown/loading/read failure is explicit,
+never guessed as Normal reading. A failed read offers a deliberate retry.
+
+Row observations are owned by the Library lifecycle. Closing, refreshing, leaving
+for settings, changing document identity or unmounting aborts obsolete reads and
+suppresses late results. Reopening and returning from settings reread visible rows,
+so workspace eligibility changes and newly applied modes cannot leave stale labels.
+This supersedes the old settings-controller-only last-checked summary cache; no
+browser storage or backend list/schema change is introduced. Filtering a row out
+also discards its observation; returning to the visible list reads it again.
+
+Validation: `npm run check`; `test-library-reading-modes.mjs` at 1280/390 covers
+first open, scrolling, close/reopen, Refresh, late results, identity replacement,
+filter removal/return, failed-read retry, unsupported modes and malformed identity.
+The 200-book fixture initially reads only 7 desktop / 3 mobile visible rows, with
+at most two concurrent reads. Reading-settings, Library identity and readiness
+regressions pass; settings return includes changed workspace eligibility. Desktop
+and mobile screenshots inspected. Actual local API smoke displays mode labels via
+read-only requests; no model generation or preference writes were performed.
+
+## Persistent current-page learning progress (2026-11-09)
+
+Implemented under maintainer authorization: keep an overall progress bar and completed
+translation/vocabulary task count outside the collapsible paragraph details.
+Counts represent confirmed finished components, not estimated model time or token
+progress; empty saved hints and no-content components count as complete. Refreshing
+an old saved result does not imply the current attempt completed. Initial saved-data
+reads remain visibly indeterminate; failures and unknown outcomes stay distinct.
+
+The same derived state controls forward pagination (Next and Last page) and its
+visible reason. Block queued/executing work, pending completion after a wait timeout,
+and unconfirmed submissions/observation failures. Confirmed terminal failures do
+not require successful regeneration before leaving. Explicit Check progress uses
+existing recovery; no timer polling, automatic retry, backend cancellation or
+backend concurrency guarantee is introduced. Previous/First, Library and hierarchy
+navigation retain existing behavior. Mode verification temporarily guards forward
+navigation so a fast click cannot bypass the current-page initialization.
+
+State belongs to learning-reader; ReaderModeBoundary passes the projection to the
+reader pagination controls without duplicated state or App-level synchronization.
+Source/settings identity and abort guards remain authoritative. A local
+`awaitingCompletion` flag records that an observation is unresolved; it never
+invents a durable operation state. A validated terminal observation releases the
+forward guard even if the subsequent saved-result read fails. Confirmed terminal
+unknown is shown as needing attention, while a lost submission receipt remains
+blocked pending explicit recovery. Known rejected submissions also release it.
+
+The progress panel reserves summary/hint height so active-to-failure updates do
+not move the reader's scroll position. Native disabled Next/Last controls also
+check the guard in their handlers. No page state is copied into App or persisted.
+
+Validation: `npm run check` passes (existing bundle-size warning). The controller
+suite passes 19 groups, including timeout, lost observation, refresh and terminal
+failure rules. `test-learning-reader.mjs` passes at 1280/390 with held mode check
+and completion, collapsed progress, keyboard toggling, 15/16 then 16/16 completion,
+disabled Next/Last with no off-page commands, page/source/book transitions and
+receipt recovery. Display/lifecycle suites pass at both widths, including scroll,
+focus and retained saved results; collapsed desktop/mobile screenshots inspected.
+Actual production learning routes with temporary file persistence and offline
+provider pass Reader/reload checks at both widths (four calls total, no repeat on
+reload). No live model calls or backend deployment changes are part of this UI fix.
+
+## Vocabulary filtering display and completion waiting (2026-11-09)
+
+The typed LearningService consumes the implemented optional assessment on saved
+and partial hint responses, validating count coherence without judging candidates
+in the browser. Saved vocabulary shows retained items and a compact expandable
+selection summary with human-readable reasons. Validation omissions are explicit;
+zero retained items with omissions do not display “No vocabulary hints needed”.
+Legacy results without assessments remain readable. Partial checkpoint hints stay
+separate from committed results; the aggregate summary is shown for saved results.
+All model-derived strings remain text, with no HTML interpretation.
+
+Generation acceptance now leads to one `operations/wait` observation, followed by
+one validated saved read on completion. The frontend has no periodic status timer
+or automatic repeat wait. Pending timeout offers Check progress; an explicit check
+reads/reconciles the operation and may wait once again. Leaving the page aborts the
+observer and suppresses stale updates, preserving unresolved identity-scoped
+command handles for recovery. It does not cancel accepted server work or infer a
+rollback. Backend wait details are owned by app/main designs. No UI state becomes
+backend truth, and no read/task-layout path acquires a hidden mutation.
+
+Verification: controller suite passes 16 groups; reader, display and lifecycle
+suites pass at 1280/390, including no repeated reads, filtered/all-invalid hints,
+keyboard details, reload reuse, late responses and source/mode switching. Type/build
+checks pass with the existing bundle warning. Actual API/temporary file/offline
+provider Reader tests pass at both widths (four generation calls, reload adds none).
+Desktop/mobile screenshots were inspected. Both backed-up real-book captured outputs
+plus mixed control pass actual API/SQL/restart/Reader replay without live model calls;
+see the section_tasks 2026-11-09 evidence. These checks do not certify model semantics.
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+**[Code-Confirmed: LLRN-17/18/19 implemented; LLRN-21 verified]** [Canonical design](../Deep_Reflective_Reader/section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](../Deep_Reflective_Reader/section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。LLRN-22 已由 scripts 完成系統驗收；依 2026-10-29 maintainer 指示，模型語義評分不屬此 gate。
+
+本節設定 UI 已依 LLRN-16 實作的後端設定 APIs 交付；LLRN-18 已接入當頁生成與恢復，LLRN-19 已交付逐句呈現。後端設定、對齊資料及 operation APIs 的 authoritative 定義與交付由 backend owner 負責。UI 不定義後端 schema 或把本地 state 當真實資料。
+
+Library 每書提供「閱讀模式」入口，開啟可擴充的模式清單與專屬設定區；每書一次只啟用一個模式。原文校正/能力屬語言學習設定，母語入口集中於 workspace 偏好。Options 由實際 backend registry/proficiency contract 提供，不硬編語言/分級，不以 localStorage 分散保存。原文等於母語時不提供學習該語言選項，設定不足時保留普通閱讀及明確原因。
+
+已實作的 LLRN-18 feature model/controller/service 負責目前 reader 頁 read-before-generate、bounded concurrency、dedup、AbortSignal、source/settings/request-generation 防晚到。啟用模式後閱讀目前頁是使用者選定的明確生成流程；一般 content/task-layout reads 和 Library save 本身仍是無生成行為。Read failure、pending/unknown 不能當 missing；恢復使用 LLRN-16 已實作的 command/operation contract。App.tsx 保持組裝，view 不放 policy/API。
+
+已實作的 LLRN-19 學習顯示：source sentence → mother-tongue translation 交替，段落詞語提示置於 Insight 前。普通 Translate/View translations 入口及普通 inline translations 在該模式隱藏；原有結果與 session language selection 保留，退出模式恢復。翻譯/提示有獨立 loading/failure/refresh，舊結果到新提交前保留，原文始終可讀。長句自然換行、RTL/語言標記、穩定 sentence keys、keyboard/focus/scroll 納入驗收。已接受 server 工作不可由 HTTP abort 推論取消；關頁停止排隊和 UI 更新，重開回查。
+
+### LLRN-22 saved-result reuse correction (2026-10-28)
+
+Live SQL/browser inspection found a completed operation's old preference revision
+could turn a current reusable saved result into `stale` after changing levels or
+native-language settings and returning. `learning-reader/session.ts` now trusts
+the authoritative current `ready` + saved + `operation_state=succeeded` read when
+there is no unresolved session command. Initial/reload/check preserves Saved;
+explicit refresh sends `regenerate` with current source/settings revisions. It
+does not poll that historical completed operation as an admission prerequisite.
+Active, partial, failed, unknown operations and unresolved commands retain their
+existing observation/reconciliation/consent paths. No UI-derived cache authority,
+backend contract change or automatic retry is introduced.
+
+`test-learning-controller.mjs` adds a settings-roundtrip regression (15 groups
+total): no initial generation or historical operation poll, followed by one
+explicit refresh using current revisions. Type/build and all 10 suites in
+`accept-learning-reader.mjs` pass; private report `/tmp/llrn22-ui/report.json`
+is copied into the scripts-owned validation bundle. The scripts-owned
+[LLRN-22 acceptance](../Deep_Reflective_Reader/scripts/module-detailed-design.md#llrn-22-live-acceptance-and-open-quality-gate-2026-10-28)
+checks Saved and exact rendered rows at 1280/390 using real learning HTTP/SQL and
+captured live output replay after this fix; replay makes zero new provider calls.
+Original live output quality remains rejected, and this UI correction does not
+close the scripts-owned LLRN-22 checkbox or alter backend progress counts.
+
+### Learning reader paragraph compatibility correction (2026-11-09)
+
+The segmented content endpoint returns prose with `block_type: "paragraph"`.
+The learning reader previously selected and rendered only `"content"` blocks,
+silently excluding a real paragraph-only page even when the saved effective mode
+was `language_learning`. Earlier browser fixtures used only `"content"` and did
+not expose this contract mismatch.
+
+`pageSources` now includes the current page's backend-provided blocks by block ID
+and document/task-unit ownership, regardless of their presentation type label.
+Missing, duplicate or foreign identities still reject the page; the existing
+learning read validates server source/settings before any missing-result generation.
+The sentence/hint renderer likewise uses the validated block result and exact
+source text, rather than a `block_type` whitelist. Backend hierarchy remains the
+authority; this change adds no API, persistence or source normalization behavior.
+
+Evidence: the paragraph-only `test-learning-reader.mjs` failed before the fix and
+passes afterward at 1280/390, including paired translations, vocabulary, ordinary
+translation menu suppression, pagination, stale responses and command recovery.
+`test-learning-controller.mjs` passes 16 groups, including mixed/omitted type labels
+and invalid paragraph identities. Existing display/lifecycle suites and
+`npm run check` pass; the existing large-bundle warning remains.
+Desktop/mobile paragraph screenshots were inspected. A read-only browser smoke
+against local Madame Bovary confirms 9 paragraph blocks, 12 sentence rows and HTTP
+200 preference/learning reads at both widths. Generate requests were intercepted
+before reaching the backend: this proves mode activation with real content, not
+new live-model translation quality. No user preferences or source were changed.
+
+### Extensible mode list and interaction ownership
+
+**[Maintainer-Confirmed direction; settings/controller/display implemented in LLRN-17/18/19; UI acceptance verified in LLRN-21]** 模式以可擴充清單呈現，初期僅普通閱讀與語言學習。以下是依此方向收斂的 UI 設計；取代先前對話中的固定兩選項 RadioGroup 建議；settings list/detail 已實作，reader mode controller 組裝已由 LLRN-18 交付，LLRN-19 已交付逐句呈現。
+
+- **入口**：Library 書籍列的「閱讀模式」按鈕，旁邊顯示目前已套用模式名稱。開啟有書名的閱讀模式 Dialog；桌面為左側模式清單、右側模式詳情/設定，窄螢幕為清單 → 專屬設定的單欄流程，提供返回清單。避免 Dialog 疊 Dialog。
+- **清單列**：模式名稱、一句用途描述，以及「使用中／待設定／不可用」等狀態；不可只用顏色傳意。選取候選列與「使用中」標記分開。不可用模式可查看說明/修正入口，但不能套用；同語的語言學習不提供啟用選項。
+- **套用**：選取、鍵盤移動或查看模式只改 local candidate，不寫偏好、不生成、不變目前閱讀模式。完成該模式必要設定後按「儲存並套用」；後端成功回應才更新使用中標記。失敗維持目前模式與可重試 draft，取消不修改已套用設定。普通模式不要求填寫語言學習欄位。
+- **複雜設定**：共用 Dialog 負責書籍身份、清單、navigation、儲存狀態、焦點及 dirty-draft 保護；每個模式的 feature 擁有 typed 設定 model/controller/view、驗證展示及必要的內部分步流程。切換候選/返回/關閉前保護未儲存修改，只有目前面板 mount；不預先啟動所有模式的 effects 或資料請求。
+- **閱讀互動**：共用 reader 保持 hierarchy/content/navigation/scroll 所有權，依已確認模式組裝該模式的呈現與 action 元件。語言學習 feature 自己管理逐句資料、詞語與刷新；避免把所有模式分支堆入 App 或單一巨型 controller。不要求未來模式全部使用同一張設定表單或 action layout。
+- **擴充契約**：前端以穩定 mode ID 對應本地 typed settings/reader feature；可選項與 eligibility 依屆時實作的後端 mode catalog。後端不下發可執行 UI、任意 JSON 表單或 component 名稱。新增模式明確註冊對應 feature 與受驗證的 settings 契約，本期不建立動態插件平台。
+- **不支援的模式**：舊客戶端不能呈現的 mode ID 顯示不可用提示，保留 server 設定，不自動覆寫為普通模式或嘗試生成。仍可讀基本原文，顯式選擇支援模式才保存切換。
+- **生命週期**：candidate/draft 按 document + mode 隔離；已套用模式切換後卸載舊 controller、取消排隊、抑制晚到結果。已接受的 backend 工作仍按 operation contract 回查。列表需支援鍵盤、清晰焦點與目前詳情關聯；若每列有額外操作，採可存取 list/navigation 語義，不把複雜互動硬塞入 listbox option。
+
+### LLRN-17 implemented settings UI (2026-10-28)
+
+`ReadingPreferencesService` uses `RestClient` for the implemented options/workspace/book
+read/apply routes, with AbortSignal, no-store and checked DTO identities/coherence.
+Registry responses supply every language and proficiency scheme/version/level;
+`Intl.DisplayNames` supplies labels only. No browser preference storage, parser/profile
+write, learning generation, new API or backend schema is introduced.
+
+`features/reading-settings/{model,controller,view,index}` owns the settings lifecycle.
+A local typed `features.tsx` registry resolves mode ID/version to its panel and validation;
+`language-learning/view.tsx` owns original-language/level fields. Only the selected panel
+mounts. Unsupported modes/versions remain visible and unapplied until an explicit supported
+selection is saved. Normal reading requires no learning fields; saved learning settings
+are retained by the existing backend contract. Known editable eligibility reasons can be
+resolved in the draft; deleted identities and unknown reasons stay blocking.
+
+Library provides Workspace preferences and a Reading mode action per book. It replaces
+its dialog with the settings surface, so no Library/settings modals are stacked. Desktop
+uses a list/detail split; mobile uses list → detail with Back to modes. Candidate preview
+and the server's applied/effective mode are separate. Same-language learning explains its
+unavailability and offers no level/apply action. Library reads preferences for visible
+rows through a queue capped at two concurrent reads; offscreen rows wait until visible.
+Every row has an explicit loading, current-mode or retryable failure label. Returning
+from settings rereads visible rows, including workspace eligibility changes. The old
+last-checked summary cache is removed. A fresh settings entry independently rereads
+authoritative state; Library observations never supply settings drafts.
+
+Source override is a reading preference. The API exposes only the effective source: when
+an existing override is cleared, the UI does not know the hidden profile language. It
+instructs the reader to explicitly save Normal reading with Use saved profile, then reopen
+Language learning using the read-back source and applicable scheme. A missing profile can
+instead be corrected by explicitly choosing a registry language. No profile repair is hidden
+inside a read or form action.
+
+Save is explicit and guarded against duplicate submission. Each request has a controller,
+generation and target boundary; close, target change and unmount abort obsolete requests
+and suppress all late results, notifications and finally updates. In-flight/unknown saves
+are not described as rolled back. Conflict/unknown outcomes block resubmission until
+Read current settings succeeds; this read retains the draft for review and updates the
+server revision, never automatically replaying a mutation or claiming a recovered receipt.
+Known rejection retains draft and applied state. Book/workspace transitions, candidate
+switching, mobile back and close protect dirty input in the same dialog; browser unload
+also warns. Explicitly leaving an in-flight save requires rereading on reopening.
+
+The dialog has a bounded scroll area, long-title scrolling, labeled inputs, list navigation,
+contained keyboard focus and a return to the originating Library button. Transient messages
+use the shared AppNotification inside the modal boundary and above its action bar, so
+persistent failures cannot cover the recovery action. Only the active surface notifies.
+
+Validation: `npm run check`; `scripts/test-reading-settings.mjs` at 1280/390 against the
+actual StrictMode App and controlled APIs (catalog generated from the actual backend
+registry, 19 languages), including pure model/DTO guards, dirty navigation, same-language,
+source/level changes, unsupported mode preservation, malformed identity, duplicate click,
+CAS/rejected/unknown outcomes, held read and held save across close/reopen, workspace
+invalidation, keyboard/focus and no learning calls. A 200-row Library refresh took 253ms /
+239ms in that historical environment with no preference-read fanout (the visible-row
+label reads added on 2026-11-09 supersede that read policy); the existing table is not newly
+virtualized and this is not a guarantee for arbitrarily large libraries. Screenshots at both
+widths were inspected. Actual LLRN-16 routes/lifespan with temporary file repositories also
+passed settings save, page reload/reuse and native-language invalidation at both widths;
+provider access was guarded and never called. User databases and books were not changed.
+Library identity/readiness suites passed; the identity fixture was updated to answer the
+already-existing enhancement-status read. The older workflow suite stopped waiting for its
+hierarchy fixture; it also retains obsolete pre-one-click interaction assumptions, so a
+full legacy Library pass is not claimed. Vite reports the existing large-chunk warning.
+
+The evidence above covers LLRN-17 settings only. LLRN-18 supplies the current-page
+controller below, extended by LLRN-19 sentence-pair rendering. LLRN-20 backend and
+LLRN-21 UI acceptance are recorded separately; LLRN-22 now covers system acceptance only.
+
+### LLRN-18 implemented current-page controller (2026-10-28)
+
+`features/learning-reader` owns the page model, request session, React controller and
+compact status view. `LearningService` uses the implemented LLRN-16 routes through
+RestClient, validates response identities, state coherence, code-point source coverage,
+translation alignment and hint spans, and never retries a mutation automatically.
+App supplies the current document, modal suspension/source refresh boundary and an explicit
+in-memory session owner for unresolved commands. ReaderContentView supplies only the
+currently displayed task-unit page's content blocks; hierarchy/pagination/content fetching
+remain with their existing owners. No task-layout, source, profile or preference write is added.
+
+A readonly book-preference check confirms the effective mode before mounting the registered
+reader feature. Normal/unavailable/unsupported-version modes do not call learning APIs.
+Library/settings, enhancement, cleanup and source editing suspend this controller. Returning
+to the same page first discards its previous mode confirmation and rereads settings; candidate
+preview/save alone never queues generation. Reading an already selected learning mode is the
+explicitly authorized read-or-generate flow. LLRN-18 originally supplied progress above the
+existing original text. LLRN-19 now adds paired text, hint rendering and ordinary translation
+entry-point suppression; its display evidence is recorded separately below.
+
+Read every current-page block in chunks of at most 50, validate all chunks against the
+confirmed book/workspace revisions and displayed source before dispatching anything, then
+queue each translation/hints component independently. Only a verified `missing` without
+an unresolved session command may auto-generate. Saved results, including empty hints,
+are reused; whitespace-only sources make no generation call. The session admits at most
+two concurrent generation/monitoring workflows and deduplicates queued/running actions by
+block + component. This bounds frontend workflows, not server jobs accepted before leaving.
+No next-page or whole-book generation is scheduled.
+
+Commands carry a new UUID, the server source token and expected book/workspace revisions;
+the UI sends no raw source, guessed language, model or sentence boundaries. HTTP success or
+an acceptance receipt is not completion: operation status and a fresh validated saved-result
+read establish the committed revision. Translation and hints have separate states; failed
+refreshes retain the prior saved result until a verified newer commit. Partial checkpoints
+are held separately from saved output (at most the first 50 checkpoint batches are read for
+this status surface); checkpoint completeness alone never implies a committed result.
+
+One bounded completion wait replaces the former one-second/20-read polling loop.
+Completion triggers one saved read; pending timeout pauses with Check progress.
+Failed/unknown/stale states stop observation; read failures never become missing.
+Check progress rereads current data, looks up uncertain commands, then reads the
+operation and can explicitly reconcile a current claimed/running/partial operation
+before one further wait. It never automatically replays a paid generate call.
+Unknown command receipts that remain absent stay unknown. A receipt records original
+acceptance; completion observation verifies present state. Source/settings/superseded-operation checks prevent
+foreign or obsolete results from being attached to this page.
+
+The controller exposes explicit refresh and retry for the LLRN-19 action view. Refresh of a
+confirmed successful operation sends a new `regenerate` command. Retry rechecks the bound
+failed/unknown operation, uses a new command ID and supplies the original handle; uncertain
+outcomes require an explicit duplicate-cost acknowledgement before dispatch. LLRN-19 now exposes the corresponding per-component actions and a Cancel-first
+confirmation for retries with uncertain cost; unknown commands without a verified operation
+still offer only Check progress. No timeout or network failure loops into a new paid command.
+
+On page/book/source/settings change, suspension or unmount, abort requests and completion observers
+and stop the old queue; generation/identity checks also suppress late state updates. StrictMode
+probe effects cannot dispatch duplicate work. Aborting HTTP does not cancel an accepted
+backend operation. Unresolved command identities are retained only by the App reader session,
+scoped by document, source token, component and book/workspace revisions, and cleared after
+verified commit. No text/results or preferences are saved in browser storage; a full reload
+uses the backend's saved/operation projection. The compact status list has stable block and
+component identities, bounded height and keyboard-scroll access; original text stays readable.
+
+Validation: `npm run check`; `scripts/test-learning-controller.mjs` passes 14 grouped cases
+for DTO/source guards, read-before-generate, 50-block batching, two-workflow bound, dedup,
+abort/late responses, empty/saved reuse, independent failures, bounded partial polling,
+command recovery, duplicate-cost consent, explicit regeneration and changed bindings.
+`scripts/test-learning-reader.mjs` passes the actual StrictMode App at 1280/390 with eight
+blocks per page, held read/generate/preference replies, page/book/source/mode transitions,
+Library suspension, aborted-command receipt lookup, keyboard recovery/scroll and no unseen
+page generation. Desktop/mobile screenshots were inspected. `test-learning-reader-api.mjs`
+starts the production learning routes/lifespan with disposable file repositories and an offline
+fixed provider: both widths, two visible blocks, four commands/provider calls, reload/reuse
+and no third-page generation pass. Fixture server drains and removes temporary storage.
+Existing reading settings, reader identity/recovery and Library readiness suites pass.
+Vite retains its large-chunk warning. No user database migration, live provider, semantic
+quality, SQL browser acceptance or complete LLRN-20/21/22 acceptance is claimed by those controller tests.
+
+
+### LLRN-19 implemented sentence-pair display (2026-10-28)
+
+The stable ReaderModeBoundary/context supplies one active page controller to the existing
+reader tree. `LearningBlockBody` renders the authoritative ordered sentence IDs as adjacent
+source/translation rows; source whitespace gaps remain exact and receive no invented
+translation. Each block renders once. Until a verified learning read is available, the
+original text remains readable. No frontend sentence splitter, language classifier, model
+call or new backend schema is introduced. Source sentences use the confirmed book language;
+translations/meanings use the confirmed native language. The API does not expose per-sentence
+language classification, so the UI does not invent it for foreign quotations. `dir="auto"`
+and bidi isolation support mixed/RTL text; long unbroken strings wrap. Source and generated
+content remain React text, including literal HTML-like input.
+
+`LearningBlockDetails` renders translation controls, then vocabulary, then the existing
+block Insight. Vocabulary includes source form, optional distinct lemma, word/phrase/idiom
+kind, optional part of speech and native-language contextual meaning. A saved empty hints
+result explicitly says no hints are needed at this level. Partial checkpoint rows/hints
+are labeled Partial, and missing rows keep their source without fabricated output. A saved
+result takes precedence over partial refresh checkpoints. Failed/pending/unknown refreshes
+retain the saved rows and meanings until a verified new commit. Stable sentence and hint
+occurrence keys preserve DOM identity across status/result changes.
+
+A compact per-component status/action distinguishes queued, pending, saved, empty, partial,
+failed, unknown, stale and read failure. Confirmed saved data offers Refresh; a failed
+operation offers Retry; unknown operations offer a Cancel-first duplicate-cost confirmation
+and a separate Check progress. The confirmation is bound to page/settings/component/operation
+identity, is keyboard-contained and restores focus on close. Unknown commands without a
+verified operation cannot reach a paid retry button. The session revalidates binding/state
+before any command and deduplicates busy actions. Busy controls use aria-disabled and handler
+guards so keyboard focus is not discarded by native button disabling; queued state is
+published immediately. State changes retain the same action element and reader scroll
+container. Navigation/source highlights mark source fragments only, never translated text;
+removing a highlight does not replace translated rows. Detailed page progress is collapsed
+behind a native keyboard-accessible disclosure with the existing bounded scroll region.
+
+Only a confirmed normal mode exposes Translate/View translations and ordinary inline
+translations. Pending/unavailable/suspended or learning modes do not expose those controls;
+the ordinary saved-read observer receives an empty visible set, cancelling obsolete reads.
+App-owned ordinary language selections and saved records are not deleted. Returning to
+normal rereads the mode and restores the prior session display choices and existing focus
+rules. The provider/reader tree stays mounted while confirmations/results arrive, rather
+than replacing the whole reading subtree. Suspension clears prior learning snapshots so
+same-page reentry cannot briefly display an unverified old result.
+
+Evidence: `npm run check`; `test-learning-display.mjs` passes actual StrictMode App at
+1280/390 with exact Unicode/gap preservation, alternating rows, vocabulary-before-Insight,
+empty/partial/failed/unknown/read-error states, mixed/RTL/long content, escaped HTML, stable
+source DOM and scroll during held refresh, keyboard action focus, duplicate-cost Cancel/
+confirm, one new bound retry, no ordinary reads/duplicate rendering in learning mode, and
+normal-mode session preference restoration. A mounted presentation probe verifies source-only
+highlight/dismiss and stable translated nodes. Desktop/mobile full-page and paragraph
+screenshots were inspected. The LLRN-18 controller (14 groups) and page lifecycle suites
+pass; `test-learning-reader-api.mjs` additionally asserts actual backend sentence/translation/
+vocabulary DOM at both widths with disposable file storage and a fixed offline provider:
+only four commands/provider calls for two visible blocks, with reload reuse. Ordinary inline
+translation/focus and session lifecycle suites pass, as does source-review navigation.
+No live model, SQL browser, deployed migration or translation-quality acceptance is claimed;
+LLRN-20 backend and LLRN-21 UI gates are separately verified; current LLRN-22 system evidence belongs to scripts.
+Vite retains the existing large-bundle warning.
+
+### LLRN-21 reader lifecycle and accessibility acceptance (2026-10-28)
+
+`scripts/accept-learning-reader.mjs` provides a reproducible UI gate: type/build
+plus ten controller/browser suites, stopping on a failed suite and recording
+exit status, durations, source hashes and logs. The real StrictMode App is tested
+at 1280 and 390 pixels. `test-learning-lifecycle.mjs` adds a continuous Library
+mode-selection → rejected/retained draft → successful apply → page generation →
+refresh → source edit → Undo → normal-mode journey with controlled HTTP. It
+records request bodies/counts and Playwright traces with DOM snapshots/screenshots.
+
+The new journey dispatches exactly seven distinct generation commands per width:
+two initial components, one explicit translation refresh, two after edit and two
+after Undo. The three source bindings remain distinct; no next-page generation
+occurs. Duplicate save/refresh clicks cannot submit twice. Saving while Library
+or settings is open does not generate. An empty vocabulary result is rendered
+explicitly. Returning to normal removes paired output and restores ordinary
+translation entry points; existing inline/session suites verify display preferences.
+
+A third **test-only** mode is registered in the browser's existing local feature
+registry, with a two-step panel. The test verifies keyboard list selection,
+candidate versus applied state, desktop list/detail, mobile Back, dirty leave/
+cancel, focus containment and panel disposal after confirmed departure. It is
+preview-only: it is never saved, published in the catalog or added to the backend
+selection contract. Supporting a real new mode still requires its typed contract.
+
+This exposed and fixed a shell defect: the leave-confirmation branch unmounted
+the selected feature, so Keep editing reset its local step. The active settings
+panel now stays mounted inside `.reading-settings-panel` during confirmation,
+with `hidden` and `display: none`; its controls are excluded from accessibility
+navigation and Tab order. The confirmation remains in the same dialog. Cancel
+retains the panel's state; confirmed close/mode change still disposes it. No
+additional modes or background controllers are mounted.
+
+Verification passed: `npm run check` and `test-learning-controller` (14 grouped
+cases), `test-reading-settings`, `test-learning-reader`, `test-learning-display`,
+`test-learning-lifecycle`, `test-learning-reader-api`, `test-translation-inline`,
+`test-translation-session-lifecycle`, `test-reader-guards`, and
+`test-source-review-navigation`. Existing cases cover held/reordered responses,
+rapid page/book/mode changes, unmount/reopen and command recovery, read failure,
+unknown outcomes/consent, two-workflow bound, unsupported modes, partial output,
+mixed/RTL/HTML-like content, source-only highlights, focus and bounded scrolling.
+Desktop/mobile screenshots were visually inspected for mode navigation, long-text
+wrapping, paired text and scroll containment. Keyboard/DOM semantics are tested;
+this is not a universal assistive-technology or WCAG conformance certification.
+
+`test-learning-reader-api` additionally runs production learning routes/lifespan
+with temporary file storage and a fixed offline provider. Two visible blocks use
+four commands/calls across both widths, including reload reuse; the unseen third
+page is not generated. Its fixture drains and removes temporary storage. Other
+browser cases use controlled HTTP, including the edit/Undo journey; they do not
+claim real SQL browser or paid-model acceptance. No user books, preferences,
+profile, database migration or backend schema changes were made. The existing
+Vite large-chunk warning remains. LLRN-22 semantic issues remain unresolved.
+
+Reproduce from `Deep_Reader_UI` with Playwright/Chrome available:
+
+```sh
+UI_URL=http://127.0.0.1:5173 node scripts/accept-learning-reader.mjs
+```
+
+Optional `PLAYWRIGHT_MODULE` and `CHROMIUM_PATH` select local installations;
+`LEARNING_ACCEPTANCE_DIR` selects evidence output (default `/tmp/llrn21`). Final
+private evidence is copied to
+`Deep_Reflective_Reader/data/test-books/learning-reader/llrn21-20261028/`:
+`report.json`, per-suite logs, `requests-{1280,390}.json`,
+`trace-{1280,390}.zip`, mode/reader and paired-display screenshots. Existing suites
+are rerun acceptance evidence, not counted as new implementation or backend tasks.
+
+## One-click Interaction Activation (2026-10-27)
+
+Selecting Insights, Summary, Quiz or Critical thinking explicitly authorizes a
+read-or-generate command for that target. Read saved output/session first. Only a
+successful, identity-matched `not_generated` response with no payload starts one
+generation request automatically. Show loading/generating continuously; display
+existing artifacts and critical-thinking answers/evaluations without regeneration.
+Failed/malformed/mismatched reads and stale/insufficient/validation states do not
+count as missing. Failures require explicit retry; there is no retry loop. Retry
+of an unknown generation outcome reads persisted state before generating again.
+Explicit retry re-reads first, reuses recovered output, and may retry a known
+failed generation; the existing explicit new-question action may replace a policy-
+stale critical-thinking session. Neither exception applies to initial activation.
+Refresh remains an explicit replacement command; Note remains read-only on open.
+
+Deduplicate in-flight activation for the same action/target. Abort obsolete reads
+and suppress subsequent generation and late results on close, target/document
+change, reset or unmount. React Strict Mode must not duplicate requests. HTTP
+cancellation does not guarantee rollback of generation already accepted by the
+server; reopening reconciles through read. Passive menu opening, navigation and
+layout loading never generate. Read endpoints remain read-only; the feature
+controller orchestrates the separate existing read/generate APIs. UI state never
+becomes hierarchy or artifact truth. This supersedes older two-click descriptions.
+
+Validation: npm run check passes; test-interaction-activation.mjs passes at 1280/390 with actual React Strict Mode and controlled APIs: four one-click flows, saved sessions/answers, 11 read-failure/mismatch states per action, no automatic retry, explicit retry reconciliation, close during read/generate, deduplication, target/document switching and Note draft protection. Summary stale-to-explicit-Refresh also passes a focused rerun at both widths. test-reader-guards.mjs passes 42 identity cases and lifecycle recovery; test-hierarchy-interaction-menus.mjs passes both widths with the real 451-unit layout and mocked saved interactions. Desktop/mobile screenshots inspected. No live model generation or document mutation was performed.
+
+Additional regression limitation: test-reader-recovery.mjs completed its interaction
+checks, then stopped at disabled Enhance. Its fixture does not handle the current
+reparse-structure/status activity read. The full legacy suite is not claimed as
+passing; enhancement behavior is outside this change.
+
+## Irreversible Ignore All OCR Flags (2026-10-27)
+
+**[Code-Confirmed, 2026-10-27]** Add Ignore all beside the Flagged areas heading, enabled only for a
+verified OCR document with pending regions and no busy/refresh-failure state. It
+covers every pending region in the document, including other pagination pages.
+Before dispatch, show the total count, ask the user to carefully inspect OCR text
+against original pages, and explicitly state that ignoring all cannot be undone.
+Explain that this dismisses flags, not body text or original images. Cancel is the
+initial focus. Respect dirty drafts; issue one discard_all_regions command with
+source/revision and mutation ID. Preserve the confirmation on failure with visible
+error and same-command retry; disable duplicates, abort on document change, and
+ignore late results. Merge authoritative response without task-layout/body reload.
+Keep the dialog, selected tab and cleanup history; pending count becomes zero.
+
+
+Validation: IgnoreAllRegionsDialog and ReadingContentActions implement whole-document confirmation and same-command retry. npm run check and test-ignore-all-regions.mjs, test-source-review-navigation.mjs and test-cleanup-history.mjs pass at 1280/390. Browser coverage includes 25 regions across pages, Cancel-first focus, duplicate clicks, failed/lost-response retry, one logical commit, no body/layout reload, disabled empty action/Undo, unmount and late-response suppression; screenshots inspected.
+
+## OCR Review Action Visibility (2026-10-27)
+
+**[Code-Confirmed, 2026-10-27]** Show the document-level reading-content action toolbar only when the
+reading-content response explicitly reports `ocr_review_available: true`.
+Missing/false capability, loading, native PDF and non-PDF documents must not show
+review or toolbar Undo buttons. An OCR PDF remains eligible after all flagged
+areas are resolved. Auto mode alone is not proof that OCR ran. The backend derives
+the capability from persisted source-bound extraction evidence; the UI does not
+infer it from filenames, selected mode or review counts. Preserve ordinary body
+Edit/Delete dialogs and their Undo/refresh handling. Document changes and stale
+responses retain existing cancellation/identity protection; no extra requests.
+After closing review, restore keyboard focus when the verified OCR entry returns
+from the overview read, without taking focus from another active control.
+Validation: build, 1280px/390px visibility, request-lifecycle, source-review navigation
+and cleanup-history suites pass; desktop/mobile screenshots inspected.
+
+
+## Extracted Text Review Terminology (2026-10-27)
+
+**[Code-Confirmed, 2026-10-27]** This module compares extracted reading text with original
+page evidence, supports correction/confirmation of eligible related blocks, and
+exposes OCR cleanup history. The entry is **Review extracted text**, the dialog is
+**Extracted text review**, and the source-region tab is **Flagged areas**.
+These replace the ambiguous Review source / Source review / Source regions labels.
+The existing **OCR cleanup history** label remains descriptive of its own content.
+
+Flagged areas can include unresolved and ignored entries, and areas with no linked
+body text. The label must not promise that every item is an error, a pending task,
+an editable paragraph, or recoverable missing text. A short dialog description
+explains comparing against the original page, correcting/confirming text, and
+reviewing cleanup changes. Empty-state and refresh/confirmation copy use the same
+terms. Preserve backend region/status/identity contracts, existing DOM IDs/classes,
+tab order, requests, mutations, navigation, focus and scroll behavior.
+
+This is presentation-only governance. Backend hierarchy remains authoritative;
+task-layout remains lightweight, and opening/switching views introduces no write.
+Internal source-review identifiers remain implementation names; this wording
+change does not create a separate feature or alter backend schemas.
+
+Validation: TypeScript/Vite check and existing source-review navigation, state and
+cleanup-history browser suites pass. Desktop (1280px) and mobile (390px) screenshots
+confirm that the title, purpose description and tabs fit. Keyboard tab switching,
+draft retention, pagination, navigation, snapshot guards and cleanup history flows
+remain covered by those suites.
+
 ## Persisted Block Translation Plan (2026-10-26)
 
 **[Code-Confirmed: TRUI-07..11]** Integrated with backend TRUI-01..06.
@@ -27,8 +664,10 @@ was not rebuilt during that acceptance; Vite was running at http://127.0.0.1:517
 Reuse correction (2026-10-26): Modal opening reads saved results from the backend.
 Submitting an existing valid To opens/focuses that saved section with zero generate
 requests when From is absent or differs from To; an equal selected pair is rejected
-before saved-result reuse. Only a missing To generates with valid distinct languages. The backend repeats this
-policy for direct callers and races. Returned saved records retain their original
+before saved-result reuse. Only a missing To generates with valid distinct languages.
+This describes the existing UI shortcut, not current backend cache identity:
+since shared sentence translation, explicit backend generation validates the exact
+source/target key and source versions. Returned saved records retain their original
 source language and mutation ID, which need not match the new request. DTO checks
 still require target/source-hash and committed record/payload agreement. No force
 regeneration API/UI is added. 80 focused backend tests, mounted controller/DTO tests,
@@ -271,7 +910,7 @@ editor described below is historical and removed from the current UI.
   disables another block. Repeated review edits do not set body manual-edit flags.
 - Edit uses explicit Keep/Clear interaction consent; Delete confirms removal of
   that block and its Notes/interactions only. Keep it confirms the text is correct,
-  removes that block from Source review across its linked regions, and warns that
+  removes that block from Extracted text review across its linked regions, and warns that
   review editing is no longer available and this decision cannot be undone. Body
   text and interactions remain intact; the main reader's Edit remains available.
 - Keep confirmation is persisted by the server, not browser storage. Original
@@ -305,7 +944,7 @@ and [checklist](../Deep_Reflective_Reader/document_structure/module-checklist.md
 SRREPAIR-05/06 consume the implemented optional per-region repair DTO, not legacy
 block IDs/manual flags alone. Older servers stay read-only.
 
-- Keep Source regions and cleanup history as separate horizontal tabs with stable
+- Keep Flagged areas and cleanup history as separate horizontal tabs with stable
   region/record identity. Reuse existing editor/confirmation primitives, not a second
   body-mutation implementation. Model transforms DTOs; controller owns requests and
   drafts; view renders; typed services own transport.
@@ -323,7 +962,7 @@ block IDs/manual flags alone. Older servers stay read-only.
   Ignore semantics; deleting all related text does not automatically Ignore.
 - After commit, merge only authoritative affected block DTOs/tombstones and related
   region states. Preserve tab, row expansion, selection, focus, drafts and scroll;
-  do not remount Source review or fetch full task-layout. Navigation/highlights use
+  do not remount Extracted text review or fetch full task-layout. Navigation/highlights use
   verified current targets, never JavaScript slicing of canonical source offsets.
 - Cancel obsolete requests and guard generation/document/source/revision on every
   response. Keep same-command unknown-outcome reconciliation distinct from read
@@ -354,11 +993,11 @@ Draft Save performs no GET/body refresh. Apply/Delete/region Undo use the existi
 20-block refresh paging, including tombstones, reappearing blocks and plural cleared
 interaction targets. They never request task-layout or section content. Cleanup
 history eligibility is invalidated after body changes and read lazily on tab entry;
-that read merges only history, retaining Source regions DOM, expansion and scroll.
+that read merges only history, retaining Flagged areas DOM, expansion and scroll.
 Failed related-block reads hide unverified text; failed navigation after an accepted
 read retains verified review data and requires a fresh check on another navigation.
 
-Source regions render at most 20 rows; related blocks retain their existing 20-item
+Flagged areas render at most 20 rows; related blocks retain their existing 20-item
 pagination. Editor exit restores its connected region trigger with preventScroll
 and restores the outer scroll offset. Cleanup cancels pending focus frames. Dialog
 close/document change aborts requests; generation/source/revision checks reject late
@@ -1050,7 +1689,7 @@ warning remains. No files are modified by the validation phase itself.
 
 ### CLEAN-08 Audit And Undo Delivery (2026-10-23)
 
-The existing Source review dialog now loads cleanup history only when opened,
+The existing Extracted text review dialog now loads cleanup history only when opened,
 using GET reading-content with include_cleanup_audit=true and cleanup_offset.
 The server returns ten newest-first applied batches per page, total/offset/limit,
 revision/time, applied/skipped/remaining counts, undoable status and exact deleted
@@ -1109,7 +1748,7 @@ restriction as a planned feature; current UI remains read-only until SRREPAIR-05
 The historical acceptance below is not evidence that region writes are implemented.
 
 **[Maintainer-Provided] + [Code-Confirmed, 2026-10-25]** Current manual-review
-requirements supersede the earlier inline Source review editor. Backend mapping
+requirements supersede the earlier inline Extracted text review editor. Backend mapping
 authority and visibility rules are specified in
 [Source Review Mapping](../Deep_Reflective_Reader/document_structure/module-detailed-design.md#source-review-mapping-and-read-only-workflow-2026-10-25).
 The UI consumes the implemented SRMAP-04 DTO. Tasks and acceptance are
@@ -1117,7 +1756,7 @@ The UI consumes the implemented SRMAP-04 DTO. Tasks and acceptance are
 
 ### Historical Single Editing Location
 
-- Source review stays read-only for body text: original image, latest associated
+- Extracted text review stays read-only for body text: original image, latest associated
   blocks with IDs, manual-change status/time and Go to content. Remove inline
   block Edit/Delete menus and editor selection wiring from SourceReviewBlocks.
   Reuse the existing Reading content three-dot actions as the sole editing entry;
@@ -1263,7 +1902,7 @@ necessarily means no usable content. Desktop/mobile acceptance must cover previe
 warning persistence, save/delete/undo/conflict and failed-request recovery.
 
 Edit/Delete are interactive actions in the existing content-block three-dot menu.
-No manual addition/insertion of blocks is supported. Source review is a separate
+No manual addition/insertion of blocks is supported. Extracted text review is a separate
 document-level surface listing physical pages/regions; Original displays the
 server-validated crop. Ignore requires a successfully loaded image and a second
 confirmation; ignored content is not fabricated. Undo is single-level. The app
@@ -1309,8 +1948,9 @@ SN-17..20 implemented and accepted. `SummaryNoteService` validates server target
 identity and response shape; all five existing menus expose independent Summary
 and Note actions. Single-section merged rows retain separate chapter/section
 targets. `SummaryNoteDrawer` reads on opening, cancels obsolete requests, and is
-keyed by action/target. Summary renders headline/body/key_points with explicit
-Generate/Refresh, preserving saved output on failure, and scrolls independently.
+keyed by action/target. Summary renders headline/body/key_points, generates missing
+output on explicit Summary selection (2026-10-27 contract), retains explicit Refresh,
+preserves saved output on failure, and scrolls independently.
 Note is one plain-text record per target, max 10000 Unicode code points; no title/
 tags/autosave. Explicit Save supplies revision, stable retry ID and target token;
 Delete requires confirmation. Dirty close/document navigation and page unload are
@@ -1319,7 +1959,8 @@ content. Structural commit clears selection; label-only refresh leaves it intact
 
 Acceptance: `test-summary-note-live.mjs` uses actual backed-up/rebuilt books and
 API at 1280px/390px across all five levels, saved real-provider summaries and real
-note writes. It verifies read-only opening, persisted reopen, over-limit emoji,
+note writes. It verified the then-current read-only opening contract (superseded for missing
+summaries on 2026-10-27), persisted reopen, over-limit emoji,
 failed save/refresh retention, cancelled/confirmed deletion and no runtime errors.
 Screenshots reviewed; `npm run check` passes with the existing bundle-size warning.
 The user explicitly authorized runtime deletion/rebuild of these two books; the
@@ -2075,8 +2716,8 @@ The inline region should be compact, dismissible/collapsible, and status-aware. 
 should support:
 
 - loading persisted insight
-- missing/not-generated state
-- explicit generate
+- generate once on an explicitly selected action after a valid not-generated read
+- explicit retry after failure
 - explicit refresh
 - completed insight payload
 - insufficient-content state
@@ -2108,8 +2749,8 @@ Book > Chapter > Section > Unit
 The quiz drawer should use read-first behavior:
 
 - first load persisted quiz artifact for the target through the generic quiz read route
-- show `not_generated` without calling LLM
-- provide an explicit `Generate quiz` action
+- automatically generate once when that explicit selection reads `not_generated`
+- provide an explicit retry after a failed activation
 - provide an explicit `Refresh quiz` action only when overwriting/regenerating is
   intended
 - show completed quiz items with their type-specific UI
@@ -2136,7 +2777,7 @@ The first-version drawer flow is:
 
 1. Read current/persisted critical-thinking session state for the target through the
    generic critical-thinking read route.
-2. If missing, show an explicit `Generate question` action.
+2. If a valid read reports missing, generate a question as part of the same explicit selection.
 3. After question generation, show the single generated question and an answer input.
 4. On submit, send one user answer for evaluation through the submit route.
 5. If evaluation succeeds, show feedback, score, and suggested refinement.
@@ -2187,13 +2828,14 @@ The frontend API wiring is intentionally split into three major steps:
 2. Quiz drawer API wiring: in progress. Quiz request/response API types and
    `ReadingInteractionService` methods are implemented, and generic quiz responses
    can be mapped into drawer view state. Drawer open now performs read-first quiz
-   loading without generation; explicit generate/refresh UI wiring is implemented.
+   loading followed by one generation only for missing output after explicit Quiz
+   selection (UI-ACTIVATE-01); explicit retry/refresh wiring remains available.
    Critical-thinking flow remains separate.
 3. Critical-thinking drawer API wiring: in progress. Request/response API types and
    `ReadingInteractionService` methods are implemented, and backend session responses
    can be mapped into drawer view state. Drawer open now performs read-first
-   critical-thinking session loading without question generation; explicit
-   generate/submit/retry UI wiring is implemented. This remains separate from quiz
+   critical-thinking session loading followed by one question generation only for
+   missing output after explicit selection (UI-ACTIVATE-01); submit/retry remain explicit. This remains separate from quiz
    wiring because it has a session lifecycle, draft-answer state, submit semantics,
    and retry semantics.
 
@@ -2219,8 +2861,8 @@ Critical-thinking drawer API wiring:
 - map `CriticalThinkingSessionResponse` into `CriticalThinkingViewState`, including
   session id, question, submitted answer, evaluation feedback, score, suggested
   refinement, status, metadata, and retryable error state (completed)
-- wire drawer open to read-first critical-thinking session loading without creating a
-  question session from the read path (completed)
+- wire explicit selection to read-first critical-thinking activation; a separate
+  generate-question command follows only a valid missing read (completed, UI-ACTIVATE-01)
 - wire explicit generate-question, submit-answer, and retry-evaluation controls while
   keeping unsent draft answers frontend-local and sending the shared target object plus
   backend session id for submit/retry calls (completed)
@@ -2462,10 +3104,10 @@ Backend routes support separate read and write paths:
 - submit critical-thinking answer for evaluation
 - retry failed critical-thinking evaluation
 
-The UI must not call generation from a read path, and must not hide LLM/cost-bearing
-work behind menu open, target selection, document load, section selection, or drawer
-open. Explicit user commands such as `Generate`, `Refresh`, `Submit answer`, and `Retry
-evaluation` are the only places where interaction mutation should occur.
+Read endpoints must remain read-only. Explicit selection of Insights, Summary, Quiz
+or Critical thinking authorizes the read-or-generate activation described above.
+Passive menu opening, document/section navigation and layout reads never generate.
+Refresh, answer submission and evaluation retry remain separate explicit commands.
 
 Frontend API wiring should only use backend-implemented public contracts. The current
 `src/types/api.ts` reading-interaction types mirror the implemented insight analysis

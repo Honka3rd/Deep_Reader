@@ -6,14 +6,15 @@ ENV PIP_NO_CACHE_DIR=1
 
 WORKDIR /app/Deep_Reflective_Reader
 
+COPY Deep_Reflective_Reader/language/language_code.py Deep_Reflective_Reader/language/language_profile_registry.py ./language/
+COPY Deep_Reflective_Reader/doc_loaders/pdf_ocr_language_policy.py ./doc_loaders/
 RUN apt-get update \
+    && python -m doc_loaders.pdf_ocr_language_policy --debian-packages > /tmp/ocr-packages \
     && apt-get install -y --no-install-recommends \
         tesseract-ocr \
-        tesseract-ocr-eng \
-        tesseract-ocr-chi-sim \
-        tesseract-ocr-chi-tra \
+        $(cat /tmp/ocr-packages) \
         poppler-utils \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/ocr-packages
 
 COPY Deep_Reflective_Reader/requirements.txt ./requirements.txt
 RUN python -m pip install --upgrade pip \
@@ -29,6 +30,7 @@ COPY Deep_Reflective_Reader/scripts/prepare_tokenizer_assets.py ./scripts/prepar
 RUN python -m scripts.prepare_tokenizer_assets
 
 COPY Deep_Reflective_Reader/ ./
+RUN python -m scripts.verify_ocr_assets --load-models
 
 EXPOSE 8000
 

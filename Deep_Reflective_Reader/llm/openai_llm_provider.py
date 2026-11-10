@@ -1,4 +1,5 @@
 from enum import StrEnum
+from openai import OpenAI as OpenAIClient
 from llama_index.llms.openai import OpenAI
 from llama_index.llms.openai.responses import OpenAIResponses
 
@@ -189,6 +190,31 @@ Returns:
     def get_model_capabilities(self) -> LLMModelCapabilities:
         """Return current model static capability metadata."""
         return self.model_capabilities
+
+    def complete_text_once_with_output_budget(self, prompt: str, output_tokens: int) -> str:
+        """One paid attempt after durable dispatch; no SDK or adapter retries.
+
+        Reuse this provider's resolved endpoint/model/credentials. A request-local
+        client avoids changing the ordinary interaction client's retry policy.
+        """
+        caps = self.model_capabilities
+        if type(output_tokens) is not int or not 0 < output_tokens <= caps.max_output_tokens:
+            raise ValueError("invalid_output_budget")
+        timeout = 300.0 if output_tokens > self.effective_output_budget else self.llm.timeout
+        with OpenAIClient(api_key=self.llm.api_key, base_url=self.llm.api_base,
+                          default_headers=self.llm.default_headers, timeout=timeout,
+                          max_retries=0) as client:
+            if caps.endpoint_kind == ENDPOINT_KIND_RESPONSES:
+                response = client.responses.create(model=caps.model_name, input=prompt,
+                    max_output_tokens=output_tokens, temperature=self.llm.temperature)
+                return response.output_text.strip()
+            response = client.chat.completions.create(model=caps.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                max_completion_tokens=output_tokens, temperature=self.llm.temperature)
+            content = response.choices[0].message.content
+            if not isinstance(content, str):
+                raise ValueError("completion_text_unavailable")
+            return content.strip()
 
     def count_input_tokens(self, text: str) -> int | None:
         return TOKEN_COUNTER.count(self.model_capabilities.model_name, text)

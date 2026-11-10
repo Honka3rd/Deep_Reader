@@ -35,7 +35,7 @@ try {
     const stats = async () => (await page.request.get(api + "/stats")).json();
     const panel = page.locator('div[aria-labelledby="reading-content-dialog-title"]');
     const openReview = async () => {
-      await page.getByRole("button", { name: "Review source", exact: true }).click();
+      await page.getByRole("button", { name: "Review extracted text", exact: true }).click();
       await panel.getByLabel("Loading content changes").waitFor({ state: "hidden" });
     };
     const closeReview = async () => {
@@ -68,9 +68,9 @@ try {
     await page.getByRole("menuitem", { name: "Note", exact: true }).click();
     await page.getByRole("textbox", { name: "Note", exact: true }).fill("Retain this unsaved note after Undo.");
     // Concurrent view test: dispatch the review action while the draft stays mounted.
-    await page.getByRole("button", { name: "Review source", exact: true, includeHidden: true }).evaluate(el => el.click());
+    await page.getByRole("button", { name: "Review extracted text", exact: true, includeHidden: true }).evaluate(el => el.click());
     await panel.getByLabel("Loading content changes").waitFor({ state: "hidden" });
-    await panel.getByText("No unresolved OCR regions recorded.").waitFor();
+    await panel.getByText("No flagged areas recorded. You can still review previous cleanup changes.").waitFor();
     assert.equal(await page.getByText("OCR needs review", { exact: true }).count(), 0);
     await panel.getByRole("button", { name: "Expand cleanup 1", exact: true }).click();
     await panel.locator("blockquote").filter({ hasText: "@@??" }).waitFor();
@@ -111,7 +111,7 @@ try {
     await load("remaining_regions");
     await enhance();
     await openReview();
-    await panel.getByText("Source regions (2)", { exact: true }).waitFor();
+    await panel.getByText("Flagged areas (2)", { exact: true }).waitFor();
     assert.equal(await panel.getByRole("button", { name: "Original", exact: true }).count(), 2);
     assert.equal((await state()).regions.some(r => r.id === "r1"), false);
     await page.screenshot({ path: `/tmp/cleanup-review-remaining-${width}.png`, animations: "disabled" });

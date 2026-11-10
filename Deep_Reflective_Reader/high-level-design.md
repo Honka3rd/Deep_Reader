@@ -1,5 +1,48 @@
 # Deep Reflective Reader High-Level Design
 
+## Learning application module extraction (2026-11-10)
+
+Maintainer-approved option A: extract the four app learning orchestration files
+into sibling `learning/`, with [owned design](learning/module-detailed-design.md)
+and [checklist](learning/module-checklist.md). Extraction and 299 local regression tests are complete; external review and deployment remain pending.
+Generation/policy remain in section_tasks, persistence in document_structure/db,
+preferences in reading_preferences, composition in config and transport in main/API
+schemas. Ordinary translation continues sharing the same runtime and aligned data.
+This is a package/ownership migration, not a new translation pipeline or DB migration.
+
+
+## Shared translation direction (2026-11-09)
+
+Maintainer-authorized correction: ordinary and language-learning translation share
+one source-bound, sentence-aligned result and generation pipeline. Ordinary UI
+continues showing an aggregate paragraph; learning UI keeps sentence pairs. Exact
+language pairs/source versions govern reuse, independently of proficiency. Legacy
+paragraph-only records remain readable but cannot supply fabricated sentence maps.
+The [current contract](section_tasks/module-detailed-design.md#shared-sentence-translation-across-reading-modes-2026-11-09)
+supersedes earlier statements that ordinary translation uses an independent generator
+and artifact store. Historical acceptance evidence is retained.
+
+The optimization removes duplicate translation generation across compatible modes
+and avoids storing a separate aggregate for new aligned results; vocabulary and
+legacy paragraph conversion remain separate costs. The
+[reuse conditions and manual acceptance](section_tasks/module-detailed-design.md#reuse-and-storage-rationale-2026-11-10)
+record the 2026-11-10 learning-to-normal verification and its evidence limits.
+
+
+## Language Learning Architecture Plan (2026-10-28)
+
+**[System scope complete: LLRN-01–22, 2026-10-29]** 新 per-book mode 遵循原有 hierarchy truth 與 explicit-write 邊界；句子定位屬 content block 內部，並非新 hierarchy 層。此規劃擴展 reading interactions，不更換 parser authority 或普通翻譯契約。
+
+2026-10-29 maintainer 將 LLRN-22 收斂為系統驗收，22 項系統任務完成。記錄／重播工具保留 provider 原始文字，由正式驗證器判定 invalid output；不把已返回的格式錯誤誤作 unknown，不自動重送。765 項 backend 回歸及兩種報告格式的 SQL/1280/390 Reader 重播見 [scripts evidence](scripts/module-detailed-design.md#llrn-22-system-acceptance-scope-2026-10-29)。下述語義抽查是歷史觀察，模型品質不屬目前完成條件；該隔離驗收未執行 production migration/deployment；其後本機缺表問題已依 [DB 部署補正](db/module-detailed-design.md#local-reading-mode-schema-deployment-correction-2026-10-29) 明確補套 004/005。
+
+新增 `reading_preferences` 為 domain owner：集中單人 workspace 母語與每書 mode/source override/proficiency；LLRN-02 已交付 Python contracts/catalog/port/file adapter，db 已完成 LLRN-07 preference SQL/顯式 migration，LLRN-09 已交付有效設定 service，LLRN-15 已組裝 runtime dependencies，LLRN-16 已提供 API/lifespan，LLRN-17 已提供 settings UI、LLRN-18 已提供當頁 controller；LLRN-19 已提供逐句呈現，user system 仍未交付。`language` 管 codes/proficiency definitions；`shared` 管純資料契約；`section_tasks` 管切句、對齊生成、提示與 cache/admission 規則；`document_structure` 管 hierarchy-aware repository/file adapter 和來源失效；`db` 管偏好/學習資料 SQL 與顯式 migrations。`learning` 獨立承擔學習 application orchestration、worker 與通知；`app` 保留一般閱讀協調與普通翻譯 adapter，並共用 learning runtime；`api_schemas.py`/`main.py` 管 transport；`config` 組裝；UI 僅呈現權威投影與使用者選用模式後的當頁明確命令。
+
+模式擴充採 reading_preferences 擁有的 stable-ID catalog 與分模式 typed/versioned settings；book 僅一個 active mode。UI 共用模式 list/detail shell 與 reader 組裝，各模式 feature 自持設定、action 與 request lifecycle；後端不下發可執行 UI，本期不建立動態插件平台。選取候選與保存啟用分開，mode/settings 一次原子套用。
+
+生成前 durable claim 防止併發重複付費，provider 在 DB 交易外；提交時驗證 source/settings/fencing，output/receipt 同交易。Cache 按來源、語言、切句/規則版本區分，提示再含 scheme/level；改能力不重譯。原文/OCR 套用修正、Undo/reparse/deletion 與全等級失效在同一來源 mutation 邊界處理，普通 reads 不生成或清理資料。
+
+[Canonical design](section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28) 與 [task DAG](section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28) 是實作依據；已交付 LLRN-01 language proficiency definitions/validation、LLRN-02 偏好基礎、LLRN-03 共用來源/句子/譯文/提示 DTO、LLRN-04 規則式多語切句、LLRN-05 cache/admission/operation 純策略、LLRN-06 learning repository/file adapter 、LLRN-07 preference SQL/migration 、LLRN-08 learning SQL/migration 、LLRN-09 有效偏好服務、LLRN-10 逐句翻譯生成、LLRN-11 能力提示生成、LLRN-12 來源／文件生命週期、LLRN-13 application orchestration/admission 、LLRN-14 transport schemas/pure projections 、LLRN-15 dependency composition 、LLRN-16 routes/lifespan 、LLRN-17 settings UI 、LLRN-18 current-page controller 及 LLRN-19 sentence-pair display。LLRN-05 固定分離 key、claim/dispatch/checkpoint/commit 的條件轉移、unknown recovery、lease/fence 與明確重試；純策略測試之外，LLRN-06 已以 preferences → document → learning 鎖序及單一 sidecar replace 實作 file durable claim/receipt/checkpoint/output，並有多程序、故障/重啟證據；LLRN-08 已補齊 SQL 持久化，application orchestration 已由 LLRN-13 交付，runtime DI 已由 LLRN-15 交付。Learning claim/commit 不修改來源與偏好；LLRN-12 lifecycle 另以 SQL 同交易或 file journal 協調，不宣稱跨檔案瞬間原子性。Section_tasks 的切句器消費 language 集中的 prefix rules 與 shared source binding，保留全文/code-point spans；無標點或不確定句界保守合併，不依字數硬切、不新增模型請求。Shared 只做純資料結構與來源 reference 驗證；不提供切句、生成或儲存，source ownership 已由 LLRN-06 repository 解出，完整 epoch lifecycle/binding 作廢已由 LLRN-12 接入來源寫入。偏好 file adapter 以 workspace lock、CAS 與 atomic replace 保存 mode/settings，純讀不補寫；rename/delete 已由 LLRN-12 lifecycle port 協調，file 採 journal/顯式恢復，不宣稱跨檔案交易。LLRN-07 以 workspace/book 兩張表及同一短交易保存偏好：workspace row lock、CAS、bounded queries、原子 rename/delete 與 receipt；明確升降版，不在讀取時 DDL。真 SQL failure/concurrency/file parity 已驗證。LLRN-08 以五張 resource/key/operation 表保存 learning rows，共用 file/domain repository behavior；preferences → document → learning 同一短交易做 claim/commit，readonly MVCC 做 source/result reads，只載入請求 key 的必要歷史；checkpoint SQL 分頁。47 真 SQL tests 與實際 server restart 驗證通過。LLRN-09 以注入的既有 profile reader 與 override 解析有效來源，返回各 mode eligibility/原因；設定 CAS 沿用 file/SQL port，不呼叫模型或回寫 profile。64 項服務 file/真 SQL tests 及 82 項基礎回歸通過；LLRN-13 已在 source/settings 鎖內重驗有效 profile binding，但不宣稱獨立 profile 儲存的跨資源原子性。LLRN-10 已交付 provider-injected 段落逐句翻譯：以配置模型能力及離線 tokenizer 按需分批、嚴格對齊驗證、partial checkpoint payload 與完整結果組裝；一般段落一次請求。24 項專測、149 項回歸與兩本備份短段落真 provider/file 對齊及提交檢查通過（語義抽查仍有誤譯，品質未通過）；模型失敗不自動重送，backend dispatch ownership 已由 LLRN-13 接入。LLRN-11 提示服務直接依原文和 registry 能力描述生成，按級別分存、空結果可重用；source occurrence 由後端驗證定位，foreign/null 句子不得套分級，與 translation revisions/失敗獨立。29 項專測 + 169 項回歸通過；兩本備份各兩等級與混語控制的真 provider/file 定位保存檢查通過，但詞義、能力適配與混語判斷仍有錯誤，語義品質 gate 未通過。翻譯/提示共用配置模型能力和有界句子分批，無額外文字上限；兩者已接入 LLRN-13 durable application execution。LLRN-12 已在來源交易推進 epoch／全級別作廢，Undo/legacy save 不復活；rename 遷移學習 references 與偏好，delete 留 tombstone。File coordinator 有 journal 中斷恢復，SQL 同交易 rollback/concurrency 驗證；完整 runtime DI 已由 LLRN-15 交付。LLRN-13 的 backend worker 接受工作後獨立於 HTTP owner，逐 batch 在 admission／dispatch CAS acknowledgement 後呼叫模型；lost ack 停下回查，完整 checkpoints 可離線完成，不自動重送 unknown。81 項 file/真 SQL 專測、290 項回歸及兩本備份固定 provider 流程驗證通過。LLRN-14 已交付嚴格偏好／學習 DTO 及純 response projections，以 opaque source token、書籍綁定 operation handle 與獨立 saved/operation states 保持 authority 邊界；56 項契約專測、154 項底層回歸及五份既有 schema scripts 通過。LLRN-15 已組裝同一 file/SQL storage owners、lazy single-attempt provider、唯讀 source profile reader 與可 drain 的 resource；33 項專測（含真 SQL/SDK HTTP mock）及相關回歸通過。LLRN-16 已註冊 11 個 production routes、route-local safe errors/no-store 與唯一 runtime lifespan/drain；50 項 file/真 SQL HTTP 與 main/OpenAPI/lifecycle 專測及相關回歸通過。LLRN-17 已交付集中母語／每書 list/detail 設定 UI，1280/390 受控 API 及 temporary file-backed 實際 API 保存/reload 驗收通過，未呼叫模型；LLRN-18 已交付當頁 read-before-generate、獨立分項狀態、有界併發/輪詢與 session command recovery，14 組 controller 專測、1280/390 Actual App 及 temporary file-backed 真 API/固定 provider 驗收通過（兩個可見段落共 4 calls，reload 重用）。LLRN-19 已交付逐句原文/母語譯文、Insight 前詞語提示、分項刷新/確認重試及普通模式 session 恢復，1280/390 Actual App 與真 API/固定 provider 顯示驗收通過。LLRN-20 已以 738 項不同測試（14 新增跨模組流程、724 既有回歸）驗證 file/真 SQL/ASGI、設定與來源生命週期、unknown/replay/fencing；零 skips，隔離資源已清理。LLRN-21 已以 type/build、10 組 controller/browser suites、1280/390 traces/鍵盤/截圖及臨時 file/固定 provider 的實際 learning API 驗證；修正 settings 離開確認卸載 active panel 導致取消後步驟重置，無 backend contract 更動。LLRN-22 已交付真書／真模型/API/SQL/Reader 驗收工具：有限段落 8 次配置 provider 請求，兩級別 cache、重開與 reload 重用通過。語義抽查仍有角色／比喻誤讀、級別選詞與混語不穩定，品質 gate 未通過。UI 修正當前 saved 結果被歷史 completed operation 的舊設定版本誤標 stale；後續以捕捉的真回應重播驗證，無額外模型請求。詳見 scripts owner LLRN-22；未部署使用者資料庫 migration。
+
 > 事實標註：
 > - **[Code-Confirmed]**：已由目前 codebase 直接確認
 > - **[From Proposal]**：來自 `proposal.md` 的整理描述

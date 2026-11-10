@@ -1,5 +1,6 @@
 // Actual App with controlled HTTP; session preferences and exclusive focus destinations.
 import assert from "node:assert/strict";
+import { book as readingBook } from "./learning-controller-fixtures.mjs";
 import { mkdir } from "node:fs/promises";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const output = process.env.SCREENSHOT_DIR || "/tmp/deep-reader-translation-session";
@@ -23,6 +24,7 @@ try {
     };
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/reading-preferences/read")) return route.fulfill({ json: readingBook(route.request().postDataJSON().doc_name, "normal") });
       const body = route.request().method() === "POST" ? route.request().postDataJSON() : null;
       const doc = path.split("/")[3];
       if (path === "/api/documents") return route.fulfill({ json: { total: 2,

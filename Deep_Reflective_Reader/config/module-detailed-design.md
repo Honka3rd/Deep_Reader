@@ -1,5 +1,40 @@
 # config Detailed Design
 
+## Shared sentence translation (2026-11-09)
+
+Production TranslationAction receives a lazy factory for the same learning_service
+resource used by learning routes. It uses the existing single-attempt provider,
+model capabilities, repositories, admission and worker pool. The factory avoids an
+import-time runtime initialization and resolves a fresh worker after resource
+shutdown/reinitialization. TranslationService remains an explicit legacy adapter
+for historical callers/tests; production has no fallback to it when shared storage
+or generation is unavailable. No additional provider, language config or migration.
+
+Validation: 470 backend tests and actual API/React mode-switch acceptance pass; detailed evidence and limits are recorded in the shared section_tasks design.
+
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+**[Code-Confirmed: LLRN-15 implemented]** [Canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。Production routes/lifespan 綁定已由 LLRN-16 完成，UI 與完整模式驗收尚未交付。
+
+只組裝 language definitions、偏好/學習 repositories、services、learning application module 和既有 provider/capability。母語/每書能力屬持久化偏好，不放 env、AppDIConfig 常量或另一份語言白名單；source/prompt policy 不在 DI 重新實作。支援既有 file/SQL 選擇但缺契約明確 unavailable，無 silent fallback、import-time DDL/LLM 或讀取時初始化。
+
+### LLRN-15 composition and lifecycle
+
+`learning_storage.py` 由既有 `structured_storage_backend` 選 file/PostgreSQL。Container 的 raw document selector 只供組裝；公開 `structured_document_artifact_repository`、`reading_preferences_repository`、`learning_repository` 都來自同一 singleton aggregate。File 以實際 document repository namespace 建立 `WorkspaceScope`，在公開給一般讀寫 consumers 前安裝 `FileLearningDocumentLifecycle`，rename/delete 因此使用同一偏好及 learning sidecar；不改原有 structured file 路徑。SQL 以實際 store namespace/DSN 校驗組裝，將同一 store/preferences 注入 `PostgresLearningRepository`，不依賴 SQL artifact adapter 繼承的 file namespace。Constructor 不查 DB、不建表；004/005 等 migrations 必須由部署顯式執行，缺表 read 明確失敗，不轉 missing 或 fallback file。
+
+`learning_runtime.py` 從 `learning` 公開入口匯入 `LearningService`，以 `providers.Resource` 擁有 `ReadingPreferencesService`、兩個生成 service 與 `LearningService`。`learning_service` / `reading_preferences_service` 為同一 resource 的公開入口；公開 document repository 若被 override 成另一實例，learning 組裝拒絕不一致。`learning_admission` 是可注入的單一 policy，預設 `AllowValidGeneration`，claim 與每次 dispatch 共用；不冒充已存在的用戶／配額系統。
+
+`LearningRuntimeConfig` 只集中 operational resources：preferences `data/reading-preferences`、results `data/learning`、4 workers、600,000 ms lease，可由 AppDIConfig 注入；不新增母語、能力、語言白名單或模型 token 常量。啟動／一般 reads 不初始化 provider、tokenizer、sidecar 或 recovery。呼叫 `container.shutdown_resources()` 會等待已接受工作完成；reinitialize 會建新 worker、保留同一 storage/lifecycle。LLRN-16 已在 application lifespan 啟動時發布唯一 runtime、關閉時接入該 resource shutdown，不能跟 browser request cancellation 綁定。程序崩潰後仍需明確 reconcile；無隱式接管 scheduler。File journal 恢復入口為 `container.learning_storage().lifecycle.recover()`，只可由明確維護操作使用，pending journal 仍 fail closed。
+
+Profile reader 綁定 server scope/exact document ID，透過 `FaissStorageConfig(..., read_only=True)` 與 `VersionedDocumentProfileStore.load_source` 讀既有 source language；不重入 document/preferences locks、不查 structure invalidation 或生成／回寫 profile。缺檔、壞檔、不可用保持不同原因；拒絕文件 alias。Profile 仍是原有 `data/faiss/<doc>/profile.json` 獨立檔案，未新增 workspace 分區或跨資源原子性保證。
+
+`LearningProvider` 延後取得現有 `llm_provider` singleton；能力及 offline tokenizer 沿用同一 provider，輸出 allowance 來自既有 model capability。只接受公開 `complete_text_once_with_output_budget` 契約，沒有該契約／key／能力時 preflight 回報 domain capacity_unavailable，不寫 claim。OpenAI 實作在既有 provider 內使用 request-local SDK client、`max_retries=0`，沿用其 model/API base/key/temperature，完成或失敗皆 close；不改共享 ordinary interaction adapter 的 retry/default allowance。429/5xx/timeout 不偷偷重送付費請求，unknown 仍經既有 durable recovery。沒有新 provider 設定來源，也沒有改 prompt 或語義品質判定。
+
+Supporting fix：file rename/delete 已取得 preference lock 並留下 tombstone 時，遲到 learning writer 先拒絕 `learning_document_missing`，避免再開啟已移除原文件而漏出 FileNotFoundError；SQL 原有拒絕行為保持一致。
+
+驗證入口：`scripts/test_learning_container_wiring.py`、`scripts/test_learning_provider_once.py`。涵蓋 file/真 SQL 組裝、同一 instance/scope、缺 migration/key/capability/一次請求契約、零 import/startup network/files、純讀、profile 無交易重入、journal fail closed、admission、shutdown drain/reinit、生成保存與 offline reuse、rename/delete late writer。真 SDK 使用 HTTP mock transport 驗證兩類 endpoint 的成功、429/500/503/timeout 都只送一次；不當作真模型語義驗收。既有 storage/lifecycle/orchestration、preferences、schemas、ordinary DI/capacity 回歸證據見 owner checklist；未部署或修改使用者 DB/書籍。
+
 ## Block Translation Wiring (2026-10-26)
 
 TRANS-API-02 injects the existing llm_provider into TranslationService and wires it

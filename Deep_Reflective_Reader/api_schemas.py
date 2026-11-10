@@ -1,6 +1,15 @@
 from typing import Annotated, Any, ClassVar, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from api_learning_schemas import (
+    ReadingBookReadRequest, ReadingWorkspaceSaveRequest, ReadingBookApplyRequest,
+    NormalModeSelection, LearningModeSelection, ReadingOptionsResponse,
+    ReadingWorkspaceResponse, ReadingBookResponse, ReadingPreferenceIssue,
+    LearningOperationHandle, LearningReadRequest, LearningGenerateRequest,
+    LearningOperationRequest, LearningCommandLookupRequest, LearningPartialReadRequest,
+    LearningReadResponse, LearningSubmissionResponse, LearningOperationResponse,
+    LearningCommandLookupResponse, LearningPartialReadResponse, LearningErrorResponse,
+)
 from document_structure.common_parse_policy import TocHint
 from document_structure.ocr_cleanup_contract import CleanupOutcome, OutcomeReason
 from document_structure.structure_plan_contract import EnhancementIntent, validate_enhancement_intent
@@ -384,7 +393,7 @@ class DocumentListResponse(BaseModel):
 
 class ReadingContentMutationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    action: Literal["edit", "delete", "undo", "discard_region", "cleanup_edit", "cleanup_restore", "cleanup_delete",
+    action: Literal["edit", "delete", "undo", "discard_region", "discard_all_regions", "cleanup_edit", "cleanup_restore", "cleanup_delete",
                     "region_edit", "region_apply", "region_delete",
                     "review_block_edit", "review_block_delete", "review_block_keep"]
     expected_revision: int = Field(ge=0, strict=True)
@@ -398,6 +407,11 @@ class ReadingContentMutationRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_region_command(self):
+        if self.action == "discard_all_regions":
+            if any(value is not None for value in (self.block_id, self.region_id, self.text,
+                                                   self.discard_interactions, self.cleanup_record_id)):
+                raise ValueError("invalid_discard_all_regions_command")
+            return self
         if self.action.startswith("review_block_"):
             if not self.region_id or not self.block_id or self.cleanup_record_id is not None:
                 raise ValueError("invalid_review_block_command")
@@ -495,6 +509,7 @@ class ReadingContentResponse(BaseModel):
     disposition: Literal["needs_review", "completed"]
     regions: list[SourceReviewRegionResponse]
     can_undo: bool
+    ocr_review_available: bool = False
     undo_action: str | None
     blocks: list[ReadingBlockResponse]
     block_page: ReadingBlockPageResponse | None = None

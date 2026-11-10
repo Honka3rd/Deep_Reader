@@ -7,6 +7,8 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import type { ReadingInteractionTargetRequest } from "../../types/api";
 import { SummaryNoteService, type NoteResponse, type SummaryResponse } from "../../services/SummaryNoteService";
 
+import { readOrGenerate } from "./activation";
+
 const service = new SummaryNoteService();
 export interface SummaryNoteSelection {
   kind: "summary" | "note";
@@ -27,6 +29,7 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef }: {
   const requestRef = useRef<AbortController | null>(null);
   const mutationRef = useRef<{ text: string; revision: number; id: string } | null>(null);
   const dirty = selection.kind === "note" && draft !== (note?.note?.text || "");
+  const canRefreshSummary = Boolean(summary?.payload) || summary?.envelope.status === "stale_target";
   const count = Array.from(draft).length;
   const limit = note?.max_chars ?? 10000;
   dirtyRef.current = dirty;
@@ -36,7 +39,7 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef }: {
       if (dirtyRef.current) { event.preventDefault(); event.returnValue = ""; }
     };
     window.addEventListener("beforeunload", onUnload);
-    void execute("read");
+    void execute(selection.kind === "summary" ? "open" : "read");
     return () => {
       requestRef.current?.abort();
       dirtyRef.current = false;
@@ -44,18 +47,28 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef }: {
     };
   }, []);
 
-  async function execute(operation: "read" | "generate" | "refresh" | "save" | "delete") {
-    if (busy) return;
+  async function execute(operation: "open" | "read" | "generate" | "refresh" | "save" | "delete", retryGeneration = false) {
+    if (requestRef.current && !requestRef.current.signal.aborted) return;
     if (operation === "delete" && !window.confirm("Delete this note?")) return;
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
     setBusy(true); setError("");
     try {
+      // Allow Strict Mode's setup/cleanup replay to cancel before any HTTP dispatch.
+      await Promise.resolve();
+      if (controller.signal.aborted) return;
       if (selection.kind === "summary") {
-        const result = await service.summary(selection.target, operation as "read" | "generate" | "refresh", controller.signal);
-        if (controller.signal.aborted) return;
-        if (result.envelope.status === "completed" || operation === "read") setSummary(result);
+        const result = operation === "open"
+          ? await readOrGenerate({ target: selection.target, interactionType: "summary", retryGeneration,
+            read: () => service.summary(selection.target, "read", controller.signal),
+            generate: () => service.summary(selection.target, "generate", controller.signal),
+            isCurrent: () => !controller.signal.aborted && requestRef.current === controller,
+            onGenerating: () => {},
+          })
+          : await service.summary(selection.target, operation as "read" | "generate" | "refresh", controller.signal);
+        if (!result || controller.signal.aborted || requestRef.current !== controller) return;
+        if (result.envelope.status === "completed" || operation === "read" || operation === "open") setSummary(result);
         if (!["completed", "not_generated"].includes(result.envelope.status)) {
           setError(result.envelope.reason === "summary_model_capacity_exceeded"
             ? "This text exceeds the model's capacity. Choose a smaller section."
@@ -83,7 +96,10 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef }: {
         : message.includes("stale") ? "The document changed. Your draft is kept; reopen the current target."
         : "The request failed. Your draft and saved content are unchanged. Please retry.");
     } finally {
-      if (!controller.signal.aborted) setBusy(false);
+      if (!controller.signal.aborted && requestRef.current === controller) {
+        requestRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
@@ -100,8 +116,8 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef }: {
         {error && <Alert severity="error">{error}</Alert>}
         {busy && <CircularProgress size={24} aria-label="Loading" />}
         {selection.kind === "summary" ? <>
-          <Button disabled={busy} startIcon={<RefreshIcon />} onClick={() => void execute(summary?.payload ? "refresh" : "generate")}>
-            {summary?.payload ? "Refresh" : "Generate summary"}
+          <Button disabled={busy} startIcon={<RefreshIcon />} onClick={() => void execute(canRefreshSummary ? "refresh" : "open", true)}>
+            {canRefreshSummary ? "Refresh" : "Retry summary"}
           </Button>
           {summary?.payload ? <>
             <Typography component="h3" variant="h6">{summary.payload.headline}</Typography>

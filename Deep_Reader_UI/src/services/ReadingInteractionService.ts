@@ -8,6 +8,7 @@ import { RestClient } from "./RestClient";
 import { assertInteractionIdentity } from "../shared/readerIdentity";
 
 interface AnalysisGenerationOptions {
+  signal?: AbortSignal;
   promptInstructionVersion?: string;
 }
 
@@ -16,6 +17,7 @@ interface QuizGenerationOptions extends AnalysisGenerationOptions {
 }
 
 interface CriticalThinkingReadOptions {
+  signal?: AbortSignal;
   sessionId?: string;
 }
 
@@ -45,12 +47,13 @@ export class ReadingInteractionService {
     throw new Error(typeof body?.detail === "string" ? body.detail : `HTTP ${status}`);
   }
 
-  readInsight(target: ReadingInteractionTargetRequest): Promise<AnalysisInteractionResponse> {
+  readInsight(target: ReadingInteractionTargetRequest, signal?: AbortSignal): Promise<AnalysisInteractionResponse> {
     assertInteractionIdentity(target);
     return this.requestInteraction<AnalysisInteractionResponse>(
       "/documents/reading-interactions/insight/read",
       {
         method: "POST",
+        signal: signal,
         body: JSON.stringify({ target }),
       },
     );
@@ -65,6 +68,7 @@ export class ReadingInteractionService {
       "/documents/reading-interactions/insight/generate",
       {
         method: "POST",
+        signal: options.signal,
         body: JSON.stringify({
           target,
           prompt_instruction_version: options.promptInstructionVersion,
@@ -82,6 +86,7 @@ export class ReadingInteractionService {
       "/documents/reading-interactions/insight/refresh",
       {
         method: "POST",
+        signal: options.signal,
         body: JSON.stringify({
           target,
           prompt_instruction_version: options.promptInstructionVersion,
@@ -90,12 +95,13 @@ export class ReadingInteractionService {
     );
   }
 
-  readQuiz(target: ReadingInteractionTargetRequest): Promise<QuizInteractionResponse> {
+  readQuiz(target: ReadingInteractionTargetRequest, signal?: AbortSignal): Promise<QuizInteractionResponse> {
     assertInteractionIdentity(target);
     return this.requestInteraction<QuizInteractionResponse>(
       "/documents/reading-interactions/quiz/read",
       {
         method: "POST",
+        signal: signal,
         body: JSON.stringify({ target }),
       },
     );
@@ -110,6 +116,7 @@ export class ReadingInteractionService {
       "/documents/reading-interactions/quiz/generate",
       {
         method: "POST",
+        signal: options.signal,
         body: JSON.stringify({
           target,
           max_items: options.maxItems,
@@ -128,6 +135,7 @@ export class ReadingInteractionService {
       "/documents/reading-interactions/quiz/refresh",
       {
         method: "POST",
+        signal: options.signal,
         body: JSON.stringify({
           target,
           max_items: options.maxItems,
@@ -146,6 +154,7 @@ export class ReadingInteractionService {
       "/documents/reading-interactions/critical-thinking/read",
       {
         method: "POST",
+        signal: options.signal,
         body: JSON.stringify({
           target,
           session_id: options.sessionId,
@@ -163,6 +172,7 @@ export class ReadingInteractionService {
       "/documents/reading-interactions/critical-thinking/generate-question",
       {
         method: "POST",
+        signal: options.signal,
         body: JSON.stringify({
           target,
           prompt_instruction_version: options.promptInstructionVersion,

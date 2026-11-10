@@ -25,7 +25,7 @@ try {
       } });
       if (path.endsWith("/reparse-structure/status")) return route.fulfill({ json: { status: "idle" } });
       if (path.endsWith("/reading-content")) return route.fulfill({ json: {
-        revision: 0, source_token: "fixture", disposition: "accepted", can_undo: false, max_chars: 10000, regions: [], blocks: [],
+        revision: 0, source_token: "fixture", disposition: "accepted", ocr_review_available: true, can_undo: false, max_chars: 10000, regions: [], blocks: [],
         cleanup_audit: { total: 0, offset: 0, limit: 10, items: [] },
       } });
       if (path.endsWith("/task-units/content")) return route.fulfill({ json: {
@@ -64,7 +64,7 @@ try {
       await page.waitForTimeout(100);
       assert.equal(await page.locator("html.reader-fullscreen").count(), 0, "Late fullscreen outcome must not reopen reading mode");
     } else {
-      await page.getByRole("button", { name: "Review source", exact: true }).click();
+      await page.getByRole("button", { name: "Review extracted text", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await dialog.waitFor();
       assert.equal(await dialog.isVisible(), true, "Body-portalled source review remains visible");

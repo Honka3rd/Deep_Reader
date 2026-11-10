@@ -1,5 +1,12 @@
 # doc_loaders Checklist
 
+## Registry-Aligned OCR Languages (2026-10-27)
+
+- [x] OCR-LANG-01: Derive OCR capabilities/defaults from the system language registry.
+  Acceptance: Every registered language maps to installed recognition data; missing mappings/configuration fail explicitly. Default follows registry, explicit hints do not narrow installed support, Fast stays isolated, and backed-up real OCR regressions preserve sources.
+  Evidence: pdf_ocr_language_policy.py, Unicode quality v7 and bounded Chinese refinement; test_ocr_language_registry.py plus existing regressions. 108 focused and 214 PDF tests pass without skips; eight real-engine horizontal cases pass. Immutable-book report data/test-books/ocr-keep-20261025/20261027T071751060918Z/report.json passes OCR/Auto page 80 and Sample2, unchanged backups/runtime. Scope and broad-default cost are recorded in the design; no all-language accuracy or automatic Library reparse claim.
+  Timestamp: 2026-10-27
+
 ## Preserve Recognized OCR Text (2026-10-25)
 
 Current policy replaces quality-based text exclusion, strict-quality rollback and
@@ -188,7 +195,7 @@ It is used to:
 
 - [x] Deploy multilingual OCR language packages and align OCR language selection with project language-code strategy
   Evidence: `Dockerfile`; `docker-compose.yml`; `.env.example`; `Deep_Reflective_Reader/doc_loaders/pdf_ocr_language_policy.py`; `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`
-  Notes: Docker runtime installs Tesseract English, simplified Chinese, and traditional Chinese language data; PDF OCR defaults to `eng+chi_sim+chi_tra` for unknown-language raw loading while preserving explicit env/constructor override.
+  Notes: Historical English/simplified/traditional Chinese packaging is superseded by OCR-LANG-01/02: current defaults and installed capabilities follow the system registry, with explicit recognition hints retained.
 
 - [x] Retire OCR text file-cache persistence after OCR run storage
   Evidence: `Deep_Reflective_Reader/doc_loaders/pdf_document_loader.py`; `Deep_Reflective_Reader/document_preparation/document_preparation_pipeline.py`; `Deep_Reflective_Reader/db/postgres_structured_document_store.py`; `Deep_Reflective_Reader/scripts/test_pdf_document_loader_inspection.py`; `docker-compose.yml`; `.env.example`

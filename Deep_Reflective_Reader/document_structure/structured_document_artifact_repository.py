@@ -51,6 +51,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         self.store = store or StructuredDocumentStore()
         self.base_dir = Path(base_dir)
         self._cleanup_namespace = namespace
+        self._learning_lifecycle = None
 
     def list_documents(
         self,
@@ -91,6 +92,8 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
 
     def delete_document(self, doc_name: str) -> bool:
         """Delete the structured artifact without requiring valid hierarchy content."""
+        if self._learning_lifecycle is not None:
+            return self._learning_lifecycle.delete(doc_name)
         with self._artifact_lock(doc_name):
             try:
                 self._resolve_document_path(doc_name).unlink()
@@ -108,6 +111,49 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
                 yield
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
+
+    @property
+    def namespace(self) -> str:
+        """Server-bound file namespace; not a caller-selected ownership scope."""
+        return self._cleanup_namespace
+
+    @contextmanager
+    def locked_document(self, doc_name: str):
+        """Internal write coordination: hold the existing source lock, never save.
+
+        Lock order for learning writes: preferences -> document -> learning file.
+        Do not call document mutation methods while holding this context.
+        Ordinary reads must use load_document (no lock-file creation).
+        """
+        from document_structure.reading_content import ReadingContentService
+        ReadingContentService.validate_name(doc_name)
+        with self._artifact_lock(doc_name):
+            document = self._load_document_for_write(doc_name)
+            if document.document_id != doc_name:
+                raise ValueError("learning_document_identity_mismatch")
+            yield document
+
+    def install_learning_lifecycle(self, lifecycle):
+        """Explicit composition; no filesystem writes or hidden reads."""
+        if self._learning_lifecycle is not None and self._learning_lifecycle is not lifecycle:
+            raise ValueError('learning_lifecycle_already_installed')
+        self._learning_lifecycle = lifecycle
+
+    def lifecycle_path(self, doc_name):
+        from reading_preferences.models import identifier
+        identifier(doc_name)
+        return self._resolve_document_path(doc_name)
+
+    def lifecycle_lock(self, doc_name):
+        return self._artifact_lock(doc_name)
+
+    @staticmethod
+    def lifecycle_payload(document):
+        data = document.to_dict()
+        for chapter, chapter_data in zip(document.chapters, data['chapters']):
+            for section, section_data in zip(chapter.sections, chapter_data['sections']):
+                section_data['task_units'] = [unit.to_dict(include_content_blocks=True) for unit in section.task_units]
+        return json.dumps(data, ensure_ascii=False, indent=2)
 
     def mutate_document_artifacts(self, doc_name, mutation):
         with self._artifact_lock(doc_name):
@@ -227,6 +273,8 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         return lookup_cleanup_receipt(document, namespace=namespace, document_id=document_id, operation_id=operation_id)
 
     def rename_document(self, doc_name, new_name, transform):
+        if self._learning_lifecycle is not None:
+            return self._learning_lifecycle.rename(doc_name, new_name, transform)
         with ExitStack() as stack:
             for name in sorted({doc_name, new_name}):
                 stack.enter_context(self._artifact_lock(name))
@@ -248,7 +296,12 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     def load_document(self, doc_name: str) -> StructuredDocument:
         """Load structured document by logical doc name."""
         path = self._resolve_document_path(doc_name)
-        return self.store.load(str(path))
+        if self._learning_lifecycle is not None:
+            self._learning_lifecycle.assert_ready()
+        document = self.store.load(str(path))
+        if self._learning_lifecycle is not None:
+            self._learning_lifecycle.assert_ready()
+        return document
 
     def _load_document_for_legacy_migration(self, doc_name: str) -> StructuredDocument:
         """Compatibility-only loader for explicit legacy JSON migration flows."""
@@ -616,19 +669,18 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         title = payload.get("title")
         return title.strip() if isinstance(title, str) and title.strip() else None
 
-    @staticmethod
-    def _atomic_save(document: StructuredDocument, path: Path) -> StructuredDocument:
+    def _atomic_save(self, document: StructuredDocument, path: Path) -> StructuredDocument:
         """Persist document atomically through temp-file + replace."""
         from document_structure.source_review_blocks import persist_region_mapping
 
+        from document_structure.learning_lifecycle import guard_source_transition
+        before = self.store.load(str(path)) if path.exists() else None
+        document = guard_source_transition(before, document)
         document = persist_region_mapping(document)
         path.parent.mkdir(parents=True, exist_ok=True)
-        data = document.to_dict()
-        for chapter, chapter_data in zip(document.chapters, data["chapters"]):
-            for section, section_data in zip(chapter.sections, chapter_data["sections"]):
-                section_data["task_units"] = [
-                    unit.to_dict(include_content_blocks=True) for unit in section.task_units]
-        payload = json.dumps(data, ensure_ascii=False, indent=2)
+        if self._learning_lifecycle is not None:
+            self._learning_lifecycle.assert_ready()
+        payload = self.lifecycle_payload(document)
         temp_file = None
         temp_path = None
         try:

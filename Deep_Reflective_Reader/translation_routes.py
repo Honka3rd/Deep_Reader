@@ -29,6 +29,7 @@ _ERROR_STATUS = {
     "translation_provider_failed": 502, "translation_invalid_output": 502,
     "translation_capacity_unavailable": 503, "translation_profile_unavailable": 503,
     "translation_service_unavailable": 503,
+    "translation_outcome_unconfirmed": 503,
     "translation_mutation_conflict": 409, "translation_history_limit": 409,
 }
 
@@ -94,7 +95,7 @@ def generate_translation(request: TranslationInteractionRequest,
             target=_target(request.doc_name, target), persisted=result.record is not None,
             status=result.translation.status, source_structure_version=target.source_structure_version,
             reading_revision=target.reading_revision, effective_content_hash=result.effective_content_hash,
-            prompt_instruction_version=TRANSLATION_PROMPT_VERSION),
+            prompt_instruction_version=result.prompt_version),
         payload=TranslationInteractionPayload(source_language=result.translation.source_language,
             target_language=result.translation.target_language, translated_text=result.translation.translated_text),
         record=result.record)

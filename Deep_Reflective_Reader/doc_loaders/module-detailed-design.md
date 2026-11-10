@@ -1,5 +1,82 @@
 # doc_loaders Detailed Design
 
+## Registry-Aligned OCR Languages (2026-10-27)
+
+**[Maintainer-Provided; Code-Confirmed]** The system language
+set comes only from `LanguageProfileRegistry.get_supported_language_codes()`.
+The loader owns the adapter from those codes to Tesseract model names; it must
+cover every registered language and fail explicitly when a new code has no model
+mapping. An independent English/Chinese-only support list is no longer valid.
+
+Unset/blank/`registry` OCR configuration expands to all registered horizontal
+models in registry order. Explicit canonical language codes and existing engine
+model names remain supported as recognition hints, not as the installation/support
+list. Unknown configuration is rejected, rather than silently using English.
+Model availability does not establish the language of a page or parser authority.
+No LLM/profile generation is introduced for model selection.
+
+Docker installs the registry-derived model set plus dependencies of existing OCR
+strategies (the pinned simplified/traditional vertical models and orientation
+data). Build verification must load the models; OCR-enabled API startup checks
+the complete capability set offline, even with a narrowed recognition hint.
+Missing packages must fail explicitly; runtime downloads and silent partial model
+fallback are forbidden. Fast extraction stays independent of OCR execution.
+Chinese direction heuristics remain Chinese-local; installing Japanese/Korean
+models alone does not certify arbitrary vertical layouts or transcription quality.
+
+Candidate scoring must treat Unicode letters, numbers and combining marks as text,
+not assume only ASCII Latin/Han are meaningful. Kana/Thai spacing does not imply
+fragmentation. Existing encoding, symbol and Latin-fragmentation guards remain;
+this is an OCR-local correction, not a change to language detection or parsing.
+OCR quality identity advances to `observed-script-v7-unicode-signal`; Fast identity
+is unchanged. Existing persisted books are not rewritten by this update.
+
+Broad multilingual models can fragment Chinese paragraphs. The existing Chinese
+strategy may propose one additional PSM-6 horizontal candidate after broad OCR:
+at least two candidates and two thirds of nonempty candidates must contain at
+least 80 Han characters, Han signal >=65%, Latin <=20%. Meaningful kana/Hangul
+evidence (>=6 characters and >=10% of letters in any candidate) prevents this
+refinement. Its models are obtained from the registered Chinese mapping and retain
+registry order. All original candidates remain in diagnostics. A refined candidate
+may supersede the broad winner despite Latin-fragmentation warnings only when its
+score, Han ratio and Han count are at least as high, nonspace length is >=90%, and
+no other rejection reason (encoding/symbol/token failure) is present. This avoids
+treating a quality warning as permission to select a less complete transcription;
+it does not certify semantic fidelity. The extra subprocess uses the existing execution budget. Explicit narrowed hints
+are unchanged. These are conservative tested heuristics, not universal language
+identification. No extra pass is performed simply because Chinese is installed.
+
+Validation: cover all registry mappings, future unmapped codes, configuration
+normalization, missing/corrupt runtime assets, Fast identity isolation, real engine
+model loading and immutable real-book OCR regressions. Record accuracy/cost changes
+from the broader default honestly; model installation alone is not acceptance.
+
+Validation receipt (2026-10-27): 108 focused configuration/Unicode/Chinese/startup
+tests and a separate 214-test PDF suite pass without skips (overlapping suites,
+not 322 unique tests). Registry currently contains 19 languages, mapped to 20
+horizontal models plus two pinned Chinese vertical models and OSD. All 23 load
+in the built image. Offline real startup fails on a missing or corrupt French
+model even when the recognition hint is `en`; a complete image starts normally.
+
+`scripts/accept_ocr_registry.py` passes eight real-engine cases: French, German,
+Russian and Japanese, each under its canonical hint and `registry`, using generated
+horizontal PDFs and an explicit Unicode font. Character similarity is 100% except
+Japanese hinted recognition at 98.59%; threshold fixed at 90%. This is scoped
+recognition evidence, not accuracy certification for every registered language.
+The final concurrent validation run costs roughly 8–16 seconds per small fixture
+under the broad default versus 0.7–1 second with a language hint. The incident
+Chinese page takes about 92 seconds in each OCR/Auto case; broad model initialization
+and recognition are material costs. Explicit language hints remain the bounded
+workload option without reducing installed support. Full-book latency is unverified.
+
+Immutable-book receipt:
+`data/test-books/ocr-keep-20261025/20261027T071751060918Z/report.json`.
+Actual OCR/Auto on incident physical page 80 retains 984 characters, eight blocks
+and the complete paragraph; Sample2 stays 450/0/644 characters with its exact margin
+and blank page. All three cases pass and source/backup/runtime hashes are unchanged.
+Existing Library documents are not automatically re-extracted. Earlier failed
+experimental receipts remain private evidence; acceptance standards were retained.
+
 ## Preserve Recognized OCR Text (2026-10-25)
 
 **[Maintainer-Provided]** OCR extraction preserves recognized content; quality
@@ -644,7 +721,7 @@ Current OCR behavior：
 1. `PdfDocumentLoader.inspect(doc_name)` 可區分「PDF 無文字層但疑似掃描圖片」與「真正空文件」，並輸出 page count、native text chars、image-page ratio、font-page ratio。 **[Code-Confirmed]**
 2. 對掃描圖片 PDF 且 OCR 未啟用時，loader 會 raise `RawTextRequiresOcrError`，prepare raw-load 階段映射為 `load_raw_text_requires_ocr:<doc_name>`。 **[Code-Confirmed]**
 3. OCR fallback 透過 explicit configuration gate 啟用，不會隱式改變所有 PDF 的成本與 latency。 **[Code-Confirmed]**
-4. 目前 gate 可透過 `DEEP_READER_PDF_OCR_ENABLED=1` 啟用；OCR language 預設讀取 `DEEP_READER_PDF_OCR_LANGUAGE`，未配置時為 `eng+chi_sim+chi_tra`；Tesseract binary 可由 `DEEP_READER_TESSERACT_CMD` 指定，未配置時為 `tesseract`。 **[Code-Confirmed]**
+4. 目前 gate 可透過 `DEEP_READER_PDF_OCR_ENABLED=1` 啟用；OCR language 讀取 `DEEP_READER_PDF_OCR_LANGUAGE`，未配置／空白／`registry` 時由系統語言 registry 展開模型；Tesseract binary 可由 `DEEP_READER_TESSERACT_CMD` 指定，未配置時為 `tesseract`。顯式語言只縮小本次辨識提示，不縮小映像必備模型範圍。 **[Code-Confirmed]**
 5. OCR 目前走本地 Tesseract CLI：loader 逐頁抽取 embedded image，寫入暫存檔，呼叫 `tesseract <image> stdout -l <language>`，將非空 stdout join 成 raw text。 **[Code-Confirmed]**
 6. OCR 成功產出的文字可作為 raw text input；OCR failure 會映射為 `load_raw_text_ocr_failed:<doc_name>:<reason>`。 **[Code-Confirmed]**
 7. OCR file cache has been removed as an active persistence path; loader must not read or write `data/ocr_text`. **[Code-Confirmed]**
@@ -690,7 +767,7 @@ OCR dependency candidates:
 - OCR engine: Tesseract / OCRmyPDF / cloud OCR service
 - Python integration: `pytesseract` + `Pillow`, or wrapper around `ocrmypdf`
 
-Container/runtime implication：2026-10-21 runtime 已有 Tesseract、Poppler 與 eng/chi_sim/chi_tra/osd；缺少 chi_tra_vert。舊有「未安裝 Tesseract 與中文模型」描述已過時；安裝一般中文模型也不代表直排 OCR 已完成。 **[Code-Confirmed]**
+Container/runtime implication：2026-10-21 的 eng/chi_sim/chi_tra/osd 清單只是歷史環境快照；現行 Docker 定義依系統 registry 安裝全部水平模型，另外提供既有中文策略依賴的固定版本直排模型。構建與 OCR-enabled 啟動都離線驗證逐模型載入；實際部署狀態以驗證紀錄為準。模型安裝不等於所有語言／方向的辨識品質認證。 **[Code-Confirmed]**
 
 ## 12. Current Risks
 
@@ -726,7 +803,7 @@ Container/runtime implication：2026-10-21 runtime 已有 Tesseract、Poppler �
 
 1. 同名 `.txt` 與 `.pdf` 並存時是否要 fail-fast 而非預設 txt？ **[Needs Confirmation]**
 2. OCR fallback 是否應作為 prepare request option、environment config，或獨立 `/documents/ocr` 類明確 mutation endpoint？ **[Needs Confirmation]**
-3. 中文 OCR 預設語言包應包含 `chi_sim`、`chi_tra`，還是由使用者在文件層指定？ **[Needs Confirmation]**
+3. 已定案：系統 `zh` 映射涵蓋 `chi_sim`、`chi_tra`；全 registry 為預設，顯式辨識提示不改變安裝支援範圍。 **[Maintainer-Provided] + [Code-Confirmed]**
 4. OCR text cache 長期是否要升級為 preparation artifact cache，而不是 `doc_loaders/` local raw-text cache？ **[Needs Confirmation]**
 5. Low-quality OCR 應新增專用 exception type，還是重用 `RawTextOcrFailedError` 並以 stable detail code 表示？ **[Needs Confirmation]**
 6. OCR quality threshold 應固定於 `doc_loaders/`，還是由 runtime config 控制？ **[Needs Confirmation]**

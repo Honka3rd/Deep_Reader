@@ -5,6 +5,8 @@ from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 from pathlib import Path
+from uuid import uuid4
+from document_structure.learning_lifecycle import guard_source_transition
 from typing import Any
 
 from config.storage_namespace_helper import StorageNamespaceHelper
@@ -71,6 +73,15 @@ class PostgresStructuredDocumentStore:
         self._namespace = namespace.strip() or "default"
         self._schema_version = schema_version
 
+    @property
+    def dsn(self):
+        """Connection identity for composition; never expose in transport/logs."""
+        return self._dsn
+
+    @property
+    def namespace(self):
+        return self._namespace
+
     def save(
         self,
         document: StructuredDocument,
@@ -105,6 +116,9 @@ class PostgresStructuredDocumentStore:
             if not (_preserve_reading_state and _connection is not None):
                 metadata_payload["parse_provenance"].pop("reading_content",None)
             metadata_payload["parse_provenance"].pop("reading_projected",None)
+        if replace_existing_hierarchy:
+            metadata_payload["parse_provenance"]["interaction_epoch"] = uuid4().hex
+        current_source_document = None
         psycopg, dict_row, Jsonb = self._load_psycopg()
         with (nullcontext(_connection) if _connection is not None else
               psycopg.connect(self._dsn, row_factory=dict_row)) as connection:
@@ -121,6 +135,7 @@ class PostgresStructuredDocumentStore:
                     (resolved.namespace, resolved.document_name),
                 ).fetchone()
                 if existing_row is None:
+                    metadata_payload["parse_provenance"]["interaction_epoch"] = uuid4().hex
                     row = connection.execute(
                         """
                         INSERT INTO documents (
@@ -185,14 +200,8 @@ class PostgresStructuredDocumentStore:
                         event_type = "hard_reparse"
                     else:
                         structure_version = previous_structure_version
-                        previous_artifacts = DocumentTaskArtifacts.from_dict(
-                            (existing_row.get("metadata_payload") or {}).get("document_task_artifacts"))
-                        previous_provenance = (existing_row.get("metadata_payload") or {}).get("parse_provenance", {})
-                        previous = replace(document, document_task_artifacts=previous_artifacts,
-                                           parse_provenance=previous_provenance)
-                        if (previous_provenance.get("reading_content", {}).get("revision", 0)
-                                != document.parse_provenance.get("reading_content", {}).get("revision", 0)):
-                            previous = self.load_enhancement_snapshot(resolved, _connection=connection).document
+                        previous = self.load_enhancement_snapshot(resolved, _connection=connection).document
+                        current_source_document = previous
                         document = preserve_explicit_annotations(previous, document)
                         metadata_payload["parse_provenance"] = document.parse_provenance
                         metadata_payload["document_task_artifacts"] = (
@@ -258,6 +267,7 @@ class PostgresStructuredDocumentStore:
                     parse_provenance={**metadata_payload["parse_provenance"],
                                       "storage_structure_version": structure_version},
                 ))
+                persisted_document = guard_source_transition(current_source_document, persisted_document)
                 metadata_payload["parse_provenance"] = persisted_document.parse_provenance
                 payload = self._snapshot_payload(persisted_document)
                 connection.execute(
@@ -323,6 +333,7 @@ class PostgresStructuredDocumentStore:
                 raise FileNotFoundError("document_missing")
             document = self.load_enhancement_snapshot(target,_connection=connection).document
             updated,result = mutation(document)
+            updated = guard_source_transition(document, updated)
             if updated != document:
                 from document_structure.source_review_blocks import persist_region_mapping
 
@@ -434,9 +445,11 @@ class PostgresStructuredDocumentStore:
             return result
 
     def rename_document(self, target, new_name, transform):
+        from db import learning_lifecycle
         resolved = self._resolve_target(target)
         psycopg, dict_row, Jsonb = self._load_psycopg()
         with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+            preferences = learning_lifecycle.lock_preferences(connection, self._dsn, resolved.namespace, resolved.document_name)
             connection.execute("LOCK TABLE documents IN ROW EXCLUSIVE MODE")
             row = connection.execute("SELECT id, metadata_payload FROM documents "
                 "WHERE namespace=%s AND document_name=%s FOR UPDATE",
@@ -448,6 +461,11 @@ class PostgresStructuredDocumentStore:
                 raise ValueError("conflict")
             document = self.load_enhancement_snapshot(target, _connection=connection).document
             renamed = transform(document, new_name)
+            from document_structure.learning_lifecycle import effective_sources
+            if (renamed.document_id != new_name or effective_sources(renamed) != effective_sources(document)
+                    or renamed.parse_provenance != document.parse_provenance):
+                raise ValueError('learning_rename_source_changed')
+            learning_lifecycle.rename(connection, row['id'], preferences, resolved.document_name, new_name)
             metadata = dict(row["metadata_payload"] or {})
             metadata["title"] = renamed.title
             metadata["document_task_artifacts"] = (renamed.document_task_artifacts.to_dict()
@@ -538,86 +556,98 @@ class PostgresStructuredDocumentStore:
                         )
 
     def load(
-        self,
-        target: str | StructuredDocumentStorageConfig | PostgresStructuredDocumentTarget,
+        self, target: str | StructuredDocumentStorageConfig | PostgresStructuredDocumentTarget,
     ) -> StructuredDocument:
-        """Load the current structured document from PostgreSQL relational rows."""
-        resolved = self._resolve_target(target)
+        """Load the current hierarchy in one read-only MVCC snapshot."""
         psycopg, dict_row, _ = self._load_psycopg()
         with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
             connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            document_row = connection.execute(
-                """
-                SELECT d.id,
-                       d.document_name,
-                       d.current_structure_version,
-                       d.metadata_payload,
-                       r.source_location
-                FROM documents d
-                LEFT JOIN raw_source_metadata r
-                  ON r.document_id = d.id
-                WHERE d.namespace = %s
-                  AND d.document_name = %s
-                """,
-                (resolved.namespace, resolved.document_name),
-            ).fetchone()
-            if document_row is None:
-                raise FileNotFoundError(
-                    "PostgresStructuredDocumentStore.load: document not found: "
-                    f"namespace={resolved.namespace} document_name={resolved.document_name}"
-                )
-            document_id = int(document_row["id"])
-            chapter_rows = connection.execute(
-                """
-                SELECT id,
-                       title,
-                       level,
-                       chapter_role,
-                       metadata_payload
-                FROM chapters
-                WHERE document_id = %s
-                ORDER BY chapter_order, id
-                """,
-                (document_id,),
-            ).fetchall()
-            section_rows = connection.execute(
-                """
-                SELECT id,
-                       chapter_id,
-                       section_order,
-                       title,
-                       level,
-                       content,
-                       char_start,
-                       char_end,
-                       container_title,
-                       section_role,
-                       section_kind,
-                       is_implicit_section,
-                       metadata_payload
-                FROM sections
-                WHERE document_id = %s
-                ORDER BY chapter_id, section_order, id
-                """,
-                (document_id,),
-            ).fetchall()
-            task_unit_rows = connection.execute(
-                """
-                SELECT id,
-                       section_id,
-                       task_unit_order,
-                       title,
-                       container_title,
-                       content_payload,
-                       source_section_ids_payload,
-                       is_fallback_generated,
-                       metadata_payload
-                FROM task_units
-                WHERE document_id = %s
-                ORDER BY section_id, task_unit_order, id
-                """,
-                (document_id,),
-            ).fetchall()
+            return self.load_in_transaction(target, connection=connection)
+
+    def load_in_transaction(
+        self, target: str | StructuredDocumentStorageConfig | PostgresStructuredDocumentTarget, *, connection,
+    ) -> StructuredDocument:
+        """Read canonical hierarchy using the caller's snapshot/locks; never commit.
+
+        Caller must own an active transaction, and lock the document first for
+        guarded writes. Backend composition supplies the configured namespace.
+        """
+        from psycopg.pq import TransactionStatus
+        if connection.info.transaction_status != TransactionStatus.INTRANS:
+            raise ValueError("document_transaction_required")
+        resolved = self._resolve_target(target)
+        document_row = connection.execute(
+            """
+            SELECT d.id,
+                   d.document_name,
+                   d.current_structure_version,
+                   d.metadata_payload,
+                   r.source_location
+            FROM documents d
+            LEFT JOIN raw_source_metadata r
+              ON r.document_id = d.id
+            WHERE d.namespace = %s
+              AND d.document_name = %s
+            """,
+            (resolved.namespace, resolved.document_name),
+        ).fetchone()
+        if document_row is None:
+            raise FileNotFoundError(
+                "PostgresStructuredDocumentStore.load: document not found: "
+                f"namespace={resolved.namespace} document_name={resolved.document_name}"
+            )
+        document_id = int(document_row["id"])
+        chapter_rows = connection.execute(
+            """
+            SELECT id,
+                   title,
+                   level,
+                   chapter_role,
+                   metadata_payload
+            FROM chapters
+            WHERE document_id = %s
+            ORDER BY chapter_order, id
+            """,
+            (document_id,),
+        ).fetchall()
+        section_rows = connection.execute(
+            """
+            SELECT id,
+                   chapter_id,
+                   section_order,
+                   title,
+                   level,
+                   content,
+                   char_start,
+                   char_end,
+                   container_title,
+                   section_role,
+                   section_kind,
+                   is_implicit_section,
+                   metadata_payload
+            FROM sections
+            WHERE document_id = %s
+            ORDER BY chapter_id, section_order, id
+            """,
+            (document_id,),
+        ).fetchall()
+        task_unit_rows = connection.execute(
+            """
+            SELECT id,
+                   section_id,
+                   task_unit_order,
+                   title,
+                   container_title,
+                   content_payload,
+                   source_section_ids_payload,
+                   is_fallback_generated,
+                   metadata_payload
+            FROM task_units
+            WHERE document_id = %s
+            ORDER BY section_id, task_unit_order, id
+            """,
+            (document_id,),
+        ).fetchall()
         return self._build_document_from_rows(
             document_row=document_row,
             chapter_rows=chapter_rows,
@@ -1038,14 +1068,17 @@ class PostgresStructuredDocumentStore:
     def _commit_cleanup_state(self, connection, document_id, staged, outcome, Jsonb):
         """Shared transaction-local cleanup write, never an independent commit."""
         from document_structure.ocr_cleanup_overlay import invalidate_generated
-        row = connection.execute("SELECT structured_document_payload FROM structured_document_snapshots "
-                                 "WHERE document_id=%s", (document_id,)).fetchone()
+        row = connection.execute("SELECT s.structured_document_payload, s.source_structure_version "
+                                 "FROM structured_document_snapshots s JOIN documents d ON d.id=s.document_id "
+                                 "AND d.current_structure_version=s.source_structure_version WHERE s.document_id=%s", (document_id,)).fetchone()
         if row is None:
             raise EnhancementCommitConflict("enhancement_snapshot_missing")
         snapshot = StructuredDocument.from_dict(row["structured_document_payload"])
         from document_structure.cleanup_history import bind_cleanup_record_links
+        before = snapshot
         snapshot = bind_cleanup_record_links(replace(snapshot, parse_provenance={**snapshot.parse_provenance,
             "reading_content": staged.parse_provenance["reading_content"]}))
+        snapshot = guard_source_transition(before, snapshot)
         state = snapshot.parse_provenance["reading_content"]
         connection.execute("UPDATE documents SET metadata_payload=jsonb_set(metadata_payload, "
             "'{parse_provenance,reading_content}', %s),updated_at=NOW() WHERE id=%s",
@@ -1061,7 +1094,8 @@ class PostgresStructuredDocumentStore:
             connection.execute("DELETE FROM artifacts WHERE document_id=%s AND artifact_type NOT IN ('note','notes')",
                                (document_id,))
         connection.execute("UPDATE structured_document_snapshots SET structured_document_payload=%s "
-                           "WHERE document_id=%s", (Jsonb(self._snapshot_payload(snapshot)), document_id))
+                           "WHERE document_id=%s AND source_structure_version=%s",
+                           (Jsonb(self._snapshot_payload(snapshot)), document_id, row["source_structure_version"]))
 
     @contextmanager
     def enhancement_lease(self, target):
@@ -1085,10 +1119,12 @@ class PostgresStructuredDocumentStore:
         target: str | StructuredDocumentStorageConfig | PostgresStructuredDocumentTarget,
     ) -> bool:
         """Permanently remove one document and its FK-owned rows in one transaction."""
+        from db import learning_lifecycle
         resolved = self._resolve_target(target)
         psycopg, dict_row, _ = self._load_psycopg()
         with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
             with connection.transaction():
+                preferences = learning_lifecycle.lock_preferences(connection, self._dsn, resolved.namespace, resolved.document_name)
                 deleted = connection.execute(
                     """
                     DELETE FROM documents
@@ -1097,6 +1133,8 @@ class PostgresStructuredDocumentStore:
                     """,
                     (resolved.namespace, resolved.document_name),
                 ).fetchone()
+                if deleted is not None:
+                    learning_lifecycle.delete_preferences(connection, preferences, resolved.document_name)
         return deleted is not None
 
     def list_documents(

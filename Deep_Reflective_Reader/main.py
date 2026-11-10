@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from smart_cleanup_routes import router as smart_cleanup_router
 from translation_routes import router as translation_router
+from learning_routes import router as learning_router, learning_lifespan
 from pydantic import ValidationError
 from doc_loaders.pdf_extraction_contract import PdfExtractionError, PdfExtractionFailureReason
 
@@ -119,12 +120,15 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Deep Reader API",
     version="0.1.0",
+    lifespan=learning_lifespan,
 )
 app.include_router(smart_cleanup_router)
 app.include_router(translation_router)
+app.include_router(learning_router)
 
 # ⭐ QA coordinator 是自由問答主線 singleton
 qa_coordinator = QACoordinator()
+app.state.learning_container = qa_coordinator.container
 section_task_coordinator = qa_coordinator.container.section_task_coordinator()
 app.state.smart_cleanup_service = qa_coordinator.container.smart_cleanup_service()
 app.state.translation_action = qa_coordinator.container.translation_action()

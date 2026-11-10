@@ -65,7 +65,7 @@ export function SourceReviewBlockEditor({ block, regionId, mode, busy, error, on
         minRows={5} maxRows={14} value={text} disabled={busy || !block.review_repair?.can_edit}
         onChange={event => setText(event.target.value)} error={count > 10000} helperText={`${count} / 10000`} sx={{ mt: 2 }} />
         : <Typography className="source-review-block-confirmation" sx={{ mt: 2 }}>{mode === "keep"
-          ? "Confirm this text is correct? Its entries will be removed from Source review and cannot be edited here again. This cannot be undone. Reading content and interactions are kept; the reader's Edit action remains available."
+          ? "Confirm this text is correct? Its entries will be removed from Extracted text review and cannot be edited here again. This cannot be undone. Reading content and interactions are kept; the reader's Edit action remains available."
           : "Delete only this block from reading content, including its interactions and Notes? Other related blocks are unchanged. Undo restores text, not deleted interactions."}</Typography>}
       {confirmEdit && <Typography className="source-review-block-interaction-consent" sx={{ mt: 2 }}>
         Changed text always clears translations and affected summaries. Keep preserves other interactions and Notes; Clear deletes them too. Identical text changes nothing.

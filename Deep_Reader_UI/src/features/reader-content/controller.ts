@@ -113,7 +113,7 @@ export function useReaderContentController({
         const block = target.block;
         const selected = nextBlocks.find(item => item.block_id === block.block_id
           && item.ownerContext.taskUnitId === block.task_unit_id);
-        if (!selected) throw new Error("This block is no longer in the current content. Refresh source review.");
+        if (!selected) throw new Error("This block is no longer in the current content. Refresh text review.");
         // Content batches have no snapshot token. Revalidate the bounded target before publication.
         const latest = await readingContentService.read(docName, new URLSearchParams({ block_id: block.block_id }), abort.signal);
         if (abort.signal.aborted || contentRequestIdRef.current !== requestId
@@ -124,7 +124,7 @@ export function useReaderContentController({
           || current.chapter_id !== block.chapter_id || current.section_id !== block.section_id
           || current.task_unit_id !== block.task_unit_id || current.content !== block.content
           || !matchesReviewDisplayContent(selected.content, current.content, selected.metadata?.display_normalization)) {
-          throw new Error("Content changed. Refresh source review.");
+          throw new Error("Content changed. Refresh text review.");
         }
       }
       setContentBlocks(nextBlocks);
@@ -143,7 +143,7 @@ export function useReaderContentController({
         return;
       }
       setContentStatus("error");
-      // Source review owns navigation failures inside its modal focus boundary.
+      // Extracted text review owns navigation failures inside its modal focus boundary.
       setContentError(target ? "" : error instanceof Error ? error.message : String(error));
       if (throwOnError) throw error;
     } finally { signal?.removeEventListener("abort", cancel); }

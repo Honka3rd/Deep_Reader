@@ -1,3 +1,4 @@
+import { ReaderModeBoundary, LearningBlockBody, LearningBlockDetails, useOrdinaryTranslations, type ReaderModeScope } from "../learning-reader";
 import { InlineTranslations, type InlineTranslationViewState } from "../block-translation";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import TranslateIcon from "@mui/icons-material/Translate";
@@ -42,6 +43,7 @@ import {
 } from "./model";
 
 interface ReaderContentViewProps {
+  readingMode?: ReaderModeScope;
   onVisibleTranslationBlocksChange?: (blocks: ReaderContentBlock[]) => void;
   getInlineTranslationState?: (block: ReaderContentBlock) => InlineTranslationViewState;
   navigationTarget?: ReviewNavigationTarget | null;
@@ -78,6 +80,7 @@ interface ReaderContentViewProps {
 }
 
 export function ReaderContentView({
+  readingMode,
   onVisibleTranslationBlocksChange,
   getInlineTranslationState,
   navigationTarget,
@@ -106,14 +109,6 @@ export function ReaderContentView({
   const activeGroups = contentGroups.slice(displayPageIndex, displayPageIndex + 1);
   const visibleTranslationBlocks = contentStatus !== "success" ? [] : activeGroups.length
     ? activeGroups.flatMap(group => group.blocks) : contentBlocks.slice(displayPageIndex, displayPageIndex + 1);
-  const visibleTranslationKey = JSON.stringify(visibleTranslationBlocks.map(block =>
-    [block.block_id, block.content, block.ownerContext.sourceHash]));
-  useEffect(() => {
-    onVisibleTranslationBlocksChange?.(visibleTranslationBlocks);
-    return () => onVisibleTranslationBlocksChange?.([]);
-    // Report identity changes, not new array instances from ordinary rendering.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onVisibleTranslationBlocksChange, visibleTranslationKey]);
   const pageAnchor = useRef<{ blockId: string; taskUnitId: string } | null>(null);
   const focusedNavigation = useRef<number | null>(null);
   const highlight = useReviewHighlight(navigationTarget, contentGroups, contentStatus === "success", pageListRef);
@@ -250,13 +245,17 @@ export function ReaderContentView({
   }
 
   return (
-    <Box className="reader-content">
+    <ReaderModeBoundary scope={readingMode} blocks={visibleTranslationBlocks} onVisibleBlocks={onVisibleTranslationBlocksChange}>
+    {({ ordinary, status, modeControl, forwardBlocked, forwardBlockReason }) => <Box className="reader-content">
       <Box component="header" className="content-header reader-content-header">
+        <Stack className="reader-content-mode-row" direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
         <Typography className="eyebrow reader-content-context" color="text.secondary">
           {[selectedSection.section.container_title, selectedSection.chapter.title]
             .filter(Boolean)
             .join(" / ")}
         </Typography>
+        {modeControl}
+        </Stack>
         <Typography className="reader-content-title" component="h1" variant="h1">
           {headingFromSelection(selectedSection)}
         </Typography>
@@ -319,8 +318,9 @@ export function ReaderContentView({
                 className="reader-content-page-next"
                 size="small"
                 variant="outlined"
-                disabled={!canGoNext}
-                onClick={() => { pageAnchor.current = null;
+                disabled={!canGoNext || forwardBlocked}
+                title={forwardBlockReason || "Next page"}
+                onClick={() => { if (forwardBlocked) return; pageAnchor.current = null;
                   setCurrentPageIndex((current) => Math.min(pageCount - 1, current + 1)); }}
               >
                 Next
@@ -329,9 +329,9 @@ export function ReaderContentView({
                 className="reader-content-page-last"
                 size="small"
                 aria-label="Last page"
-                title="Last page"
-                disabled={!canGoNext}
-                onClick={() => { pageAnchor.current = null; setCurrentPageIndex(Math.max(0, pageCount - 1)); }}
+                title={forwardBlockReason || "Last page"}
+                disabled={!canGoNext || forwardBlocked}
+                onClick={() => { if (forwardBlocked) return; pageAnchor.current = null; setCurrentPageIndex(Math.max(0, pageCount - 1)); }}
                 sx={{ width: 32, height: 32 }}
               >
                 <LastPageIcon fontSize="small" />
@@ -344,6 +344,7 @@ export function ReaderContentView({
             spacing={2.25}
             className="content-blocks reader-content-block-list reader-content-block-list-oversized"
           >
+            {status}
             {activeGroups.length > 0
               ? activeGroups.map((group) => (
                   <ReaderContentGroupView
@@ -434,7 +435,7 @@ export function ReaderContentView({
             onClose={closeContentBlockInteractionMenu}
           >
             {summaryNoteMenuItems(selectContentBlockInteraction)}
-            {onTranslateBlock && (["translate", "view"] as const).map(mode => <MenuItem key={mode}
+            {ordinary && onTranslateBlock && (["translate", "view"] as const).map(mode => <MenuItem key={mode}
               className={`reader-content-block-${mode === "translate" ? "translate" : "translations"}-action`}
               onClick={() => {
                 const selected = contentBlockInteractionMenu;
@@ -493,7 +494,8 @@ export function ReaderContentView({
           </Menu>
         </>
       ) : null}
-    </Box>
+    </Box>}
+    </ReaderModeBoundary>
   );
 }
 
@@ -636,6 +638,7 @@ function ContentBlockView({
   ) => void;
   onRefreshInlineInsight?: (targetKey: string) => void;
 }) {
+  const ordinary = useOrdinaryTranslations();
   const interactionEligibility = contentBlockInteractionEligibility(block);
   const showBlockInteraction = showInteraction && interactionEligibility.eligible;
   const blockLabel = block.block_id.trim() || `content block ${index + 1}`;
@@ -690,9 +693,10 @@ function ContentBlockView({
           </IconButton>
         ) : null}
       </Stack>
-      <Typography className="reader-content-block-body" variant="body1">
-        {highlighted ? <mark className="reader-content-navigation-highlight">{block.content}</mark> : block.content}
+      <Typography className="reader-content-block-body" component="div" variant="body1">
+        <LearningBlockBody block={block} highlighted={highlighted} />
       </Typography>
+      <LearningBlockDetails block={block} />
       {insight ? (
         <InlineInsightRegion
           className="reader-content-block-inline-insight"
@@ -702,7 +706,7 @@ function ContentBlockView({
           onRefresh={onRefreshInlineInsight}
         />
       ) : null}
-      <InlineTranslations {...translations} />
+      {ordinary && <InlineTranslations {...translations} />}
     </Box>
   );
 }

@@ -1,5 +1,131 @@
 # Deep_Reader_UI Checklist
 
+## Reader reading-mode control (2026-11-10)
+
+- [x] Show the current reading mode and open its settings directly from the reader.
+  Owner: Deep_Reader_UI. Status: Implemented and verified after documentation governance.
+  Acceptance: Compact authoritative mode label/entry in normal/fullscreen reader; reuse mode list/detail and guarded preference saves, return to the same page with a fresh mode read, preserve draft/focus/scroll and reject stale owner responses. No Library detour or hidden generation on settings open.
+  Evidence: `test-reader-mode-control.mjs` passes at 1280/390 using actual App/production preference and learning routes, temporary file storage and an offline provider: mode roundtrip, no Library detour, keyboard/focus, draft guard, duplicate prevention, rejected/unknown saves, read recovery, late owner responses, page/source-container retention, fullscreen and wrapping. Two provider calls total across widths; reused thereafter. Type/build plus reading-settings, Library modes, learning display/lifecycle regressions pass; screenshots inspected. Local Madame Bovary smoke confirms mode display/settings open-close with zero write/generate requests. See design for evidence limits; no paid model or production preference save.
+  Timestamp: 2026-11-10
+
+## Shared sentence translation (2026-11-09)
+
+- [x] Verify unchanged ordinary/learning presentation with shared translation reuse.
+  Owner: Deep_Reader_UI. Status: Implemented and verified.
+  Acceptance: Both modes reuse compatible aligned output; ordinary aggregation and learning sentence pairs retain their UI behavior. No automatic legacy migration or duplicate aggregate storage.
+  Evidence: 470 backend tests (35 shared cases); actual API/React at 1280/390 uses four offline calls for two paragraphs across both modes. Existing display/inline suites and type/build pass; backed-up English/Chinese excerpts remain unchanged.
+  Follow-up (2026-11-10): User performed learning-to-normal saved-translation flow; normal read returned 200 in 666.2 ms with zero generation requests/batch events in the captured window. Reference-block identity/revision and aggregate were verified separately by API/SQL. Reverse direction remains earlier automated evidence; no new manual UI layout or semantic claim. See [manual acceptance](../Deep_Reflective_Reader/section_tasks/module-detailed-design.md#manual-reuse-acceptance-2026-11-10).
+  Timestamp: 2026-11-10
+
+
+## Library reading-mode labels (2026-11-09)
+
+- [x] Show authoritative reading-mode labels on first Library open and refresh them across lifecycle changes.
+  Owner: Deep_Reader_UI. Status: Implemented and verified.
+  Acceptance: Visible rows read preferences with at most two concurrent requests; loading and failure stay explicit, with read-only Retry. Reopen, Refresh, settings return, identity changes and filter removal invalidate observations; stale results cannot overwrite current labels. No settings mutation or content generation.
+  Evidence: `npm run check`; new Library mode regression at 1280/390 (200 books, initially 7/3 visible reads); reading-settings, Library identity and readiness suites pass. Desktop/mobile screenshots inspected; local API read-only smoke displays labels without mutations.
+  Timestamp: 2026-11-09
+
+## Persistent current-page learning progress (2026-11-09)
+
+- [x] Keep overall learning progress visible when collapsed and guard forward pagination.
+  Owner: Deep_Reader_UI. Status: Implemented and verified.
+  Acceptance: Confirmed completion counts and an accessible progress bar remain outside paragraph details. Next/Last are disabled during initialization, queued/running tasks, wait timeout and unconfirmed observation; verified terminal failures release navigation without fake completion. No extra polling, generation or server-state authority.
+  Evidence: `npm run check`; 19 controller groups; reader/display/lifecycle suites at 1280/390; held mode/wait, collapsed and keyboard progress, guarded forward controls with no off-page commands, stale responses, refresh/terminal failure and stable focus/scroll. Desktop/mobile screenshots inspected. Actual API/temporary file/offline provider Reader passes at both widths with four calls and zero reload regeneration.
+  Timestamp: 2026-11-09
+
+## Vocabulary filtering and completion observation (2026-11-09)
+
+- [x] Display filtered vocabulary and replace periodic polling with completion waiting.
+  Owner: Deep_Reader_UI. Status: Implemented and verified.
+  Acceptance: Retain server-validated hints, expose optional selection details and distinguish all-invalid from no hints. One wait per observation; timeout requires Check progress, with no automatic paid retry. Abort and stale guards remain.
+  Evidence: 16 controller groups; reader/display/lifecycle at 1280/390, keyboard details and inspected screenshots; type/build; real API/file/offline-provider Reader (4 calls, reload adds none); captured real-book API/SQL/Reader replay.
+  Timestamp: 2026-11-09
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**LLRN-17/18/19/21 implemented and verified (4/4 UI-owned tasks).** [Shared dependency queue](../Deep_Reflective_Reader/section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](../Deep_Reflective_Reader/section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 Deep_Reader_UI 的唯一 checklist；LLRN-22 系統驗收由 scripts 擁有；依 2026-10-29 maintainer 指示，模型語義評分移出該任務。
+
+### Learning reader compatibility fixes
+
+- [x] Apply the saved learning mode to backend paragraph blocks.
+  Owner: Deep_Reader_UI. Status: Implemented and verified.
+  Acceptance: Current-page source selection and sentence/vocabulary rendering use backend block identity rather than a `content` type whitelist; invalid identities remain rejected and ordinary translation entries remain hidden in learning mode.
+  Evidence: Paragraph-only `test-learning-reader.mjs` reproduced the failure before the fix and passes at 1280/390 afterward. Controller suite passes 16 groups, including mixed/omitted types and duplicate/missing/foreign identities; display/lifecycle suites and `npm run check` pass. Desktop/mobile screenshots inspected. Real local Madame Bovary smoke: 9 paragraph blocks, 12 sentence rows and successful preference/learning reads at both widths, with generation intercepted before backend dispatch and no model calls or user preference/source writes.
+  Timestamp: 2026-11-09
+
+### LLRN-17
+
+- [x] LLRN-17: Workspace and per-book reading settings UI.
+  Owner: Deep_Reader_UI. Status: Implemented and verified (settings UI only).
+  Depends on: LLRN-01, LLRN-16.
+  Deliverable: 集中母語入口；Library 每書單選普通/語言學習模式、有效原文校正、適用能力分級；型別 service 讀寫後端設定。 閱讀模式入口採可擴充 list/detail，桌面雙欄、手機單欄進退；共用 shell 與模式專屬設定 feature 分開。
+  Acceptance: 母語等於原文時不提供學習該語言選項，解釋禁用原因；未設齊不啟用；切書/取消/失敗不串設定，設定持久化不散落 localStorage。 Candidate 與 active 分開，按儲存並套用才切換；dirty draft 保護、不可用原因與未知模式處理明確，普通模式無學習必填欄位。
+  Evidence: `src/features/reading-settings/`、`src/services/ReadingPreferencesService.ts` 與 Library/App wiring；`npm run check` 通過。`scripts/test-reading-settings.mjs` 在 1280/390 Actual StrictMode App 通過：19-language backend catalog、純 model/DTO checks、candidate/active、dirty close/back/switch、same-language、source/level、strict identity、CAS/rejected/unknown recovery、double-click、held read/save close/reopen、workspace invalidation、keyboard/focus/scroll 與 200-row no-fanout（253/239ms）。實際 LLRN-16 API + temporary file storage 在兩寬度保存/reload/同語失效通過，provider 未呼叫；不等同 live model 或 SQL UI 驗收。Library identity/readiness 回歸通過；舊 workflow fixture 在 hierarchy 等待逾時，未宣稱全套 Library 通過。
+  Timestamp: 2026-10-28
+
+### LLRN-18
+
+- [x] LLRN-18: Current-page learning controller.
+  Owner: Deep_Reader_UI. Status: Implemented and verified (controller/recovery scope; display delivered separately in LLRN-19).
+  Depends on: LLRN-16, LLRN-17.
+  Deliverable: Feature-owned model/controller/typed service：當前閱讀頁先讀保存結果，僅有效 missing 明確送生成；有界併發、命令去重與 operation reconciliation。
+  Acceptance: 選用模式授權閱讀頁流程，無整書/下一頁預生成。Strict Mode/翻頁/切書/關閉不重複請求或套用舊狀態；read error/unknown 不轉新付費重試；每頁兩類輸出獨立。 僅 active reader mode 的 controller 啟動；候選預覽不排隊，切模式釋放舊 controller 並阻擋晚到資料。
+  Evidence: `src/features/learning-reader/`、`LearningService.ts` 與 App/ReaderContentView wiring；type/build 通過。`test-learning-controller.mjs` 14 組案例通過：50-block reads、2-workflow bound、read/source/settings guards、saved/empty reuse、dedup、abort、partial/unknown、receipt recovery、bounded polls、retry consent、refresh 與獨立結果保留。`test-learning-reader.mjs` 在 1280/390 Actual StrictMode App 通過 held/reordered responses、翻頁/切書/來源替換/模式往返、Library 暫停、離頁後 receipt recovery、無下一頁生成、keyboard recovery/scroll；截圖已檢查。`test-learning-reader-api.mjs` 在兩寬度使用真正 LLRN-16 API/lifespan、temporary file storage、固定 offline provider：兩個可見段落共 4 commands/provider calls，reload/reuse 不新增生成。Settings、reader guards 與 Library readiness 回歸通過；未呼叫真模型、未改使用者資料庫，不宣稱逐句 UI/SQL browser/語義品質驗收。
+  Follow-up evidence (LLRN-22): current saved/succeeded results remain reusable after a settings roundtrip without polling the historical completed operation. Explicit refresh uses current revisions; active/failed/unknown recovery remains guarded. Controller suite now passes 15 groups, plus type/build and 1280/390 actual learning API/disposable SQL with captured live output replay. No new provider calls in replay; scripts-owned LLRN-22 now accepts system behavior only, with historical semantic observations retained.
+  Timestamp: 2026-10-29
+
+### LLRN-19
+
+- [x] LLRN-19: Sentence-pair reading display.
+  Owner: Deep_Reader_UI. Status: Implemented and verified (display/actions; system integration evidence belongs to scripts, semantic scoring is outside current scope).
+  Depends on: LLRN-18.
+  Deliverable: 每句原文下接母語譯文，段落後接詞語提示，再接既有 Insight；學習模式隱藏普通 Translate/View translations 入口與普通 inline translation 區域。 共用 reader 依 mode ID 組裝 typed feature 呈現/actions，避免 App 或單一 controller 累積所有模式分支。
+  Acceptance: 長句自然換行，語言方向/輔助技術可辨識；原文在失敗/等待時仍可閱讀。翻譯與目前等級提示各自 refresh，舊結果到新提交前保留；普通模式恢復既有 session display 偏好。
+  Evidence: `learning-reader/block-view.tsx`、context/model/controller/session 與 reader wiring；type/build 通過。`test-learning-display.mjs` 在 1280/390 Actual StrictMode App 通過逐句與空白對齊、詞語先於 Insight、empty/partial/failed/unknown/read-error、混語/RTL/長字串、HTML 文字安全、刷新保留舊結果、stable DOM/scroll/keyboard focus、Cancel-first 重複費用確認及新命令 retry；模式往返恢復普通 session 偏好且無重複呈現/普通 reads。Mounted presentation probe 驗證只高亮原文及取消後保留譯文節點；桌面/手機截圖已檢查。LLRN-18 14 組 controller、當頁 lifecycle、普通 inline/focus/session 與 source-review navigation 回歸通過；真 API＋temporary file/offline provider 在兩寬度驗證逐句/譯文/詞語 DOM，兩可見段落共 4 commands/calls，reload 重用。未呼叫付費模型，未宣稱 SQL browser/部署/語義品質或 LLRN-20/21/22 完成。
+  Timestamp: 2026-10-29
+
+### LLRN-21
+
+- [x] LLRN-21: Reader lifecycle and accessibility acceptance.
+  Owner: Deep_Reader_UI. Status: Implemented and verified (controlled HTTP browser acceptance plus isolated file-backed API/offline provider smoke).
+  Depends on: LLRN-17, LLRN-18, LLRN-19, LLRN-20.
+  Deliverable: 以真正 App 加可控 HTTP 在桌面/手機驗收 Library 設定到當頁生成/閱讀/刷新/恢復完整流程。
+  Acceptance: 涵蓋 Strict Mode、雙擊、快速切換、關閉重開、正常模式回復、source edit/Undo、混語、空提示與有限併發；截圖與鍵盤檢查不能由 build 代替。
+  Evidence required: Type/build、browser traces/request counts、1280/390 截圖、焦點/長文/scroll 證據；mock 通過不宣稱真實 API/模型通過。 模式 list/detail 鍵盤、active/candidate 區分、手機返回、dirty 切換/取消/關閉、錯誤後保留設定及未知 mode；以測試用第三種 mode 驗證 list/shell 擴充，不把它發布為新產品模式。
+  Evidence: `accept-learning-reader.mjs` passes type/build and ten controller/browser suites, including 14 controller groups and new `test-learning-lifecycle.mjs` at 1280/390. Continuous settings → reading → refresh → edit/Undo → normal flow makes seven unique commands per width over three source tokens, no next-page generation. Test-only third-mode keyboard/step/draft lifecycle exposed and fixed confirmation unmounting the active panel; Keep editing now retains local steps and hidden controls are excluded from Tab/accessibility navigation. Existing fault, concurrency, mode, ordinary translation/session, source navigation and mixed/RTL/long-text regressions pass. Actual learning API/temp file/offline provider smoke makes four calls for two visible blocks, reload reuse passes and fixture cleans up. Traces, request counts, reviewed screenshots, hashes and logs: `Deep_Reflective_Reader/data/test-books/learning-reader/llrn21-20261028/`. Existing bundle warning retained; no SQL browser/live-model/semantic-quality claim. Backend progress is unchanged.
+  Timestamp: 2026-10-28
+
+## One-click Interaction Activation (2026-10-27)
+
+- [x] UI-ACTIVATE-01: Generate missing Insights, Summary, Quiz and Critical thinking after one explicit selection.
+  Acceptance: Read first; only valid missing state generates once. Preserve saved content/answers, no generation on failed/stale/mismatched reads or passive navigation. Deduplicate, cancel obsolete requests, suppress late results; retry reconciles saved state. Note and explicit Refresh remain unchanged.
+  Evidence: npm run check passes; test-interaction-activation.mjs passes at 1280/390 with actual React Strict Mode and controlled APIs: four one-click flows, saved sessions/answers, 11 read-failure/mismatch states per action, no automatic retry, explicit retry reconciliation, close during read/generate, deduplication, target/document switching and Note draft protection. Summary stale-to-explicit-Refresh also passes a focused rerun at both widths. test-reader-guards.mjs passes 42 identity cases and lifecycle recovery; test-hierarchy-interaction-menus.mjs passes both widths with the real 451-unit layout and mocked saved interactions. Desktop/mobile screenshots inspected. No live model generation or document mutation was performed. Additional legacy test-reader-recovery.mjs stops later at Enhance because its activity-status fixture is missing; not claimed as a full pass.
+  Timestamp: 2026-10-27
+
+## Irreversible Ignore All OCR Flags (2026-10-27)
+
+- [x] UI-IGNOREALL-01: Ignore every pending OCR flag with explicit irreversible confirmation.
+  Acceptance: Whole-document atomic scope, count/warning/Cancel-first confirmation, idempotent retry and stale-request safety; no body deletion or hidden reload. Prior and future Undo cannot revive bulk-ignored flags. Single Ignore remains reversible.
+  Evidence: IgnoreAllRegionsDialog and ReadingContentActions implement whole-document confirmation and same-command retry. npm run check and test-ignore-all-regions.mjs, test-source-review-navigation.mjs and test-cleanup-history.mjs pass at 1280/390. Browser coverage includes 25 regions across pages, Cancel-first focus, duplicate clicks, failed/lost-response retry, one logical commit, no body/layout reload, disabled empty action/Undo, unmount and late-response suppression; screenshots inspected.
+  Timestamp: 2026-10-27
+
+
+## OCR Review Action Visibility (2026-10-27)
+
+- [x] UI-OCRREVIEW-01: Restrict document review actions to PDFs with persisted OCR evidence.
+  Acceptance: Full OCR and actual Auto OCR remain visible, including after resolution; native/fast PDF, non-PDF, missing/stale evidence remain hidden. Preserve ordinary body edit/delete and stale-response safety. No extraction or persistence on reads.
+  Evidence: npm run check and test-ocr-review-visibility.mjs, test-reading-content-requests.mjs, test-source-review-navigation.mjs and test-cleanup-history.mjs pass at 1280/390. OCR-only entry/Undo, completed review, missing capability/loading, late response isolation, ordinary text Edit and review-close keyboard focus verified; screenshots inspected. Existing mocked OCR fixtures now declare the capability.
+  Timestamp: 2026-10-27
+
+
+## Extracted Text Review Terminology (2026-10-27)
+
+- [x] UI-TEXTREVIEW-01: Clarify the extracted-text checking and correction module.
+  Acceptance: Entry Review extracted text, dialog Extracted text review, tab Flagged areas; concise purpose description and consistent accessible/refresh/confirmation/empty-state copy. Keep unresolved/ignored semantics accurate and backend contracts unchanged. Verify build and existing desktop/mobile review/navigation/history flows, keyboard tabs and fitted screenshots.
+  Evidence: ReadingContentActions, SourceReviewBlockRepair and related refresh/result copy updated after design governance. npm run check, test-source-review-navigation.mjs, test-source-review-state.mjs and test-cleanup-history.mjs passed; 1280px/390px screenshots inspected for title/description/tab fit. Existing keyboard-tab, navigation, draft/scroll retention, history and snapshot-guard coverage passed.
+  Timestamp: 2026-10-27
+
 ## Chapter / Section Tree Navigation (2026-10-26)
 
 - [x] UI-NAV-TREE-01: Replace the chapter list presentation with an accessible MUI tree and readable long titles.
@@ -269,14 +395,14 @@ these tasks. Enable each action only after its actual backend contract is availa
 
 - [x] SN-17: Add typed summary/note adapters and hierarchy-aware action entry points.
   Depends on: SN-08/09; bind each action only after SN-12 or SN-13 respectively.
-  Acceptance: Use the existing document/chapter/section/unit/block target identity paths and menu conventions; distinct Summary and Note actions without aliasing analysis. Read-only opening, request cancellation, document/target switching, missing/stale/error states and late-response isolation. No heavy payloads in task-layout or fictional endpoints; note can be delivered while summary is still unavailable.
-  Evidence: `SummaryNoteService.ts`, `SummaryNoteMenuItems.tsx`, App identity validation and keyed/abortable drawer. Existing five target paths and menus are reused, including an explicit section menu on merged chapter/section rows. Actual API browser checks pass at 1280px/390px with no generation/save on opening.
-  Timestamp: 2026-10-21
+  Acceptance: Use the existing document/chapter/section/unit/block target identity paths and menu conventions; distinct Summary and Note actions without aliasing analysis. Read-first activation (UI-ACTIVATE-01), request cancellation, document/target switching, missing/stale/error states and late-response isolation. No heavy payloads in task-layout or fictional endpoints; note can be delivered while summary is still unavailable.
+  Evidence: `SummaryNoteService.ts`, `SummaryNoteMenuItems.tsx`, App identity validation and keyed/abortable drawer. Existing five target paths and menus are reused, including an explicit section menu on merged chapter/section rows. Historical actual API browser checks passed at 1280px/390px with no generation/save on opening; missing Summary activation is superseded by UI-ACTIVATE-01.
+  Timestamp: 2026-10-27
 - [x] SN-18: Implement read-first Summary presentation and explicit generate/refresh.
   Depends on: SN-05/10/12/17.
-  Acceptance: Dedicated scrollable drawer consistent with existing interactions; no default generation on opening. Show persisted summary or not-generated, explicit Generate/Refresh and pending/failure/insufficient/stale outcomes; preserve last usable content on failed refresh. All five levels, long text/mobile, document language and separate insight semantics. Reload reads persisted output rather than generating again.
+  Acceptance: Dedicated scrollable drawer consistent with existing interactions; explicit Summary selection generates once after a valid missing read (UI-ACTIVATE-01). Show persisted summary, explicit retry/Refresh and pending/failure/insufficient/stale outcomes; preserve last usable content on failed refresh. All five levels, long text/mobile, document language and separate insight semantics. Reload reads persisted output rather than generating again.
   Evidence: `SummaryNoteDrawer.tsx`, actual persisted two-book responses at all five levels, failed-refresh fault injection preserves headline/body, desktop/mobile screenshots reviewed. Full-height scrollable drawer avoids reader-pane overflow; build passes.
-  Timestamp: 2026-10-21
+  Timestamp: 2026-10-27
 - [x] SN-19: Implement bounded Note editing with explicit save/delete and draft guards.
   Depends on: SN-06/07/09/11/13/14/15/17.
   Acceptance: Reflect the agreed single/multiple-note contract, display matching Unicode length counter/limit and retain over-limit drafts without truncation. Explicit save and delete confirmation; dirty close/target-switch protection, failed-save recovery, stale/conflict feedback and pending duplicate-submit guards. No LLM or implicit autosave; backend remains note truth. Handle confirmed structural cleanup and unchanged/title-only preservation correctly.
@@ -433,12 +559,12 @@ order are in `Deep_Reflective_Reader/document_structure/module-detailed-design.m
 The completed Library/PDF-mode track below remains a separate historical scope.
 
 - [x] READER-01: Present genuine structure, LLM fallback and interaction recovery honestly.
-  Acceptance: Backend-supported implicit/no-TOC state does not produce fabricated headings; valid backend IDs preserve reading/actions/editing. Requested LLM versus effective common fallback is visible. Distinguish reasoned insufficient-content/stale/generation failures, offer explicit retry/refresh, invalidate stale local IDs after successful reparse, preserve state after failure, and never generate on menu/drawer open. Desktop/mobile regressions cover flat articles and real TOCs.
+  Acceptance: Backend-supported implicit/no-TOC state does not produce fabricated headings; valid backend IDs preserve reading/actions/editing. Requested LLM versus effective common fallback is visible. Distinguish reasoned insufficient-content/stale/generation failures, offer explicit retry/refresh, invalidate stale local IDs after successful reparse, preserve state after failure, and never generate on passive menu opening or navigation; explicit interaction selection follows UI-ACTIVATE-01. Desktop/mobile regressions cover flat articles and real TOCs.
   Depends on: NATIVE-05 and INTERACT-03; new backend provenance must be implemented and contract-tested before UI consumes it. No UI inference becomes backend truth.
   Additional scope (corrected 2026-10-19): Pre-prepare Auto/Present/Absent TOC declaration is independent of PDF extraction mode and snapshotted per request. Offer one LLM enhance action, not separate restoration/outline actions. Show generated origins from accepted chapter/section provenance, not the legacy request intent. Common single-body success permits Open without enhancement; failed enhancement preserves usable content/readiness. Cover auto-upload preparation, reprepare and explicit reparse without draft-triggered mutations.
   Evidence: `scripts/test-reader-recovery.mjs`, `test-library-pdf-modes.mjs` and all seven Library/reader browser suites pass (mocked APIs, desktop/mobile); `npm run check` passes. Backend `scripts/test_reader_provenance.py` passes four contract/read-only tests; task-layout readiness passes eleven. Accepted replacement clears old targets/content; rejected enhancement preserves reading. Non-2xx envelopes retain reason/status; stale thinking requires explicit new-question generation and failed requests preserve drafts. No deployment or live provider/private-document acceptance is claimed; NATIVE-06 owns that remaining scope.
   Correction evidence: `test-reader-recovery.mjs` passes at 1280px/390px with exactly one LLM enhance item and no LLM intent items; existing default wire value can display backend-generated titles. Build/typecheck passes; failure preservation and accepted ID replacement remain covered.
-  Timestamp: 2026-10-19
+  Timestamp: 2026-10-27
 
 ### Library Entry And Preparation Follow-up (2026-10-15)
 
@@ -781,8 +907,8 @@ runtime/API behavior is changed by this index update. Timestamp: 2026-10-16
 
 - [x] Add `ReadingInteractionService` after generic backend routes exist.
   Evidence: `Deep_Reader_UI/src/services/ReadingInteractionService.ts`; `Deep_Reader_UI/src/services/index.ts`; `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/reading-interactions/model.ts`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/App.tsx`; validation: `npm run check`.
-  Notes: Adds the first service-backed reading-interaction vertical slice for insight read/generate/refresh using the backend generic `/documents/reading-interactions/insight/*` routes. Selecting Insights performs a read-first call; Generate and Refresh are explicit write actions. The service/controller mapping uses the shared backend target/envelope/payload contract, does not call legacy quiz routes, does not mutate task-layout, and keeps inline expansion state frontend-local. Quiz and critical-thinking drawer API wiring remain follow-up tasks.
-  Timestamp: 2026-10-10
+  Notes: Adds the first service-backed reading-interaction vertical slice for insight read/generate/refresh using the backend generic `/documents/reading-interactions/insight/*` routes. Selecting Insights now performs read-or-generate activation (UI-ACTIVATE-01); Refresh remains explicit. The service/controller mapping uses the shared backend target/envelope/payload contract, does not call legacy quiz routes, does not mutate task-layout, and keeps inline expansion state frontend-local. Later items cover quiz and critical-thinking wiring.
+  Timestamp: 2026-10-27
 
 - [x] Add quiz API types and service methods.
   Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/services/ReadingInteractionService.ts`; validation: `npm run check`.
@@ -796,13 +922,13 @@ runtime/API behavior is changed by this index update. Timestamp: 2026-10-16
 
 - [x] Wire quiz drawer read-first lifecycle.
   Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; validation: `npm run check`.
-  Notes: Selecting `Quiz` opens the drawer and calls `ReadingInteractionService.readQuiz` against the generic `/documents/reading-interactions/quiz/read` route only. Returned `not_generated` artifacts render through the drawer state mapper without generation, refresh, task-layout mutation, prepare, or reparse. Stale read responses are ignored through the reading-interaction controller request guard, and local practice answers/reveal state remain drawer-local.
-  Timestamp: 2026-10-10
+  Notes: Selecting `Quiz` opens the drawer and calls `ReadingInteractionService.readQuiz` against the generic `/documents/reading-interactions/quiz/read` route first. As of UI-ACTIVATE-01, valid `not_generated` results trigger one separate generation request within the explicit selection; failures and stale reads do not. No task-layout mutation, prepare or reparse. Stale read responses are ignored through the reading-interaction controller request guard, and local practice answers/reveal state remain drawer-local.
+  Timestamp: 2026-10-27
 
 - [x] Wire quiz explicit generate and refresh actions.
   Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; validation: `npm run check`.
-  Notes: `Generate quiz` calls `ReadingInteractionService.generateQuiz` against `/documents/reading-interactions/quiz/generate`, and `Refresh quiz` calls `ReadingInteractionService.refreshQuiz` against `/documents/reading-interactions/quiz/refresh`. Both actions update drawer state through `mapQuizInteractionResponseToQuizViewState` and the shared request guard. Legacy `/documents/section-quiz` and `/documents/chapter-quiz` remain outside this flow. Generation and refresh are explicit write actions only; drawer open and read still never generate.
-  Timestamp: 2026-10-10
+  Notes: `Generate quiz` calls `ReadingInteractionService.generateQuiz` against `/documents/reading-interactions/quiz/generate`, and `Refresh quiz` calls `ReadingInteractionService.refreshQuiz` against `/documents/reading-interactions/quiz/refresh`. Both actions update drawer state through `mapQuizInteractionResponseToQuizViewState` and the shared request guard. Legacy `/documents/section-quiz` and `/documents/chapter-quiz` remain outside this flow. UI-ACTIVATE-01 adds generation after a valid missing read on explicit Quiz selection; retry reconciles saved state first and Refresh stays explicit. Read endpoints remain read-only.
+  Timestamp: 2026-10-27
 
 - [x] Add critical-thinking API types and service methods.
   Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/services/ReadingInteractionService.ts`; validation: `npm run check`.
@@ -816,13 +942,13 @@ runtime/API behavior is changed by this index update. Timestamp: 2026-10-16
 
 - [x] Wire critical-thinking drawer read-first lifecycle.
   Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; validation: `npm run check`.
-  Notes: Selecting `Critical thinking` opens the drawer and calls `ReadingInteractionService.readCriticalThinkingSession` against `/documents/reading-interactions/critical-thinking/read` only. Returned `not_generated` sessions render through the drawer state mapper without generating a question, submitting an answer, retrying evaluation, mutating task-layout, prepare, or reparse. Stale read responses are ignored through the reading-interaction controller request guard.
-  Timestamp: 2026-10-10
+  Notes: Selecting `Critical thinking` opens the drawer and calls `ReadingInteractionService.readCriticalThinkingSession` against `/documents/reading-interactions/critical-thinking/read` first. UI-ACTIVATE-01 generates one question after a valid missing response on explicit selection. Existing sessions/answers remain intact; submission and evaluation retry remain explicit. No task-layout mutation, prepare or reparse. Stale read responses are ignored through the reading-interaction controller request guard.
+  Timestamp: 2026-10-27
 
 - [x] Wire critical-thinking explicit generate, submit, and retry actions.
   Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; `Deep_Reader_UI/src/features/reading-interactions/view.tsx`; validation: `npm run check`.
-  Notes: `Generate question`, `Submit answer`, and `Retry evaluation` call their corresponding generic critical-thinking routes, update drawer state through `mapCriticalThinkingSessionResponseToViewState`, and use the shared request guard. Submit/retry include the shared target object plus backend `session_id`; retry does not regenerate the question. Draft answers remain frontend-local until submit, are cleared after submit/target close, and are not written to task-layout or treated as backend truth.
-  Timestamp: 2026-10-10
+  Notes: `Generate question`, `Submit answer`, and `Retry evaluation` call their corresponding generic critical-thinking routes, update drawer state through `mapCriticalThinkingSessionResponseToViewState`, and use the shared request guard. Submit/retry include the shared target object plus backend `session_id`; retry does not regenerate the question. Draft answers remain frontend-local until submit, are cleared after successful submission/new-question generation, but retained by target on close (ENH-REV-05); UI-ACTIVATE-01 read reuse does not clear them, and are not written to task-layout or treated as backend truth.
+  Timestamp: 2026-10-27
 
 - [x] Preserve task-unit interaction menu when content grouping uses compatibility payloads.
   Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/reader-content/model.ts`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/styles.css`; validation: `npm run check`.
@@ -858,8 +984,8 @@ runtime/API behavior is changed by this index update. Timestamp: 2026-10-16
 
 - [x] Route content-block actions through existing reading-interaction controller surfaces.
   Evidence: `Deep_Reader_UI/src/App.tsx`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/features/reading-interactions/controller.ts`; validation: `npm run check`.
-  Notes: Content-block menu selections now build a `content_block` `ReadingInteractionTarget` from response-owned block owner context, selected-section parent ids, `taskUnitId`, `contentBlockId`, and optional `sourceHash`, then route through the existing `selectInteractionAction` controller path. Content-block `Insights` render through the shared inline insight region under the selected block, while content-block `Quiz` and `Critical thinking` use the existing shared drawer read-first flow. This does not generate, refresh, prepare, reparse, mutate task-layout, persist UI state, or fall back to parent task-unit targets.
-  Timestamp: 2026-10-12
+  Notes: Content-block menu selections now build a `content_block` `ReadingInteractionTarget` from response-owned block owner context, selected-section parent ids, `taskUnitId`, `contentBlockId`, and optional `sourceHash`, then route through the existing `selectInteractionAction` controller path. Content-block `Insights` render through the shared inline insight region under the selected block, while content-block `Quiz` and `Critical thinking` use the existing shared drawer read-first flow. UI-ACTIVATE-01 now generates missing output after explicit selection and a valid read. There is no implicit refresh, prepare, reparse, task-layout mutation, UI-state persistence or fallback to parent task-unit targets.
+  Timestamp: 2026-10-27
 
 - [x] Consume content-block `interaction_availability` for lightweight menu/status hints.
   Evidence: `Deep_Reader_UI/src/types/api.ts`; `Deep_Reader_UI/src/features/reader-content/model.ts`; `Deep_Reader_UI/src/features/reader-content/view.tsx`; `Deep_Reader_UI/src/features/reading-interactions/model.ts`; validation: `npm run check`.

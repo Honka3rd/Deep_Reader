@@ -1,5 +1,62 @@
 # document_structure Checklist
 
+## Shared sentence translation (2026-11-09)
+
+- [x] Expose bounded current aligned translation reads and retain hierarchy/source lifecycle guards.
+  Owner: document_structure. Status: Implemented and verified.
+  Acceptance: Follow the shared sentence translation contract in section_tasks; preserve reads, compatibility and explicit generation boundaries.
+  Evidence: 470 backend tests pass, including 35 shared file/PostgreSQL cases; actual API/React mode roundtrips at 1280/390, two backed-up real-source offline cases and type/build checks pass. No duplicate aggregate is persisted.
+  Timestamp: 2026-11-09
+
+
+## Vocabulary filtering and completion observation (2026-11-09)
+
+- [x] Persist and verify vocabulary filtering assessments.
+  Owner: document_structure. Status: Implemented and verified.
+  Acceptance: Report is included in checkpoint/result durability; commit compares it with checkpoint aggregation. Legacy None encoding preserves digests; no read repair or SQL migration.
+  Evidence: File and real PostgreSQL assessment mismatch rejection; orchestration save/restart/reuse; legacy codec regression and real-book SQL replay.
+  Timestamp: 2026-11-09
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**LLRN-06/12 implemented and verified.** [Shared dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 document_structure 的唯一 checklist；來源 lifecycle ports 已交付；runtime 組裝已由 LLRN-15 交付，LLRN-16 production API 已交付，UI 及完整模式部署仍待後續任務。
+
+### LLRN-06
+
+- [x] LLRN-06: Hierarchy-aware learning repository and file adapter.
+  Owner: document_structure. Status: Implemented and verified (repository port, hierarchy source resolution and POSIX file adapter).
+  Depends on: LLRN-03, LLRN-05.
+  Deliverable: 定義 bounded batch read、atomic claim/commit/status repository port，實作 file adapter；從 hierarchy 解出有效 block 與 source binding。
+  Acceptance: 無 client parent IDs 或 raw source authority；claim/commit 共享版本規則，file lock/replace 與 durable receipt 有 crash recovery；不宣稱跨檔案天然原子性。
+  Evidence: `learning_repository.py`、`learning_source_resolver.py`、`learning_file_codec.py`、`learning_file_repository.py` 及兩個 file owner 公開 lock contexts；45 專測通過，另有 162 既有基礎/來源回歸通過。包含 6 程序 claim/4 程序 dispatch、source/settings 鎖競爭、replace 前後 fault/process exit、lost ack、durable history/receipt/checkpoint/output、純讀/分頁/跨書跨 scope/壞資料拒絕。未接線 SQL/API/UI；LLRN-12 全生命周期與跨檔案寫入協調仍待實作。
+  Timestamp: 2026-10-28
+
+### LLRN-12
+
+- [x] LLRN-12: Learning source and document lifecycle.
+  Owner: document_structure. Status: Implemented and verified at storage/source ports; orchestration/runtime composition delivered by LLRN-13/15.
+  Depends on: LLRN-06, LLRN-08.
+  Deliverable: 將所有學習輸出、切句與 operation binding 接入 edit/OCR apply/cleanup/delete/Undo/reparse/rename/document delete lifecycle。
+  Acceptance: 真正改文時原子清除或作廢受影響 block 的全部語言/等級輸出；Keep 不豁免 source validity。Undo 不倒退 epoch，不復活舊輸出/晚到提交；等文 no-op 保留 cache。
+  Evidence: `learning_lifecycle.py`、`learning_file_lifecycle.py`、source repository epoch guards、`reading_preferences/lifecycle.py` 與 transaction-local `db/learning_lifecycle.py`；`scripts/test_learning_lifecycle.py` 43 file/真 PostgreSQL tests 全通過，含多語/B1/C2、no-op、Keep/Clear、OCR draft/apply/Ignore、cleanup/history/restore、Undo/reparse、legacy save、rename 全歷史/非空 hints、刪除重建、並行 late writer/偏好保存、SQL rollback、file process exit/新實例 recovery/corrupt journal/衝突。基礎回歸 98 通過；來源/notes/cleanup/task-layout 回歸 190 項中 188 通過、2 私有真書 opt-in 略過；另 storage/cleanup 回歸 379 項中兩個過時 no-op 競爭 fixture 修正後已單獨通過（2 私有真書 opt-in 略過）。原有 SQL delete/cascade/namespace/retry executable 通過。未呼叫真模型、未部署 migration/API/UI；保留 LLRN-10/11 語義品質未通過的限制。
+  Timestamp: 2026-10-28
+
+## Irreversible Ignore All OCR Flags (2026-10-27)
+
+- [x] IGNOREALL-01: Ignore every pending OCR flag with explicit irreversible confirmation.
+  Acceptance: Whole-document atomic scope, count/warning/Cancel-first confirmation, idempotent retry and stale-request safety; no body deletion or hidden reload. Prior and future Undo cannot revive bulk-ignored flags. Single Ignore remains reversible.
+  Evidence: discard_all_regions validates OCR/source/revision and commits permanent decisions outside Undo. 64 focused file/API/disposable-PostgreSQL tests pass, including rollback after document write, concurrency, idempotency, all-page scope, previous/future Undo and unchanged source/body. Source-review/repair/cleanup regression runs 204 tests with 202 passing and 2 opt-in private-backup cases skipped. Local API rebuilt and health/OpenAPI verified; no live document flags changed.
+  Timestamp: 2026-10-27
+
+
+## OCR Review Action Visibility (2026-10-27)
+
+- [x] OCRREVIEW-01: Restrict document review actions to PDFs with persisted OCR evidence.
+  Acceptance: Full OCR and actual Auto OCR remain visible, including after resolution; native/fast PDF, non-PDF, missing/stale evidence remain hidden. Preserve ordinary body edit/delete and stale-response safety. No extraction or persistence on reads.
+  Evidence: ocr_review_availability projects validated extraction identity/evidence into ReadingContentResponse. 17 availability/reading-content tests pass, including API schema and snapshot purity; local API rebuilt, health passed and 12 existing documents read without mutations.
+  Timestamp: 2026-10-27
+
+
 ## Source-Dependent Interaction Lifecycle (2026-10-26)
 
 Implemented and verified: 2/2 owned tasks. [Shared queue](../section_tasks/module-checklist.md#persisted-block-translation-queue-2026-10-26).

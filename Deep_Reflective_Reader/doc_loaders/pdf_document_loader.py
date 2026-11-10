@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import unicodedata
 from dataclasses import replace
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -45,7 +46,7 @@ from .ocr_review import bind_review_spans, page_review_regions, review_record
 
 
 logger = logging.getLogger(__name__)
-OCR_QUALITY_VERSION = "observed-script-v6-geometry-fallback"
+OCR_QUALITY_VERSION = "observed-script-v7-unicode-signal"
 
 
 @dataclass(frozen=True)
@@ -1180,7 +1181,7 @@ Args:
         allow_review: bool = False,
     ) -> tuple[str, list[OcrCandidateQuality]]:
         """Compare bounded Tesseract segmentation candidates deterministically."""
-        from .chinese_ocr_strategy import ChineseOcrFallback, recognize
+        from .chinese_ocr_strategy import ChineseOcrFallback, horizontal_refinement_language, recognize
         directed = recognize(self, image_path, doc_name=doc_name, page_index=page_index, allow_review=allow_review)
         fallback = directed if isinstance(directed, ChineseOcrFallback) else None
         if directed is not None and fallback is None:
@@ -1188,12 +1189,13 @@ Args:
                                 region_evidence=directed.regions)
             return directed.text, [candidate]
         candidates: list[OcrCandidateQuality] = []
-        for psm in (None, "5", "6", "11"):
-            command = [self.tesseract_cmd, str(image_path), "stdout", "-l", self.ocr_language]
+        plans = [(psm, self.ocr_language) for psm in (None, "5", "6", "11")]
+        for psm, language in plans:
+            command = [self.tesseract_cmd, str(image_path), "stdout", "-l", language]
             if psm is not None:
                 command.extend(["--psm", psm])
             with log_stage(logger, "ocr_candidate", doc_name=doc_name, page=page_index + 1,
-                           psm=psm or "default", language=self.ocr_language) as timing:
+                           psm=psm or "default", language=language) as timing:
                 result = self._run_process(command, purpose="text_recovery", stage="ocr", page=page_index)
                 timing["return_code"] = result.returncode
                 timing["recognized_chars"] = len(result.stdout.strip())
@@ -1202,7 +1204,7 @@ Args:
                     raise RawTextOcrFailedError(doc_name=doc_name, detail=detail)
             text = result.stdout.strip()
             candidate = self._score_ocr_candidate(
-                psm="default" if psm is None else psm,
+                psm=("default" if psm is None else psm) + (":zh" if language != self.ocr_language else ""),
                 text=text,
             )
             if fallback is not None and candidate.text.strip():
@@ -1213,6 +1215,10 @@ Args:
                     "quality_flags": ["recognition_uncertain", fallback.reason],
                 },))
             candidates.append(candidate)
+            if len(candidates) == 4:
+                refinement = horizontal_refinement_language(candidates, self.ocr_language)
+                if refinement is not None:
+                    plans.append(("6", refinement))
         selected = self._select_ocr_candidate(candidates)
         selected_text = selected.text if selected is not None else ""
         logger.info(
@@ -1229,11 +1235,14 @@ Args:
     def _score_ocr_candidate(self, *, psm: str, text: str) -> OcrCandidateQuality:
         normalized = text.strip()
         cjk_count = len(re.findall(r"[\u3400-\u9fff]", normalized))
-        latin_count = len(re.findall(r"[A-Za-z]", normalized))
-        digit_count = len(re.findall(r"[0-9]", normalized))
-        signal_count = cjk_count + latin_count + digit_count
+        latin_count = sum(char.isalpha() and unicodedata.name(char, "").startswith("LATIN ")
+                          for char in normalized)
+        # Letters, numeric characters and combining vowel/tone marks are text,
+        # including Cyrillic, Arabic, Indic, Thai, Hangul and kana scripts.
+        signal_count = sum(char.isalnum() for char in normalized)
+        mark_count = sum(unicodedata.category(char)[0] == "M" for char in normalized)
         non_space_count = len(re.findall(r"\S", normalized))
-        symbol_count = max(0, non_space_count - signal_count)
+        symbol_count = max(0, non_space_count - signal_count - mark_count)
         tokens = re.findall(r"\S+", normalized)
         single_tokens = [token for token in tokens if len(token) <= 2]
         cjk_ratio = cjk_count / signal_count if signal_count else 0.0
@@ -1247,7 +1256,10 @@ Args:
         # fragmentation on the remaining lexical tokens, not CJK or punctuation.
         fragmentation_tokens = [
             token for token in tokens
-            if any(char.isalnum() and not "\u3400" <= char <= "\u9fff" for char in token)
+            if any(char.isalnum() and not (
+                "\u3400" <= char <= "\u9fff" or "\u3040" <= char <= "\u30ff"
+                or "\u0e00" <= char <= "\u0e7f"
+            ) for char in token)
         ]
         fragmented_ratio = (
             sum(len(token) <= 2 for token in fragmentation_tokens) / len(fragmentation_tokens)
@@ -1266,7 +1278,7 @@ Args:
             threshold = 0.28
         else:
             score = (
-                (0.45 * min((latin_count + digit_count) / 80.0, 1.0))
+                (0.45 * min(signal_count / 80.0, 1.0))
                 + (0.25 * (1.0 - symbol_ratio))
                 + min(non_space_count / 500.0, 0.15)
                 - (0.25 * fragmented_ratio)
@@ -1282,7 +1294,10 @@ Args:
             reasons.append("fragmented_tokens")
         if non_space_count < 20:
             reasons.append("too_short")
-        latin_tokens = re.findall(r"[A-Za-z]+", normalized)
+        latin_tokens = re.findall(r"\S+", "".join(
+            char if unicodedata.name(char, "").startswith("LATIN ") else " "
+            for char in normalized
+        ))
         fragmented_latin = (
             len(latin_tokens) >= 10
             and sum(len(token) <= 2 for token in latin_tokens) / len(latin_tokens) > 0.60

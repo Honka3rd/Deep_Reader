@@ -1,5 +1,27 @@
 # api_schemas.py Checklist
 
+## Vocabulary filtering and completion observation (2026-11-09)
+
+- [x] Project optional vocabulary assessment and wait contract.
+  Owner: api_schemas.py. Status: Implemented and verified.
+  Acceptance: Saved/partial hints expose typed counts/reasons with strict validation; absent legacy assessment is accepted. Wait reuses operation DTOs; tuple reasons are serialized as arrays.
+  Evidence: Schema/HTTP tests, assessed hints save/read in file/SQL orchestration and actual API Reader projection checks.
+  Timestamp: 2026-11-09
+
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**Implemented and verified: 1/1 owned task (LLRN-14).** [Shared dependency queue](section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 api_schemas.py 的唯一 checklist；LLRN-15 DI 已交付，LLRN-16 production routes/lifespan 已交付，UI 仍由後續 owner 交付。
+
+### LLRN-14
+
+- [x] LLRN-14: Learning and preference transport schemas.
+  Owner: api_schemas.py. Status: Implemented and verified (transport schemas and pure projections; production routes delivered by LLRN-16).
+  Depends on: LLRN-02, LLRN-03, LLRN-05.
+  Deliverable: 定義最小設定/options、當頁 batch saved read、generate/regenerate、operation lookup DTO；正式命名與 route contract 於實作時固定。 包含 mode catalog/eligibility、active mode 及以 mode ID 區分的 typed/versioned settings；mode/settings 同一套用命令。
+  Acceptance: 只接受必要 document/block/命令及 expected revision；拒絕 raw source、parent plans、arbitrary user/workspace IDs 與模型調參。區分 missing/ready/pending/failed/stale/unknown，空 hints 非 missing。
+  Evidence: `api_learning_schemas.py`、`api_learning_projection.py` 與 `api_schemas.py` additive facade；`scripts/test_learning_api_schemas.py` 56 tests passed，含 11 operations isolated OpenAPI/HTTP、strict extras/revisions、registry/scheme、normal/unknown modes、保留設定、opaque source/跨書 handle、ready/empty hints/refresh/partial/unknown、commit revision proof 與 error union。Temporary file + app/service 固定 provider 契約驗證通過；另 154 項底層回歸與五份既有 schema scripts 通過。Production routes/DI/API deployment、SQL 及 live-provider/UI acceptance 不屬本項。
+  Timestamp: 2026-10-28
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `api_schemas.py` module.

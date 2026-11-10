@@ -34,6 +34,11 @@ def preserve_explicit_annotations(current, incoming):
                 for s in c.sections]) for c in incoming.chapters])
     provenance = dict(incoming.parse_provenance)
     provenance.pop("reading_projected",None)
+    # Source incarnation is server-owned, never supplied by a stale metadata worker.
+    if "interaction_epoch" in current.parse_provenance:
+        provenance["interaction_epoch"] = current.parse_provenance["interaction_epoch"]
+    else:
+        provenance.pop("interaction_epoch", None)
     if "reading_content" in current.parse_provenance:
         provenance["reading_content"] = current.parse_provenance["reading_content"]
     else:

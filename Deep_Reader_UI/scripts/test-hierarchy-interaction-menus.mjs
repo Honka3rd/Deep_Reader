@@ -50,8 +50,8 @@ try {
         reads.push(target);
         return route.fulfill({ json: { envelope: {
           target: { ...target, target_id: target.section_id || target.chapter_id, document_id: name },
-          interaction_type: "analysis", status: "not_generated", schema_version: "analysis_interaction_v1",
-        }, payload: null } });
+          interaction_type: "analysis", status: "completed", schema_version: "analysis_interaction_v1",
+        }, payload: { summary: "Saved insight", reasoning: "Reason", interpretation: "Interpretation" } } });
       }
       unexpected.push(`${request.method()} ${path}`);
       return route.fulfill({ status: 500, json: { detail: "Unexpected API" } });
@@ -72,7 +72,7 @@ try {
       for (const label of ["Summary", "Note", "Insights", "Quiz", "Critical thinking"])
         assert.equal(await page.getByRole("menuitem", { name: label, exact: true }).count(), 1);
       await page.getByRole("menuitem", { name: "Insights", exact: true }).click();
-      await row.locator(".inline-insight-status-not_generated").waitFor();
+      await row.locator(".inline-insight-status-completed").waitFor();
       assert.equal(reads.at(-1).target_type, "chapter");
       assert.equal(reads.at(-1).chapter_id, item.chapter.chapter_id);
       assert.ok(!reads.at(-1).section_id, "Chapter action must not become a section action");
@@ -81,7 +81,7 @@ try {
     for (const child of cases[2].chapter.sections) {
       await multi.getByRole("button", { name: `Section reading interactions for ${child.title}`, exact: true }).click();
       await page.getByRole("menuitem", { name: "Insights", exact: true }).click();
-      await multi.locator(".hierarchy-section-item").filter({ hasText: child.title }).locator(".inline-insight-status-not_generated").waitFor();
+      await multi.locator(".hierarchy-section-item").filter({ hasText: child.title }).locator(".inline-insight-status-completed").waitFor();
       assert.equal(reads.at(-1).target_type, "section");
       assert.equal(reads.at(-1).chapter_id, "multiple");
       assert.equal(reads.at(-1).section_id, child.section_id);

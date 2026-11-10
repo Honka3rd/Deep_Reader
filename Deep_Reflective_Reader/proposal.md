@@ -1,5 +1,42 @@
 # Deep Reflective Reader Proposal
 
+## Learning application module extraction (2026-11-10)
+
+Maintainer-approved option A: extract the four app learning orchestration files
+into sibling `learning/`, with [owned design](learning/module-detailed-design.md)
+and [checklist](learning/module-checklist.md). Extraction and 299 local regression tests are complete; external review and deployment remain pending.
+Generation/policy remain in section_tasks, persistence in document_structure/db,
+preferences in reading_preferences, composition in config and transport in main/API
+schemas. Ordinary translation continues sharing the same runtime and aligned data.
+This is a package/ownership migration, not a new translation pipeline or DB migration.
+
+
+## Shared translation direction (2026-11-09)
+
+Maintainer-authorized correction: ordinary and language-learning translation share
+one source-bound, sentence-aligned result and generation pipeline. Ordinary UI
+continues showing an aggregate paragraph; learning UI keeps sentence pairs. Exact
+language pairs/source versions govern reuse, independently of proficiency. Legacy
+paragraph-only records remain readable but cannot supply fabricated sentence maps.
+The [current contract](section_tasks/module-detailed-design.md#shared-sentence-translation-across-reading-modes-2026-11-09)
+supersedes earlier statements that ordinary translation uses an independent generator
+and artifact store. Historical acceptance evidence is retained.
+
+The optimization removes duplicate translation generation across compatible modes
+and avoids storing a separate aggregate for new aligned results; vocabulary and
+legacy paragraph conversion remain separate costs. The
+[reuse conditions and manual acceptance](section_tasks/module-detailed-design.md#reuse-and-storage-rationale-2026-11-10)
+record the 2026-11-10 learning-to-normal verification and its evidence limits.
+
+
+## Language Learning Mode Direction (2026-10-28)
+
+**[Maintainer-Provided] + [System scope complete: LLRN-01–22, 2026-10-29]** 新規劃每書從可擴充模式清單單選；各模式可有自己的設定與複雜閱讀互動，初期提供普通閱讀及語言學習。語言學習模式：學書籍原文，以母語逐句翻譯輔助，原文與母語相同不可啟用；按每書能力提供單字/片語提示。語言受現有 registry 約束，分級由 language 的專用 definitions 管理。LLM 結果持久化，只對目前閱讀頁缺少的資料生成，切句/翻譯與各等級提示分離重用。
+
+母語暫存集中單人 workspace 偏好，新 `reading_preferences` 已交付 LLRN-02 契約與 file adapter，db 另交付 LLRN-07 preference SQL/migration，預留未來用戶遷移；LLRN-09 已交付既有 profile/override 解析與 eligibility/CAS 服務；LLRN-16 已串接 API/lifespan，LLRN-17 已交付 settings UI、LLRN-18 已交付當頁 controller，LLRN-19 已交付逐句呈現，不把此設定等同已存在的用戶系統。句子是 content block 內部定位，不改 hierarchy/parser truth。模式選用授權明確生成命令，task-layout/content/Library reads 不發生 hidden mutation。
+
+確認的產品規格、混語/手動原文校正、分項刷新及 cache/lifecycle 見 [canonical design](section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[22 項唯一 owner 任務](section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28) 已完成 LLRN-01 語言分級、LLRN-02 偏好契約/file 基礎、LLRN-03 來源綁定句子/學習 DTO、LLRN-04 多語切句基礎、LLRN-05 cache/operation 純策略、LLRN-06 learning repository/file adapter 、LLRN-07 preference SQL/顯式 migration 、LLRN-08 learning SQL/操作交易、LLRN-09 有效偏好服務、LLRN-10 逐句翻譯生成、LLRN-11 能力提示生成、LLRN-12 來源／文件生命週期、LLRN-13 application orchestration/admission 、LLRN-14 transport schemas/pure projections 、LLRN-15 dependency composition 、LLRN-16 routes/lifespan 、LLRN-17 settings UI 、LLRN-18 current-page controller 、LLRN-19 sentence-pair display 、LLRN-20 backend integration acceptance 及 LLRN-21 reader lifecycle/accessibility acceptance，LLRN-22 依 2026-10-29 maintainer 指示以系統範圍完成：真書來源定位、格式驗證、保存／重用、錯誤分類及 API/SQL/Reader 驗收。模型選擇、提示詞調整與語義評分移出本任務；歷史語義抽查不改判為通過。既有普通翻譯能力和歷史證據不因此失效。
+
 > 文件定位：本 proposal 是「基於目前 codebase 狀態」的架構定位與下一階段規劃文件。  
 > 事實標註規則：
 > - **[Code-Confirmed]**：可由目前 source code 直接確認

@@ -1,3 +1,7 @@
+import { ReadingSettingsView, type ReadingSettingsController } from "../reading-settings";
+import { useState } from "react";
+import { ReadingModeLabel } from "./ReadingModeLabel";
+import { createReadingModeQueue } from "./useReadingModeLabel";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { TocHintControl } from "../../shared/TocHintControl";
 import type { TocHint } from "../../types/api";
@@ -59,6 +63,7 @@ import {
 } from "./model";
 
 interface FileManagementViewProps {
+  readingSettings: ReadingSettingsController;
   canOpenDocument: (docName: string) => boolean;
   openingDocName: string | null;
   openError: string;
@@ -110,6 +115,7 @@ interface FileManagementViewProps {
 }
 
 export function FileManagementView({
+  readingSettings,
   canOpenDocument,
   openingDocName,
   openError,
@@ -159,6 +165,7 @@ export function FileManagementView({
   onSelectUploadFile,
   onUpload,
 }: FileManagementViewProps) {
+  const [readMode] = useState(createReadingModeQueue);
   const loading = status === "loading";
   const deleting = deleteState.status === "deleting";
   const renaming = renameState.status === "renaming";
@@ -188,18 +195,27 @@ export function FileManagementView({
     ? getDocumentManagementTitle(renameState.item)
     : "this document";
 
+  if (readingSettings.target) return <ReadingSettingsView controller={readingSettings} />;
+
   return (
     <>
       <Dialog
         className="file-management-dialog"
+        TransitionProps={{ onEntered: node => {
+          const target = readingSettings.returnFocus === "workspace"
+            ? node.querySelector<HTMLElement>(".file-management-workspace-preferences")
+            : Array.from(node.querySelectorAll<HTMLElement>(".file-management-reading-mode-action"))
+                .find(button => button.closest("[data-doc-name]")?.getAttribute("data-doc-name") === readingSettings.returnFocus);
+          target?.focus();
+        } }}
         fullWidth
         maxWidth="md"
         open={open}
         onClose={onClose}
       >
       <DialogTitle className="file-management-dialog-title">
-        <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
-          <Box minWidth={0}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
+          <Box sx={{ flex: 1, minWidth: 120 }}>
             <Typography component="span" variant="h6">
               Documents
             </Typography>
@@ -207,8 +223,11 @@ export function FileManagementView({
               {visibleTotal} of {total} item{total === 1 ? "" : "s"}
             </Typography>
           </Box>
+          <Button className="file-management-workspace-preferences" sx={{ order: { xs: 3, sm: 0 }, flexBasis: { xs: "100%", sm: "auto" } }} autoFocus={readingSettings.returnFocus === "workspace"}
+            onClick={readingSettings.openWorkspace}>Workspace preferences</Button>
           <Button
             className="file-management-refresh-action"
+            sx={{ flexShrink: 0 }}
             disabled={loading}
             startIcon={<RefreshOutlinedIcon />}
             variant="outlined"
@@ -559,7 +578,7 @@ export function FileManagementView({
                 </TableHead>
                 <TableBody>
                   {items.map((item) => (
-                    <TableRow className="file-management-row" key={item.docName} hover>
+                    <TableRow className="file-management-row" data-doc-name={item.docName} key={item.docName} hover>
                       <TableCell className="file-management-document-cell">
                         <Typography className="file-management-document-title" variant="body2">
                           {getDocumentManagementTitle(item)}
@@ -597,6 +616,15 @@ export function FileManagementView({
                                 onClick={() => onRequestPrepare(item)}><BuildOutlinedIcon fontSize="small" /></IconButton></span>
                             </Tooltip>
                           )}
+                          <Stack className="file-management-reading-mode" alignItems="start" sx={{ minWidth: 110 }}>
+                            <Button className="file-management-reading-mode-action" size="small"
+                              autoFocus={readingSettings.returnFocus === item.docName}
+                              disabled={operationPending || renaming || deleting || item.preparationStatus === "building"}
+                              onClick={() => readingSettings.openBook(item.docName, getDocumentManagementTitle(item))}>
+                              Reading mode
+                            </Button>
+                            <ReadingModeLabel doc={item.docName} active={open && !loading} read={readMode} />
+                          </Stack>
                           <Button
                             className="file-management-open-action"
                             disabled={Boolean(openingDocName) || !canOpenDocument(item.docName)}

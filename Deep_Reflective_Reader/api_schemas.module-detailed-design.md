@@ -1,5 +1,93 @@
 # api_schemas.py Detailed Design
 
+## Vocabulary assessments and completion wait (2026-11-09)
+
+Saved hint and partial hint payloads add nullable `assessment` with candidate,
+accepted, filtered, rejected and omitted-sentence counts, plus typed safe issue
+code/count pairs. Validation enforces domain count consistency and accepted item
+count. Older responses may omit the field; absence means unknown coverage. Pure
+projections explicitly serialize issue tuples as JSON arrays under strict schemas.
+No model output, raw rejected text or provider error is exposed in assessments.
+
+The completion wait endpoint below reuses `LearningOperationRequest` and
+`LearningOperationResponse`; it adds no source-authority or retry fields. Runtime
+waiting/disconnect behavior belongs to learning/main, not schema validation. Schema,
+file/PostgreSQL HTTP and actual API Reader checks cover saved/partial projection
+and the additive route. Existing error and committed-result proof rules remain.
+
+## Language Learning Reading Mode Contracts (LLRN-14, 2026-10-28)
+
+**[Code-Confirmed schemas/projections; production routes delivered by LLRN-16]** [Canonical design](section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。`api_schemas.py` 保持公開 request/response import facade；同一 owner 的 `api_learning_schemas.py` 集中嚴格 DTO，`api_learning_projection.py` 只做已驗證 domain snapshot → public response 的純轉換。Schema 本身不持有 route、DI、provider/storage 呼叫或 user identity；既有普通翻譯契約不變。
+
+### Fixed transport surface
+
+以下為 LLRN-16 已在 `main.app` 註冊的正式契約命名；實際 main/OpenAPI、file/真 SQL HTTP 驗證已通過，但 source 註冊不等同部署。成功接收命令使用 HTTP 200 typed outcome，並不代表生成或提交完成；錯誤使用下述獨立 error union。
+
+| Method / path | Request | Response |
+|---|---|---|
+| GET `/reading-preferences/options` | 無 body | `ReadingOptionsResponse` |
+| GET `/reading-preferences/workspace` | 無 body；scope 由 server 注入 | `ReadingWorkspaceResponse` |
+| PUT `/reading-preferences/workspace` | `ReadingWorkspaceSaveRequest` | `ReadingWorkspaceResponse` |
+| POST `/documents/reading-preferences/read` | `ReadingBookReadRequest` | `ReadingBookResponse` |
+| POST `/documents/reading-preferences/apply` | `ReadingBookApplyRequest` | `ReadingBookResponse` |
+| POST `/documents/reading-interactions/learning/read` | `LearningReadRequest` | `LearningReadResponse` |
+| POST `/documents/reading-interactions/learning/generate` | `LearningGenerateRequest` | `LearningSubmissionResponse` |
+| POST `/documents/reading-interactions/learning/operations/read` | `LearningOperationRequest` | `LearningOperationResponse` |
+| POST `/documents/reading-interactions/learning/operations/wait` | `LearningOperationRequest` | `LearningOperationResponse` |
+| POST `/documents/reading-interactions/learning/operations/reconcile` | `LearningOperationRequest` | `LearningSubmissionResponse` |
+| POST `/documents/reading-interactions/learning/operations/partial` | `LearningPartialReadRequest` | `LearningPartialReadResponse` |
+| POST `/documents/reading-interactions/learning/commands/read` | `LearningCommandLookupRequest` | `LearningCommandLookupResponse` |
+
+### Settings, mode list and registry
+
+所有 DTO 使用 `strict=True`、`extra=forbid`，不把 bool/string/float 當 revision，不 trim identity 或 silently normalize 語言。Document identity 拒絕路徑、`.`/`..`、空白包邊與控制碼，最多 255 字元；command/mutation ID 最多 128，偏好 mutation ID 同時遵循 domain identifier 規則。這是 transport identity 界限，不是正文／模型字數上限。
+
+Workspace save 僅含 nullable `native_language`、`expected_revision`、`mutation_id`。Options 從現有 registry 提供 codes 與每語言 proficiency scheme/version/ordered levels/labels/reading descriptions，不維護第二份語言列表。Book read 僅提交 `doc_name`，回應含 book/workspace revisions、母語、source override/resolved language/origin、saved active/effective mode、帶 label/description/settings version/eligibility/reasons 的模式清單，以及已保存設定描述。來源無效／未知 saved mode 時 effective mode 為 null，不能偷偷改成 normal。
+
+Book apply 僅提交 `doc_name`、兩個 expected revisions、`mutation_id`、以 `mode_id` 區分的 `selection` 及可選 `source_language_override`。Normal selection 只有 `mode_id=normal, version=1`；language_learning selection 加 language_code/scheme_id/scheme_version/level_id，重用 registry selection validation。未知 mode、跨模式欄位、版本不符或額外 payload 拒絕。普通模式不要求學習欄位。
+
+`to_settings(previous)` 是純 merge：previous 必須是 server 讀取的同書／同 expected book revision，保留其它模式及未知持久化設定；不允許 client 回傳任意 JSON 或保留憑證。Override 省略保留原值，顯式 null 清除並回到 existing profile。LLRN-16 已將 merge 結果交既有 `ReadingPreferencesService.save_book`，該服務仍在 repository 寫入邊界校驗兩個 revisions、保留規則及 eligibility。母語不在 book apply 中重複提交；同語禁止依 server workspace/profile 驗證，schema 不以 client 語言宣稱來源授權。Mode/settings 一次套用；單純候選選取不 mutation。
+
+未知／失效 saved settings 可讀，但回應只有 mode/version/supported=false/selection=null 描述，不公開或讓 client 重交原始 payload；未變更的 domain 值由 server merge 保留。切回普通模式仍可行。這些 pure projections 不修復或補寫資料。
+
+### Current-page commands and source expectations
+
+Read 要求唯一 `content_block_ids`，每次 1–50 個，與 learning 的 100 component-key query bound 一致。Generate 要求 doc_name、content_block_id、component（translation/hints）、command_id、`expected_source_token`、expected_workspace_revision、expected_book_revision。Intent 是 get_or_generate／regenerate／retry；不接受 raw source、internal source binding、parent plan、任意 namespace/user/workspace ID、source/target language 或模型參數。
+
+`learning_source_token` 是 SHA-256，輸入固定為 canonical JSON `["learning-api-source-v1", source.to_dict()]`（UTF-8、sort_keys、無格式空白），綁定完整 server scope/document/hierarchy、epochs/hash/structure version。Public request 只回傳這個 opaque token，不接收 parent IDs。Token 只作比較，不是簽章或權限憑證。LLRN-16 已透過 learning source-binding port 從 server-scoped repository 解出當前 block，呼叫 `request.verify_source(actual_source)`，再把該 actual source 傳給 learning；learning claim/commit 仍重新驗證，不能從 token 還原或相信 client source。
+
+Operation handle 僅 `{doc_name, operation_id}`，讀取、reconcile、partial 與 retry 都帶此 handle。Retry 必須同書、指定原操作且使用新 command ID；unknown 是否需要 `acknowledge_possible_duplicate_cost=true` 仍由 durable domain state 決定。省略確認不是自動批准，會依原 policy 回應 reconcile。Schema 可拒絕嵌套 handle 與外層書籍不一致；無法只靠 JSON 判斷某 operation 實際屬於哪本書，LLRN-16 已使用 scoped lookup，projection 也對照 authoritative operation binding，不能全域搜尋後跨書返回。
+
+### Results, receipts and recovery states
+
+Read response 綁定同書 settings、source token、目前 block 及結果語言／能力級別。Sentence projection 用 Unicode code-point 半開區間與原文 text，保留全部空白、CRLF、組合字和 emoji；空白 gap 的 sentence_id 為 null。後端驗證完整區間覆蓋、譯文完整有序 sentence IDs 與 hint span/source form，不能用 UTF-16 offset 替換。
+
+每 block 的 translation/hints 各含 state、nullable saved、operation handle/state。已保存且驗證通過才 ready；`items=[]` 是有效 ready hints。沒有結果時 claimed/running 投影為 pending；partial、failed、stale、unknown、unavailable 與 missing 分開。Saved ready 可同時有 running/failed/unknown refresh；失敗不能抹掉舊 saved 或另一 component。Read/storage failure 走 error union，不可冒充 missing。
+
+Submission 是 durable acceptance/reuse/reconcile outcome，不載入或冒充完成的正文。Claimed/coalesced/resuming 不帶 committed result revision；reuse 必須從 durable command receipt 取 revision，succeeded 必須有成功 operation proof。`submission_response` 對照同書 command/operation；command lookup 的 receipt 是原接受結果，舊 claimed receipt 不因稍後 succeeded 而重寫成完成，前端另讀 operation/result。失去 acknowledgement 可返回 unknown + 無 operation handle，caller 使用原 command ID lookup。
+
+Operation response 分開 current projected state 與 durable_state，並帶 source_current、settings_current、owns_current_slot、completed/total batches、nullable committed result_revision、outcome_uncertain 與安全 failure_code。歷史 succeeded 可因來源改變投影 stale，不能當目前結果；running/unknown 不得把不確定費用標成 false，且無完整 checkpoints 不得聲稱 succeeded。
+
+Partial read 的 offset 非負、limit 1–100，回應為明確有序 batch list/next_offset，不帶 result revision 或 ready claim。即使全部 batches 已 checkpoint，仍須 final commit 才是 saved success；空 hints batch 仍保留 batch index。Pure partial projection 的輸入必須來自 service/repository 的 current-binding guarded `read_partial`，不能接受任意 provider output。
+
+### Error union and route obligations
+
+LLRN-16 supporting additive reason：`PreferenceReason` 新增 `learning_mode_not_active`，
+與 preference domain 一致，表示生成時未選用該模式；不把 same_language／profile failure
+混用。原 DTO／11 routes 路徑與 request fields 不變。Partial response 現由 app 的
+`read_partial_snapshot` 提供一致 status/batches，並行變動返回 409；失效 active mode 的
+`effective_mode` 為 null，不默默將持久化 active mode 改成 normal。
+
+`LearningErrorResponse.detail` 以 kind 區分 invalid_request、conflict、unavailable、ineligible、not_found、unknown；每種有有限 code union。Eligibility 附 domain stable field/reason/message；unknown 明確要求 lookup_command 或 read_preferences，不能推斷 rollback。Error 沒有 stack、provider body 或任意 debug JSON。Admission denial 是 submission outcome，reason 是 domain policy 的 bounded stable token，不偽造用戶 quota。
+
+LLRN-16 的 route 已對應 400/422 invalid selection/capacity、404 missing target、409 conflict、503 unavailable/unknown，以及 scoped service exceptions；不能用 catch-all 轉 missing。FastAPI `RequestValidationError` 也必須轉成此 content-free invalid_request union，避免預設 validation body 重送 client input；isolated harness 已驗證 422 shape，production route-local handler 已由 LLRN-16 接線。Schema/投影不導入全域 exception handler，也不改其它 API 的錯誤格式。
+
+### Verification (2026-10-28)
+
+`scripts/test_learning_api_schemas.py` **56 tests passed**：嚴格 JSON/Python validation、所有 registry 語言／分級、未知 mode/version、normal 無學習欄位、保留 inactive/unknown settings、權威同語拒絕、source token 全 identity/epoch 綁定、跨書 handles、bounded reads、Unicode exact projection、empty hints、refresh/partial/unknown、committed revision proof、error union，以及 11 個 transport operations 的 isolated FastAPI OpenAPI/HTTP contracts。另以 temporary file repositories + 現有 app/service + 固定 provider 驗證 read 零寫入／零模型、生成保存／reuse、command lookup、partial checkpoint 和未知 provider outcome 的 public projection。
+
+154 項 preference/proficiency/shared/policy/file repository 回歸及五份既有 API schema scripts 通過；`api_schemas.py` 僅 additive re-export，舊 DTO 不變。未修改 DB/schema/parser/LLM 演算法，因此本輪未新增 SQL、真模型、真書或 browser acceptance；LLRN-10/11 語義品質未通過的紀錄維持。LLRN-15 DI 已交付；LLRN-16 production routes/error mapping 已交付，UI 仍待實作，完整模式不可用。
+
 ## Persisted Translation DTO Plan (2026-10-26)
 
 **[Code-Confirmed]** Supporting TRUI-01/05, not another counted task.

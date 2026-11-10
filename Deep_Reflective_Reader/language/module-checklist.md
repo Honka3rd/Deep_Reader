@@ -1,5 +1,27 @@
 # language Checklist
 
+## Language Learning Reading Mode Queue (2026-10-28)
+
+**LLRN-01 implemented and verified; language foundation only.** [Shared dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 language 的唯一 checklist；完整模式依賴仍待後續實作。
+
+### LLRN-01
+
+- [x] LLRN-01: Registry-bound proficiency definitions.
+  Owner: language. Status: Implemented and verified (foundation only).
+  Depends on: None.
+  Deliverable: 新增獨立 proficiency definitions，以現有 registry code 引用語言；定義 scheme ID/version、排序 level ID、讀者可懂標籤及供 LLM 使用的閱讀能力描述。
+  Acceptance: 覆蓋 registry 全部支援語言（排除 unknown）；不可另外維護語言白名單、強套 A1–C2 或宣稱不同考試等值。逐語言方案與標籤在此任務查證並記錄依據。
+  Evidence required: Registry 完整性、非法 scheme/level 組合、版本變更測試，以及逐語言分級選擇的可審閱表。
+  Evidence: language_proficiency_registry.py 覆蓋現有 19 registry codes；5 種有版本方案、不可變有序資料與 strict selection/coverage guards。18 專項 unittest 與既有 script/discourse registry 腳本通過；來源與逐語言選擇表在 paired design。未接入 UI/API/偏好持久化或 LLM。
+  Timestamp: 2026-10-28
+
+## Sentence Segmentation Support (2026-10-28)
+
+- [x] Supply versioned sentence prefix rules for section_tasks-owned LLRN-04.
+  Owner: language (supporting data only; no duplicate LLRN completion count).
+  Evidence: `learning_sentence_rules.py` provides immutable exact-code rules with system-registry coverage checks. `scripts/test_learning_sentence_segmenter.py` passes all 19 tests, including per-language boundaries and invalid/missing/duplicate registry coverage. Full algorithm, source invariants and private-book acceptance remain recorded by section_tasks.
+  Timestamp: 2026-10-28
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `language` module.

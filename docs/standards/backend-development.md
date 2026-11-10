@@ -7,7 +7,7 @@ not a claim that all existing code already complies. Report conflicts explicitly
 ## Cohesion and Boundaries
 
 - Keep each module focused on one responsibility and reason to change. Keep domain policy with its owner; avoid growing coordinators into collections of unrelated features.
-- Routes and schemas handle transport; `app` orchestrates use cases; domain modules plan and validate; repositories own persistence. Wire dependencies through existing configuration/injection patterns.
+- Routes and schemas handle transport; `app` and dedicated application modules such as `learning` orchestrate their owned use cases; domain modules plan and validate; repositories own persistence. Wire dependencies through existing configuration/injection patterns.
 - Depend on small public contracts, not another module's private methods, SQL, or provider internals. Expose only the operations and response fields callers need.
 - Reuse established helpers and typed models. Prefer explicit, simple code; add abstractions only for demonstrated duplication or a real boundary. Keep unrelated refactors out of feature changes.
 

@@ -1,5 +1,6 @@
 // Actual App in StrictMode; all APIs intercepted, no production writes.
 import assert from "node:assert/strict";
+import { book as readingBook } from "./learning-controller-fixtures.mjs";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const browser = await chromium.launch({ headless: true,
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
@@ -29,7 +30,7 @@ try {
         : query.has("block_id") ? blocks.filter(b => b.block_id === query.get("block_id")) : [];
       const offset = Number(query.get("block_offset") || 0);
       return { revision, source_token: token, ...(legacy ? {} : { structure_version: version }),
-        disposition: "needs_review", can_undo: false, max_chars: 10000,
+        disposition: "needs_review", ocr_review_available: true, can_undo: false, max_chars: 10000,
         regions: regions.map(r => legacy ? { id: r.id, page_index: r.page_index, status: r.status, block_ids: r.block_ids } : r),
         blocks: matching.slice(offset, offset + 20).map(b => legacy ? { block_id: b.block_id, content: b.content, deleted: b.deleted } : b),
         block_page: { total: matching.length, offset, limit: 20 },
@@ -51,6 +52,7 @@ try {
     page.on("pageerror", e => errors.push(e.message));
     await page.route("**/api/**", async route => {
       const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/reading-preferences/read")) return route.fulfill({ json: readingBook(route.request().postDataJSON().doc_name, "normal") });
       if (url.pathname === "/api/documents/reparse-structure/status") return route.fulfill({ json: { doc_name: url.searchParams.get("doc_name"), status: "idle" } });
       if (url.pathname === "/api/documents/task-layout") return route.fulfill({ json: {
         document_id: "Book", title: "Book", chapters: [{ chapter_id: "c", title: "Chapter",
@@ -80,11 +82,11 @@ try {
       return route.fulfill({ status: 500, json: { detail: "Unexpected API" } });
     });
     await page.goto((process.env.UI_URL || "http://127.0.0.1:5176") + "/documents/Book");
-    const open = () => page.getByRole("button", { name: "Review source", exact: true }).click();
+    const open = () => page.getByRole("button", { name: "Review extracted text", exact: true }).click();
     const review = page.locator('div[aria-labelledby="reading-content-dialog-title"]');
     const row = id => review.locator('.source-review-region[data-region-id="' + id + '"]');
     const select = async id => {
-      await review.getByRole("tab", { name: "Source regions", exact: true }).click();
+      await review.getByRole("tab", { name: "Flagged areas", exact: true }).click();
       await row(id).getByRole("button", { name: /^Related blocks/ }).click();
     };
     const ready = () => page.locator('.source-review-blocks[aria-busy="false"]').waitFor();
@@ -142,7 +144,7 @@ try {
     await review.getByText("Cleanup history is unavailable.").waitFor({ state: "attached" });
     assert.equal(await review.getByText("Undo available", { exact: true }).count(), 0, "New revision never inherits prior cleanup audit");
     audit.items[0].remaining_count = 0; audit.items[0].undoable = false;
-    await review.getByRole("button", { name: "Refresh source review" }).click(); await ready();
+    await review.getByRole("button", { name: "Refresh text review" }).click(); await ready();
     await review.getByText("Undone", { exact: true }).waitFor({ state: "attached" });
     await select("r2"); await ready();
     await row("r2").getByText("Fresh manual text", { exact: true }).waitFor();
@@ -169,13 +171,13 @@ try {
       holdContent = false;
       await heldContent.route.fulfill({ json: heldContent.json }); heldContent = null;
       await ready();
-      await row("r2").getByText("Content changed. Refresh source review.").waitFor();
+      await row("r2").getByText("Content changed. Refresh text review.").waitFor();
       assert.equal(await review.isVisible(), true, fault + " keeps review open");
       assert.equal(await target.count(), 0, fault + " cannot publish stale content");
       assert.equal(await page.locator('.reader-content-navigation-highlight').count(), 0, fault + " cannot highlight stale content");
       assert.notEqual(await page.evaluate(() => document.activeElement?.getAttribute("data-block-id")), "b19");
       blocks[19].deleted = false;
-      await review.getByRole("button", { name: "Refresh source review" }).click(); await ready();
+      await review.getByRole("button", { name: "Refresh text review" }).click(); await ready();
     }
     await select("r2"); await ready();
     holdContent = true;
@@ -212,7 +214,7 @@ try {
     // A surviving mapping that disappeared from the reader must never focus another block.
     dropTarget = true;
     await row("r1").getByRole("button", { name: "Go to content", exact: true }).click(); await ready();
-    await row("r1").getByText("This block is no longer in the current content. Refresh source review.").waitFor();
+    await row("r1").getByText("This block is no longer in the current content. Refresh text review.").waitFor();
     dropTarget = false;
     revision++; blocks[19].deleted = true; blocks[20].deleted = true;
     regions[0].manual_change = { status: "deleted", at: "2026-10-25T11:00:00Z" };
@@ -225,16 +227,16 @@ try {
     await page.screenshot({ path: "/tmp/source-review-readonly-" + width + ".png" });
     // Null optional fields may be omitted by FastAPI, and old servers cannot authorize navigation.
     legacy = true;
-    await review.getByRole("button", { name: "Refresh source review" }).click(); await ready();
+    await review.getByRole("button", { name: "Refresh text review" }).click(); await ready();
     assert.equal(await row("r1").locator(".source-review-manual-change").count(), 0);
     assert.equal(await row("r1").getByRole("button", { name: "Go to content", exact: true }).isDisabled(), true);
     legacy = false;
-    await review.getByRole("button", { name: "Refresh source review" }).click(); await ready();
+    await review.getByRole("button", { name: "Refresh text review" }).click(); await ready();
     version = "2"; token = "replacement-source";
     await row("r1").getByRole("button", { name: "Refresh related blocks" }).click(); await ready();
-    await row("r1").getByText("Content changed. Refresh source review.").waitFor();
+    await row("r1").getByText("Content changed. Refresh text review.").waitFor();
     assert.equal(await row("r1").locator(".source-review-block").count(), 0);
-    await review.getByRole("button", { name: "Refresh source review" }).click(); await ready();
+    await review.getByRole("button", { name: "Refresh text review" }).click(); await ready();
     assert.equal(await row("r1").locator(".source-review-block").count(), 2, "Explicit refresh re-resolves the replaced snapshot");
     hold = true; held = null;
     await select("r1");
@@ -272,7 +274,7 @@ try {
     hold = false;
     await held.route.fulfill({ json: held.json }); held = null;
     await review.waitFor({ state: "hidden" });
-    assert.equal(await page.getByRole("button", { name: "Review source", exact: true }).count(), 0, "Unmount discards review state");
+    assert.equal(await page.getByRole("button", { name: "Review extracted text", exact: true }).count(), 0, "Unmount discards review state");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
     await page.close();

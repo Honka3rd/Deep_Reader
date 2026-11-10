@@ -1,5 +1,162 @@
 # document_structure Detailed Design
 
+## Shared sentence translation (2026-11-09)
+
+The learning repository also owns aligned ordinary translations. Its bounded
+read_translations projection returns only validated complete TranslationKey results
+for the requested current source block, with the successful operation metadata.
+Pagination uses ordered cache IDs; stale source versions are excluded without writes.
+File and SQL share projection behavior. Translation-purpose commands validate exact
+source/registry keys independently of native-language/mode settings; hints cannot
+use this purpose. Existing hierarchy/epoch invalidation, rename/delete migration,
+CAS/dispatch fences and checkpoint/result consistency continue to apply. Aggregate
+paragraph strings are derived by section_tasks and never duplicated into document
+artifacts. Historical paragraph-only artifacts remain unchanged and readable.
+
+Validation: 470 backend tests and actual API/React mode-switch acceptance pass; detailed evidence and limits are recorded in the shared section_tasks design.
+
+
+## Vocabulary assessment persistence (2026-11-09)
+
+Hints `BatchPayload` and `LearningHints` carry optional shared assessments. Both
+file and SQL adapters use the same typed codec and guarded repository behavior.
+Checkpoint digests include present assessments; final commit must exactly match
+the durable batches' aggregated assessment as well as items and provenance. A
+forged summary is rejected before replacing the saved result. Source/settings,
+fence/CAS and transaction boundaries are unchanged; no SQL migration is needed.
+
+Legacy encoded batches/results without assessment decode with None. Encoding None
+omits the field, preserving historical checkpoint bytes/digests rather than causing
+read-time repair. Codec state validation also checks saved-vs-checkpoint assessment
+coherence. New all-filtered results remain persisted ready with explicit omissions;
+legacy missing reports remain unknown. File/PostgreSQL regressions and actual
+API/SQL real-book output replay cover save/reuse/restart, commit mismatch and old
+digest compatibility; see section_tasks' 2026-11-09 validation evidence.
+
+## Language Learning Reading Mode Plan (2026-10-28)
+
+**[Code-Confirmed foundation; LLRN-06/12 complete, 2026-10-28]** [Canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。已交付 hierarchy-aware source resolution、storage-neutral repository port 與 POSIX file adapter；db 已完成 LLRN-08 SQL adapter；LLRN-12 已交付來源失效與 document lifecycle ports；LLRN-13 application orchestration 已完成；LLRN-15 runtime composition 已完成，LLRN-16 API/lifespan 已完成，UI 仍待後續任務。
+
+### Learning repository and source ownership
+
+LLRN-15 組裝啟用 file lifecycle 後的回歸補正：`FileLearningRepository._write_context`
+取得 owner preference snapshot lock 後先拒絕 deleted tombstone，避免 rename/delete
+先完成時遲到 writer 再開啟已移除的檔案。返回 `learning_document_missing`，不轉成
+storage missing/recreate；鎖序與讀取行為不變。既有 concurrent rename test 及新增
+container deterministic late-write test 已在 file/SQL 驗證。
+
+- `learning_repository.py` 定義 `LearningRepository`、來源分頁/read 結果、明確的 partial `BatchPayload` 與受驗證的 `OperationWrite`。Scope 由 server 注入 `WorkspaceScope`；document ID 必須與已存文件精確一致，拒絕名稱 alias、跨 workspace/document reference。沒有 client parent IDs 或 raw source 寫入入口。
+- `learning_source_resolver.py` 從 `chapters[].sections[].task_units[]` 解出 ownership，重用既有 `project_document` / `original_blocks` 的 effective reading projection，包含已套用正文/OCR/cleanup overlays；不拿原始 OCR text 冒充 effective text，不讀 root sections/structure_nodes。拒絕重複 hierarchy/block IDs、矛盾 parent IDs、已被投影的持久化輸入；已刪 block 不復建。
+- Source binding 帶 scope/document/chapter/section/unit/block、既有 structure version、interaction/document epoch、block content epoch 及 exact effective hash。Sentence source/resource reference 必須與當下來源相符；`save_sentences` 驗證 exact projection 後才存，不自行切句、prepare、修正文句或寫 profile。相同 resource 重存不寫檔。
+- `read_sources` 是 backend 來源分頁；cursor 綁 namespace/document、原來源 token 及 reading revision，正文 overlay 改動後拒絕舊 cursor。`read_batch` / `read_sentences` 接收最多 100 個 keys/references；來源及 checkpoint 分頁 limit 為 1–100。這是查詢數量上限，不是模型 token/字數上限。Read 只返回請求範圍，不生成、續租、補檔、遷移或清 cache。
+- Saved reads 用當次 source snapshot 驗證來源、句子與完整結果；已失效的 key 返回 `stale`，無對應已存結果才 `missing`。Corrupt/unsupported/IO failure 明確拋錯，不轉 missing。`lookup_command` / `lookup_operation` 是保留的歷史狀態，不證明舊 source 仍可顯示；`read_checkpoints` 另驗目前 source，過時 partial 不返回。讀回應仍需後續 controller 核對 request/source identity。
+
+### Application integration ports (LLRN-13)
+
+`resolve_blocks(document_id, block_ids)` 一次 authoritative source snapshot 解析最多 100 個指定 IDs，保留請求順序、拒絕重複／缺失，不存切句。回傳有界，但底層仍載入整份 hierarchy，不能聲稱 SQL source row pagination。`inspect_operation` 返回 durable operation 與目前 entry revision；歷史 operation 已被取代時 revision 為空，不能恢復成 active owner。
+
+Claim／guarded operation writes 接收 internal `validate_binding` callback，在既有 preference → document → learning 鎖／短交易內，以已鎖定設定重驗有效 profile/mode/proficiency；callback 不取得 owner locks、不寫入或呼叫模型。Dispatch 以原 durable command 再評估相同 admission policy，拒絕時不產生 provider permission。顯式 `invalidate` 只在實際 binding mismatch 時進行 domain stale transition，儲存錯誤不能當作 mismatch。這些行為由 file/SQL 共用，沒有新 persisted schema。
+
+專測與 rollback/concurrency/lost-ack 證據見 [LLRN-13 learning design](../learning/module-detailed-design.md#llrn-13-implementation-contract-2026-10-28)。Read source stale 與 operation stale 保持區分，只有來源有效的舊操作可走明確 retry。
+
+### Shared behavior and SQL coordination (LLRN-08)
+
+`learning_repository_behavior.py` 抽出兩種 adapter 共用的 source/scope/read bounds、claim/replay、設定保護、operation transitions、checkpoint/final assembly；仍直接呼叫 section_tasks 的既有純策略，不複製兩份演算法。Storage adapter 只提供 protected `_read_context` / `_write_context` hooks：讀取一個已驗證 snapshot；寫 context 在來源與偏好鎖內傳入 state 及 transaction-local persist callback。File 保留原單一 sidecar replace，原有 45 項 file cases 全數回歸通過；不新增公開任意 state 寫入 port。
+
+`learning_file_codec.py` 保留相容檔名與 schema=1，typed codec 同時供 SQL 單筆 payload 使用；SQL 僅組裝請求 keys 的必要依賴集合來驗證，不把 file 全書 snapshot 搬入 JSONB。`LearningCommitUnknown` 同時表示 file replace 或 SQL COMMIT 結果未明，均需 reconcile。PostgreSQL store 新增公開 `load_in_transaction(target, connection=...)`，只借用 caller-owned active transaction 讀取既有 canonical hierarchy，不自行 commit、加第二筆交易或查 profile/LLM。
+
+LLRN-08 的 SQL 細節與 47 項真 DB 驗證見 [db design](../db/module-detailed-design.md#implemented-learning-sql-persistence-llrn-08)；兩 backend 沿用相同結果／來源語意。LLRN-12 在此基礎上補齊來源 epoch、rename references 與偏好協調（見下節）。既有 file 歷史驗收證據如下保留。
+
+### File layout, codec and locking
+
+`FileLearningRepository(base_dir, documents, preferences, admission=...)` 只依賴兩個 file owners 的公開協調介面及 LLRN-05 domain policy。Scope 必須與 document repository 的 namespace 相符。Constructor 及所有 reads 不建立 directory、lock、預設 snapshot 或 temp；write/recovery 才可建立所需目錄/lock。
+
+每本書使用 `(workspace kind, namespace, document_id)` SHA-256 命名的獨立 `.learning.json`，schema_version=1。Snapshot 保存一次 sentence resources（spans/reference，不複製原文）、各 component/level cache entries、operation history、跨 key 的 command receipts，以及 operation-bound checkpoint payloads。正文/document metadata 不塞入學習結果；translation key 不含級別，hints 不依某次翻譯修訂。相同 sentence resource 可被多語/多等級共用。
+
+`learning_file_codec.py` 只允許明確列舉的 dataclass tags 與精確欄位/型別，沒有動態 import、任意 class instantiation、coercion 或 read-time migration。檢查 scope、resource/key hash、operation/fence/history/claim receipt 關聯、checkpoint digest/句子 partition、saved result 與已成功 operation/checkpoints 的一致性。拒絕壞 JSON、重複 JSON key、未知 schema/type/欄位及缺失 receipt；不能因 receipt 遺失而無聲恢復執行權。Result model provenance 與所有 batches 一致，final payload 必須等於已存 checkpoints 的 ordered assembly。
+
+所有學習寫入採固定鎖序：**workspace preferences → document artifact → learning sidecar**。`FileReadingPreferencesRepository.locked_snapshot(document_id)` 在既有 preference flock 內返回同一版 workspace/book；`StructuredDocumentArtifactRepository.locked_document(doc_name)` 在既有 source lock 內返回 authoritative document，兩者均不保存內容、不允許在 context 內重入自己的寫方法。Learning file 再使用穩定的 POSIX flock；source/settings writers 使用原有鎖，因此不能穿過 claim/commit 的 revalidation 與 snapshot 替換之間。LLRN-12 lifecycle 協調沿用同一鎖序。
+
+寫鎖內核對 actual source、book/workspace revisions、active mode、native/source language、儲存的 learning level（hints）及 registry。這是 persisted setting guard，不是 LLRN-09 effective settings/profile service：原文 fallback 到既有 profile、完整 eligibility 仍須由 LLRN-09/13 在 backend 解析，不把 preference 中的 language_code 當 parser/profile 真值；本 adapter 不偵測語言或重建 profile。
+
+### Claim, operation and commit behavior
+
+- `claim` 在鎖內執行 LLRN-05 `plan_request`，同 key 跨 command/process 合併；同 document command ID 跨 components 唯一，原 receipt 永久保留於本期 snapshot。相同命令重放只返回原 receipt；衝突命令拒絕。新的 entry、operation、sentence resource 與 receipt 只經一次 snapshot replace 提交；拒絕/reuse/coalesce 也保存明確 receipt，不產生 provider work。
+- `write_operation` 只接受 typed `OperationWrite`：dispatch、renew、checkpoint、commit、fail、expire，各 action 拒絕多餘/缺失欄位。先驗 entry revision、operation ID/fence；dispatch/checkpoint/commit/renew 另驗當下 source/settings。舊 writer 或重複 dispatch CAS 拒絕。成功返回 dispatch 的 caller 才可在鎖外送一次 batch；lookup running 不能當作再次送出的許可。
+- `BatchPayload` 明確區分 translation/hints，並不冒充 complete result。翻譯 batch 必須完整對上 plan 指定 ID 順序；hints 必須位於該 batch 的句子/原文 span，允許 empty hints。Adapter 再驗資料型別/定位、prompt provenance，將 payload 與 marker 一起提交。LLRN-10/11 仍負責 provider/schema/prompt、模型容量分批、語義與混語適用性。
+- `commit` 重驗完整 source/key、source/settings guards、base result revision 及 ordered checkpoint assembly，saved output 和 succeeded operation/result receipt/history 一起替換。新結果未成功前保留舊 saved；翻譯與 hints 獨立，失敗不清其它 component。
+- `fail` / `expire` 可記錄已知失敗或失聯，即使偏好或 block 已改變；它們不安裝結果或允許 provider IO。Unknown 不自動接管；明確 retry 沿用 LLRN-05 的 consent、目標 operation 與新 fence。相同 fence 找回的合法結果可 checkpoint/reconcile；來源或設定已變則拒絕。來源失效及 document delete/rename 的協調見下節 LLRN-12；歷史 operation 不等於目前可用輸出。
+
+### Durability and recovery boundary
+
+Sidecar 提交使用同目錄 temporary file → file fsync → atomic replace → directory fsync。只寫**一個 learning snapshot**；source/preferences 在整段保持鎖定但不寫入，因此這不是三個檔案的寫入交易。Replace 前已知 IO 失敗保留舊 snapshot；replace 開始後錯誤回報 `LearningCommitUnknown`，先查 durable receipt/operation/result，不盲重送 provider。Claim/dispatch/checkpoint/commit 的 lost acknowledgement 都能從正式 snapshot 核對。
+
+程序中止遺留的 temp 永遠不是 read source。`recover(document_id)` 是明確維護命令：取得 sidecar lock、驗正式 snapshot 後只刪除該 snapshot 的 orphan temps 並 fsync directory；不採納較新的 temp、不建立缺失結果、不改 operation 狀態或重新生成。正式 snapshot 損壞時拒絕 recovery 並保留證據，不能拿 temp 猜結果。正常讀取/constructor 不做 cleanup。提交日誌只記 stage、duration、entry/operation counts 與 outcome，不記正文、document identity、keys 或 provider secret。
+
+此版 file adapter 的 query **回應**有界，但為了既有 JSON backend，每次需要讀取該書 structured document/learning snapshot，成本隨書籍及生成歷史增長；不是 SQL 局部查詢或大型資料集吞吐量保證。歷史暫不裁剪，不引入 256 筆或其它猜測生成用量上限；未來 cleanup 必須保留防重放 tombstone/協議。測試證明本機 POSIX 多程序/程序中止與 replace 邊界，未宣稱所有 filesystem、斷電、新建父目錄或分散式鎖的 durability，也不承諾 exactly-once provider billing。
+
+### Implemented source and document lifecycle (LLRN-12)
+
+**[Code-Confirmed, 2026-10-28]** `learning_lifecycle.py` 在 canonical document 寫入邊界比較 effective block text 與 hierarchy ownership。真正改文、刪除、還原都以同一來源寫入推進 opaque content epoch；既有明確 mutation 的新 token 保留，legacy raw save 未給新 token 時補入新值。同文、OCR draft、review Keep/Ignore、僅 cleanup history 修改保留既有 epoch。Keep 只控制普通互動保留，不豁免學習來源有效性。
+
+- 改文原子作廢該 block 的所有 sentence resources、語言譯文、各級別 hints、partial/operation binding；無關 block 保留。採 **持久化 source binding 失效**，不逐筆物理刪除歷史 learning rows/sidecars。已存 payload、checkpoints、command receipts 保留作重放／費用歷史；saved read 返回 stale，source/commit guards 拒絕晚到結果。歷史 operation lookup 可能仍是 running/succeeded，不可當成顯示或派工授權；讀取不做清理或改狀態。
+- Undo 即使回到相同文字也使用新 content epoch。普通 metadata save 保留 authoritative document epoch、reading overlay/epochs；延遲 worker 不能帶回舊版本。初次保存／reparse／刪除後重建取得新 document epoch，不復用舊書結果。Source guard 不更改 parser hierarchy 或 profile。
+- `rename_learning_state` 遷移全書所有歷史版本／等級、sentence/resource/key references、結果定位、operation binding、batch plans、checkpoints/digests、receipts。譯文、提示意思／原文 span 與 provenance 不重生、不改寫。Shared `SentenceResource.with_document_id` 重算 deterministic IDs；沒有實存 resource 的 denied/no-content receipt 只遷移 source identity，保留舊 opaque digest 作歷史墓碑，不能作可用 resource。Entry CAS revision 推進；active operation 轉 stale，未確認費用保留。舊 writer 不可寫入改名後的資料。
+- 刪書移除該書全部 learning 資料，偏好留下 revision tombstone；workspace 母語不變。改名同時搬移設定、舊名稱留下 tombstone，既有 destination 拒絕，不覆蓋別本書。
+
+#### File coordination and explicit recovery
+
+`FileLearningDocumentLifecycle(documents, learning, preferences)` 明確安裝到 canonical file document repository，constructor 不寫檔。三個 owner 必須同 scope、同注入實例。來源 edit/reparse 仍是單一文件替換；rename/delete 使用 **preferences → sorted document locks → sorted learning locks**，三個 owner 各提供公開 lifecycle staging/path/lock 介面。
+
+跨檔案寫入前持久化 workspace `.preferences.lifecycle.json`，只包含 owner 推導的文件內容與 before SHA-256，不接受任意路徑。各檔案 temp/fsync/replace（刪除則 unlink）及 directory fsync 後才清除 journal。中斷或 acknowledgement 不明返回 `LearningCommitUnknown`；有 journal 時相關 source/learning/preferences reads/writes fail closed，不把部分狀態當成功或 missing。明確 `recover()` 在同鎖序內驗證 journal schema、各 owner payload、before/desired hash，向前完成同一操作；重複 recovery 無副作用。壞 journal／外部衝突保留現場，不猜測回滾、不自動付費重送；reads 不修復。
+
+這是合作 owner 的 POSIX 多檔案恢復協議，**不是瞬間跨檔案原子 replace、跨 filesystem/SQL 交易或硬體斷電保證**。LLRN-15 Runtime 已組裝 coordinator，pending journal 須由明確維護操作呼叫 recovery；啟動與 reads 不自動修復；未注入的獨立 legacy file repository 不具有此跨檔案協調。一般 reads 仍不建立鎖檔／補寫。全書 rename 需載入該書完整歷史，成本隨歷史量增加，非有界 saved-read 路徑。
+
+#### PostgreSQL coordination and verification
+
+SQL source mutation/cleanup 的 epoch 與正文在同一交易保存；初次／reparse epoch 由 store 建立。`db.learning_lifecycle` 在 rename/delete 先取 preference workspace lock，再取 document/learning locks；同一 connection 遷移／清除 learning 及偏好，任何階段失敗全數 rollback。Rename 五個集合查詢載入全書歷史再重建 references，沒有每筆獨立 commit；一般 saved reads 仍依 key 有界。Cleanup 僅更新目前 structure version 的 snapshot，避免重解析後選到歷史快照。未 migration 的舊 store 不在此補建表，部分 schema 不合法時拒絕。
+
+專測 `scripts/test_learning_lifecycle.py` **43 tests passed**，覆蓋 file/真 PostgreSQL 的 no-op、Keep/Clear、多語／B1/C2、無關 block、OCR draft/apply/Ignore、cleanup removal/restore/history、Undo、legacy save、reparse、改名歷史與非空 hints、刪除／重建、並行 late writer/偏好保存、SQL rollback，以及 file 程序退出／新實例恢復／壞 journal／外部衝突。既有 reading/cleanup/task-layout/notes 回歸亦驗證。只使用 temporary fixtures 與 disposable PostgreSQL，未改 parser／生成策略、未新增真 provider 呼叫或修改使用者書籍；LLRN-10/11 語義品質未通過的紀錄不變。LLRN-13 application orchestration 已完成；LLRN-15 runtime DI 已交付，LLRN-16 production API 已交付，UI 仍待後續任務。
+
+### Verification (2026-10-28)
+
+`scripts/test_learning_file_repository.py` 最終 **45 tests passed**。包括真檔案 reload、純讀零寫入、來源/overlay/parent/scope、分頁與 cursor revision、same-ID replay/history、6 程序同 key（1 claim/5 coalesce）、4 程序 dispatch（1 success/3 CAS conflict）、source/preferences 寫入競爭、replace 前後故障注入與 `os._exit`、lost ack、orphan recovery、receipt/codec corruption、checkpoint/result 原子性、刷新保留、空 hints、未知結果/manual retry fencing，以及不洩漏正文的提交日誌。
+
+先執行本 suite（當時 44 項）加 LLRN-01..05 基礎及既有 reading_content/source_review_blocks：**206 passed**；最後補上日誌驗證後重跑完整 45 項專測通過。共 **207 個不同測試**有通過證據（45 新增 + 162 既有），無 skips。全部使用 temporary fixtures，不呼叫真 LLM、不修改真書或重啟部署；未改 parser/切句演算法，沒有新增真書/provider acceptance。SQL/全來源生命週期/實際 API/UI 驗收仍由後續 owner 完成。
+
+## Irreversible Ignore All OCR Flags (2026-10-27)
+
+**[Code-Confirmed, 2026-10-27]** Add discard_all_regions to the existing reading-content mutation API.
+Under the repository transaction, validate source/revision, OCR eligibility and
+resolve all current pending regions server-side. Reject unexpected target/text/
+interaction fields. Record all IDs as permanent ignored decisions, outside the
+Undo snapshot, and in the audit with one idempotent receipt/revision. Existing body,
+original source, hierarchy, artifacts and cleanup history stay unchanged. Preserve
+the preceding Undo operation, but exclude this action from undo_action and ensure
+any later Undo cannot reopen permanently ignored regions. Single-region Ignore
+retains its existing reversible behavior. Empty pending sets reject a new command;
+replaying a committed mutation returns the authoritative snapshot. No schema
+migration, OCR rerun, model call or loop of independent region mutations.
+
+
+Validation: discard_all_regions validates OCR/source/revision and commits permanent decisions outside Undo. 64 focused file/API/disposable-PostgreSQL tests pass, including rollback after document write, concurrency, idempotency, all-page scope, previous/future Undo and unchanged source/body. Source-review/repair/cleanup regression runs 204 tests with 202 passing and 2 opt-in private-backup cases skipped. Local API rebuilt and health/OpenAPI verified; no live document flags changed.
+
+## OCR Review Availability Projection (2026-10-27)
+
+**[Code-Confirmed, 2026-10-27]** Reading-content snapshots expose `ocr_review_available`, a read-only
+presentation capability. Require a valid PDF extraction identity matching canonical
+text. Full OCR is eligible; Auto requires matching actual OCR spans or source-bound
+OCR review regions (including empty OCR regions). Native/fast, non-PDF, unknown,
+invalid or stale extraction evidence is ineligible. The capability is independent
+of unresolved counts, so resolving/ignoring all regions preserves access to history.
+Reuse extraction identity and OCR eligibility contracts. Do not perform extraction,
+write metadata, or change body-edit permissions, mutation guards or task-layout.
+Validation: 17 focused availability/reading-content tests pass, including strict API
+schema, snapshot purity, stale evidence, empty OCR regions and legacy full-OCR identity.
+Local API rebuilt and healthy; 12 existing document reads returned explicit true/false
+capabilities, including completed OCR documents without outstanding regions.
+
+
 ## Source-Dependent Interaction Lifecycle Plan (2026-10-26)
 
 **[Code-Confirmed]** TRUI-02/03 implement

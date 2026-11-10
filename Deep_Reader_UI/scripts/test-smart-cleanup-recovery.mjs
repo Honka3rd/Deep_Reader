@@ -65,7 +65,7 @@ try {
       await dialog.getByRole("button", { name: "Clean text", exact: true }).click();
     };
     const review = async () => {
-      await page.getByRole("button", { name: "Review source", exact: true }).click();
+      await page.getByRole("button", { name: "Review extracted text", exact: true }).click();
       await panel.getByLabel("Loading content changes").waitFor({ state: "hidden" });
     };
     const closeReview = async () => { await panel.getByRole("button", { name: "Close content editor" }).click(); await panel.waitFor({ state: "hidden" }); };
@@ -169,8 +169,8 @@ try {
     await page.locator(".hierarchy-chapter-interaction-trigger").first().click();
     await page.getByRole("menuitem", { name: "Note", exact: true }).click();
     await page.getByRole("textbox", { name: "Note", exact: true }).fill("Keep my draft through cleanup Undo.");
-    await page.getByRole("button", { name: "Review source", exact: true, includeHidden: true }).evaluate(el => el.click());
-    await panel.getByText("No unresolved OCR regions recorded.").waitFor();
+    await page.getByRole("button", { name: "Review extracted text", exact: true, includeHidden: true }).evaluate(el => el.click());
+    await panel.getByText("No flagged areas recorded. You can still review previous cleanup changes.").waitFor();
     await panel.getByRole("button", { name: "Expand cleanup 1", exact: true }).click();
     await panel.locator("blockquote").filter({ hasText: "@@??" }).waitFor();
     await page.screenshot({ path: `/tmp/smart-cleanup-recovery-audit-${width}.png`, animations: "disabled" });
@@ -185,7 +185,7 @@ try {
     await page.getByRole("region", { name: "Note", exact: true }).getByRole("button", { name: "Close", exact: true }).click();
 
     await load("remaining_regions"); await open(); await submit(); await dialog.getByText(/OCR cleanup completed/).waitFor(); await close();
-    await review(); await panel.getByText("Source regions (2)", { exact: true }).waitFor();
+    await review(); await panel.getByText("Flagged areas (2)", { exact: true }).waitFor();
     assert.equal((await reading()).regions.some(region => region.id === "r1"), false);
     await panel.getByRole("button", { name: "Original", exact: true }).first().click();
     await panel.getByRole("img").waitFor();
@@ -204,7 +204,7 @@ try {
     const ignore = page.getByRole("dialog", { name: "Ignore this OCR region?", exact: true });
     await ignore.getByRole("button", { name: "Ignore region", exact: true }).click();
     await ignore.waitFor({ state: "hidden" });
-    await panel.getByText("Source regions (1)", { exact: true }).waitFor();
+    await panel.getByText("Flagged areas (1)", { exact: true }).waitFor();
     assert.equal((await reading()).regions.some(region => region.id === regionBefore), false);
     assert.equal(await panel.getByRole("img").count(), 0);
     assert.equal((await stats()).calls, 1);

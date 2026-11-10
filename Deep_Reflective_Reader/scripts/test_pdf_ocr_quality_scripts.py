@@ -85,7 +85,7 @@ class OcrScriptQualityTests(unittest.TestCase):
                 self.assertFalse(self.score(spaced + " " + noise).passed)
 
     def test_quality_version_invalidates_previous_policy(self):
-        self.assertEqual(OCR_QUALITY_VERSION, "observed-script-v6-geometry-fallback")
+        self.assertEqual(OCR_QUALITY_VERSION, "observed-script-v7-unicode-signal")
         with patch("doc_loaders.pdf_extraction_identity.shutil.which", return_value=None):
             for mode in ("fast", "ocr", "auto"):
                 current = identity_for_loader(self.loader, source_sha256="a" * 64, mode=mode)
