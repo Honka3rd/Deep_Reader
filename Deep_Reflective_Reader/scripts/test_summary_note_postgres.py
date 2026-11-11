@@ -95,7 +95,10 @@ class PostgresNotes(NoteServiceTests):
                  patch.object(main, "_RAW_DOCUMENT_BASE_DIR", raw), \
                  patch.object(main, "_DERIVED_DOCUMENT_BASE_DIR", Path(directory) / "derived"):
                 client = TestClient(main.app)
+                from uuid import uuid4
+                context = client.get('/documents/lifecycle/rename-context',params={'doc_name':'book'})
                 result = client.post("/documents/lifecycle/rename", json={
+                    'command_id':str(uuid4()), 'expected_source_token':context.json()['source_token'],
                     "doc_name": "book", "new_doc_name": "renamed", "action": "rename"})
                 self.assertEqual(result.status_code, 200, result.text)
                 self.assertFalse((raw / "book.txt").exists())
@@ -105,7 +108,9 @@ class PostgresNotes(NoteServiceTests):
                 request = replace(request, target=target, context_metadata={"doc_name": "renamed", "document_language": "en"})
                 self.assertEqual(summaries.read(request).payload, summary.payload)
                 self.repo.save_reparsed_document(_document(), "occupied")
+                context = client.get('/documents/lifecycle/rename-context',params={'doc_name':'renamed'})
                 conflict = client.post("/documents/lifecycle/rename", json={
+                    'command_id':str(uuid4()), 'expected_source_token':context.json()['source_token'],
                     "doc_name": "renamed", "new_doc_name": "occupied", "action": "rename"})
                 self.assertEqual(conflict.status_code, 409, conflict.text)
                 self.assertTrue((raw / "renamed.txt").exists())

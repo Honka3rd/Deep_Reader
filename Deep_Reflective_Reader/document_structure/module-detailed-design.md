@@ -1,5 +1,9 @@
 # document_structure Detailed Design
 
+## Incarnation comparison before annotation preservation (2026-11-11, implemented)
+
+Ordinary save compares incoming and persisted interaction_epoch while holding the source write lock, before preserving annotations or writing anything. A mismatch, including a missing incoming epoch against an identified document, raises ReadingContentConflict. Legacy documents with no epoch on either side remain writable; loaded current snapshots retain their identity. Explicit initial import/reparse remains the path for a new incarnation. The shared annotation-preservation guard also applies within the SQL transaction. An epoch-less metadata worker must reload instead of adopting the current incarnation. Regressions compare the complete new-book payload after rejecting a snapshot retained across rename and reimport.
+
 ## Main rename integration ports (2026-11-11, implemented)
 
 Ordinary metadata/artifact saves carrying an existing document epoch must reject

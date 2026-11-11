@@ -3,6 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from uuid import uuid4
+from threading import Lock
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 import main
@@ -10,6 +12,15 @@ from scripts import test_learning_lifecycle as life
 from scripts import test_learning_postgres_repository as sql_tests
 from document_structure.learning_repository import OperationWrite
 from shared.learning_source import LearningContractError
+
+def different_book(text):
+    from scripts.test_learning_file_repository import fixture
+    doc = fixture()
+    return replace(doc, title=text, raw_text=text, chapters=[
+        replace(chapter, sections=[replace(section, task_units=[
+            replace(unit, content=text+' '+unit.content) for unit in section.task_units
+        ]) for section in chapter.sections]) for chapter in doc.chapters])
+
 
 class RenameCases:
     save_result = life.LifecycleMatrix.save_result
@@ -20,9 +31,19 @@ class RenameCases:
         self.derived=self.files/'faiss'; self.derived.mkdir()
         for name,value in [('_RAW_DOCUMENT_BASE_DIR',self.raw),('_DERIVED_DOCUMENT_BASE_DIR',self.derived),('document_artifact_repository',self.docs)]:
             p=patch.object(main,name,value); p.start(); self.addCleanup(p.stop)
+        self.commands = {}; self.command_lock = Lock()
         self.client=TestClient(main.app); self.addCleanup(self.client.close)
-    def rename(self,new='renamed'):
-        return self.client.post('/documents/lifecycle/rename',json={'doc_name':'book','action':'rename','new_doc_name':new})
+    def rename_command(self, old='book', new='renamed'):
+        context = self.client.get('/documents/lifecycle/rename-context', params={'doc_name':old})
+        return {'doc_name':old, 'action':'rename', 'new_doc_name':new,
+                'command_id':str(uuid4()), 'expected_source_token':context.json().get('source_token','0'*64)}
+    def rename(self,new='renamed', *, fresh=False, old='book'):
+        with self.command_lock:
+            key = (old,new)
+            if fresh or key not in self.commands:
+                self.commands[key] = self.rename_command(old,new)
+            command = self.commands[key]
+        return self.client.post('/documents/lifecycle/rename',json=command)
     def make_files(self):
         (self.raw/'book.txt').write_bytes(b'original source')
         (self.derived/'book').mkdir(); (self.derived/'book'/'profile.json').write_text('{}')
@@ -122,13 +143,30 @@ class RenameCases:
         self.assertEqual(responses[0].json()['operation_id'],responses[1].json()['operation_id'])
         self.assertEqual(self.prefs.read_book('renamed').revision,1)
 
+    def test_concurrent_duplicate_with_raw_paths_resolved_before_first_move(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+        from app.document_rename import DocumentRename
+        self.make_files()
+        command = self.rename_command()
+        barrier = Barrier(2)
+        original = DocumentRename.rename
+        def synchronized(coordinator, *args, **kwargs):
+            barrier.wait(timeout=10)
+            return original(coordinator, *args, **kwargs)
+        with patch.object(DocumentRename,'rename',synchronized), ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(lambda _:self.client.post('/documents/lifecycle/rename',json=command),range(2)))
+        self.assertTrue(all(r.status_code==200 for r in responses),[r.text for r in responses])
+        self.assertEqual(responses[0].json()['operation_id'],responses[1].json()['operation_id'])
+        self.assertFalse((self.raw/'book.txt').exists())
+        self.assertEqual((self.raw/'renamed.txt').read_bytes(),b'original source')
+
     def test_explicit_reverse_and_rename_again_remains_available(self):
         self.make_files()
         response=self.rename();self.assertEqual(response.status_code,200,response.text)
-        reverse=self.client.post('/documents/lifecycle/rename',json={
-            'doc_name':'renamed','action':'rename','new_doc_name':'book'})
+        reverse=self.rename('book',old='renamed',fresh=True)
         self.assertEqual(reverse.status_code,200,reverse.text)
-        again=self.rename();self.assertEqual(again.status_code,200,again.text)
+        again=self.rename(fresh=True);self.assertEqual(again.status_code,200,again.text)
         self.assertNotEqual(again.json()['operation_id'],response.json()['operation_id'])
         self.assertEqual((self.raw/'renamed.txt').read_bytes(),b'original source')
 
@@ -145,6 +183,15 @@ class RenameCases:
 
 
     def test_real_tcp_http_rename_uses_active_lifecycle(self):
+        self.over_tcp(self.test_http_moves_learning_preferences_sentences_receipts_and_fences_writer)
+
+    def test_real_tcp_delayed_commands_and_reimport(self):
+        self.over_tcp(self.test_delayed_and_historical_commands_cannot_touch_reimport)
+
+    def test_real_tcp_raw_only_roundtrip(self):
+        self.over_tcp(self.test_raw_only_roundtrip_moves_again_with_new_operation)
+
+    def over_tcp(self, scenario):
         import socket
         from threading import Thread
         from time import monotonic, sleep
@@ -162,7 +209,7 @@ class RenameCases:
                 original=self.client
                 with httpx.Client(base_url=f'http://{address[0]}:{address[1]}') as client:
                     self.client=client
-                    try: self.test_http_moves_learning_preferences_sentences_receipts_and_fences_writer()
+                    try: scenario()
                     finally: self.client=original
             finally:
                 server.should_exit=True;worker.join(timeout=5)
@@ -177,6 +224,164 @@ class RenameCases:
                 self.assertEqual(self.docs.load_document('book').document_id,'book')
                 self.assertEqual(target.read_bytes(),b'existing target')
                 target.unlink()
+
+
+    def test_reimported_book_rejects_old_snapshot_without_any_change(self):
+        from scripts.test_learning_file_repository import fixture
+        from document_structure.reading_content import ReadingContentConflict
+        old = self.docs.load_document('book')
+        response = self.rename()
+        self.assertEqual(response.status_code, 200, response.text)
+        replacement = different_book('New imported content')
+        self.docs.save_reparsed_document(replacement, 'book')
+        before = self.docs.load_document('book')
+        artifact = Path(self.docs.base_dir)/'book.structured.json' if self.docs.lifecycle_storage_identity[0] == 'file' else None
+        persisted = artifact.read_bytes() if artifact else None
+        with self.assertRaises(ReadingContentConflict):
+            self.docs.save_document(old, 'book')
+        self.assertEqual(self.docs.load_document('book'), before)
+        if artifact:
+            self.assertEqual(artifact.read_bytes(), persisted)
+
+    def test_raw_only_roundtrip_moves_again_with_new_operation(self):
+        self.docs.delete_document('book')
+        (self.raw/'book.txt').write_bytes(b'raw-only original')
+        first = self.rename()
+        self.assertEqual(first.status_code, 200, first.text)
+        reverse = self.rename('book',old='renamed',fresh=True)
+        self.assertEqual(reverse.status_code, 200, reverse.text)
+        last = self.rename(fresh=True)
+        self.assertEqual(last.status_code, 200, last.text)
+        self.assertFalse((self.raw/'book.txt').exists())
+        self.assertEqual((self.raw/'renamed.txt').read_bytes(), b'raw-only original')
+        self.assertEqual(len({r.json()['operation_id'] for r in (first,reverse,last)}), 3)
+        retry = self.rename()
+        self.assertEqual(retry.json()['operation_id'], last.json()['operation_id'])
+
+    def test_new_rename_command_after_delete_and_reimport(self):
+        from scripts.test_learning_file_repository import fixture
+        first = self.rename()
+        self.assertEqual(first.status_code, 200, first.text)
+        deleted = self.client.post('/documents/lifecycle/delete', json={
+            'doc_name':'renamed', 'action':'delete', 'confirm':True})
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        self.docs.save_reparsed_document(different_book('Different imported book'),'book')
+        last = self.rename(fresh=True)
+        self.assertEqual(last.status_code, 200, last.text)
+        self.assertNotEqual(first.json()['operation_id'], last.json()['operation_id'])
+        self.assertEqual(self.docs.load_document('renamed').title,'Different imported book')
+
+
+    def test_delayed_and_historical_commands_cannot_touch_reimport(self):
+        from scripts.test_learning_file_repository import fixture
+        delayed = self.rename_command()  # Prepared but never dispatched for old incarnation.
+        first = self.rename()
+        historical = dict(self.commands[('book','renamed')])
+        self.assertEqual(first.status_code,200,first.text)
+        deleted = self.client.post('/documents/lifecycle/delete',json={
+            'doc_name':'renamed','action':'delete','confirm':True})
+        self.assertEqual(deleted.status_code,200,deleted.text)
+        self.docs.save_reparsed_document(different_book('new book'),'book')
+        before = self.docs.load_document('book')
+        for payload in (historical,delayed):
+            response = self.client.post('/documents/lifecycle/rename',json=payload)
+            self.assertEqual(response.status_code,409,response.text)
+            self.assertEqual(self.docs.load_document('book'),before)
+        last = self.rename(fresh=True)
+        self.assertEqual(last.status_code,200,last.text)
+        for payload in (historical,delayed):
+            response = self.client.post('/documents/lifecycle/rename',json=payload)
+            self.assertGreaterEqual(response.status_code,400,response.text)
+        self.assertEqual(self.docs.load_document('renamed').title,'new book')
+        self.assertNotEqual(first.json()['operation_id'],last.json()['operation_id'])
+
+    def test_raw_reimport_same_bytes_has_new_identity_and_preserves_old_receipt(self):
+        self.docs.delete_document('book')
+        (self.raw/'book.txt').write_bytes(b'same bytes')
+        delayed = self.rename_command()
+        first = self.rename()
+        historical = dict(self.commands[('book','renamed')])
+        self.assertEqual(first.status_code,200,first.text)
+        deleted = self.client.post('/documents/lifecycle/delete',json={
+            'doc_name':'renamed','action':'delete','confirm':True})
+        self.assertEqual(deleted.status_code,200,deleted.text)
+        (self.raw/'book.txt').write_bytes(b'same bytes')
+        for payload in (historical,delayed):
+            response = self.client.post('/documents/lifecycle/rename',json=payload)
+            self.assertEqual(response.status_code,409,response.text)
+            self.assertEqual((self.raw/'book.txt').read_bytes(),b'same bytes')
+            self.assertFalse((self.raw/'renamed.txt').exists())
+        last = self.rename(fresh=True)
+        self.assertEqual(last.status_code,200,last.text)
+        self.assertNotEqual(first.json()['operation_id'],last.json()['operation_id'])
+        self.assertEqual(self.rename().json()['operation_id'],last.json()['operation_id'])
+        from app.document_rename import DocumentRename
+        directory = DocumentRename(self.docs,self.raw,self.derived).directory
+        receipts = [__import__('json').loads(p.read_text()) for p in directory.glob('command-*.json')]
+        self.assertEqual({r['operation_id'] for r in receipts},
+                         {first.json()['operation_id'],last.json()['operation_id']})
+
+    def test_context_read_does_not_write_and_unbound_command_is_rejected(self):
+        from app.document_rename import DocumentRename
+        directory = DocumentRename(self.docs,self.raw,self.derived).directory
+        before = self.docs.load_document('book')
+        first = self.rename_command(); second = self.rename_command()
+        self.assertEqual(first['expected_source_token'],second['expected_source_token'])
+        self.assertFalse(directory.exists())
+        response = self.client.post('/documents/lifecycle/rename',json={
+            'doc_name':'book','action':'rename','new_doc_name':'renamed'})
+        self.assertEqual(response.status_code,422,response.text)
+        self.assertFalse(directory.exists())
+        self.assertEqual(self.docs.load_document('book'),before)
+
+    def test_same_command_id_cannot_be_rebound_to_new_token_or_target(self):
+        first = self.rename()
+        self.assertEqual(first.status_code,200,first.text)
+        original = self.commands[('book','renamed')]
+        for change in ({'expected_source_token':'0'*64},{'new_doc_name':'other'}):
+            response = self.client.post('/documents/lifecycle/rename',json={**original,**change})
+            self.assertEqual(response.status_code,409,response.text)
+        self.assertEqual(self.docs.load_document('renamed').document_id,'renamed')
+
+    def test_old_receipt_after_reverse_is_not_a_new_command(self):
+        self.make_files()
+        first = self.rename()
+        self.assertEqual(first.status_code,200,first.text)
+        reverse = self.rename('book',old='renamed',fresh=True)
+        self.assertEqual(reverse.status_code,200,reverse.text)
+        before = self.docs.load_document('book')
+        retry = self.rename()
+        self.assertEqual(retry.status_code,409,retry.text)
+        self.assertEqual(self.docs.load_document('book'),before)
+        self.assertTrue((self.raw/'book.txt').exists())
+        self.assertEqual(self.rename(fresh=True).status_code,200)
+
+
+    def test_legacy_receipt_is_retained_and_cannot_authorize_new_command(self):
+        import json
+        from app.document_rename import DocumentRename
+        coordinator = DocumentRename(self.docs,self.raw,self.derived)
+        coordinator.directory.mkdir(parents=True)
+        legacy = coordinator.directory/('a'*64+'.json')
+        payload = json.dumps({'version':1, 'old':'book', 'new':'renamed', 'epoch':'old'})
+        legacy.write_text(payload)
+        response = self.rename()
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(legacy.read_text(),payload)
+
+    def test_legacy_pending_journal_fails_closed_without_repair(self):
+        import json
+        from app.document_rename import DocumentRename
+        coordinator = DocumentRename(self.docs,self.raw,self.derived)
+        coordinator.directory.mkdir(parents=True)
+        payload = json.dumps({'version':1, 'old':'book', 'new':'renamed', 'epoch':'old'})
+        coordinator.pending.write_text(payload)
+        before = self.docs.load_document('book')
+        response = self.rename()
+        self.assertEqual(response.status_code,503,response.text)
+        self.assertTrue(response.json()['recovery_required'])
+        self.assertEqual(coordinator.pending.read_text(),payload)
+        self.assertEqual(self.docs.load_document('book'),before)
 
 
 class FileRenameTests(RenameCases,unittest.TestCase):

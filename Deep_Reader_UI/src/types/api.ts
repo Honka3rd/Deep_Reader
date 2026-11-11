@@ -326,10 +326,17 @@ export type DocumentLifecycleFailureReason =
   | "unsafe_name"
   | "not_implemented";
 
+export interface DocumentRenameContextResponse {
+  doc_name: string;
+  source_token: string;
+}
+
 export interface DocumentLifecycleActionRequest {
   doc_name: string;
   action: DocumentLifecycleAction;
   new_doc_name?: string | null;
+  command_id?: string;
+  expected_source_token?: string;
   expected_source_hash?: string | null;
   expected_structure_version?: string | null;
   confirm?: boolean;

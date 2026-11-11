@@ -106,7 +106,8 @@ def test_lifecycle_request_requires_rename_target() -> None:
     )
 
     request = DocumentLifecycleActionRequest.model_validate(
-        _request_payload(action="rename", new_doc_name=" Madame Bovary 2 ")
+        _request_payload(action="rename", new_doc_name=" Madame Bovary 2 ",
+                         command_id="00000000-0000-4000-8000-000000000001", expected_source_token="a"*64)
     )
     _assert(request.action == "rename", "rename action should pass")
     _assert(

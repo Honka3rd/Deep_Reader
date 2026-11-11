@@ -1,5 +1,9 @@
 # Deep_Reader_UI Checklist
 
+- [x] MAIN-06 dependency: submit backend-bound rename command identity and retain unknown-outcome retries.
+  Evidence: `test-rename-command-service.mjs` verifies duplicate dispatch, transport/503 retry, new command after completion/conflict; `test-rename-command-browser.mjs` passes at 1280px/390px with screenshots. `npm run build` and 21 controller groups pass. Existing broad Library workflow times out before reaching rename; it is not counted as passing.
+  Timestamp: 2026-11-11
+
 ## Navigation during interaction generation (2026-11-11)
 
 - [x] UI-AUDIT-R5: Separate presentation reset from document source invalidation.

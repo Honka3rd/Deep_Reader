@@ -1,5 +1,9 @@
 # app Detailed Design
 
+## Rename command identity correction (2026-11-11, implemented)
+
+Completed version-2 receipts are keyed by caller command_id, bind old/new names and expected_source_token, and retain the server operation_id. The token hashes the storage scope, source name, canonical incarnation (or legacy source fingerprint), and optional raw stat identity (device/inode/size/mtime/ctime). New commands validate the token under the rename lock before starting. Reusing a command with another payload conflicts. Completed receipts also retain result_token for the destination incarnation/raw stat identity. A completed retry is read-only and succeeds only while its target, result token and moved resources still match and its source is absent; it never calls _start. A reverse rename or reimport requires a fresh command and current token. Pending recovery requires the same command/payload. Version-1 receipts are retained as historical evidence, never adopted as new commands; an old pending journal requires explicit maintenance and fails closed. No read-time migration or receipt deletion. This remains local POSIX coordination, not protection from external filesystem replacement during a move.
+
 ## Main rename recovery orchestration (2026-11-11, implemented)
 
 `document_rename.py` owns only the explicit rename use case. Inject the active
@@ -16,12 +20,11 @@ owners cause a recovery conflict, never guessed rollback or overwrite. Do not
 claim coordination with external filesystem tools or distributed deployments.
 
 Journals live in `<raw-root-parent>/.document-renames/<storage-scope-hash>/`;
-`pending.json` is fsynced before repository commit, completed receipts are keyed
-by old/new identity. A new DocumentRename instance on an explicit identical HTTP
+`pending.json` is fsynced before repository commit, completed version-2 receipts are keyed
+by caller command identity (see correction above). A new DocumentRename instance on an explicit identical HTTP
 request reconciles pending work; no startup/read-time repair. Malformed journals
 fail closed with recovery_required and require maintainer inspection. Changed
-resource hashes or recreated epochs are never overwritten. A same-incarnation
-explicit reverse/rename cycle starts a new operation. Legacy documents without
+resource hashes or recreated epochs are never overwritten. An explicit reverse/rename cycle with a fresh command and current token starts a new operation. Legacy documents without
 a document epoch use a stable source/provenance fingerprint; reads do not backfill.
 Pure raw candidates have no canonical learning state and retain raw rename support.
 Known file type/access and destination conflicts are checked before mutation; a

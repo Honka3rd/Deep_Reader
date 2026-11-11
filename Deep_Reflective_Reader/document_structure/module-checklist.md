@@ -1,5 +1,9 @@
 # document_structure Checklist
 
+- [x] MAIN-01/05/06 follow-up: verify incarnation fences and explicit rename command identity.
+  Evidence: `scripts/test_main_rename_audit.py` (90 file/real PostgreSQL HTTP cases, including six TCP cases) and the related 361-test regression run pass without skips; two final incarnation/byte-preservation checks also pass. Nine route/schema scripts pass after updating rename request fixtures. UI type/build, 21 controller groups, lifecycle service retry checks and 1280px/390px rename flows pass. Local evidence: `/tmp/audit-main-ac544288/`. External review pending; no deployment/push.
+  Timestamp: 2026-11-11
+
 
 - [x] MAIN-01–03 dependency: expose scoped identity and matching explicit rename recovery without weakening lifecycle fences.
   Evidence: `scripts/test_main_rename_audit.py` final 64 file/real PostgreSQL HTTP cases pass, including actual TCP routes, preflight conflicts, per-stage failures, recovery/retry, references/tombstones and late writers. Relevant regression run: 333 tests pass, no skips; upload streaming and logging included. Nine existing route/schema scripts pass; UI type/build and 21 controller groups pass. Private before/after logs: `/tmp/audit-main-0497d65/`. No deployment/push; external review pending.

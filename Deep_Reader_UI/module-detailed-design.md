@@ -1,5 +1,9 @@
 # Deep_Reader_UI Detailed Design
 
+## Rename command identity (2026-11-11, implemented)
+
+The lifecycle service reads backend rename context for a new explicit user command and submits a UUID plus its source token. It retains the exact command through transport/503 unknown outcomes; retry must not fetch a new token or UUID. A completed or definitively rejected command is released. A later user command, including after reimport, obtains new context. The UI does not infer source incarnation from names or hashes, and existing rename dialog presentation is retained. No background rename retries. Retention is service-instance/session memory; a page reload does not recover a lost command handle or silently resume a pending server journal. Dedicated Chromium service and desktop/mobile Library rename tests pass; the unrelated broad Library script remains blocked at reader entry before rename.
+
 ## Navigation and interaction task ownership — R5 (2026-11-11)
 
 Implemented correction for review 6f6e75d: split presentation reset from source

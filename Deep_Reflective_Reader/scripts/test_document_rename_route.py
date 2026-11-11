@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+from uuid import uuid4
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -16,6 +17,12 @@ import main  # noqa: E402
 from scripts.test_learning_routes import file_container
 from scripts.test_learning_file_repository import fixture
 from dataclasses import replace
+
+
+def _identity(client, name):
+    response = client.get('/documents/lifecycle/rename-context',params={'doc_name':name})
+    return {'command_id':str(uuid4()),
+            'expected_source_token':response.json().get('source_token','0'*64)}
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -65,6 +72,7 @@ def test_rename_moves_raw_structured_and_derived_artifacts() -> None:
             json={
                 "doc_name": "Book",
                 "action": "rename",
+                **_identity(client, "Book"),
                 "new_doc_name": "New Book",
             },
         )
@@ -126,6 +134,7 @@ def test_rename_conflict_preserves_existing_artifacts() -> None:
             json={
                 "doc_name": "Book",
                 "action": "rename",
+                **_identity(client, "Book"),
                 "new_doc_name": "Existing",
             },
         )
@@ -149,6 +158,7 @@ def test_rename_missing_document_returns_typed_404_response() -> None:
             json={
                 "doc_name": "Missing Book",
                 "action": "rename",
+                **_identity(client, "Book"),
                 "new_doc_name": "New Book",
             },
         )

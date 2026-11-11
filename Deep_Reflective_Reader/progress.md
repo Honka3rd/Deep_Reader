@@ -436,14 +436,14 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 52 | 11 | MAIN audit fixes locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `app/` | package | `app/module-checklist.md` | 53 | 11 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 61 | 0 | OCR-KEEP owner 5/5; no unchecked items |
-| `db/` | package + design module | `db/module-checklist.md` | 61 | 4 | MAIN audit fixes locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `db/` | package + design module | `db/module-checklist.md` | 62 | 4 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 25 | 0 | Generic Accepted Sources Delivered |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 94 | 18 | MAIN audit fixes locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 95 | 18 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -457,11 +457,11 @@ It is used to:
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 97 | 0 | TRUI-01 complete; quality caveat retained |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 37 | 3 | MAIN audit fixes locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 38 | 3 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 4 | 0 | Runtime Profile Reuse Only |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 47 | 1 | MAIN audit fixes locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `main.py` | root-python-module | `main.module-checklist.md` | 48 | 1 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 
 ## 5. Package Module Progress
 

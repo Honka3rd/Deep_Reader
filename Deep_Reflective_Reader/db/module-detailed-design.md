@@ -1,5 +1,9 @@
 # db Detailed Design
 
+## Ordinary save incarnation fence (2026-11-11, implemented)
+
+The shared annotation-preservation function now validates incoming/current document incarnation before replacing provenance, within the existing SQL write transaction and locks. Explicit reparse retains its new-epoch behavior. Real PostgreSQL HTTP regressions exercise rename, delete/reimport, delayed old commands and ordinary stale saves; SQL-only documents still require no local files. No schema migration or inactive-backend mutation is introduced.
+
 ## MAIN-02 repository identity (2026-11-11, implemented)
 
 Ordinary metadata/artifact saves carrying an existing document epoch must reject

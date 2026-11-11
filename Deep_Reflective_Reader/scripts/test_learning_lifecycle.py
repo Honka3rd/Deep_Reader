@@ -123,10 +123,14 @@ class LifecycleMatrix:
         self.assertNotEqual(self.repo.read_sources('book').blocks[0].source,self.block.source)
         self.assertEqual(self.repo.read_batch('book',(key,))[0].view.state,'stale')
 
-    def test_metadata_save_preserves_cache_even_if_worker_omits_epoch(self):
+    def test_metadata_save_without_epoch_is_rejected_and_preserves_cache(self):
         key,entry,_=self.save_result()
         doc=self.docs.load_document('book');provenance=dict(doc.parse_provenance);provenance.pop('interaction_epoch',None)
-        self.docs.save_document(replace(doc,title='New title',parse_provenance=provenance),'book')
+        from document_structure.reading_content import ReadingContentConflict
+        with self.assertRaises(ReadingContentConflict):
+            self.docs.save_document(replace(doc,title='New title',parse_provenance=provenance),'book')
+        self.assertEqual(self.docs.load_document('book'), doc)
+        self.docs.save_document(replace(doc,title='New title'),'book')
         self.assertEqual(self.repo.read_batch('book',(key,))[0].view.saved,entry.saved)
 
     def test_reparse_same_text_invalidates_every_old_binding(self):

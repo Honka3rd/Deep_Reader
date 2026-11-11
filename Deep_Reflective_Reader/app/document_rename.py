@@ -118,13 +118,38 @@ class DocumentRename:
             raise OSError('rename_directory_unwritable')
         return dict(kind=kind, source=source.name, target=target.name, fingerprint=_fingerprint(source))
 
+    def source_token(self, old, raw_source=None):
+        return self._source_context(old, raw_source)[0]
+
+    def _source_context(self, old, raw_source):
+        """Pure context read; the mutation rechecks this projection under its lock."""
+        source = _document(self.repository, old)
+        raw_identity = None
+        if raw_source is not None:
+            if raw_source.is_symlink() or not raw_source.is_file():
+                raise ValueError('storage_failure')
+            stat = raw_source.stat()
+            raw_identity = [raw_source.name, stat.st_dev, stat.st_ino, stat.st_size,
+                            stat.st_mtime_ns, stat.st_ctime_ns]
+        if source is None and raw_identity is None:
+            raise FileNotFoundError('missing_document')
+        return sha256(json.dumps([self.scope, old, _epoch(source), raw_identity]).encode()).hexdigest(), source
+
     def _validate_record(self, record, old, new):
         if not isinstance(record, dict) or set(record) != {
-                'version', 'scope', 'old', 'new', 'epoch', 'moves', 'operation_id'}:
+                'version', 'scope', 'old', 'new', 'epoch', 'moves', 'operation_id',
+                'command_id', 'source_token', 'result_token'}:
             raise RenameRecoveryRequired('unreadable-journal')
-        if (record['version'] != 1 or record['scope'] != self.scope or
+        if (record['version'] != 2 or record['scope'] != self.scope or
                 not isinstance(record['operation_id'], str) or
                 re.fullmatch('[0-9a-f]{32}', record['operation_id']) is None or
+                (record['result_token'] is not None and
+                 (not isinstance(record['result_token'], str) or
+                  re.fullmatch('[0-9a-f]{64}', record['result_token']) is None)) or
+                not isinstance(record['command_id'], str) or
+                re.fullmatch('[0-9a-f]{32}', record['command_id']) is None or
+                not isinstance(record['source_token'], str) or
+                re.fullmatch('[0-9a-f]{64}', record['source_token']) is None or
                 not isinstance(record['moves'], list) or len(record['moves']) > 2 or
                 (record['epoch'] is not None and not isinstance(record['epoch'], str))):
             raise RenameRecoveryRequired('unreadable-journal')
@@ -188,6 +213,8 @@ class DocumentRename:
             if source_path.exists():
                 source_path.rename(target_path)
                 _sync_directory(source_path.parent)
+        raw_target = next((self._paths(move)[1] for move in record['moves'] if move['kind'] == 'raw'), None)
+        record = {**record, 'result_token': self.source_token(new, raw_target)}
         self._save(receipt, record)
         atomic_write(self.pending, None)
         return self._effects(record)
@@ -200,8 +227,10 @@ class DocumentRename:
                     derived_resources_affected='derived' in kinds,
                     operation_id=record['operation_id'])
 
-    def _start(self, old, new, raw_source, raw_target):
-        source = _document(self.repository, old)
+    def _start(self, old, new, raw_source, raw_target, command_id, source_token):
+        actual_token, source = self._source_context(old, raw_source)
+        if actual_token != source_token:
+            raise ValueError('conflict')
         if _document(self.repository, new) is not None:
             raise ValueError('conflict')
         # A repository-only source must not adopt another raw candidate/profile.
@@ -218,7 +247,8 @@ class DocumentRename:
             raise FileNotFoundError('missing_document')
         if source is not None:
             renamed_interactions(source, new)  # Predictable transform errors before journal/commit.
-        record = dict(version=1, scope=self.scope, old=old, new=new,
+        record = dict(version=2, scope=self.scope, old=old, new=new,
+                      command_id=command_id, source_token=source_token, result_token=None,
                       epoch=_epoch(source), moves=moves, operation_id=uuid4().hex)
         try:
             self._save(self.pending, record)
@@ -228,35 +258,42 @@ class DocumentRename:
             raise
         return record
 
-    def rename(self, old, new, *, raw_source=None, raw_target=None):
-        if old == new:
+    def rename(self, old, new, *, command_id, source_token, raw_source=None, raw_target=None):
+        from uuid import UUID
+        command_id = UUID(str(command_id)).hex
+        if old == new or re.fullmatch('[0-9a-f]{64}', source_token) is None:
             raise ValueError('conflict')
-        receipt = self.directory / (sha256(json.dumps([old,new]).encode()).hexdigest()+'.json')
+        receipt = self.directory / ('command-' + command_id + '.json')
         with self._locked():
-            if self.pending.exists():
+            if self.pending.exists() or receipt.exists():
+                path = self.pending if self.pending.exists() else receipt
                 try:
-                    record = json.loads(self.pending.read_text())
+                    record = json.loads(path.read_text())
                 except (OSError, ValueError) as error:
                     raise RenameRecoveryRequired('unreadable-journal') from error
                 self._validate_record(record, old, new)
-            elif receipt.exists():
-                record = json.loads(receipt.read_text())
-                self._validate_record(record, old, new)
-                # Permit a fresh rename after this same incarnation was explicitly
-                # renamed back. Recreated books have a different epoch and are fenced.
-                source = _document(self.repository, old)
-                target = _document(self.repository, new)
-                if source is not None:
-                    if target is not None or _epoch(source) != record['epoch']:
+                if record['command_id'] != command_id or record['source_token'] != source_token:
+                    raise ValueError('conflict')
+                if path == receipt:
+                    # A receipt is evidence of THIS command, never authorization
+                    # to start another mutation after a reverse rename/reimport.
+                    source = _document(self.repository, old)
+                    target = _document(self.repository, new)
+                    if source is not None or _epoch(target) != record['epoch']:
                         raise ValueError('conflict')
-                    record = self._start(old, new, raw_source, raw_target)
-                else:
-                    if _epoch(target) != record['epoch']:
+                    for move in record['moves']:
+                        before, after = self._paths(move)
+                        if before.exists() or before.is_symlink() or _fingerprint(after) != move['fingerprint']:
+                            raise ValueError('conflict')
+                    # A newly uploaded raw source also supersedes SQL-only receipts.
+                    if raw_source is not None and (raw_source.exists() or raw_source.is_symlink()):
                         raise ValueError('conflict')
-                    self._check_moves(record)
+                    raw_target = next((self._paths(move)[1] for move in record['moves'] if move['kind'] == 'raw'), None)
+                    if self.source_token(new, raw_target) != record['result_token']:
+                        raise ValueError('conflict')
                     return self._effects(record)
             else:
-                record = self._start(old, new, raw_source, raw_target)
+                record = self._start(old, new, raw_source, raw_target, command_id, source_token)
             try:
                 return self._finish(record, receipt)
             except (PreferenceConflict, ValueError) as error:

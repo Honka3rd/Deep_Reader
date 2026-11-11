@@ -72,6 +72,7 @@ from api_schemas import (
     DocumentListItemResponse,
     DocumentListResponse,
     DocumentLifecycleActionRequest,
+    DocumentRenameContextResponse,
     DocumentLifecycleActionResponse,
     DocumentManagementItemResponse,
     DocumentManagementListResponse,
@@ -1631,6 +1632,24 @@ def delete_document_lifecycle(
         )
 
 
+@app.get("/documents/lifecycle/rename-context", response_model=DocumentRenameContextResponse)
+def read_document_rename_context(doc_name: str):
+    from app.document_rename import DocumentRename
+    try:
+        name = _validate_document_lifecycle_doc_name(doc_name)
+        token = DocumentRename(document_artifact_repository, _RAW_DOCUMENT_BASE_DIR,
+                               _DERIVED_DOCUMENT_BASE_DIR).source_token(
+            _document_lifecycle_namespace(name), _resolve_raw_document_delete_path(name))
+        return DocumentRenameContextResponse(doc_name=name, source_token=token)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="missing_document") from None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="validation_failure") from None
+    except Exception:
+        logger.exception("document_rename_context_failed")
+        raise HTTPException(status_code=503, detail="storage_failure") from None
+
+
 @app.post(
     "/documents/lifecycle/rename",
     response_model=DocumentLifecycleActionResponse,
@@ -1671,6 +1690,7 @@ def rename_document_lifecycle(
                                  _DERIVED_DOCUMENT_BASE_DIR).rename(
             _document_lifecycle_namespace(doc_name),
             _document_lifecycle_namespace(request.new_doc_name),
+            command_id=request.command_id, source_token=request.expected_source_token,
             raw_source=raw_source, raw_target=raw_target)
         preparation_operations.forget(doc_name, request.new_doc_name)
         return DocumentLifecycleActionResponse(

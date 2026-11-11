@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from typing import Annotated, Any, ClassVar, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -737,6 +739,12 @@ class DocumentUploadResponse(BaseModel):
         return self
 
 
+class DocumentRenameContextResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    doc_name: str
+    source_token: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class DocumentLifecycleActionRequest(BaseModel):
     """Explicit request DTO for future document lifecycle mutation routes."""
 
@@ -746,6 +754,8 @@ class DocumentLifecycleActionRequest(BaseModel):
     doc_name: str
     action: str
     new_doc_name: str | None = None
+    command_id: UUID | None = None
+    expected_source_token: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     expected_source_hash: str | None = None
     expected_structure_version: str | None = None
     confirm: bool = False
@@ -785,8 +795,12 @@ class DocumentLifecycleActionRequest(BaseModel):
                 raise ValueError("rename action requires new_doc_name")
             if self.new_doc_name == self.doc_name:
                 raise ValueError("rename action requires a different new_doc_name")
+            if self.command_id is None or self.expected_source_token is None:
+                raise ValueError("rename requires command_id and expected_source_token")
             return self
 
+        if self.command_id is not None or self.expected_source_token is not None:
+            raise ValueError("command identity is only valid for rename action")
         if self.new_doc_name is not None:
             raise ValueError("new_doc_name is only valid for rename action")
         return self

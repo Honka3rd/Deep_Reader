@@ -1,5 +1,9 @@
 # api_schemas.py Detailed Design
 
+## Rename command request identity (2026-11-11, implemented)
+
+Rename requests require command_id (UUID) and expected_source_token (64 lowercase hex characters), in addition to doc_name/action/new_doc_name. These fields are only valid for rename. DocumentRenameContextResponse exposes doc_name and source_token from the pure rename-context GET route. The existing operation_id is the server operation identifier, distinct from caller command identity. Retry repeats the same payload; a new explicit command obtains current context and a fresh UUID. Existing accepted/conflict/recovery response and upload contracts remain unchanged.
+
 ## Main rename recovery response (2026-11-11, implemented)
 
 `DocumentLifecycleActionResponse` adds `recovery_required` (default false) and

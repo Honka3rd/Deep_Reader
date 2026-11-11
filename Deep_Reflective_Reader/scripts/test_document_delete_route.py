@@ -172,6 +172,8 @@ def test_delete_route_rejects_non_delete_actions() -> None:
             json={
                 "doc_name": "Book",
                 "action": "rename",
+                "command_id": "00000000-0000-4000-8000-000000000001",
+                "expected_source_token": "a"*64,
                 "new_doc_name": "New Book",
                 "confirm": True,
             },

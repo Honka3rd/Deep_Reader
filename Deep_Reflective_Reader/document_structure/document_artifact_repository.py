@@ -13,6 +13,11 @@ from shared.task_unit_model import TaskUnit
 
 def preserve_explicit_annotations(current, incoming):
     """Only atomic interaction mutations or explicit reparse may replace these fields."""
+    # Called under the repository source lock / SQL transaction. Check the
+    # incoming identity BEFORE copying any current provenance onto the snapshot.
+    if incoming.parse_provenance.get("interaction_epoch") != current.parse_provenance.get("interaction_epoch"):
+        from document_structure.reading_content import ReadingContentConflict
+        raise ReadingContentConflict("reading_document_incarnation_changed_reload_required")
     current_revision = current.parse_provenance.get("reading_content", {}).get("revision", 0)
     incoming_revision = incoming.parse_provenance.get("reading_content", {}).get("revision", 0)
     if current_revision != incoming_revision:

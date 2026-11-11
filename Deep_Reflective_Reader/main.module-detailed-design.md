@@ -1,5 +1,13 @@
 # main.py Detailed Design
 
+## MAIN-01/05/06 follow-up (2026-11-11, implemented)
+
+Rename requires a caller command_id and expected_source_token. GET /documents/lifecycle/rename-context?doc_name=... is a pure identity projection from the active repository and optional raw file identity; it neither creates journals nor repairs state. A new user command reads context then submits its UUID. Unknown-outcome retries keep the exact command and token. Missing identity is rejected before mutation. Completed historical commands cannot rename a recreated source. File and real PostgreSQL HTTP regressions cover raw-only cycles, explicit reimport, delayed commands, recovery and unchanged new-book payloads.
+
+Validation: `scripts/test_main_rename_audit.py` (90 file/real PostgreSQL HTTP cases, including six TCP cases) and the related 361-test regression run pass without skips; two final incarnation/byte-preservation checks also pass. Nine route/schema scripts pass after updating rename request fixtures. UI type/build, 21 controller groups, lifecycle service retry checks and 1280px/390px rename flows pass. Local evidence: `/tmp/audit-main-ac544288/`. External review pending; no deployment/push.
+
+Limits: the existing broad `test-library-workflow.mjs` times out while entering the reader, before reaching rename; this is not counted as passed. Focused Library rename flows use real React/service code with mocked HTTP. Backend tests use isolated files and disposable real PostgreSQL, not production books or paid providers. R1–R5 interaction code is unchanged; the full prior navigation/source-reset browser matrices were not rerun. Old version-1 pending journals fail closed for explicit maintainer recovery; completed historical receipts are retained.
+
 ## MAIN audit correction (2026-11-11, implemented)
 
 Rename delegates to the active repository through `app.document_rename`. File
@@ -723,7 +731,7 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
     document identity or display identity according to storage policy, rejects conflicts
     deterministically, and must not be simulated through upload replace/create-distinct
     flows. **[Maintainer-Provided] + [Future Direction]**
-17. `POST /documents/lifecycle/rename` requires `action=rename` and `new_doc_name`.
+17. `POST /documents/lifecycle/rename` requires `action=rename`, `new_doc_name`, `command_id` and `expected_source_token`.
     It delegates identity changes to the active repository lifecycle and coordinates
     optional raw/FAISS moves through the durable journal described above. It never
     edits inactive structured files. Responses include effect flags and operation ID;

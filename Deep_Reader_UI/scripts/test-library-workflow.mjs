@@ -67,7 +67,12 @@ try {
         return route.fulfill({ json: { envelope: { target: { ...body.target, target_id: "s", document_id: name, title: "Section" },
           interaction_type: kind, status: "not_generated", schema_version: `${kind}_v1` }, payload: null } });
       }
+      if (path.endsWith("/lifecycle/rename-context")) {
+        return route.fulfill({ json: { doc_name: "Victim", source_token: "a".repeat(64) } });
+      }
       if (path.endsWith("/lifecycle/rename")) {
+        assert.match(body.command_id, /^[0-9a-f-]{36}$/);
+        assert.equal(body.expected_source_token, "a".repeat(64));
         mutations.push(body); victim = body.new_doc_name;
         return route.fulfill({ json: { status: "accepted", new_doc_name: victim, doc_name: "Victim", action: "rename" } });
       }
