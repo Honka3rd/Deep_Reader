@@ -106,7 +106,7 @@ try {
     const activate=async()=>{const s=c.selectInteractionAction(kind,target);await pause(5);return c.activateInteraction(s,request,
      {readInsight:read,generateInsight:generate,readQuiz:read,generateQuiz:generate,readCriticalThinkingSession:read,generateCriticalThinkingQuestion:generate},e=>errors.push(e));};
     const first=kind==='summary'?null:activate();await until(()=>release);
-    version=1;c.resetInteractions();
+    version=1;c.invalidateInteractionSources('Book');c.resetInteractions();
     let ignoredWhileMounted=true;
     if(variant.startsWith('summary_')){release();await pause(25);const region=document.querySelector('[aria-label="Summary"]');ignoredWhileMounted=!region?.textContent.includes('OLD')&&!region?.querySelector('[role="alert"]')&&calls.length===(variant==='summary_read'?1:2);}
     if(kind==='summary'){show=false;render();await pause(10);show=true;render();}else await pause(10);
@@ -117,10 +117,10 @@ try {
   }
   const {InteractionGenerationTasks}=await import('/src/features/reading-interactions/generation-tasks.ts');
   const tasks=new InteractionGenerationTasks();let oldRelease,newRelease;
-  const old=tasks.start('same-target',()=>new Promise(r=>oldRelease=r));await until(()=>oldRelease);
-  tasks.invalidateSources();const current=tasks.start('same-target',()=>new Promise(r=>newRelease=r));await until(()=>newRelease);
+  const old=tasks.start('Book','same-target',()=>new Promise(r=>oldRelease=r));await until(()=>oldRelease);
+  tasks.invalidateSources('Book');const current=tasks.start('Book','same-target',()=>new Promise(r=>newRelease=r));await until(()=>newRelease);
   oldRelease('OLD');await old;await pause(5);
-  const preserved=tasks.find('same-target',false)===current;newRelease('CURRENT');await current;tasks.dispose();
+  const preserved=tasks.find('Book','same-target',false)===current;newRelease('CURRENT');await current;tasks.dispose();
   results.push({kind:'registry-late-cleanup',pass:preserved});
   return results;
  });

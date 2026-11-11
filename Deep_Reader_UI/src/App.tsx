@@ -137,9 +137,11 @@ export default function App() {
   } = useBookSearchController();
   const fileManagement = useFileManagementController({
     onDocumentPreparationSettled: (preparedDocName) => {
+      invalidateInteractionSources(preparedDocName);
       if (activeDocumentRef.current === preparedDocName) void loadLayoutForDocument(preparedDocName);
     },
     onDocumentDeleted: (deletedDocName) => {
+      invalidateInteractionSources(deletedDocName);
       removeDocumentOption(deletedDocName);
       if (activeDocumentRef.current === deletedDocName) {
         clearActiveDocument();
@@ -179,6 +181,7 @@ export default function App() {
     selectInteractionAction,
     activateInteraction,
     generationTasks,
+    invalidateInteractionSources,
     beginInlineInsightRequest,
     applyInlineInsightState,
     failInlineInsightRequest,
@@ -353,6 +356,7 @@ export default function App() {
         parserMode,
         { tocHint: repairTocHint },
       );
+      if (result.success) invalidateInteractionSources(trimmedDocName);
       if (requestId !== layoutRequestIdRef.current) return;
       if (!result.success) {
         throw new Error(result.error || "Structure repair failed");
@@ -405,6 +409,7 @@ export default function App() {
   }
 
   function clearEnhancedDocument(name: string) {
+    invalidateInteractionSources(name);
     if (activeDocumentRef.current !== name) throw new Error("Return to this document to reload it.");
     ++layoutRequestIdRef.current;
     setSummaryNoteSelection(null);
@@ -450,6 +455,7 @@ export default function App() {
   }
 
   async function refreshReadyReading(name: string, contentChanged: boolean, signal?: AbortSignal, reconcile = false) {
+    if (contentChanged || reconcile) invalidateInteractionSources(name);
     if (signal?.aborted || activeDocumentRef.current !== name) throw new Error("Document changed.");
     if (contentChanged || reconcile) {
       resetInteractions();
@@ -955,6 +961,7 @@ export default function App() {
   }
 
   async function commitTocSuccess(routeDocName: string) {
+    invalidateInteractionSources(routeDocName);
     if (activeDocumentRef.current !== routeDocName) return;
     resetInteractions();
     setCriticalThinkingDraftAnswersByTarget({});
@@ -1164,6 +1171,7 @@ export default function App() {
               if (!signal.aborted && activeDocumentRef.current === docName) navigate(`/documents/${encodeURIComponent(docName)}`);
             }}
             onRefreshBlocks={async (refresh, signal) => {
+              if (refresh.body_changed || refresh.generated_invalidated || refresh.summaries_invalidated) invalidateInteractionSources(docName);
               if (signal.aborted || activeDocumentRef.current !== docName || layoutScopeRef.current?.layout !== layout) throw new Error("Document changed.");
               if (refresh.body_changed || refresh.generated_invalidated || refresh.summaries_invalidated) resetInteractions();
               translations.invalidate(refresh);
@@ -1175,6 +1183,7 @@ export default function App() {
               closeNotification();
             }}
             onCloseSelection={() => setContentEditSelection(null)} onChanged={async (signal, clearedBlockId) => {
+              invalidateInteractionSources(docName);
               if (signal?.aborted || activeDocumentRef.current !== docName) throw new Error("Document changed.");
               resetInteractions(); setSummaryNoteSelection(current => current?.kind === "summary"
                 || (clearedBlockId && current?.target.content_block_id === clearedBlockId) ? null : current);

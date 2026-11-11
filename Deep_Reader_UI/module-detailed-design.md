@@ -1,11 +1,53 @@
 # Deep_Reader_UI Detailed Design
 
+## Navigation and interaction task ownership — R5 (2026-11-11)
+
+Implemented correction for review 6f6e75d: split presentation reset from source
+invalidation. `resetInteractions()` cancels visible observations and clears transient
+UI only. Ordinary A→B→A navigation retains pending and transport-failed tasks by
+document and interaction target within the mounted App session. Returning to pending
+work joins it; successful detached work is removed from tracking and reopening reads
+authoritative saved state. Unknown transport outcomes require explicit retry, which
+reads saved state first. Completion/failure while away cannot update another book.
+
+Explicit source invalidation advances only the affected document's epoch and aborts
+and removes its tracked tasks. Source save/Undo, structure changes, source mutation
+reconciliation, deletion and preparation completion use that boundary; ordinary
+layout reads/navigation do not. All aggregate targets in the changed book are
+invalidated even without source hashes. Unrelated books retain their tasks/epochs.
+Controller and Summary observers keep the R4 epoch/identity guards, and stale
+cleanup cannot delete a newer task. App unmount disposes all remaining tasks.
+
+Validation: `scripts/test-interaction-navigation.mjs` runs all four kinds at 1280/390
+for pending work, completion, unknown failure, known failure and editing B's source
+while A is pending. Before the fix, 24/40 cases reproduced a second generation;
+after the fix, 40/40 pass. Completed work reads a fresh saved response; an unknown
+failure survives repeated reopen without automatic generation and explicit retry
+reconciles saved output. B's source edit leaves A's task intact. The supplied external
+reproduction also reports exactly one generation per kind and zero source mutations.
+
+All 16 R4 source-reset cases remain (direct probes now call the explicit invalidation
+API); the full R1 activation suite, 21 learning controller groups, settings/display/
+lifecycle suites at 1280/390, four R2/R3 file/real PostgreSQL API tests, `npm run check`
+and diff checks pass. The temporary database was removed. Both the 40-case R5 suite
+and 16-case R4 suite pass with an immutable English book excerpt; all four original
+corpus file hashes remain unchanged. Desktop/mobile screenshots inspected. Evidence:
+`/tmp/audit-6f6e75d/`, including red/green logs, original reproduction replay and
+`review-report.txt`. Only UI-owned source/tests/documentation changed.
+
+Limits: no paid provider, production source mutation, full PDF upload/reimport or
+full backend suite in this correction. The existing bundle-size warning remains.
+No backend API/schema change; this is mounted-App session protection, not cross-tab,
+full-reload or server-wide deduplication. Unobserved remote source changes remain
+outside the local epoch guarantee. No Docker deployment or push; the new local SHA
+requires external re-review.
+
 ## Source invalidation during interaction generation — R4 (2026-11-11)
 
-Implemented correction for review b2517c2: distinguish ordinary surface close from a
-hard interaction reset. Close/reopen retains the current generation task (R1).
-`resetInteractions()` establishes a new source-invalidation epoch, including source
-save/Undo, repair/reload and uncertain layout resets. Invalidate all tracked work
+Implemented correction for review b2517c2; R4 passed external review. Close/reopen
+retains the current generation task (R1). The R5 contract above replaces the initial
+overbroad reset trigger with explicit document source invalidation, including source
+save/Undo, repair and source mutation reconciliation. Invalidate the changed book
 conservatively: block edits can affect section/chapter/document interactions whose
 requests carry no source hash. New opens read current persisted state before any
 new generation; they never attach to a previous epoch's promise.
@@ -35,9 +77,9 @@ changes. Existing bundle-size warning remains. The 448-test previous revision re
 is historical, not a new full-backend run.
 
 Limits: this epoch is a local invalidation boundary, not a backend source revision.
-It depends on observed source/layout reset notifications; unobserved remote edits
-and cross-tab/process deduplication are outside this guarantee. Hard reset abandons
-old task tracking; ordinary surface close does not. No paid model, production
+It depends on observed source mutation notifications; unobserved remote edits
+and cross-tab/process deduplication are outside this guarantee. Source invalidation
+abandons affected old task tracking; surface close and navigation do not. No paid model, production
 mutation, Docker deployment or push. External re-review of the new SHA is required.
 
 ## External review corrections for e7073bb (2026-11-10)

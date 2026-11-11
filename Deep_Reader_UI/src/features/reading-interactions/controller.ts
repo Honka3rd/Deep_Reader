@@ -85,7 +85,7 @@ export function useReadingInteractionMenuController() {
     activationRef.current = activation;
     const signal = activation.controller.signal;
     const key = selection.targetKey;
-    const sourceEpoch = generationTasks.sourceEpoch;
+    const sourceEpoch = generationTasks.sourceEpoch(target.doc_name);
     // The same guard covers both phases, including notifications and failures.
     async function run<T extends { envelope: ReadingInteractionResponseEnvelope; payload?: unknown }, S>(
       interactionType: string, read: () => Promise<T>, generate: (signal: AbortSignal) => Promise<T>,
@@ -95,15 +95,15 @@ export function useReadingInteractionMenuController() {
     ) {
       let requestId = begin(key, "loading");
       let generated = false;
-      const isCurrent = () => !signal.aborted && generationTasks.sourceEpoch === sourceEpoch
+      const isCurrent = () => !signal.aborted && generationTasks.sourceEpoch(target.doc_name) === sourceEpoch
         && activationRef.current === activation && isLatestInteractionRequest(requestId);
       try {
         const taskKey = JSON.stringify([interactionType, key]);
-        const pending = generationTasks.find<T>(taskKey, retryGeneration);
+        const pending = generationTasks.find<T>(target.doc_name, taskKey, retryGeneration);
         const onGenerating = () => { generated = true; requestId = begin(key, "generating"); };
         if (pending) onGenerating();
         const response = await (pending ?? readOrGenerate({ target, interactionType, read,
-          generate: () => generationTasks.start(taskKey, async taskSignal =>
+          generate: () => generationTasks.start(target.doc_name, taskKey, async taskSignal =>
             validateInteractionResponse(await generate(taskSignal), target, interactionType)),
           isCurrent, retryGeneration, onGenerating }));
         if (response && isCurrent()) {
@@ -412,8 +412,12 @@ export function useReadingInteractionMenuController() {
     setSelectedInteraction(null);
   }
 
+  function invalidateInteractionSources(docName: string) {
+    generationTasks.invalidateSources(docName);
+  }
+
+  /** Presentation reset: navigation detaches observers without losing paid work. */
   function resetInteractions() {
-    generationTasks.invalidateSources();
     cancelActivation();
     requestIdRef.current += 1;
     setInteractionMenuTarget(null);
@@ -449,6 +453,7 @@ export function useReadingInteractionMenuController() {
 
   return {
     generationTasks,
+    invalidateInteractionSources,
     activateInteraction,
     resetInteractions,
     interactionMenuTarget,

@@ -55,9 +55,9 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef, generationTask
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
-    const sourceEpoch = generationTasks.sourceEpoch;
+    const sourceEpoch = generationTasks.sourceEpoch(selection.target.doc_name);
     const isCurrent = () => !controller.signal.aborted && requestRef.current === controller
-      && (selection.kind !== "summary" || generationTasks.sourceEpoch === sourceEpoch);
+      && (selection.kind !== "summary" || generationTasks.sourceEpoch(selection.target.doc_name) === sourceEpoch);
     setBusy(true); setError("");
     try {
       // Allow Strict Mode's setup/cleanup replay to cancel before any HTTP dispatch.
@@ -67,9 +67,9 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef, generationTask
         const target = selection.target;
         const taskKey = JSON.stringify(["summary", target.doc_name, target.target_type,
           target.chapter_id, target.section_id, target.task_unit_id, target.content_block_id]);
-        const generate = (action: "generate" | "refresh") => generationTasks.start(taskKey, async signal =>
+        const generate = (action: "generate" | "refresh") => generationTasks.start(target.doc_name, taskKey, async signal =>
           validateInteractionResponse(await service.summary(target, action, signal), target, "summary"));
-        const pending = generationTasks.find<SummaryResponse>(taskKey, retryGeneration);
+        const pending = generationTasks.find<SummaryResponse>(target.doc_name, taskKey, retryGeneration);
         const result = await (pending ?? (operation === "open"
           ? readOrGenerate({ target: selection.target, interactionType: "summary", retryGeneration,
             read: () => service.summary(selection.target, "read", controller.signal),

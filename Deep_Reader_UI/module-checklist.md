@@ -1,5 +1,13 @@
 # Deep_Reader_UI Checklist
 
+## Navigation during interaction generation (2026-11-11)
+
+- [x] UI-AUDIT-R5: Separate presentation reset from document source invalidation.
+  Owner: Deep_Reader_UI. Status: Implemented and locally verified; external re-review required.
+  Acceptance: Insights/Summary/Quiz/Critical thinking generate once across unchanged A→B→A; completion while away rereads saved state, unknown failure does not auto-retry; unrelated document invalidation preserves work. Retain all 16 R4 cases and R1–R3 regressions.
+  Evidence: 24/40 red cases reproduce duplicate generation; 40/40 pass after correction at 1280/390. Original external script reports one generation per kind. R4 16/16, R1 activation, 21 learning controller groups, settings/display/lifecycle, four R2/R3 file/PostgreSQL API tests, type/build and diff checks pass. R5/R4 also pass on a hash-verified real-book excerpt; screenshots inspected. See /tmp/audit-6f6e75d/ and design for limits. No deployment or push.
+  Timestamp: 2026-11-11
+
 ## Source invalidation during generation (2026-11-11)
 
 - [x] UI-AUDIT-R4: Isolate interaction generation across source invalidation.
