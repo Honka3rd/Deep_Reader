@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from document_structure.learning_file_lifecycle import atomic_write
+from app.document_file_identity import DocumentFileIdentity, sync_directory as _sync_directory
 from reading_preferences.models import PreferenceConflict
 from section_tasks.interaction_rename import renamed_interactions
 
@@ -22,14 +23,6 @@ class RenameRecoveryRequired(RuntimeError):
     def __init__(self, operation_id):
         super().__init__('document_rename_recovery_required')
         self.operation_id = operation_id
-
-
-def _sync_directory(path):
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def _fingerprint(path):
@@ -81,19 +74,21 @@ class DocumentRename:
         self.scope = sha256(json.dumps(identity).encode()).hexdigest()
         self.directory = self.raw_root.parent / '.document-renames' / self.scope
         self.pending = self.directory / 'pending.json'
+        self.file_identity = DocumentFileIdentity(self.raw_root)
 
     @contextmanager
     def _locked(self):
-        self.directory.mkdir(parents=True, exist_ok=True)
-        # Persist newly created journal directories before a repository commit.
-        _sync_directory(self.directory.parent.parent)
-        _sync_directory(self.directory.parent)
-        with (self.directory/'rename.lock').open('a') as stream:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        with self.file_identity.locked():
+            self.directory.mkdir(parents=True, exist_ok=True)
+            # Persist newly created journal directories before a repository commit.
+            _sync_directory(self.directory.parent.parent)
+            _sync_directory(self.directory.parent)
+            with (self.directory/'rename.lock').open('a') as stream:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
     def _save(self, path, record):
         atomic_write(path, json.dumps(record, sort_keys=True))
@@ -116,12 +111,17 @@ class DocumentRename:
             return None
         if not os.access(source.parent, os.W_OK | os.X_OK) or not os.access(target.parent, os.W_OK | os.X_OK):
             raise OSError('rename_directory_unwritable')
-        return dict(kind=kind, source=source.name, target=target.name, fingerprint=_fingerprint(source))
+        identity = self._file_stat(source)
+        fingerprint = _fingerprint(source)
+        if self._file_stat(source) != identity:
+            raise ValueError('rename_resource_changed')
+        return dict(kind=kind, source=source.name, target=target.name, fingerprint=fingerprint,
+                    identity=identity, stage='planned', destination_stat=None)
 
-    def source_token(self, old, raw_source=None):
-        return self._source_context(old, raw_source)[0]
+    def source_token(self, old, raw_source=None, *, version=3):
+        return self._source_context(old, raw_source, version=version)[0]
 
-    def _source_context(self, old, raw_source):
+    def _source_context(self, old, raw_source, *, version=3):
         """Pure context read; the mutation rechecks this projection under its lock."""
         source = _document(self.repository, old)
         raw_identity = None
@@ -133,14 +133,19 @@ class DocumentRename:
                             stat.st_mtime_ns, stat.st_ctime_ns]
         if source is None and raw_identity is None:
             raise FileNotFoundError('missing_document')
-        return sha256(json.dumps([self.scope, old, _epoch(source), raw_identity]).encode()).hexdigest(), source
+        identity = [self.scope, old, _epoch(source), raw_identity]
+        if version >= 3:
+            identity.append(self.file_identity.read(old))
+        return sha256(json.dumps(identity).encode()).hexdigest(), source
 
     def _validate_record(self, record, old, new):
-        if not isinstance(record, dict) or set(record) != {
-                'version', 'scope', 'old', 'new', 'epoch', 'moves', 'operation_id',
-                'command_id', 'source_token', 'result_token'}:
+        fields = {'version', 'scope', 'old', 'new', 'epoch', 'moves', 'operation_id',
+                  'command_id', 'source_token', 'result_token'}
+        if isinstance(record, dict) and record.get('version') == 3:
+            fields.add('file_generations')
+        if not isinstance(record, dict) or set(record) != fields:
             raise RenameRecoveryRequired('unreadable-journal')
-        if (record['version'] != 2 or record['scope'] != self.scope or
+        if (record['version'] not in (2, 3) or record['scope'] != self.scope or
                 not isinstance(record['operation_id'], str) or
                 re.fullmatch('[0-9a-f]{32}', record['operation_id']) is None or
                 (record['result_token'] is not None and
@@ -155,13 +160,29 @@ class DocumentRename:
             raise RenameRecoveryRequired('unreadable-journal')
         if record['old'] != old or record['new'] != new:
             raise ValueError('conflict')
+        if record['version'] == 3:
+            generations = record['file_generations']
+            if (not isinstance(generations, list) or len(generations) != 2 or
+                    any(g is not None and (not isinstance(g, str) or re.fullmatch('[0-9a-f]{32}', g) is None)
+                        for g in generations)):
+                raise RenameRecoveryRequired(record['operation_id'])
         kinds = set()
         for move in record['moves']:
-            if (not isinstance(move, dict) or set(move) != {'kind','source','target','fingerprint'} or
+            move_fields = {'kind','source','target','fingerprint'}
+            if record['version'] == 3:
+                move_fields.update(('identity', 'stage', 'destination_stat'))
+            if (not isinstance(move, dict) or set(move) != move_fields or
                     move['kind'] not in ('raw','derived') or move['kind'] in kinds or
                     not all(isinstance(move[key], str) for key in ('source','target','fingerprint')) or
                     re.fullmatch('[0-9a-f]{64}', move['fingerprint']) is None):
                 raise RenameRecoveryRequired(record['operation_id'])
+            if record['version'] == 3:
+                def valid_stat(value):
+                    return isinstance(value, list) and len(value) == 5 and all(type(n) is int and n >= 0 for n in value)
+                if (not valid_stat(move['identity']) or move['stage'] not in ('planned', 'moved') or
+                        (move['stage'] == 'planned' and move['destination_stat'] is not None) or
+                        (move['stage'] == 'moved' and not valid_stat(move['destination_stat']))):
+                    raise RenameRecoveryRequired(record['operation_id'])
             kinds.add(move['kind'])
             names = (move['source'], move['target'])
             if move['kind'] == 'raw':
@@ -172,16 +193,43 @@ class DocumentRename:
                 raise RenameRecoveryRequired(record['operation_id'])
             self._paths(move)
 
+    @staticmethod
+    def _file_stat(path):
+        if path.is_symlink():
+            raise ValueError('rename_resource_changed')
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            return None
+        return [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
+
     def _check_moves(self, record):
+        if record['version'] != 3:
+            raise ValueError('rename_identity_evidence_missing')
+        generations = [self.file_identity.read(name) for name in (record['old'], record['new'])]
+        if generations != record['file_generations']:
+            raise ValueError('rename_resource_changed')
         for move in record['moves']:
             source, target = self._paths(move)
-            before, after = _fingerprint(source), _fingerprint(target)
-            if not ((before == move['fingerprint'] and after is None) or
-                    (before is None and after == move['fingerprint'])):
+            before, after = self._file_stat(source), self._file_stat(target)
+            if before is not None and after is None:
+                valid = move['stage'] == 'planned' and before == move['identity']
+                path = source
+            elif before is None and after is not None:
+                # Rename can change ctime. A lost acknowledgement is proven by
+                # the original inode/mtime plus unchanged durable generations.
+                valid = after[:4] == move['identity'][:4]
+                if move['stage'] == 'moved':
+                    valid = valid and after == move['destination_stat']
+                path = target
+            else:
+                raise ValueError('rename_resource_changed')
+            if not valid or _fingerprint(path) != move['fingerprint']:
                 raise ValueError('rename_resource_changed')
 
     def _finish(self, record, receipt):
         old, new = record['old'], record['new']
+        self._check_moves(record)  # Fence replacements before even repository recovery.
         self.repository.recover_document_rename(old, new)
         source = _document(self.repository, old)
         target = _document(self.repository, new)
@@ -213,6 +261,12 @@ class DocumentRename:
             if source_path.exists():
                 source_path.rename(target_path)
                 _sync_directory(source_path.parent)
+            if move['stage'] == 'planned':
+                # Also covers a completed rename whose acknowledgement was lost.
+                self._check_moves(record)
+                move['stage'] = 'moved'
+                move['destination_stat'] = self._file_stat(target_path)
+                self._save(self.pending, record)
         raw_target = next((self._paths(move)[1] for move in record['moves'] if move['kind'] == 'raw'), None)
         record = {**record, 'result_token': self.source_token(new, raw_target)}
         self._save(receipt, record)
@@ -247,7 +301,8 @@ class DocumentRename:
             raise FileNotFoundError('missing_document')
         if source is not None:
             renamed_interactions(source, new)  # Predictable transform errors before journal/commit.
-        record = dict(version=2, scope=self.scope, old=old, new=new,
+        record = dict(version=3, scope=self.scope, old=old, new=new,
+                      file_generations=[self.file_identity.read(name) for name in (old, new)],
                       command_id=command_id, source_token=source_token, result_token=None,
                       epoch=_epoch(source), moves=moves, operation_id=uuid4().hex)
         try:
@@ -274,7 +329,14 @@ class DocumentRename:
                 self._validate_record(record, old, new)
                 if record['command_id'] != command_id or record['source_token'] != source_token:
                     raise ValueError('conflict')
+                if path == self.pending and record['version'] != 3:
+                    raise RenameRecoveryRequired(record['operation_id'])
                 if path == receipt:
+                    if record['version'] == 3:
+                        try:
+                            self._check_moves(record)
+                        except ValueError:
+                            raise ValueError('conflict') from None
                     # A receipt is evidence of THIS command, never authorization
                     # to start another mutation after a reverse rename/reimport.
                     source = _document(self.repository, old)
@@ -289,7 +351,7 @@ class DocumentRename:
                     if raw_source is not None and (raw_source.exists() or raw_source.is_symlink()):
                         raise ValueError('conflict')
                     raw_target = next((self._paths(move)[1] for move in record['moves'] if move['kind'] == 'raw'), None)
-                    if self.source_token(new, raw_target) != record['result_token']:
+                    if self.source_token(new, raw_target, version=record['version']) != record['result_token']:
                         raise ValueError('conflict')
                     return self._effects(record)
             else:

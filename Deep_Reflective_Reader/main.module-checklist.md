@@ -1,5 +1,9 @@
 # main.py Checklist
 
+- [x] MAIN-06 pending recovery: reject same-byte reimports using durable file generations and move-stage identity.
+  Evidence: `scripts/test_main_rename_audit.py`: 120 file/real PostgreSQL rename cases including 10 TCP cases; before/after-move same-byte reimport and simulated inode/stat reuse leave replacement/journal unchanged. All existing normal recovery stages plus new stage-write/ack cases pass. Related regression: 393 tests, no skips; nine route/schema scripts and compile/diff checks pass. Red/green evidence: `/tmp/audit-main-b6d5df24/`; external review pending.
+  Timestamp: 2026-11-11
+
 - [x] MAIN-01/05/06 follow-up: verify incarnation fences and explicit rename command identity.
   Evidence: `scripts/test_main_rename_audit.py` (90 file/real PostgreSQL HTTP cases, including six TCP cases) and the related 361-test regression run pass without skips; two final incarnation/byte-preservation checks also pass. Nine route/schema scripts pass after updating rename request fixtures. UI type/build, 21 controller groups, lifecycle service retry checks and 1280px/390px rename flows pass. Local evidence: `/tmp/audit-main-ac544288/`. External review pending; no deployment/push.
   Timestamp: 2026-11-11

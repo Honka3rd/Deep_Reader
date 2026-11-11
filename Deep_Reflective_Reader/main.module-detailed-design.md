@@ -1,12 +1,39 @@
 # main.py Detailed Design
 
+## MAIN-06 pending recovery correction (2026-11-11, implemented)
+
+Upload publication and raw/derived delete join the app-owned file identity lock and
+advance the affected logical name's persisted generation before changing files.
+Rename retains its existing DTO and status contract. Its pending journal validates
+captured source/destination generations and physical move identity before recovering
+repository state or moving files. A deleted/reuploaded same-byte file cannot satisfy
+an old pending command; return 503 failed/recovery_required with the original
+operation ID and leave both replacement and journal unchanged. Normal lost move
+acknowledgements reconcile the original inode and recorded stage.
+
+Acceptance: file and real PostgreSQL HTTP upload -> rename interruption -> API delete
+-> same-byte upload -> retry for before move, after move acknowledgement loss and
+after acknowledged moves; include replacement at source and destination. Preserve
+existing journal/repository/raw/derived/receipt failure-recovery cases and concurrent
+same-command deduplication. Upload response, bounded streaming, no-parser/no-provider
+contract and explicit reimport remain unchanged.
+
+Validation: 393 backend regression executions pass without skips; final rename
+matrix has 120 file/real PostgreSQL cases including 10 actual TCP HTTP cases.
+The eight original HTTP repros fail with incorrect accepted responses on b6d5df24
+and pass after this correction. Additional cases cover simulated inode/stat reuse,
+new move-stage write/ack failures, v2 compatibility and identity-storage failure.
+Nine standalone route/schema scripts pass; Python compilation and diff checks pass.
+Evidence: `/tmp/audit-main-b6d5df24/`. No UI change, Docker deployment or push;
+external review of the new candidate is pending.
+
 ## MAIN-01/05/06 follow-up (2026-11-11, implemented)
 
 Rename requires a caller command_id and expected_source_token. GET /documents/lifecycle/rename-context?doc_name=... is a pure identity projection from the active repository and optional raw file identity; it neither creates journals nor repairs state. A new user command reads context then submits its UUID. Unknown-outcome retries keep the exact command and token. Missing identity is rejected before mutation. Completed historical commands cannot rename a recreated source. File and real PostgreSQL HTTP regressions cover raw-only cycles, explicit reimport, delayed commands, recovery and unchanged new-book payloads.
 
 Validation: `scripts/test_main_rename_audit.py` (90 file/real PostgreSQL HTTP cases, including six TCP cases) and the related 361-test regression run pass without skips; two final incarnation/byte-preservation checks also pass. Nine route/schema scripts pass after updating rename request fixtures. UI type/build, 21 controller groups, lifecycle service retry checks and 1280px/390px rename flows pass. Local evidence: `/tmp/audit-main-ac544288/`. External review pending; no deployment/push.
 
-Limits: the existing broad `test-library-workflow.mjs` times out while entering the reader, before reaching rename; this is not counted as passed. Focused Library rename flows use real React/service code with mocked HTTP. Backend tests use isolated files and disposable real PostgreSQL, not production books or paid providers. R1–R5 interaction code is unchanged; the full prior navigation/source-reset browser matrices were not rerun. Old version-1 pending journals fail closed for explicit maintainer recovery; completed historical receipts are retained.
+Limits: the existing broad `test-library-workflow.mjs` times out while entering the reader, before reaching rename; this is not counted as passed. Focused Library rename flows use real React/service code with mocked HTTP. Backend tests use isolated files and disposable real PostgreSQL, not production books or paid providers. R1–R5 interaction code is unchanged; the full prior navigation/source-reset browser matrices were not rerun. Old version-1/2 pending journals fail closed for explicit maintainer recovery; completed historical receipts are retained.
 
 ## MAIN audit correction (2026-11-11, implemented)
 

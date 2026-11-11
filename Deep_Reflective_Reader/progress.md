@@ -436,7 +436,7 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 53 | 11 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `app/` | package | `app/module-checklist.md` | 54 | 11 | MAIN-06 pending identity recovery verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -461,7 +461,7 @@ It is used to:
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 4 | 0 | Runtime Profile Reuse Only |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `main.py` | root-python-module | `main.module-checklist.md` | 48 | 1 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `main.py` | root-python-module | `main.module-checklist.md` | 49 | 1 | MAIN-06 pending identity recovery verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 
 ## 5. Package Module Progress
 

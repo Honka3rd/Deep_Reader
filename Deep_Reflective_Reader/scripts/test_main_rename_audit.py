@@ -328,6 +328,7 @@ class RenameCases:
         first = self.rename_command(); second = self.rename_command()
         self.assertEqual(first['expected_source_token'],second['expected_source_token'])
         self.assertFalse(directory.exists())
+        self.assertFalse(DocumentRename(self.docs,self.raw,self.derived).file_identity.directory.exists())
         response = self.client.post('/documents/lifecycle/rename',json={
             'doc_name':'book','action':'rename','new_doc_name':'renamed'})
         self.assertEqual(response.status_code,422,response.text)
@@ -384,6 +385,64 @@ class RenameCases:
         self.assertEqual(self.docs.load_document('book'),before)
 
 
+    def test_completed_v2_receipt_remains_readable_without_rebinding(self):
+        import json
+        from app.document_rename import DocumentRename
+        self.make_files()
+        coordinator = DocumentRename(self.docs,self.raw,self.derived)
+        legacy_source = coordinator.source_token('book',self.raw/'book.txt',version=2)
+        response = self.rename()
+        self.assertEqual(response.status_code,200,response.text)
+        command = {**self.commands[('book','renamed')], 'expected_source_token':legacy_source}
+        path = next(coordinator.directory.glob('command-*.json'))
+        record = json.loads(path.read_text())
+        record['version'] = 2; record.pop('file_generations')
+        record['source_token'] = legacy_source
+        record['result_token'] = coordinator.source_token('renamed',self.raw/'renamed.txt',version=2)
+        for move in record['moves']:
+            for key in ('identity','stage','destination_stat'): move.pop(key)
+        path.write_text(json.dumps(record))
+        evidence = path.read_bytes()
+        retry = self.client.post('/documents/lifecycle/rename',json=command)
+        self.assertEqual(retry.status_code,200,retry.text)
+        self.assertEqual(retry.json()['operation_id'],response.json()['operation_id'])
+        self.assertEqual(path.read_bytes(),evidence)
+
+    def test_pending_v2_journal_is_not_upgraded_from_current_identity(self):
+        import json
+        from app.document_rename import DocumentRename
+        self.make_files()
+        with patch.object(self.docs,'rename_document',side_effect=OSError('pause')):
+            response = self.rename()
+        self.assertEqual(response.status_code,503,response.text)
+        path = DocumentRename(self.docs,self.raw,self.derived).pending
+        record = json.loads(path.read_text())
+        record['version'] = 2; record.pop('file_generations')
+        for move in record['moves']:
+            for key in ('identity','stage','destination_stat'): move.pop(key)
+        path.write_text(json.dumps(record)); evidence = path.read_bytes()
+        retry = self.rename()
+        self.assertEqual(retry.status_code,503,retry.text)
+        self.assertEqual(retry.json()['operation_id'],response.json()['operation_id'])
+        self.assertEqual(path.read_bytes(),evidence)
+        self.assertTrue((self.raw/'book.txt').exists())
+        self.assertFalse((self.raw/'renamed.txt').exists())
+
+    def test_identity_publication_failure_does_not_publish_upload_or_delete(self):
+        from app.document_file_identity import DocumentFileIdentity
+        self.make_files()
+        with patch.object(DocumentFileIdentity,'advance',side_effect=OSError('identity disk failure')):
+            upload = self.client.post('/documents/upload',data={'conflict_policy':'replace'},
+                files={'file':('book.txt',b'replacement','text/plain')})
+            self.assertEqual(upload.status_code,500,upload.text)
+            self.assertEqual((self.raw/'book.txt').read_bytes(),b'original source')
+            delete = self.client.post('/documents/lifecycle/delete',json={
+                'doc_name':'book','action':'delete','confirm':True})
+            self.assertEqual(delete.status_code,500,delete.text)
+            self.assertEqual((self.raw/'book.txt').read_bytes(),b'original source')
+            self.assertEqual(self.docs.load_document('book').document_id,'book')
+
+
 class FileRenameTests(RenameCases,unittest.TestCase):
     def setUp(self):
         life.FileLifecycleTests.setUp(self); self.http_setup()
@@ -424,9 +483,14 @@ def recovery_case(stage):
             if stage==kind+'_ack': raise OSError('injected move acknowledgement')
             return result
         def save(owner,path,record):
+            reached = path.name == 'pending.json' and any(
+                stage.startswith(move['kind']+'_stage') and move.get('stage') == 'moved'
+                for move in record['moves'])
+            if reached and stage.endswith('_stage'): raise OSError('before move stage save')
             if stage=='journal' and path.name=='pending.json': raise OSError('before journal')
             if stage=='receipt' and path.name!='pending.json': raise OSError('before receipt')
             result=original_save(owner,path,record)
+            if reached and stage.endswith('_stage_ack'): raise OSError('after move stage save')
             if stage=='journal_ack' and path.name=='pending.json': raise OSError('journal acknowledgement')
             return result
         def remove(path,payload):
@@ -457,8 +521,79 @@ def recovery_case(stage):
     return test
 
 for owner in (FileRenameTests,PostgresRenameTests):
-    for stage in ('journal','journal_ack','repository','repository_ack','raw','raw_ack','derived','derived_ack','receipt','clear'):
+    for stage in ('journal','journal_ack','repository','repository_ack','raw','raw_ack','derived','derived_ack','receipt','clear','raw_stage','raw_stage_ack','derived_stage','derived_stage_ack'):
         setattr(owner,'test_failure_recovery_'+stage,recovery_case(stage))
+del owner
+
+
+def raw_reimport_during_pending_case(stage, reupload_source=False, reused_stat=False):
+    def test(self):
+        from app import document_rename as impl
+        self.docs.delete_document('book')
+        payload = b'identical raw content'
+        uploaded = self.client.post('/documents/upload',files={'file':('book.txt',payload,'text/plain')})
+        self.assertEqual(uploaded.status_code,201,uploaded.text)
+        original_move, original_save = Path.rename, impl.DocumentRename._save
+        def move(source,target):
+            result = original_move(source,target)
+            if stage == 'move_ack' and source == self.raw/'book.txt':
+                raise OSError('lost move acknowledgement')
+            return result
+        def save(owner,path,record):
+            if stage == 'receipt' and path.name != 'pending.json':
+                raise OSError('before receipt')
+            result = original_save(owner,path,record)
+            if stage == 'before_effect' and path.name == 'pending.json':
+                raise OSError('journal durable, no effects')
+            return result
+        with patch.object(Path,'rename',move), patch.object(impl.DocumentRename,'_save',save):
+            response = self.rename()
+        self.assertEqual(response.status_code,503,response.text)
+        operation_id = response.json()['operation_id']
+        journal = impl.DocumentRename(self.docs,self.raw,self.derived).pending
+        evidence = journal.read_bytes()
+        command = dict(self.commands[('book','renamed')])
+        current_name = 'book' if stage == 'before_effect' else 'renamed'
+        delete = self.client.post('/documents/lifecycle/delete',json={
+            'doc_name':current_name,'action':'delete','confirm':True})
+        self.assertEqual(delete.status_code,200,delete.text)
+        new_name = 'book' if reupload_source else current_name
+        upload = self.client.post('/documents/upload',files={'file':(new_name+'.txt',payload,'text/plain')})
+        self.assertEqual(upload.status_code,201,upload.text)
+        new_path = self.raw/(new_name+'.txt')
+        before = new_path.stat()
+        new_context = self.rename_command(new_name,'unused')
+        self.assertNotEqual(new_context['expected_source_token'],command['expected_source_token'])
+        if reused_stat:
+            # Simulate inode/stat reuse: the persisted generation must still fence it.
+            import json
+            recorded = json.loads(evidence)['moves'][0]
+            old_stat = recorded['destination_stat'] or recorded['identity']
+            actual_stat = impl.DocumentRename._file_stat
+            with patch.object(impl.DocumentRename, '_file_stat', staticmethod(
+                    lambda path: old_stat if path == new_path else actual_stat(path))):
+                retry = self.client.post('/documents/lifecycle/rename',json=command)
+        else:
+            retry = self.client.post('/documents/lifecycle/rename',json=command)
+        self.assertEqual(retry.status_code,503,retry.text)
+        self.assertEqual(retry.json()['status'],'failed')
+        self.assertTrue(retry.json()['recovery_required'])
+        self.assertEqual(retry.json()['operation_id'],operation_id)
+        self.assertEqual(journal.read_bytes(),evidence)
+        self.assertEqual(new_path.read_bytes(),payload)
+        self.assertEqual(new_path.stat().st_ino,before.st_ino)
+        self.assertEqual(sorted(p.name for p in self.raw.iterdir()),[new_name+'.txt'])
+    return test
+
+for owner in (FileRenameTests,PostgresRenameTests):
+    for stage in ('before_effect','move_ack','receipt'):
+        setattr(owner,'test_pending_reimport_same_bytes_'+stage,raw_reimport_during_pending_case(stage))
+    setattr(owner,'test_pending_reimport_at_old_name_after_move',raw_reimport_during_pending_case('move_ack',True))
+    for stage in ('before_effect','move_ack'):
+        setattr(owner,'test_pending_reimport_with_reused_stat_'+stage,raw_reimport_during_pending_case(stage,reused_stat=True))
+        def tcp_case(self, scenario=raw_reimport_during_pending_case(stage)):
+            self.over_tcp(lambda: scenario(self))
+        setattr(owner,'test_real_tcp_pending_reimport_'+stage,tcp_case)
 del owner
 
 

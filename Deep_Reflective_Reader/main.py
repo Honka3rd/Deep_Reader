@@ -599,7 +599,7 @@ def _resolve_faiss_document_artifact_dir(doc_name: str) -> Path:
     return _DERIVED_DOCUMENT_BASE_DIR / normalized_doc_name
 
 
-def _delete_document_file_backed_artifacts(doc_name: str) -> dict[str, bool]:
+def _delete_document_file_backed_artifacts(doc_name: str, *, file_identity) -> dict[str, bool]:
     """Delete file-backed document artifacts for an explicit lifecycle request."""
     normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
     raw_path = _resolve_raw_document_delete_path(normalized_doc_name)
@@ -610,6 +610,9 @@ def _delete_document_file_backed_artifacts(doc_name: str) -> dict[str, bool]:
 
     if derived_dir.exists() and not derived_dir.is_dir():
         raise ValueError("storage_failure")
+
+    if raw_path is not None or derived_dir.exists():
+        file_identity.advance(_document_lifecycle_namespace(normalized_doc_name))
 
     if raw_path is not None and raw_path.exists():
         raw_path.unlink()
@@ -1449,19 +1452,28 @@ async def upload_document(request: Request, response: Response):
                     shutil.copyfileobj(upload.stream, staged, length=64*1024)
                     staged.flush()
                     os.fsync(staged.fileno())
-                if conflict_policy == "replace":
-                    os.replace(staged_path, destination)
-                else:
-                    # Link publishes without overwriting a concurrently created candidate.
-                    while True:
-                        try:
-                            os.link(staged_path, destination)
-                            break
-                        except FileExistsError:
-                            if conflict_policy != "create_distinct":
-                                raise
-                            destination = _resolve_upload_destination(normalized_filename, conflict_policy,
-                                                                      _RAW_DOCUMENT_BASE_DIR)
+                from app.document_file_identity import DocumentFileIdentity, sync_directory
+                identity = DocumentFileIdentity(_RAW_DOCUMENT_BASE_DIR)
+                with identity.locked():
+                    # Recheck conflict policy inside the same lock used by rename/delete.
+                    destination = _resolve_upload_destination(normalized_filename, conflict_policy,
+                                                              _RAW_DOCUMENT_BASE_DIR)
+                    if conflict_policy == "replace":
+                        identity.advance(destination.stem)
+                        os.replace(staged_path, destination)
+                    else:
+                        # Link also refuses an out-of-band writer's destination.
+                        while True:
+                            try:
+                                identity.advance(destination.stem)
+                                os.link(staged_path, destination)
+                                break
+                            except FileExistsError:
+                                if conflict_policy != "create_distinct":
+                                    raise
+                                destination = _resolve_upload_destination(normalized_filename, conflict_policy,
+                                                                          _RAW_DOCUMENT_BASE_DIR)
+                    sync_directory(destination.parent)
             finally:
                 if staged_path is not None:
                     staged_path.unlink(missing_ok=True)
@@ -1576,11 +1588,14 @@ def delete_document_lifecycle(
 
         if preparation_operations.snapshot().get(doc_name) == "building":
             raise ValueError("conflict")
-        effects = _delete_document_file_backed_artifacts(doc_name)
-        # Keep the discoverable structured record until file cleanup succeeds.
-        effects["structured_artifacts_affected"] = (
-            document_artifact_repository.delete_document(doc_name)
-        )
+        from app.document_file_identity import DocumentFileIdentity
+        identity = DocumentFileIdentity(_RAW_DOCUMENT_BASE_DIR)
+        with identity.locked():
+            effects = _delete_document_file_backed_artifacts(doc_name, file_identity=identity)
+            # Keep the discoverable structured record until file cleanup succeeds.
+            effects["structured_artifacts_affected"] = (
+                document_artifact_repository.delete_document(doc_name)
+            )
         deleted = any(effects.values())
         if not deleted:
             response.status_code = 404

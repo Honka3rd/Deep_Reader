@@ -1,8 +1,46 @@
 # app Detailed Design
 
+## MAIN-06 pending file identity (2026-11-11, implemented)
+
+Pending recovery must fence delete/reupload even when raw bytes are identical. A
+raw-root-scoped `DocumentFileIdentity` owner persists a UUID generation per logical
+name, independent of the selected canonical repository. Explicit upload publication
+and raw/derived deletion advance the generation durably BEFORE effects. Their
+critical sections and rename use the same POSIX lock; lock order is file identity,
+rename journal, then repository preference/document/learning locks. Context reads
+only project existing generations and never create storage.
+
+Version-3 rename journals bind both original source and destination generations,
+plus each move's device/inode/size/mtime/ctime, content fingerprint, and planned or
+moved stage with the acknowledged destination stat. Recovery validates the captured
+generations before any repository recovery or file effect. A moved file with a lost
+acknowledgement is accepted only at the destination with the original device/inode,
+size/mtime and hash; ctime may change during rename. A persisted moved stage also
+requires the acknowledged destination stat. Upload/delete invalidate the generation
+even if a filesystem reuses the inode and bytes. Changed identities leave the journal
+intact and return recovery_required; no recapture of current identity is allowed.
+
+Generation publication failing before a file effect leaves that effect unexecuted;
+publication acknowledgement loss may conservatively fence a pending operation and
+requires explicit inspection. This is fail-closed recovery, not a cross-resource
+transaction. Old v1/v2 pending journals lack sufficient move identity and require
+explicit maintenance; completed v2 receipts stay readable and are not deleted.
+Legacy raw files without a generation use a null baseline until an explicit API
+mutation. Out-of-band filesystem replacements and distributed hosts remain outside
+the cooperating-owner guarantee. No xattr support or book-content backup is needed.
+
+Validation: 393 backend regression executions pass without skips; final rename
+matrix has 120 file/real PostgreSQL cases including 10 actual TCP HTTP cases.
+The eight original HTTP repros fail with incorrect accepted responses on b6d5df24
+and pass after this correction. Additional cases cover simulated inode/stat reuse,
+new move-stage write/ack failures, v2 compatibility and identity-storage failure.
+Nine standalone route/schema scripts pass; Python compilation and diff checks pass.
+Evidence: `/tmp/audit-main-b6d5df24/`. No UI change, Docker deployment or push;
+external review of the new candidate is pending.
+
 ## Rename command identity correction (2026-11-11, implemented)
 
-Completed version-2 receipts are keyed by caller command_id, bind old/new names and expected_source_token, and retain the server operation_id. The token hashes the storage scope, source name, canonical incarnation (or legacy source fingerprint), and optional raw stat identity (device/inode/size/mtime/ctime). New commands validate the token under the rename lock before starting. Reusing a command with another payload conflicts. Completed receipts also retain result_token for the destination incarnation/raw stat identity. A completed retry is read-only and succeeds only while its target, result token and moved resources still match and its source is absent; it never calls _start. A reverse rename or reimport requires a fresh command and current token. Pending recovery requires the same command/payload. Version-1 receipts are retained as historical evidence, never adopted as new commands; an old pending journal requires explicit maintenance and fails closed. No read-time migration or receipt deletion. This remains local POSIX coordination, not protection from external filesystem replacement during a move.
+Completed receipts (v3 and compatible v2) are keyed by caller command_id, bind old/new names and expected_source_token, and retain the server operation_id. The token hashes the storage scope, source name, canonical incarnation (or legacy source fingerprint), and optional raw stat identity (device/inode/size/mtime/ctime), plus the durable namespace generation in v3. New commands validate the token under the rename lock before starting. Reusing a command with another payload conflicts. Completed receipts also retain result_token for the destination incarnation/raw stat identity. A completed retry is read-only and succeeds only while its target, result token and moved resources still match and its source is absent; it never calls _start. A reverse rename or reimport requires a fresh command and current token. Pending recovery requires the same command/payload. Version-1 receipts are retained as historical evidence, never adopted as new commands; v1/v2 pending journals require explicit maintenance and fail closed. No read-time migration or receipt deletion. This remains local POSIX coordination, not protection from external filesystem replacement during a move.
 
 ## Main rename recovery orchestration (2026-11-11, implemented)
 
@@ -20,7 +58,7 @@ owners cause a recovery conflict, never guessed rollback or overwrite. Do not
 claim coordination with external filesystem tools or distributed deployments.
 
 Journals live in `<raw-root-parent>/.document-renames/<storage-scope-hash>/`;
-`pending.json` is fsynced before repository commit, completed version-2 receipts are keyed
+`pending.json` is fsynced before repository commit, completed receipts are keyed
 by caller command identity (see correction above). A new DocumentRename instance on an explicit identical HTTP
 request reconciles pending work; no startup/read-time repair. Malformed journals
 fail closed with recovery_required and require maintainer inspection. Changed
