@@ -1,5 +1,21 @@
 # document_structure Detailed Design
 
+## Main rename integration ports (2026-11-11, implemented)
+
+Ordinary metadata/artifact saves carrying an existing document epoch must reject
+a now-missing identity instead of recreating a renamed/deleted document. Explicit
+reparse/import remains the creation path, preserving the R3 reimport contract.
+
+The active artifact repository exposes its lifecycle storage identity and an
+explicit matching rename recovery port. File recovery verifies old/new IDs under
+the existing preference lock before applying a journal; it cannot recover another
+operation accidentally. PostgreSQL uses its existing transaction and requires no
+file recovery. Canonical rename still delegates to installed file lifecycle or SQL
+store; source epochs, old-name tombstones, migrated references and late-writer
+fences are unchanged. These ports let the main application coordinate optional
+raw/FAISS moves without bypassing persistence owners.
+
+
 ## Shared sentence translation (2026-11-09)
 
 The learning repository also owns aligned ordinary translations. Its bounded

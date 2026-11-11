@@ -13,16 +13,14 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import main  # noqa: E402
+from scripts.test_learning_routes import file_container
+from scripts.test_learning_file_repository import fixture
+from dataclasses import replace
 
 
 def _assert(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
-
-
-class _FakeDocumentRepository:
-    def __init__(self, base_dir: Path) -> None:
-        self.base_dir = base_dir
 
 
 def _with_temp_document_dirs(test_func) -> None:
@@ -32,14 +30,16 @@ def _with_temp_document_dirs(test_func) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
         raw_dir = root / "raw"
-        structured_dir = root / "structured"
+        container = file_container(root)
+        repository = container.structured_document_artifact_repository()
+        structured_dir = Path(repository.base_dir)
         derived_dir = root / "faiss"
         raw_dir.mkdir()
         structured_dir.mkdir()
         derived_dir.mkdir()
         main._RAW_DOCUMENT_BASE_DIR = raw_dir
         main._DERIVED_DOCUMENT_BASE_DIR = derived_dir
-        main.document_artifact_repository = _FakeDocumentRepository(structured_dir)
+        main.document_artifact_repository = repository
         try:
             test_func(raw_dir, structured_dir, derived_dir)
         finally:
@@ -54,17 +54,8 @@ def test_rename_moves_raw_structured_and_derived_artifacts() -> None:
         structured_path = structured_dir / "Book.structured.json"
         derived_path = derived_dir / "Book"
         raw_path.write_text("raw", encoding="utf-8")
-        structured_path.write_text(
-            json.dumps(
-                {
-                    "document_id": "Book",
-                    "title": "Book",
-                    "chapters": [],
-                },
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
+        main.document_artifact_repository.save_reparsed_document(
+            replace(fixture('Book'), title='Book'), 'Book')
         derived_path.mkdir()
         (derived_path / "profile.json").write_text("{}", encoding="utf-8")
 
@@ -127,7 +118,7 @@ def test_rename_conflict_preserves_existing_artifacts() -> None:
         old_structured = structured_dir / "Book.structured.json"
         old_raw.write_text("old", encoding="utf-8")
         new_raw.write_text("existing", encoding="utf-8")
-        old_structured.write_text('{"document_id": "Book"}', encoding="utf-8")
+        main.document_artifact_repository.save_reparsed_document(fixture("Book"), "Book")
 
         client = TestClient(main.app)
         response = client.post(

@@ -1,5 +1,10 @@
 # main.py Checklist
 
+
+- [x] MAIN-01–04: active-backend HTTP rename, durable recovery and bounded upload; fix current-policy cache logging fixture.
+  Evidence: `scripts/test_main_rename_audit.py` final 64 file/real PostgreSQL HTTP cases pass, including actual TCP routes, preflight conflicts, per-stage failures, recovery/retry, references/tombstones and late writers. Relevant regression run: 333 tests pass, no skips; upload streaming and logging included. Nine existing route/schema scripts pass; UI type/build and 21 controller groups pass. Private before/after logs: `/tmp/audit-main-0497d65/`. No deployment/push; external review pending.
+  Timestamp: 2026-11-11
+
 ## Shared sentence translation (2026-11-09)
 
 - [x] Preserve ordinary translation transport over canonical aligned results.

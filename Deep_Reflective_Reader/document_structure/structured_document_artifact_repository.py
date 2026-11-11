@@ -272,6 +272,15 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             return None
         return lookup_cleanup_receipt(document, namespace=namespace, document_id=document_id, operation_id=operation_id)
 
+    @property
+    def lifecycle_storage_identity(self):
+        return ('file', self.namespace, str(Path(self.base_dir).resolve()))
+
+    def recover_document_rename(self, doc_name, new_name):
+        if self._learning_lifecycle is not None:
+            return self._learning_lifecycle.recover(expected_rename=(doc_name, new_name))
+        return False
+
     def rename_document(self, doc_name, new_name, transform):
         if self._learning_lifecycle is not None:
             return self._learning_lifecycle.rename(doc_name, new_name, transform)
@@ -336,6 +345,9 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
                     raise ReadingContentConflict("reading_structure_changed_reload_required")
                 document = preserve_explicit_annotations(current, document)
             else:
+                if document.parse_provenance.get("interaction_epoch"):
+                    from document_structure.reading_content import ReadingContentConflict
+                    raise ReadingContentConflict("reading_document_missing_reload_required")
                 document = replace(document, parse_provenance={**document.parse_provenance,
                                    "interaction_epoch": uuid4().hex})
             self._atomic_save(document=document, path=path)

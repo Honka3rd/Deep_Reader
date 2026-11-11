@@ -135,6 +135,9 @@ class PostgresStructuredDocumentStore:
                     (resolved.namespace, resolved.document_name),
                 ).fetchone()
                 if existing_row is None:
+                    if not replace_existing_hierarchy and document.parse_provenance.get("interaction_epoch"):
+                        from document_structure.reading_content import ReadingContentConflict
+                        raise ReadingContentConflict("reading_document_missing_reload_required")
                     metadata_payload["parse_provenance"]["interaction_epoch"] = uuid4().hex
                     row = connection.execute(
                         """

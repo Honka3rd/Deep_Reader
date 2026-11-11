@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 import main
 from logging_config import RequestContextFilter, log_stage, request_id_context
+from document_structure.structured_document_builder import StructuredDocumentBuilder
+from document_structure.common_parse_policy import COMMON_POLICY_VERSION
 from test_prepare_structured_reuse_before_raw_load import (
     _build_pipeline, _fake_document, _StructuredStore, _TextLoader,
 )
@@ -56,6 +58,9 @@ class LoggingTests(unittest.TestCase):
         loader = _TextLoader()
         store = _StructuredStore(exists_value=True, document=_fake_document("Log Test"))
         pipeline = _build_pipeline(loader=loader, store=store)
+        # The HTTP prepare contract sends toc_hint=auto. A current Common build
+        # records policy provenance; the legacy fake builder intentionally does not.
+        pipeline.structured_document_builder = StructuredDocumentBuilder()
         with patch.object(main.qa_coordinator, "document_preparation_pipeline", pipeline):
             client = TestClient(main.app)
             response = client.post("/documents/prepare", json={"doc_name": "Log Test", "mode": "base", "force_rebuild": True})
@@ -65,6 +70,9 @@ class LoggingTests(unittest.TestCase):
                 self.assertIn(f"request_id={request_id} stage_finished stage={stage} ", self.stream.getvalue())
             self.assertIn("structured_ready=True", self.stream.getvalue())
             self.assertNotIn("force rebuild raw text", self.stream.getvalue())
+            self.assertEqual(store.document.parse_provenance['common_parse_policy']['version'], COMMON_POLICY_VERSION)
+            self.assertEqual(store.document.parse_provenance['common_parse_policy']['toc_hint'], 'auto')
+            saves_after_build = store.save_calls
             self.stream.truncate(0)
             self.stream.seek(0)
             reused = client.post("/documents/prepare", json={"doc_name": "Log Test", "mode": "base"})
@@ -72,6 +80,7 @@ class LoggingTests(unittest.TestCase):
             self.assertIn("structured_reused=True", self.stream.getvalue())
             self.assertNotIn("stage=raw_load", self.stream.getvalue())
             self.assertEqual(loader.load_calls, 1)
+            self.assertEqual(store.save_calls, saves_after_build)
 
     def test_stage_failure_preserves_exception_without_detail(self):
         failure = RuntimeError("PRIVATE_ERROR_SENTINEL")

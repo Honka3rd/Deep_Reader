@@ -77,6 +77,15 @@ class DocumentArtifactRepository(ABC):
     def rename_document(self, doc_name, new_name, transform):
         raise NotImplementedError("document rename not supported")
 
+    @property
+    def lifecycle_storage_identity(self):
+        """Opaque server-side identity for scoped lifecycle journals; never a client DTO."""
+        raise NotImplementedError("document lifecycle identity not supported")
+
+    def recover_document_rename(self, doc_name, new_name):
+        """Explicitly recover only this pair, or report that no recovery is needed."""
+        raise NotImplementedError("document rename recovery not supported")
+
     @abstractmethod
     def list_documents(
         self,

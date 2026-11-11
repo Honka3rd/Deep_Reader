@@ -1,5 +1,16 @@
 # db Detailed Design
 
+## MAIN-02 repository identity (2026-11-11, implemented)
+
+Ordinary metadata/artifact saves carrying an existing document epoch must reject
+a now-missing identity instead of recreating a renamed/deleted document. Explicit
+reparse/import remains the creation path, preserving the R3 reimport contract.
+
+The SQL artifact adapter exposes a hashed storage identity from its configured
+DSN/namespace, separate from inherited file paths. Explicit rename recovery has no
+file lifecycle to replay; the application reconciles canonical document epochs
+after the existing SQL transaction. No migration or SQL transaction change.
+
 ## Shared sentence translation (2026-11-09)
 
 No new tables or migration: ordinary and learning translation use the same

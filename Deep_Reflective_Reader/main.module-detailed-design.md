@@ -1,5 +1,50 @@
 # main.py Detailed Design
 
+## MAIN audit correction (2026-11-11, implemented)
+
+Rename delegates to the active repository through `app.document_rename`. File
+mode must use its installed learning lifecycle (preferences/tombstones, sentence
+resources, results, operations and receipts); PostgreSQL-only documents require no
+local artifact. Inactive structured JSON is neither inspected nor moved. Raw and
+FAISS resources remain shared filesystem resources and are optional.
+
+Preflight validates names, resource kinds, destinations (also when the source lacks matching files) and access before any
+identity change. The application persists a scoped rename journal before invoking
+the repository. Repository commit precedes optional file moves; interrupted work
+returns HTTP 503, `status=failed`, `reason=storage_failure`, `recovery_required=true`
+and an operation ID, never a total rejection. Repeating the same explicit rename
+reconciles the recorded source epoch, completes matching repository recovery and
+moves, and returns success only after all effects are durable. Other pending
+renames in that scope conflict. Reads never recover. Conflicts before any durable
+mutation remain 409. Recovery refuses changed/recreated identities or resources.
+
+Upload keeps the existing typed response and conflict policies, but receives and
+parses multipart incrementally: 50 MiB file, 51 MiB entire request, 16 KiB per
+non-file field, three parts (one file, optional title and conflict_policy), bounded
+part headers and boundary. Limits apply without Content-Length and with a false
+length; excess stops application receive immediately and returns typed HTTP 413
+`file_too_large`. Malformed/duplicate parts remain validation failures. Temporary
+file resources close on every exit, including disconnect; destination publication
+occurs only after complete validation. Upload does not prepare or call providers.
+
+Acceptance: actual file/real PostgreSQL HTTP rename with populated learning state,
+late writers, inactive leftovers, per-stage injected failures and explicit retry;
+ASGI streaming upload early-stop/cleanup and existing response/logging regressions.
+The logging fixture now uses the real StructuredDocumentBuilder to produce current
+Common policy provenance. Assertions retain reuse, no raw load, one loader call,
+and add unchanged save count. Upload receive/parse timing now includes incremental
+hashing; upload_hash reports the completed digest rather than a second hashing pass.
+
+Evidence: `scripts/test_main_rename_audit.py`, `scripts/test_upload_stream_limits.py`,
+`test_upload_preparation_logging.py`, existing lifecycle/upload/schema scripts and
+the learning lifecycle/routes regressions. Private before/after logs and commands
+are in `/tmp/audit-main-0497d65/`; these are local review evidence, not deployment.
+Final rename matrix: 64 cases pass. Related regression run: 333 cases pass with no
+skips; nine existing route/schema scripts and UI build/21 controller groups pass.
+The stream test also uploads an immutable backup excerpt into temporary storage
+and checks exact bytes/SHA-256; no OCR, paid LLM or production books are mutated.
+
+
 ## Shared sentence translation (2026-11-09)
 
 Ordinary translate/read and translate/generate retain their existing request and
@@ -296,10 +341,9 @@ conflicts return 409, malformed requests 422, missing documents 404.
 No prompts or persistence logic belongs to the handlers. Routes/coordinator and
 actual two-book generation/read/save/reuse acceptance pass.
 
-Rename now includes the configured PostgreSQL record and new interaction identity
-mapping, in addition to file-backed resources. If DB rename rejects, moved files
-are rolled back. Disposable PostgreSQL tests cover conflicts and retained notes/
-summaries; production acceptance does not rename unrelated user books.
+Rename must use the active repository lifecycle and forward recovery described
+in the MAIN audit correction above. The former file-first/rollback implementation
+is superseded; production acceptance does not rename unrelated user books.
 
 ## FULL-03 Capacity Transport (2026-10-20)
 
@@ -448,6 +492,7 @@ the selector; ordinary layout reads are unchanged. Evidence:
 | File | Responsibility | Notes |
 |---|---|---|
 | `main.py` | FastAPI app 建立、routes、HTTP error mapping | 綁定 `QACoordinator` / `SectionTaskCoordinator` **[Code-Confirmed]** |
+| `main_upload.py` | Bounded multipart transport and temporary stream cleanup | Same main module owner; no parser/preparation work |
 
 ## 4. Main Responsibilities
 
@@ -478,7 +523,7 @@ the selector; ordinary layout reads are unchanged. Evidence:
 | `GET /documents/management` | structured list + raw source metadata merge | lightweight management status read |
 | `POST /documents/upload` | route-local raw source registration | explicit raw-source write |
 | `POST /documents/lifecycle/delete` | active structured repository plus raw/derived file cleanup | explicit delete mutation |
-| `POST /documents/lifecycle/rename` | file-backed document candidate rename | explicit rename mutation |
+| `POST /documents/lifecycle/rename` | active repository lifecycle plus recoverable raw/derived moves | explicit rename mutation |
 | `POST /documents/prepare` | prepare pipeline via coordinator path | write-capable orchestration |
 | `POST /documents/ask` | `QACoordinator` | runtime QA |
 | `POST /documents/task-layout` | `SectionTaskCoordinator.get_document_task_layout` | projection/read-centric |
@@ -678,11 +723,11 @@ No known legacy compatibility responsibility（route 層不直接管理 sections
     document identity or display identity according to storage policy, rejects conflicts
     deterministically, and must not be simulated through upload replace/create-distinct
     flows. **[Maintainer-Provided] + [Future Direction]**
-17. `POST /documents/lifecycle/rename` is an explicit lifecycle mutation route. It
-    requires `action=rename` and `new_doc_name`, renames matching file-backed raw source,
-    structured JSON artifact, and derived FAISS/profile directory when present, updates
-    lightweight top-level structured JSON identity metadata, rejects target conflicts
-    deterministically, and returns `DocumentLifecycleActionResponse` effect flags only.
+17. `POST /documents/lifecycle/rename` requires `action=rename` and `new_doc_name`.
+    It delegates identity changes to the active repository lifecycle and coordinates
+    optional raw/FAISS moves through the durable journal described above. It never
+    edits inactive structured files. Responses include effect flags and operation ID;
+    interrupted work reports recovery_required rather than a complete rejection.
     It does not call prepare, reparse, task-layout, OCR/profile generation, retrieval
     build, reading-interaction generation, or upload conflict-policy behavior.
     **[Code-Confirmed]**

@@ -163,6 +163,15 @@ class FileLearningDocumentLifecycle:
             payloads['preferences'] = staged.payload
             journal = {'version':1, 'document_id':document_id, 'new_document_id':new_document_id,
                 'writes':{owner:{'before':_hash(_read(path)), 'payload':payloads[owner]} for owner,path in paths.items()}}
+            # Detect known path/access failures before publishing any lifecycle write.
+            # This cannot promise future disk capacity; post-journal IO failures still
+            # require forward recovery under the existing owner locks.
+            for path in (*paths.values(), self.preferences.lifecycle_journal_path):
+                parent = path.parent
+                while not parent.exists():
+                    parent = parent.parent
+                if not parent.is_dir() or not os.access(parent, os.W_OK | os.X_OK):
+                    raise LearningStorageError('document_lifecycle_path_unwritable')
             try:
                 atomic_write(self.preferences.lifecycle_journal_path, codec.canonical(journal))
                 self._apply(journal)
@@ -177,7 +186,7 @@ class FileLearningDocumentLifecycle:
     def delete(self, document_id):
         return self._change(document_id, None, None)
 
-    def recover(self):
+    def recover(self, *, expected_rename=None):
         """Forward-complete one interrupted workspace operation under owner locks."""
         with self.preferences.lifecycle_lock():
             raw = _read(self.preferences.lifecycle_journal_path)
@@ -185,6 +194,9 @@ class FileLearningDocumentLifecycle:
                 return False
             try:
                 journal = json.loads(raw, object_pairs_hook=codec.strict_object, parse_constant=codec.reject_constant)
+                if expected_rename is not None:
+                    require((journal['document_id'], journal['new_document_id']) == expected_rename,
+                            'learning_lifecycle_recovery_conflict')
                 identifier(journal['document_id'])
                 if journal['new_document_id'] is not None:
                     identifier(journal['new_document_id'])

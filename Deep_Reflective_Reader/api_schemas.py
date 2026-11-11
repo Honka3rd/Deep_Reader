@@ -815,6 +815,8 @@ class DocumentLifecycleActionResponse(BaseModel):
     derived_resources_affected: bool = False
     archived: bool | None = None
     deleted: bool | None = None
+    recovery_required: bool = False
+    operation_id: str | None = None
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:

@@ -1,5 +1,10 @@
 # api_schemas.py Checklist
 
+
+- [x] MAIN-03 transport: expose durable rename recovery requirement and operation identity.
+  Evidence: `scripts/test_main_rename_audit.py` final 64 file/real PostgreSQL HTTP cases pass, including actual TCP routes, preflight conflicts, per-stage failures, recovery/retry, references/tombstones and late writers. Relevant regression run: 333 tests pass, no skips; upload streaming and logging included. Nine existing route/schema scripts pass; UI type/build and 21 controller groups pass. Private before/after logs: `/tmp/audit-main-0497d65/`. No deployment/push; external review pending.
+  Timestamp: 2026-11-11
+
 ## Vocabulary filtering and completion observation (2026-11-09)
 
 - [x] Project optional vocabulary assessment and wait contract.

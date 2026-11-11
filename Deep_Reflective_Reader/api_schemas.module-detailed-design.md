@@ -1,5 +1,16 @@
 # api_schemas.py Detailed Design
 
+## Main rename recovery response (2026-11-11, implemented)
+
+`DocumentLifecycleActionResponse` adds `recovery_required` (default false) and
+optional `operation_id`. A rename whose durable outcome needs reconciliation uses
+HTTP 503 / failed / storage_failure with recovery_required=true and its operation
+ID plus target name. The caller can repeat the same explicit rename to recover;
+reads do not mutate. These fields do not claim that effect flags are a complete
+rollback report. Upload response fields/reason vocabulary are unchanged; all size
+limits map to the existing 413/file_too_large contract.
+
+
 ## Vocabulary assessments and completion wait (2026-11-09)
 
 Saved hint and partial hint payloads add nullable `assessment` with candidate,
@@ -664,7 +675,7 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
    `DocumentLifecycleActionResponse`. The route requires `action=rename` and
    `new_doc_name`, returns typed rejected/conflict states for missing/wrong-action/target
    conflict cases, and keeps responses lightweight with the accepted `new_doc_name` plus
-   effect flags only. **[Code-Confirmed]**
+   effect flags and recovery metadata described above. **[Code-Confirmed]**
 13. Failure reason vocabulary covers unsupported file type, file too large,
    duplicate/conflict, unsafe filename, storage failure, missing source, and validation
    failure. Failed upload responses require a reason; successful upload responses must

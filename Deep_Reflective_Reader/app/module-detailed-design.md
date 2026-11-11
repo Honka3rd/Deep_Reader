@@ -1,5 +1,35 @@
 # app Detailed Design
 
+## Main rename recovery orchestration (2026-11-11, implemented)
+
+`document_rename.py` owns only the explicit rename use case. Inject the active
+repository and raw/derived roots. Never open inactive structured storage. Repository
+lifecycle owns preference/learning identity migration and writer fencing. Use a
+POSIX lock and fsynced scoped journal for repository plus filesystem coordination;
+this is forward recovery, not a cross-resource atomic transaction. Preflight all
+known conflicts before effects; persist expected document epoch and resource
+fingerprints before repository commit. Retry the exact request explicitly, verify
+identity, complete matching file lifecycle recovery if needed, then move remaining
+resources. Keep a completed receipt for idempotent lost-response retry. A pending
+record blocks other rename operations in that scope. Changes outside cooperating
+owners cause a recovery conflict, never guessed rollback or overwrite. Do not
+claim coordination with external filesystem tools or distributed deployments.
+
+Journals live in `<raw-root-parent>/.document-renames/<storage-scope-hash>/`;
+`pending.json` is fsynced before repository commit, completed receipts are keyed
+by old/new identity. A new DocumentRename instance on an explicit identical HTTP
+request reconciles pending work; no startup/read-time repair. Malformed journals
+fail closed with recovery_required and require maintainer inspection. Changed
+resource hashes or recreated epochs are never overwritten. A same-incarnation
+explicit reverse/rename cycle starts a new operation. Legacy documents without
+a document epoch use a stable source/provenance fingerprint; reads do not backfill.
+Pure raw candidates have no canonical learning state and retain raw rename support.
+Known file type/access and destination conflicts are checked before mutation; a
+later disk or SQL failure retains recovery evidence. No cross-filesystem transaction
+or host power-loss guarantee is claimed. HTTP/file/real PostgreSQL failure tests
+exercise journal, repository, each move, receipt and acknowledgement boundaries.
+
+
 ## Shared sentence translation (2026-11-09)
 
 Ordinary TranslationAction now delegates production generation to SharedTranslation,

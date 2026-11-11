@@ -13,3 +13,4 @@ dependency-injector==4.49.1
 pydantic==2.13.5
 psycopg[binary]==3.3.5
 Pillow==12.3.0
+python-multipart==0.0.33

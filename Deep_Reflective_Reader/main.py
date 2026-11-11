@@ -1,8 +1,6 @@
 from uuid import uuid4
 from functools import wraps
 from datetime import datetime, timezone
-from email import policy
-from email.parser import BytesParser
 import hashlib
 import json
 from pathlib import Path
@@ -10,6 +8,8 @@ import re
 import logging
 import shutil
 import time
+import os
+import tempfile
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -243,6 +243,7 @@ _RAW_DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")
 _RAW_DOCUMENT_BASE_DIR = Path("data/raw")
 _DERIVED_DOCUMENT_BASE_DIR = Path("data/faiss")
 _DOCUMENT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
+_DOCUMENT_UPLOAD_REQUEST_MAX_BYTES = 51 * 1024 * 1024
 
 
 def _raw_document_doc_name(path: Path, sibling_counts: dict[str, int]) -> str:
@@ -278,50 +279,6 @@ def _normalize_upload_filename(filename: str | None) -> str:
     if suffix not in _RAW_DOCUMENT_EXTENSIONS:
         raise ValueError("unsupported_file_type")
     return normalized
-
-
-def _parse_document_upload_multipart(
-    content_type: str | None,
-    body: bytes,
-) -> tuple[str, bytes, str | None, str]:
-    """Parse the minimal multipart fields needed by the upload route."""
-    if not content_type or "multipart/form-data" not in content_type.lower():
-        raise ValueError("validation_failure")
-
-    message_bytes = (
-        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
-        + body
-    )
-    message = BytesParser(policy=policy.default).parsebytes(message_bytes)
-    if not message.is_multipart():
-        raise ValueError("validation_failure")
-
-    file_name: str | None = None
-    file_bytes: bytes | None = None
-    title: str | None = None
-    conflict_policy = "reject"
-
-    for part in message.iter_parts():
-        field_name = part.get_param("name", header="content-disposition")
-        if not field_name:
-            continue
-        payload = part.get_payload(decode=True) or b""
-        if field_name == "file":
-            file_name = part.get_filename()
-            file_bytes = payload
-        elif field_name == "title":
-            decoded_title = payload.decode("utf-8", errors="replace").strip()
-            title = decoded_title or None
-        elif field_name == "conflict_policy":
-            decoded_policy = payload.decode("utf-8", errors="replace").strip()
-            if decoded_policy:
-                conflict_policy = decoded_policy.lower().replace("-", "_")
-
-    if file_name is None or file_bytes is None:
-        raise ValueError("missing_source")
-    if conflict_policy not in {"reject", "replace", "create_distinct"}:
-        raise ValueError("validation_failure")
-    return file_name, file_bytes, title, conflict_policy
 
 
 def _resolve_upload_destination(
@@ -695,132 +652,6 @@ def _resolve_raw_document_rename_target(
     else:
         target_filename = f"{normalized_new_name}{current_raw_path.suffix}"
     return current_raw_path.parent / target_filename
-
-
-def _resolve_structured_document_rename_target(new_doc_name: str) -> Path:
-    """Resolve structured JSON rename target for a lifecycle rename request."""
-    new_namespace = _document_lifecycle_namespace(new_doc_name)
-    return _structured_document_base_dir() / f"{new_namespace}.structured.json"
-
-
-def _resolve_faiss_document_rename_target(new_doc_name: str) -> Path:
-    """Resolve derived artifact directory target for a lifecycle rename request."""
-    return _DERIVED_DOCUMENT_BASE_DIR / _document_lifecycle_namespace(new_doc_name)
-
-
-def _assert_rename_target_available(source: Path | None, target: Path | None) -> None:
-    """Fail when a lifecycle rename target already exists for a different artifact."""
-    if source is None or target is None:
-        return
-    try:
-        if source.resolve() == target.resolve():
-            return
-    except FileNotFoundError:
-        pass
-    if target.exists():
-        raise ValueError("conflict")
-
-
-def _update_renamed_structured_document_metadata(
-    structured_path: Path,
-    *,
-    old_doc_name: str,
-    new_doc_name: str,
-) -> None:
-    """Update lightweight top-level identity metadata after structured file rename."""
-    if not structured_path.exists():
-        return
-    try:
-        payload = json.loads(structured_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise ValueError("storage_failure") from error
-    if not isinstance(payload, dict):
-        raise ValueError("storage_failure")
-
-    old_namespace = _document_lifecycle_namespace(old_doc_name)
-    new_namespace = _document_lifecycle_namespace(new_doc_name)
-    if payload.get("chapters") and payload.get("document_task_artifacts"):
-        from document_structure.structured_document import StructuredDocument
-        from section_tasks.interaction_rename import renamed_interactions
-        payload = renamed_interactions(StructuredDocument.from_dict(payload), new_namespace).to_dict()
-    if payload.get("document_id") in {None, old_doc_name, old_namespace}:
-        payload["document_id"] = new_namespace
-    if payload.get("title") in {None, old_doc_name, old_namespace}:
-        payload["title"] = new_namespace
-    try:
-        structured_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except OSError as error:
-        raise ValueError("storage_failure") from error
-
-
-def _rename_document_file_backed_artifacts(
-    *,
-    doc_name: str,
-    new_doc_name: str,
-) -> dict[str, bool | str]:
-    """Rename file-backed document artifacts for an explicit lifecycle request."""
-    old_doc_name = _validate_document_lifecycle_doc_name(doc_name)
-    normalized_new_doc_name = _validate_document_lifecycle_doc_name(new_doc_name)
-    if _document_lifecycle_namespace(old_doc_name) == _document_lifecycle_namespace(
-        normalized_new_doc_name
-    ):
-        raise ValueError("conflict")
-
-    raw_path = _resolve_raw_document_delete_path(old_doc_name)
-    raw_target = _resolve_raw_document_rename_target(
-        current_raw_path=raw_path,
-        new_doc_name=normalized_new_doc_name,
-    )
-    structured_path = _resolve_structured_document_delete_path(old_doc_name)
-    structured_target = _resolve_structured_document_rename_target(normalized_new_doc_name)
-    derived_dir = _resolve_faiss_document_artifact_dir(old_doc_name)
-    derived_target = _resolve_faiss_document_rename_target(normalized_new_doc_name)
-
-    source_exists = raw_path is not None and raw_path.exists()
-    structured_exists = structured_path.exists()
-    derived_exists = derived_dir.exists()
-    if not (source_exists or structured_exists or derived_exists):
-        raise FileNotFoundError("missing_document")
-
-    _assert_rename_target_available(raw_path if source_exists else None, raw_target)
-    _assert_rename_target_available(
-        structured_path if structured_exists else None,
-        structured_target,
-    )
-    _assert_rename_target_available(derived_dir if derived_exists else None, derived_target)
-
-    source_affected = False
-    structured_affected = False
-    derived_affected = False
-
-    if source_exists and raw_path is not None and raw_target is not None:
-        raw_path.rename(raw_target)
-        source_affected = True
-
-    if structured_exists:
-        structured_path.rename(structured_target)
-        _update_renamed_structured_document_metadata(
-            structured_target,
-            old_doc_name=old_doc_name,
-            new_doc_name=normalized_new_doc_name,
-        )
-        structured_affected = True
-
-    if derived_exists:
-        if not derived_dir.is_dir():
-            raise ValueError("storage_failure")
-        derived_dir.rename(derived_target)
-        derived_affected = True
-
-    return {
-        "new_doc_name": _document_lifecycle_namespace(normalized_new_doc_name),
-        "source_affected": source_affected,
-        "structured_artifacts_affected": structured_affected,
-        "derived_resources_affected": derived_affected,
-    }
 
 
 def _merge_document_candidates(
@@ -1576,20 +1407,20 @@ def list_document_management_items(
 @app.post("/documents/upload", response_model=DocumentUploadResponse)
 async def upload_document(request: Request, response: Response):
     """Store a raw document source candidate without preparing or parsing it."""
-    with log_stage(logger, "upload_receive") as timing:
-        body = await request.body()
-        timing["body_bytes"] = len(body)
+    from main_upload import receive_upload
+    upload = None
     try:
-        with log_stage(logger, "upload_multipart_parse"):
-            filename, file_bytes, title, conflict_policy = _parse_document_upload_multipart(
-                request.headers.get("content-type"),
-                body,
-            )
+        with log_stage(logger, "upload_receive") as timing:
+            with log_stage(logger, "upload_multipart_parse"):
+                upload = await receive_upload(request, file_limit=_DOCUMENT_UPLOAD_MAX_BYTES,
+                                              request_limit=_DOCUMENT_UPLOAD_REQUEST_MAX_BYTES)
+            timing["file_bytes"] = upload.size
+        filename, title, conflict_policy = upload.filename, upload.title, upload.conflict_policy
         normalized_filename = _normalize_upload_filename(filename)
         logger.info("upload_metadata filename=%s file_bytes=%s conflict_policy=%s",
-                    json.dumps(normalized_filename, ensure_ascii=False), len(file_bytes), conflict_policy)
+                    json.dumps(normalized_filename, ensure_ascii=False), upload.size, conflict_policy)
 
-        if not file_bytes:
+        if not upload.size:
             logger.info("upload_rejected reason=missing_source")
             response.status_code = 400
             return DocumentUploadResponse(
@@ -1603,38 +1434,45 @@ async def upload_document(request: Request, response: Response):
                 conflict_policy=conflict_policy,
                 reason="missing_source",
             )
-        if len(file_bytes) > _DOCUMENT_UPLOAD_MAX_BYTES:
-            logger.info("upload_rejected reason=file_too_large max_bytes=%s", _DOCUMENT_UPLOAD_MAX_BYTES)
-            response.status_code = 413
-            return DocumentUploadResponse(
-                doc_name=Path(normalized_filename).stem,
-                title=title or Path(normalized_filename).stem,
-                source_filename=normalized_filename,
-                source_type=_document_upload_failure_source_type(normalized_filename),
-                source_size_bytes=len(file_bytes),
-                source_status="failed",
-                preparation_status="unknown",
-                conflict_policy=conflict_policy,
-                reason="file_too_large",
-            )
-
         _RAW_DOCUMENT_BASE_DIR.mkdir(parents=True, exist_ok=True)
         destination = _resolve_upload_destination(
             normalized_filename,
             conflict_policy,
             _RAW_DOCUMENT_BASE_DIR,
         )
-        with log_stage(logger, "upload_write", filename=destination.name, file_bytes=len(file_bytes)):
-            destination.write_bytes(file_bytes)
-        with log_stage(logger, "upload_hash", file_bytes=len(file_bytes)):
-            source_hash = hashlib.sha256(file_bytes).hexdigest()
+        with log_stage(logger, "upload_write", filename=destination.name, file_bytes=upload.size):
+            staged_path = None
+            try:
+                with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as staged:
+                    staged_path = Path(staged.name)
+                    shutil.copyfileobj(upload.stream, staged, length=64*1024)
+                    staged.flush()
+                    os.fsync(staged.fileno())
+                if conflict_policy == "replace":
+                    os.replace(staged_path, destination)
+                else:
+                    # Link publishes without overwriting a concurrently created candidate.
+                    while True:
+                        try:
+                            os.link(staged_path, destination)
+                            break
+                        except FileExistsError:
+                            if conflict_policy != "create_distinct":
+                                raise
+                            destination = _resolve_upload_destination(normalized_filename, conflict_policy,
+                                                                      _RAW_DOCUMENT_BASE_DIR)
+            finally:
+                if staged_path is not None:
+                    staged_path.unlink(missing_ok=True)
+        with log_stage(logger, "upload_hash", file_bytes=upload.size):
+            source_hash = upload.source_hash
         response.status_code = 201
         logger.info("upload_stored doc_name=%s filename=%s file_bytes=%s preparation_started=false",
                     json.dumps(destination.stem, ensure_ascii=False),
-                    json.dumps(destination.name, ensure_ascii=False), len(file_bytes))
+                    json.dumps(destination.name, ensure_ascii=False), upload.size)
         return _build_document_upload_response(
             destination=destination,
-            source_size_bytes=len(file_bytes),
+            source_size_bytes=upload.size,
             source_hash=source_hash,
             source_status="uploaded",
             title=title,
@@ -1650,7 +1488,7 @@ async def upload_document(request: Request, response: Response):
             title=title if "title" in locals() else None,
             source_filename=normalized_filename,
             source_type=_document_upload_failure_source_type(normalized_filename),
-            source_size_bytes=len(file_bytes) if "file_bytes" in locals() else 0,
+            source_size_bytes=upload.size if upload is not None else 0,
             source_status="failed",
             preparation_status="unknown",
             conflict_policy=conflict_policy if "conflict_policy" in locals() else "reject",
@@ -1658,13 +1496,14 @@ async def upload_document(request: Request, response: Response):
         )
     except ValueError as error:
         reason = str(error)
-        status_code = 415 if reason == "unsupported_file_type" else 400
+        status_code = 413 if reason == "file_too_large" else (415 if reason == "unsupported_file_type" else 400)
         response.status_code = status_code
         filename = filename if "filename" in locals() else "upload"
         normalized_filename = Path(filename).name or "upload"
         source_type = _document_upload_failure_source_type(normalized_filename)
         if reason not in {
             "unsupported_file_type",
+            "file_too_large",
             "unsafe_filename",
             "missing_source",
             "validation_failure",
@@ -1676,7 +1515,7 @@ async def upload_document(request: Request, response: Response):
             title=title if "title" in locals() else None,
             source_filename=normalized_filename,
             source_type=source_type,
-            source_size_bytes=len(file_bytes) if "file_bytes" in locals() else 0,
+            source_size_bytes=upload.size if upload is not None else 0,
             source_status="failed",
             preparation_status="unknown",
             conflict_policy=conflict_policy if "conflict_policy" in locals() else "reject",
@@ -1692,12 +1531,15 @@ async def upload_document(request: Request, response: Response):
             title=title if "title" in locals() else None,
             source_filename=normalized_filename,
             source_type=_document_upload_failure_source_type(normalized_filename),
-            source_size_bytes=len(file_bytes) if "file_bytes" in locals() else 0,
+            source_size_bytes=upload.size if upload is not None else 0,
             source_status="failed",
             preparation_status="unknown",
             conflict_policy=conflict_policy if "conflict_policy" in locals() else "reject",
             reason="storage_failure",
         )
+    finally:
+        if upload is not None:
+            upload.stream.close()
 
 
 @app.post(
@@ -1798,6 +1640,7 @@ def rename_document_lifecycle(
     response: Response,
 ):
     """Explicitly rename a document candidate and file-backed derived artifacts."""
+    from app.document_rename import RenameRecoveryRequired
     try:
         doc_name = _validate_document_lifecycle_doc_name(request.doc_name)
         if request.action != "rename":
@@ -1820,32 +1663,35 @@ def rename_document_lifecycle(
         activity = preparation_operations.snapshot()
         if any(activity.get(name) == "building" for name in (doc_name, request.new_doc_name)):
             raise ValueError("conflict")
-        effects = _rename_document_file_backed_artifacts(
-            doc_name=doc_name,
-            new_doc_name=request.new_doc_name,
-        )
-        from db.postgres_structured_document_artifact_repository import PostgresStructuredDocumentArtifactRepository
-        if isinstance(document_artifact_repository, PostgresStructuredDocumentArtifactRepository):
-            from section_tasks.interaction_rename import renamed_interactions
-            try:
-                effects["structured_artifacts_affected"] = document_artifact_repository.rename_document(
-                    _document_lifecycle_namespace(doc_name),
-                    _document_lifecycle_namespace(request.new_doc_name), renamed_interactions)
-            except Exception:
-                _rename_document_file_backed_artifacts(doc_name=request.new_doc_name, new_doc_name=doc_name)
-                raise
+        from app.document_rename import DocumentRename
+        raw_source = _resolve_raw_document_delete_path(doc_name)
+        raw_target = _resolve_raw_document_rename_target(
+            current_raw_path=raw_source, new_doc_name=request.new_doc_name)
+        effects = DocumentRename(document_artifact_repository, _RAW_DOCUMENT_BASE_DIR,
+                                 _DERIVED_DOCUMENT_BASE_DIR).rename(
+            _document_lifecycle_namespace(doc_name),
+            _document_lifecycle_namespace(request.new_doc_name),
+            raw_source=raw_source, raw_target=raw_target)
         preparation_operations.forget(doc_name, request.new_doc_name)
         return DocumentLifecycleActionResponse(
             doc_name=doc_name,
             action="rename",
             status="accepted",
             new_doc_name=str(effects["new_doc_name"]),
+            operation_id=effects["operation_id"],
             source_affected=bool(effects["source_affected"]),
             structured_artifacts_affected=bool(
                 effects["structured_artifacts_affected"]
             ),
             derived_resources_affected=bool(effects["derived_resources_affected"]),
         )
+    except RenameRecoveryRequired as error:
+        logger.warning("document_rename_recovery_required operation_id=%s", error.operation_id)
+        response.status_code = 503
+        return DocumentLifecycleActionResponse(
+            doc_name=request.doc_name, action="rename", status="failed",
+            new_doc_name=request.new_doc_name, reason="storage_failure",
+            recovery_required=True, operation_id=error.operation_id)
     except FileNotFoundError:
         response.status_code = 404
         return DocumentLifecycleActionResponse(

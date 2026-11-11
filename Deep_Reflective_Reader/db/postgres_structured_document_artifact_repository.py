@@ -33,6 +33,15 @@ class PostgresStructuredDocumentArtifactRepository(StructuredDocumentArtifactRep
     def lookup_cleanup(self, *, namespace, document_id, operation_id):
         return self.store.lookup_cleanup(namespace=namespace, document_id=document_id, operation_id=operation_id)
 
+    @property
+    def lifecycle_storage_identity(self):
+        from hashlib import sha256
+        return ('postgres', self.store.namespace, sha256(self.store.dsn.encode()).hexdigest())
+
+    def recover_document_rename(self, doc_name, new_name):
+        # PostgreSQL lifecycle commits or rolls back in one transaction.
+        return False
+
     def rename_document(self, doc_name, new_name, transform):
         return self.store.rename_document(self.store.target_for_doc_name(doc_name), new_name, transform)
 
