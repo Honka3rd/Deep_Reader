@@ -85,6 +85,7 @@ export function useReadingInteractionMenuController() {
     activationRef.current = activation;
     const signal = activation.controller.signal;
     const key = selection.targetKey;
+    const sourceEpoch = generationTasks.sourceEpoch;
     // The same guard covers both phases, including notifications and failures.
     async function run<T extends { envelope: ReadingInteractionResponseEnvelope; payload?: unknown }, S>(
       interactionType: string, read: () => Promise<T>, generate: (signal: AbortSignal) => Promise<T>,
@@ -94,7 +95,8 @@ export function useReadingInteractionMenuController() {
     ) {
       let requestId = begin(key, "loading");
       let generated = false;
-      const isCurrent = () => !signal.aborted && activationRef.current === activation && isLatestInteractionRequest(requestId);
+      const isCurrent = () => !signal.aborted && generationTasks.sourceEpoch === sourceEpoch
+        && activationRef.current === activation && isLatestInteractionRequest(requestId);
       try {
         const taskKey = JSON.stringify([interactionType, key]);
         const pending = generationTasks.find<T>(taskKey, retryGeneration);
@@ -411,6 +413,7 @@ export function useReadingInteractionMenuController() {
   }
 
   function resetInteractions() {
+    generationTasks.invalidateSources();
     cancelActivation();
     requestIdRef.current += 1;
     setInteractionMenuTarget(null);

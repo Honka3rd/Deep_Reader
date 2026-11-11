@@ -1,5 +1,13 @@
 # Deep_Reader_UI Checklist
 
+## Source invalidation during generation (2026-11-11)
+
+- [x] UI-AUDIT-R4: Isolate interaction generation across source invalidation.
+  Owner: Deep_Reader_UI. Status: Implemented and locally verified; external re-review required.
+  Acceptance: Delayed old Insights/Summary/Quiz/Critical thinking cannot fill a new source after save/reset; ordinary close/reopen still joins one generation; R2/R3 remain valid.
+  Evidence: Red reproduction across four kinds/two widths plus actual controllers; 16 source-reset cases pass with fixtures and a hash-verified English book excerpt. R1 activation, 21 learning controller groups, R2/R3 settings/display/lifecycle at 1280/390, four file/PostgreSQL API cases, type/build and diff checks pass. Screenshots inspected; no Docker or push.
+  Timestamp: 2026-11-11
+
 ## External review corrections (2026-11-10)
 
 - [x] UI-AUDIT-E7073: Correct R1 generation ownership, R2 settings-stale retry and R3 explicit reimport reapply.

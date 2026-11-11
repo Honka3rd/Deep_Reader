@@ -1,5 +1,45 @@
 # Deep_Reader_UI Detailed Design
 
+## Source invalidation during interaction generation — R4 (2026-11-11)
+
+Implemented correction for review b2517c2: distinguish ordinary surface close from a
+hard interaction reset. Close/reopen retains the current generation task (R1).
+`resetInteractions()` establishes a new source-invalidation epoch, including source
+save/Undo, repair/reload and uncertain layout resets. Invalidate all tracked work
+conservatively: block edits can affect section/chapter/document interactions whose
+requests carry no source hash. New opens read current persisted state before any
+new generation; they never attach to a previous epoch's promise.
+
+Both the controller and Summary drawer capture the epoch before asynchronous work
+and guard subsequent generation, success, failure and completion UI writes. Abort
+obsolete HTTP to release resources, but treat the epoch check as the correctness
+boundary even when transport ignores cancellation. Old task cleanup must not remove
+new tasks with the same target key. Content refresh notifications that report body,
+generated artifacts or summaries invalidated all cross this boundary. Note drafts
+keep their existing lifecycle. No backend persistence/API change or billing claim.
+
+Validation: `scripts/test-interaction-source-reset.mjs` failed before the fix for
+all four kinds at 1280/390 and four actual controller/drawer probes. After the fix,
+16 cases pass: eight App editor-save/reopen journeys and eight controller/task cases,
+including transport that ignores abort, Summary kept mounted, delayed read/failure,
+and old cleanup with a new task under the same key. Each App journey checks R1
+close/reopen deduplication both before and after source invalidation. The same suite
+passes with an immutable English book excerpt; original backup hashes are unchanged.
+
+`npm run check`, the full four-kind activation suite at both widths, 21 learning
+controller groups, reading-settings/display/lifecycle at 1280/390 and four R2/R3
+production API tests across file/real PostgreSQL pass. The temporary test database
+was removed. Desktop/mobile screenshots inspected. Evidence: `/tmp/audit-b2517c2/`.
+Only UI source and owned documentation changed; no backend/schema or R2/R3 production
+changes. Existing bundle-size warning remains. The 448-test previous revision result
+is historical, not a new full-backend run.
+
+Limits: this epoch is a local invalidation boundary, not a backend source revision.
+It depends on observed source/layout reset notifications; unobserved remote edits
+and cross-tab/process deduplication are outside this guarantee. Hard reset abandons
+old task tracking; ordinary surface close does not. No paid model, production
+mutation, Docker deployment or push. External re-review of the new SHA is required.
+
 ## External review corrections for e7073bb (2026-11-10)
 
 R1 preserves dispatched interaction work across surface teardown with identity-scoped
@@ -604,7 +644,7 @@ Deduplicate in-flight activation for the same action/target. Abort obsolete read
 and suppress subsequent generation and late UI results on close, target/document
 change, reset or unmount. Once dispatched, Insights/Summary/Quiz/Critical thinking generation
 is owned by the mounted App interaction controller, independently of the visible
-observer. Close/reopen joins that pending promise without another read/generate;
+observer. Within the same source epoch, close/reopen joins that pending promise without another read/generate;
 completion never reopens hidden UI. Failed transport outcomes remain tracked until
 explicit retry reads persisted state. Unmount releases tracking and aborts HTTP,
 which does not prove server rollback; this is session-local deduplication, not a

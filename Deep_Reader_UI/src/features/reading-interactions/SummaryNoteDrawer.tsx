@@ -55,11 +55,14 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef, generationTask
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
+    const sourceEpoch = generationTasks.sourceEpoch;
+    const isCurrent = () => !controller.signal.aborted && requestRef.current === controller
+      && (selection.kind !== "summary" || generationTasks.sourceEpoch === sourceEpoch);
     setBusy(true); setError("");
     try {
       // Allow Strict Mode's setup/cleanup replay to cancel before any HTTP dispatch.
       await Promise.resolve();
-      if (controller.signal.aborted) return;
+      if (!isCurrent()) return;
       if (selection.kind === "summary") {
         const target = selection.target;
         const taskKey = JSON.stringify(["summary", target.doc_name, target.target_type,
@@ -71,12 +74,12 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef, generationTask
           ? readOrGenerate({ target: selection.target, interactionType: "summary", retryGeneration,
             read: () => service.summary(selection.target, "read", controller.signal),
             generate: () => generate("generate"),
-            isCurrent: () => !controller.signal.aborted && requestRef.current === controller,
+            isCurrent,
             onGenerating: () => {},
           })
           : operation === "read" ? service.summary(target, "read", controller.signal)
             : generate(operation === "refresh" ? "refresh" : "generate")));
-        if (!result || controller.signal.aborted || requestRef.current !== controller) return;
+        if (!result || !isCurrent()) return;
         if (result.envelope.status === "completed" || operation === "read" || operation === "open") setSummary(result);
         if (!["completed", "not_generated"].includes(result.envelope.status)) {
           setError(result.envelope.reason === "summary_model_capacity_exceeded"
@@ -95,17 +98,17 @@ export function SummaryNoteDrawer({ selection, onClose, dirtyRef, generationTask
           ...(operation === "save" ? { text: draft, mutation_id: mutationRef.current!.id } : {}),
         };
         const result = await service.note(selection.target, operation as "read" | "save" | "delete", fields, controller.signal);
-        if (controller.signal.aborted) return;
+        if (!isCurrent()) return;
         setNote(result); setDraft(result.note?.text || ""); mutationRef.current = null;
       }
     } catch (failure) {
-      if (controller.signal.aborted) return;
+      if (!isCurrent()) return;
       const message = failure instanceof Error ? failure.message : "";
       setError(message.includes("conflict") ? "This note was changed elsewhere. Your draft is kept; reopen to load the latest version."
         : message.includes("stale") ? "The document changed. Your draft is kept; reopen the current target."
         : "The request failed. Your draft and saved content are unchanged. Please retry.");
     } finally {
-      if (!controller.signal.aborted && requestRef.current === controller) {
+      if (isCurrent()) {
         requestRef.current = null;
         setBusy(false);
       }

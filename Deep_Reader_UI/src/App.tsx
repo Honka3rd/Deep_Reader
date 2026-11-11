@@ -1165,9 +1165,9 @@ export default function App() {
             }}
             onRefreshBlocks={async (refresh, signal) => {
               if (signal.aborted || activeDocumentRef.current !== docName || layoutScopeRef.current?.layout !== layout) throw new Error("Document changed.");
-              if (refresh.generated_invalidated) resetInteractions();
+              if (refresh.body_changed || refresh.generated_invalidated || refresh.summaries_invalidated) resetInteractions();
               translations.invalidate(refresh);
-              setSummaryNoteSelection(current => ((refresh.summaries_invalidated || refresh.generated_invalidated) && current?.kind === "summary")
+              setSummaryNoteSelection(current => ((refresh.body_changed || refresh.summaries_invalidated || refresh.generated_invalidated) && current?.kind === "summary")
                 || (refresh.cleared_block_id && current?.target.content_block_id === refresh.cleared_block_id)
                 || (current?.target.content_block_id && refresh.cleared_block_ids?.includes(current.target.content_block_id)) ? null : current);
               await refreshAffectedBlocks(refresh, signal);

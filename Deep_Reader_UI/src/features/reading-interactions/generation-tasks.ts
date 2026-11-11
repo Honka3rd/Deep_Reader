@@ -1,5 +1,7 @@
 /** Mounted reader-session ownership, separate from the currently visible surface. */
 export class InteractionGenerationTasks {
+  private epoch = 0;
+  get sourceEpoch() { return this.epoch; }
   private readonly tasks = new Map<string, { promise: Promise<unknown>; controller: AbortController; failed: boolean }>();
 
   find<T>(key: string, explicitRetry: boolean): Promise<T> | undefined {
@@ -21,8 +23,12 @@ export class InteractionGenerationTasks {
     return task.promise;
   }
 
-  dispose() {
+  /** A source/layout reset invalidates all aggregate targets, even without hashes. */
+  invalidateSources() {
+    this.epoch += 1;
     for (const task of this.tasks.values()) task.controller.abort();
     this.tasks.clear();
   }
+
+  dispose() { this.invalidateSources(); }
 }
