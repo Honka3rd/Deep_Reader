@@ -89,6 +89,14 @@ the external-review stage; this is distinct from the next-unit confirmation gate
    actual branch and remote instead of using a historical hardcoded branch. Use or
    create an appropriate task branch without resetting existing work. Do not amend
    or rewrite earlier review commits; fixes receive new commits.
+   After explicit staging and diff inspection, use
+   `scripts/commit_review.sh --message-file <file>`. Write the exact commit message
+   to that file, preserving multiline text. Add `--dry-run` to check the staged
+   scope without committing. The script commits only the existing index, rejects
+   empty/conflicted changes, detached HEAD and unfinished merge/rebase/cherry-pick/
+   revert operations, and preserves normal Git hooks/signing. It does not stage,
+   amend, push, run project tests, scan for secrets or grant external approval;
+   those remain workflow duties.
 3. Provide the base commit, latest commit SHA, task diff scope, change summary,
    test evidence and known limitations. Review must cover the cumulative task
    changes, not only the last fix commit.
@@ -109,10 +117,20 @@ the external-review stage; this is distinct from the next-unit confirmation gate
 
 ## 6. Rebuild the local Docker runtime
 
-Use the repository's existing build/start procedure to rebuild affected services
-from the approved revision. Confirm that the tested build inputs match that revision;
-use an isolated checkout when unrelated working-tree edits would contaminate them.
-Do not reset or discard the developer's work to obtain a clean build.
+Run `scripts/start_local_dev.sh --backend-only` from the approved checkout to rebuild
+Docker through the existing environment loader, reviewed migrations, health waits
+and connectivity check. This preserves an already running host UI; omit
+`--backend-only` only when also starting the UI. Do not copy this sequence into
+ad hoc Compose commands or temporary deployment scripts. Read-only inspection,
+backups and acceptance probes may use separate commands.
+
+Confirm that build inputs match the approved revision, including no untracked
+source files leaking into the Docker context. Use an isolated checkout if necessary;
+preserve the existing Compose project identity and absolute data/volume destinations
+through the supported local environment settings. Do not reset unrelated work or
+silently create a second database/empty data directory. If the existing script
+cannot safely support the required setup, improve it through the normal change and
+external-review loop before deployment, rather than bypassing it.
 
 Preserve volumes and existing data; destructive cleanup is not a normal rebuild
 step. Check service health, configuration loading and required migrations. Verify

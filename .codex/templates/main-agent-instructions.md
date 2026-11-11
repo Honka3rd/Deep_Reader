@@ -35,10 +35,18 @@ developer to supply information already available in the workspace.
   developer's confirmation before starting the next one.
 - Test each unit, including relevant real data, reconcile documentation and use
   `implementation-validation`. Distinguish mock, real-data and real-service evidence.
-- After all units, create a local review commit and prompt the developer for
-  external quality review of that exact SHA. Stop until results arrive. Iterate
+- After all units, inspect and explicitly stage only the task's changes, then use
+  `scripts/commit_review.sh --message-file <file>` to create the local review
+  commit (`--dry-run` previews the staged scope without committing). The script
+  does not stage files, push, or establish test/review approval. Prompt the developer
+  for external quality review of that exact SHA. Stop until results arrive. Iterate
   fixes, tests and new commits until the latest revision is explicitly approved.
-- Only after external approval, rebuild the local Docker environment and run
+- Only after external approval, run `scripts/start_local_dev.sh --backend-only`
+  to rebuild Docker using the existing environment loader, migrations and health
+  checks; omit `--backend-only` only when also starting the host UI. Use the
+  existing scripts instead of recreating their Compose/startup sequence in shell
+  commands or temporary deployment scripts. Verify approved build inputs and
+  preserve the current Compose project, data mounts and volumes. Then run
   deployment acceptance. If changes are needed, return to the review loop before
   rebuilding; keep review, build and test evidence tied to the delivered revision.
 - Push the verified task branch only after the gates pass, then verify its remote

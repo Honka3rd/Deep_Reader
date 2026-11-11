@@ -25,6 +25,12 @@ instruction-maintenance requests end at their requested, validated deliverable;
 they do not automatically authorize commit, deployment or push. The workflow does
 not override architecture contracts, Markdown ownership or read-only skill limits.
 
+Use `scripts/commit_review.sh --message-file <file>` for authorized local review
+commits after explicit staging. After exact-SHA approval, use
+`scripts/start_local_dev.sh --backend-only` for Docker rebuilds; do not recreate
+its startup sequence in temporary scripts. See the workflow for isolation, data
+preservation and acceptance requirements. Neither script bypasses review gates.
+
 ## Scope-first repository reading
 
 Read applicable `AGENTS.md` instructions first. Then determine which modules the
