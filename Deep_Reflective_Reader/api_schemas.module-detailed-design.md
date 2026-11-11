@@ -1,11 +1,34 @@
 # api_schemas.py Detailed Design
 
+## SCHEMA-03 legacy name compatibility (2026-11-11, implemented)
+
+Safety is based on a logical leaf name, not a Windows filename punctuation list.
+Retain safe existing punctuation, including `English: A Reader`, `Who am I?` and
+`Book <Draft>`, across listing, public reads, note writes and explicit lifecycle
+commands. No implicit migration, renaming or read-time rewrite is required. Reject
+separators, absolute paths, ASCII drive prefixes (`C:book` as well as `C:/book`),
+dot/empty identities, controls and existing length/suffix violations. Resolved
+artifact/lock containment and escaping-symlink protection remain independent.
+Upgrade regressions seed persisted documents and notes using pre-validation file
+resolution, then reopen with the current repository and HTTP application; verify
+visibility, exact body/note preservation, note editing, rename/retry and deletion.
+The same HTTP compatibility contract passes on the active PostgreSQL backend.
+`scripts/test_legacy_document_names.py` covers the three reported titles, other
+printable punctuation and real TCP paths; ten cases fail on exact baseline83c244f
+and pass after correction. The file fixture uses the pre-SCHEMA-01 name resolver
+only while creating isolated persisted source/note data; all upgraded operations
+use the real current repository/lifecycle. No migration is necessary. The combined
+384-test backend regression and 11 existing route/schema scripts pass, with no
+skipped tests. Local evidence: `/tmp/audit-api-schemas-83c244f/`. External review of
+the new SHA remains required; no deployment or push is included.
+
 ## SCHEMA-01/02 audit correction (2026-11-11, implemented)
 
 All public document-name inputs, including nested interaction targets and path/query
 parameters, share one strict string contract: trim outer spaces, require 1–255
-printable characters, reject dot segments, separators, absolute/drive paths and
-filesystem-reserved punctuation (`<>:"/\|?*`). Reject empty/dot-only stems after
+printable characters, reject dot segments, separators and absolute/drive paths.
+SCHEMA-03 corrects the earlier blanket punctuation rejection; safe title punctuation
+is preserved. Reject empty/dot-only stems after
 recognized storage suffixes; preserve Unicode titles, spaces, parentheses and
 existing .pdf/.txt alias semantics. No URL decoding or basename repair is performed
 on a supplied identity. Responses remain projections, not new input validators.
@@ -86,7 +109,7 @@ and the additive route. Existing error and committed-result proof rules remain.
 
 ### Settings, mode list and registry
 
-所有 DTO 使用 `strict=True`、`extra=forbid`，不把 bool/string/float 當 revision，不 silently normalize 語言。Document identity 使用上述共用名稱契約：修剪外圍可列印空白，拒絕路徑、`.`/`..`、控制碼及非法標點，最多 255 字元。其它 opaque identity／command／mutation ID 仍維持精確比對、不 trim；command/mutation ID 最多 128，偏好 mutation ID 同時遵循 domain identifier 規則。這是 transport identity 界限，不是正文／模型字數上限。
+所有 DTO 使用 `strict=True`、`extra=forbid`，不把 bool/string/float 當 revision，不 silently normalize 語言。Document identity 使用上述共用名稱契約：修剪外圍可列印空白，拒絕路徑、`.`/`..`、控制碼及磁碟路徑前綴，最多 255 字元。其它 opaque identity／command／mutation ID 仍維持精確比對、不 trim；command/mutation ID 最多 128，偏好 mutation ID 同時遵循 domain identifier 規則。這是 transport identity 界限，不是正文／模型字數上限。
 
 Workspace save 僅含 nullable `native_language`、`expected_revision`、`mutation_id`。Options 從現有 registry 提供 codes 與每語言 proficiency scheme/version/ordered levels/labels/reading descriptions，不維護第二份語言列表。Book read 僅提交 `doc_name`，回應含 book/workspace revisions、母語、source override/resolved language/origin、saved active/effective mode、帶 label/description/settings version/eligibility/reasons 的模式清單，以及已保存設定描述。來源無效／未知 saved mode 時 effective mode 為 null，不能偷偷改成 normal。
 

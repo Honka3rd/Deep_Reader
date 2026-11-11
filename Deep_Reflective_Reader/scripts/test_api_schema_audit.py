@@ -17,7 +17,7 @@ from scripts import test_task_unit_content_endpoint as content
 
 BAD_NAMES = ('', ' ', '.', '..', '../victim', '/tmp/victim', 'a/b', r'a\b',
              'C:book', r'C:\book', 'book\x00', 'book\n', 'book\x7f', 'a'*256,
-             '.pdf', '..txt', '...pdf', 'a?b', 'a:b')
+             '.pdf', '..txt', '...pdf', 'C:', 'c:relative', 'a:b')
 
 
 class SchemaAuditTests(unittest.TestCase):
@@ -122,7 +122,7 @@ class SchemaAuditTests(unittest.TestCase):
     def test_upload_uses_name_policy_and_preserves_typed_error_contract(self):
         raw = self.root/'raw'
         with patch.object(main, '_RAW_DOCUMENT_BASE_DIR', raw):
-            for name in ('../escape.txt', 'C:book.txt', 'bad?.txt', '..txt'):
+            for name in ('../escape.txt', 'C:book.txt', 'c:relative.txt', '..txt'):
                 with self.subTest(name=name):
                     response = self.client.post('/documents/upload', files={'file':(name,b'bytes','text/plain')})
                     self.assertEqual(response.status_code, 400, response.text)

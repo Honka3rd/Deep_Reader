@@ -1,5 +1,10 @@
 # api_schemas.py Checklist
 
+- [x] SCHEMA-03: retain safe legacy document names without hiding or rewriting books.
+  Acceptance: Upgrade fixtures with colon/question/angle-bracket titles remain listed and readable through HTTP; preserve exact body/notes, allow note editing and lifecycle rename/retry/delete on file and real PostgreSQL, and retain traversal/control/drive/symlink protections.
+  Evidence: `scripts/test_legacy_document_names.py` has ten file/real PostgreSQL upgrade cases (including two TCP cases); all fail on exact baseline83c244f and pass after correction. Body and full note payloads survive reads and rename/replay; file reads preserve exact bytes. Combined 384-test regression passes without skips, including SCHEMA-01/02, source-review fixture and MAIN-01–06; 11 existing scripts pass. Evidence: `/tmp/audit-api-schemas-83c244f/`. External review pending.
+  Timestamp: 2026-11-11
+
 - [x] SCHEMA-01: unify public document-name validation and enforce file repository containment.
   Acceptance: HTTP invalid-name read/write rejection before services, unchanged outside files, symlink containment, legal Unicode/suffix behavior; retain source-review assertions with an explicit-reparse fixture.
   Evidence: `scripts/test_api_schema_audit.py` reproduces unsafe requests on baseline 440471fa and verifies HTTP/TCP read/write rejection, outside-file preservation, root/lock symlinks and Unicode/suffix compatibility after correction. The combined 374-test file/real PostgreSQL regression (including source review, learning and MAIN-01–06) passes without skips; 11 existing route/schema scripts pass. Local evidence: `/tmp/audit-api-schemas-440471fa/`. External review pending.

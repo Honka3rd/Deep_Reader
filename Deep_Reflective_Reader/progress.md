@@ -1374,8 +1374,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
-- Status: `SCHEMA-01/02 locally verified; external review pending`
-- Completed item count: `40`
+- Status: `SCHEMA-01/02 accepted; SCHEMA-03 locally verified, external review pending`
+- Completed item count: `41`
 - Needs confirmation count: `3`
 
 #### Completed Work
@@ -1401,8 +1401,8 @@ No unresolved confirmation items identified in module checklist.
 #### Needs Confirmation
 
 Three unchecked future-direction items remain in the module checklist; they are
-not part of SCHEMA-01/02. The completed count is reconciled directly from that
-checklist (40); this correction does not mark historical future tasks complete.
+not part of SCHEMA-01/02/03. The completed count is reconciled directly from that
+checklist (41); this correction does not mark historical future tasks complete.
 
 #### Future Direction Preparation
 

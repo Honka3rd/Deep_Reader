@@ -1,5 +1,15 @@
 # shared Detailed Design
 
+## SCHEMA-03 name compatibility (2026-11-11, implemented)
+
+The shared validator preserves printable punctuation in logical titles while
+rejecting separators and ASCII drive prefixes. Platform-specific reserved-character
+lists must not hide existing safe POSIX documents. Public schemas and repository
+resolution consume the same rule; path containment stays in storage.
+Evidence: `scripts/test_legacy_document_names.py` (file/real PostgreSQL HTTP and
+TCP), `scripts/test_api_schema_audit.py` (unsafe paths and outside links) and
+`scripts/test_learning_api_schemas.py` (shared input contract) pass.
+
 ## SCHEMA-01 shared document names (2026-11-11, implemented)
 
 A pure document_name validator defines safe logical leaf identities for both
