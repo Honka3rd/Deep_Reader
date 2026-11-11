@@ -253,7 +253,8 @@ class SmartCleanupApiTests(unittest.TestCase):
     def test_cross_document_handle_cannot_execute_or_read_result(self):
         request = self.consent()
         document = self.f.repo.load_document("book")
-        self.f.repo.save_document(replace(document, document_id="other"), "other")
+        # Install a distinct document incarnation, not an old snapshot ordinary save.
+        self.f.repo.save_reparsed_document(replace(document, document_id="other"), "other")
         response = self.client.post("/documents/other/smart-cleanup", json=request)
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(response.json()["phase"], "unknown")

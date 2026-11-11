@@ -2073,6 +2073,13 @@ truth; no UI-generated IDs, prepare calls or hidden interaction generation. Back
 CONTENT-01 must independently make bulk clients efficient. Browser acceptance must
 select the largest body section in each rebuilt real book, not only front matter.
 
+SCHEMA-02 verification (2026-11-11): the backend now enforces the existing 20-ID
+batch boundary before service invocation. No production UI change is needed.
+`scripts/test-content-batch-contract.mjs` verifies the real service in Chromium
+with isolated HTTP responses: 20/21/45-ID splitting, order, serial requests, abort,
+unknown IDs, invalid responses and duplicate rejection (nine cases). Type checking
+and production build pass; these checks do not claim live-provider acceptance.
+
 ## Summary And Note UI (2026-10-21)
 
 SN-17..20 implemented and accepted. `SummaryNoteService` validates server target

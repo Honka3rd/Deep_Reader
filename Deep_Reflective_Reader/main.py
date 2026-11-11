@@ -17,6 +17,8 @@ from smart_cleanup_routes import router as smart_cleanup_router
 from translation_routes import router as translation_router
 from learning_routes import router as learning_router, learning_lifespan
 from pydantic import ValidationError
+from api_document_name import DocumentName
+from shared.document_name import document_name
 from doc_loaders.pdf_extraction_contract import PdfExtractionError, PdfExtractionFailureReason
 
 from app.qa_coordinator import QACoordinator
@@ -160,7 +162,7 @@ from api_schemas import ReadingContentMutationRequest, ReadingContentResponse, R
 
 
 @app.get("/documents/{doc_name}/reading-content", response_model=ReadingContentResponse | ReadingContentRefreshResponse, response_model_exclude_none=True)
-def read_reading_content(doc_name: str, include_blocks: bool = False, block_id: str | None = None,
+def read_reading_content(doc_name: DocumentName, include_blocks: bool = False, block_id: str | None = None,
                          include_cleanup_audit: bool = False, cleanup_offset: int = Query(0, ge=0, le=1000),
                          region_id: str | None = Query(None, max_length=100), block_offset: int = Query(0, ge=0),
                          refresh_mutation_id: str | None = Query(None, min_length=1, max_length=100),
@@ -190,7 +192,7 @@ def read_reading_content(doc_name: str, include_blocks: bool = False, block_id: 
 
 
 @app.post("/documents/{doc_name}/reading-content", response_model=ReadingContentResponse, response_model_exclude_none=True)
-def mutate_reading_content(doc_name: str, request: ReadingContentMutationRequest):
+def mutate_reading_content(doc_name: DocumentName, request: ReadingContentMutationRequest):
     try:
         result = _reading_content_service().mutate(doc_name,**request.model_dump())
         result["blocks"] = [b for b in result["blocks"] if b["block_id"]==request.block_id]
@@ -200,7 +202,7 @@ def mutate_reading_content(doc_name: str, request: ReadingContentMutationRequest
 
 
 @app.get("/documents/{doc_name}/source-review/{region_id}/image")
-def preview_reading_source(doc_name: str, region_id: str):
+def preview_reading_source(doc_name: DocumentName, region_id: str):
     from fastapi.responses import Response
     try:
         return Response(_reading_content_service().preview(doc_name,region_id),media_type="image/png",
@@ -267,15 +269,10 @@ def _raw_document_sibling_counts(base_dir: Path = _RAW_DOCUMENT_BASE_DIR) -> dic
 
 def _normalize_upload_filename(filename: str | None) -> str:
     """Validate and normalize a user-uploaded raw source filename."""
-    normalized = (filename or "").strip()
-    if (
-        not normalized
-        or "/" in normalized
-        or "\\" in normalized
-        or "\x00" in normalized
-        or normalized in {".", ".."}
-    ):
-        raise ValueError("unsafe_filename")
+    try:
+        normalized = document_name(filename)
+    except ValueError as error:
+        raise ValueError("unsafe_filename") from error
     suffix = Path(normalized).suffix.casefold()
     if suffix not in _RAW_DOCUMENT_EXTENSIONS:
         raise ValueError("unsupported_file_type")
@@ -518,16 +515,7 @@ def _merge_document_management_items(
 
 def _validate_document_lifecycle_doc_name(doc_name: str) -> str:
     """Validate a document lifecycle target name for file-backed cleanup."""
-    normalized = doc_name.strip()
-    if (
-        not normalized
-        or "/" in normalized
-        or "\\" in normalized
-        or "\x00" in normalized
-        or normalized in {".", ".."}
-    ):
-        raise ValueError("unsafe_name")
-    return normalized
+    return document_name(doc_name)
 
 
 def _resolve_raw_document_delete_path(
@@ -1648,7 +1636,7 @@ def delete_document_lifecycle(
 
 
 @app.get("/documents/lifecycle/rename-context", response_model=DocumentRenameContextResponse)
-def read_document_rename_context(doc_name: str):
+def read_document_rename_context(doc_name: DocumentName):
     from app.document_rename import DocumentRename
     try:
         name = _validate_document_lifecycle_doc_name(doc_name)
@@ -2528,7 +2516,7 @@ def get_document_task_layout(request: GetDocumentTaskLayoutRequest):
     response_model=TaskUnitContentResponse,
 )
 def get_task_unit_content(
-    doc_name: str,
+    doc_name: DocumentName,
     task_unit_id: str,
     segmented: bool = Query(
         False,
@@ -2578,7 +2566,7 @@ def get_task_unit_content(
     response_model=BatchTaskUnitContentResponse,
 )
 def get_batch_task_unit_content(
-    doc_name: str,
+    doc_name: DocumentName,
     request: BatchTaskUnitContentRequest,
 ):
     """Read ordered task-unit render content payloads with one request."""
@@ -2636,7 +2624,7 @@ def preflight_document_structure(request: EnhancementPreflightRequest):
 
 
 @app.get("/documents/reparse-structure/status", response_model=EnhancementActivityResponse)
-def enhancement_activity(response: Response, doc_name: str = Query(..., min_length=1, max_length=255)):
+def enhancement_activity(response: Response, doc_name: DocumentName):
     """Current activity only; no consent, generation, preparation or persistent writes."""
     response.headers["Cache-Control"] = "no-store"
     if not doc_name.strip():

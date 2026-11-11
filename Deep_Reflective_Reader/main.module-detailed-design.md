@@ -1,5 +1,18 @@
 # main.py Detailed Design
 
+## SCHEMA-01/02 transport dependency (2026-11-11, implemented)
+
+All document path/query parameters consume the same api_schemas document-name
+contract as JSON inputs. Invalid names and content batches above 20 IDs are rejected
+at request validation before route services execute. Existing successful payloads,
+unknown-ID 404 and no-hidden-mutation content behavior remain unchanged. Explicit
+lifecycle helper validation also uses the shared logical-name policy. Multipart
+filenames use the same policy while preserving the existing 400/unsafe_filename
+upload envelope. Invalid JSON/path/query names return 422; a valid name resolving
+to an outside-root stored symlink keeps the service's 400/invalid_document_path
+error mapping. Neither path loads or modifies the outside document. Evidence:
+`scripts/test_api_schema_audit.py` covers these HTTP boundaries, including TCP.
+
 ## MAIN-06 pending recovery correction (2026-11-11, implemented)
 
 Upload publication and raw/derived delete join the app-owned file identity lock and

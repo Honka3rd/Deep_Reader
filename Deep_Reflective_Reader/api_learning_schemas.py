@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from shared.learning_hint_assessment import HintAssessment
+from api_document_name import DocumentName
 
 from language.language_profile_registry import LanguageProfileRegistry
 from language.language_proficiency_registry import LanguageProficiencyRegistry
@@ -24,18 +25,12 @@ def _token(value):
     return value
 
 
-def _document(value):
-    _token(value)
-    return identifier(value)
-
-
 def _language(value):
     language(value)
     return value
 
 
 Identity = Annotated[str, Field(min_length=1, max_length=255), AfterValidator(_token)]
-DocumentName = Annotated[str, Field(min_length=1, max_length=255), AfterValidator(_document)]
 CommandId = Annotated[str, Field(min_length=1, max_length=128), AfterValidator(_token)]
 PreferenceMutationId = Annotated[CommandId, AfterValidator(identifier)]
 RegisteredLanguage = Annotated[str, Field(min_length=1, max_length=32,

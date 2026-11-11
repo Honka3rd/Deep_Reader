@@ -86,6 +86,10 @@ class MappingRepositoryContract:
                  "audit": [{"action": "delete", "block_id": block_id, "invalidate_generated": False}]}
         self.repo.mutate_reading_content("book", lambda current: (replace(current,
             parse_provenance={**current.parse_provenance, "reading_content": state}), None))
+        # Mutation persists a fresh block epoch. Metadata save must preserve it too.
+        epochs = self.repo.load_document("book").parse_provenance["reading_content"]["block_content_epochs"]
+        self.assertTrue(epochs[block_id])
+        state = {**state, "block_content_epochs": dict(epochs)}
         self.repo.save_document(original, "book")
         current = self.repo.load_document("book")
         self.assertEqual(current.parse_provenance["reading_content"], state)

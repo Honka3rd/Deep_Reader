@@ -516,7 +516,7 @@ def test_manual_structure_reparse_request_rejects_invalid_shapes() -> None:
         "doc_name": "   ",
         "parser_mode": "common",
     }
-    _assert_reparse_validation_error(empty_doc_name, "doc_name cannot be empty")
+    _assert_reparse_validation_error(empty_doc_name, "invalid_document_name")
 
 
 if __name__ == "__main__":

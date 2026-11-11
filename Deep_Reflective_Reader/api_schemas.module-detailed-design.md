@@ -1,5 +1,36 @@
 # api_schemas.py Detailed Design
 
+## SCHEMA-01/02 audit correction (2026-11-11, implemented)
+
+All public document-name inputs, including nested interaction targets and path/query
+parameters, share one strict string contract: trim outer spaces, require 1–255
+printable characters, reject dot segments, separators, absolute/drive paths and
+filesystem-reserved punctuation (`<>:"/\|?*`). Reject empty/dot-only stems after
+recognized storage suffixes; preserve Unicode titles, spaces, parentheses and
+existing .pdf/.txt alias semantics. No URL decoding or basename repair is performed
+on a supplied identity. Responses remain projections, not new input validators.
+The shared pure name validator belongs to shared; its Pydantic alias belongs to
+api_schemas. Repository path containment remains an independent storage guard.
+
+BatchTaskUnitContentRequest allows 1–20 IDs before service invocation, matching
+the existing sequential UI batches of 20. Preserve trimmed unique IDs, request
+order, all-or-nothing results and unknown-ID 404; invalid counts/duplicates are 422.
+No preparation, source mutation or provider call is introduced. Regression tests
+prove invalid-name HTTP reads/writes leave outside files untouched, cover symlinks
+and Chinese/suffix compatibility, and exercise 20/21 IDs and UI cancellation/order.
+The source-review blank-document fixture installs a new document via explicit
+reparse, preserving every original assertion and the ordinary-save epoch guard.
+Related cleanup clone and source-review mapping fixtures likewise use explicit
+replacement or include the persisted block epoch in their exact-state assertions.
+
+Evidence: `scripts/test_api_schema_audit.py` exercises actual application routes,
+including a TCP server; the combined 374-test file/real PostgreSQL regression passes
+without skips, as do 11 existing route/schema scripts. The UI's existing sequential
+batch implementation passes nine browser service cases in
+`Deep_Reader_UI/scripts/test-content-batch-contract.mjs`; type checking/build pass.
+Before/after evidence is retained locally at `/tmp/audit-api-schemas-440471fa/`.
+External review is pending; no deployment or push is part of this correction.
+
 ## Rename command request identity (2026-11-11, implemented)
 
 Rename requests require command_id (UUID) and expected_source_token (64 lowercase hex characters), in addition to doc_name/action/new_doc_name. These fields are only valid for rename. DocumentRenameContextResponse exposes doc_name and source_token from the pure rename-context GET route. The existing operation_id is the server operation identifier, distinct from caller command identity. Retry repeats the same payload; a new explicit command obtains current context and a fresh UUID. Existing accepted/conflict/recovery response and upload contracts remain unchanged.
@@ -55,7 +86,7 @@ and the additive route. Existing error and committed-result proof rules remain.
 
 ### Settings, mode list and registry
 
-所有 DTO 使用 `strict=True`、`extra=forbid`，不把 bool/string/float 當 revision，不 trim identity 或 silently normalize 語言。Document identity 拒絕路徑、`.`/`..`、空白包邊與控制碼，最多 255 字元；command/mutation ID 最多 128，偏好 mutation ID 同時遵循 domain identifier 規則。這是 transport identity 界限，不是正文／模型字數上限。
+所有 DTO 使用 `strict=True`、`extra=forbid`，不把 bool/string/float 當 revision，不 silently normalize 語言。Document identity 使用上述共用名稱契約：修剪外圍可列印空白，拒絕路徑、`.`/`..`、控制碼及非法標點，最多 255 字元。其它 opaque identity／command／mutation ID 仍維持精確比對、不 trim；command/mutation ID 最多 128，偏好 mutation ID 同時遵循 domain identifier 規則。這是 transport identity 界限，不是正文／模型字數上限。
 
 Workspace save 僅含 nullable `native_language`、`expected_revision`、`mutation_id`。Options 從現有 registry 提供 codes 與每語言 proficiency scheme/version/ordered levels/labels/reading descriptions，不維護第二份語言列表。Book read 僅提交 `doc_name`，回應含 book/workspace revisions、母語、source override/resolved language/origin、saved active/effective mode、帶 label/description/settings version/eligibility/reasons 的模式清單，以及已保存設定描述。來源無效／未知 saved mode 時 effective mode 為 null，不能偷偷改成 normal。
 
@@ -756,10 +787,10 @@ No known legacy compatibility responsibility（僅 DTO 契約層）。 **[Code-C
 
 > 本節記錄 frontend content fan-out optimization 的 schema boundary。Batch schema 已落地為 backward-compatible additive API evolution；single task-unit content schema 仍保留。 **[Code-Confirmed]**
 
-1. Batched content request allows the UI to request one selected section's ordered `task_unit_ids` through a single on-demand content API call instead of issuing one request per task unit. **[Code-Confirmed]**
+1. Batched content request allows the UI to request up to 20 ordered `task_unit_ids` per on-demand content API call (larger sections use sequential UI batches) instead of issuing one request per task unit. **[Code-Confirmed]**
 2. `BatchTaskUnitContentRequest` keeps explicit render options `segmented` and `include_raw_content`, matching the existing single task-unit content endpoint semantics. **[Code-Confirmed]**
 3. `BatchTaskUnitContentResponse.contents[]` returns ordered per-task-unit content responses that preserve the existing `TaskUnitContentResponse` shape rather than inventing a second content-block contract. **[Code-Confirmed]**
-4. Request validation rejects empty task-unit id lists and duplicate ids at schema boundary; unknown ids and hierarchy-incompatible legacy documents fail fast through the same coordinator lookup semantics as the single endpoint. **[Code-Confirmed]**
+4. Request validation rejects empty lists, lists exceeding 20 task-unit IDs and duplicate IDs at the schema boundary before calling the service; unknown ids and hierarchy-incompatible legacy documents fail fast through the same coordinator lookup semantics as the single endpoint. **[Code-Confirmed]**
 5. Initial batch semantics are all-or-nothing; there is no partial-success item schema. **[Code-Confirmed]**
 6. The existing single task-unit content endpoint remains the compatibility and fallback path. **[Code-Confirmed] + [Future Direction]**
 7. Batch content is still on-demand rich content, not task-layout payload; `/documents/task-layout` must remain lightweight and must not return task-unit content or `content_blocks`. **[Code-Confirmed] + [From HLD]**

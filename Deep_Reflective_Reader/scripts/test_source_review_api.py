@@ -88,7 +88,9 @@ class SourceReviewApiTests(unittest.TestCase):
     def test_confirmed_blank_exclusion_has_consistent_reader_and_library_state(self):
         from scripts.test_source_review_mapping import blank_document
         document = blank_document()
-        self.repo.save_document(document, "book")
+        # A different extracted document is an explicit replacement, not a stale
+        # ordinary save allowed to adopt the current document's incarnation.
+        self.repo.save_reparsed_document(document, "book")
         before = self.repo.load_document("book")
         result = self.client.get("/documents/book/reading-content").json()
         self.assertEqual(result["regions"], [])

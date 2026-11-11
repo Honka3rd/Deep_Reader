@@ -1,5 +1,15 @@
 # api_schemas.py Checklist
 
+- [x] SCHEMA-01: unify public document-name validation and enforce file repository containment.
+  Acceptance: HTTP invalid-name read/write rejection before services, unchanged outside files, symlink containment, legal Unicode/suffix behavior; retain source-review assertions with an explicit-reparse fixture.
+  Evidence: `scripts/test_api_schema_audit.py` reproduces unsafe requests on baseline 440471fa and verifies HTTP/TCP read/write rejection, outside-file preservation, root/lock symlinks and Unicode/suffix compatibility after correction. The combined 374-test file/real PostgreSQL regression (including source review, learning and MAIN-01–06) passes without skips; 11 existing route/schema scripts pass. Local evidence: `/tmp/audit-api-schemas-440471fa/`. External review pending.
+  Timestamp: 2026-11-11
+
+- [x] SCHEMA-02: bound batch task-unit content to 20 IDs and verify UI batching.
+  Acceptance: 20 succeeds, 21/empty/duplicates reject before services, ordered results and unknown-ID 404; UI sequential 20-ID batches retain cancellation and response identity checks.
+  Evidence: HTTP schema tests verify 20/21/empty/duplicate/unknown IDs and ordered responses, with service-call counters proving early rejection. `Deep_Reader_UI/scripts/test-content-batch-contract.mjs` passes nine Chromium service cases, including serial 20/21/45-ID batches and cancellation; UI type checking/build pass. Production UI batching is unchanged.
+  Timestamp: 2026-11-11
+
 - [x] MAIN-01/05/06 follow-up: verify incarnation fences and explicit rename command identity.
   Evidence: `scripts/test_main_rename_audit.py` (90 file/real PostgreSQL HTTP cases, including six TCP cases) and the related 361-test regression run pass without skips; two final incarnation/byte-preservation checks also pass. Nine route/schema scripts pass after updating rename request fixtures. UI type/build, 21 controller groups, lifecycle service retry checks and 1280px/390px rename flows pass. Local evidence: `/tmp/audit-main-ac544288/`. External review pending; no deployment/push.
   Timestamp: 2026-11-11

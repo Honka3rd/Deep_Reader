@@ -110,9 +110,11 @@ class LearningTransportTests(unittest.TestCase):
         for value in ('true',1,None):
             self.reject(api.LearningGenerateRequest,{**generate(),'acknowledge_possible_duplicate_cost':value})
 
-    def test_exact_document_names_reject_paths_controls_and_normalization(self):
-        for value in ('..','.','/tmp/book','a/b','a\\b',' book','book ','a\n','\ud800'):
+    def test_shared_document_names_reject_paths_controls_and_normalize_spaces(self):
+        for value in ('..','.','/tmp/book','a/b','a\\b','C:book','a?b','a\n','\ud800'):
             self.reject(api.ReadingBookReadRequest,{'doc_name':value})
+        for value in (' book', 'book '):
+            self.assertEqual(api.ReadingBookReadRequest(doc_name=value).doc_name, 'book')
         self.roundtrip(api.ReadingBookReadRequest(doc_name='中國文化【新版】'))
 
     def test_read_bounds_and_duplicates(self):

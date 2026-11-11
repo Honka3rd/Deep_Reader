@@ -350,7 +350,7 @@ def test_reading_interaction_target_request_accepts_id_based_targets() -> None:
 def test_reading_interaction_target_request_rejects_bad_shapes_and_titles() -> None:
     _assert_target_validation_error(
         _target_payload(doc_name="  "),
-        "doc_name cannot be empty",
+        "invalid_document_name",
     )
     _assert_target_validation_error(
         _target_payload(target_type="chapter", chapter_id=None),

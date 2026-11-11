@@ -1,5 +1,13 @@
 # shared Detailed Design
 
+## SCHEMA-01 shared document names (2026-11-11, implemented)
+
+A pure document_name validator defines safe logical leaf identities for both
+public schemas and file repository resolution. It uses only the standard library,
+returns the normalized name without stripping a valid suffix, performs no IO and
+does not establish document existence or lifecycle authorization. Pydantic/HTTP
+validation remains in api_schemas; resolved path containment remains in storage.
+
 ## Vocabulary assessment contract (2026-11-09)
 
 `learning_hint_assessment.py` defines immutable `HintAssessment` and `HintIssue`.

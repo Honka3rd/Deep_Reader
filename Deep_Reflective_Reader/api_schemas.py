@@ -1,4 +1,5 @@
 from uuid import UUID
+from api_document_name import DocumentName
 
 from typing import Annotated, Any, ClassVar, Literal, get_args
 
@@ -21,6 +22,8 @@ from doc_loaders.pdf_extraction_contract import (
     PdfExtractionMode,
     PdfExtractionProvenance,
 )
+
+MAX_TASK_UNIT_CONTENT_IDS = 20
 
 ARTIFACT_TARGET_METADATA_GLOSSARY_KEYS: frozenset[str] = frozenset(
     {
@@ -261,7 +264,7 @@ class PreparationValidationFailureResponse(BaseModel):
 class PrepareDocumentRequest(BaseModel):
     """Request payload for document preparation operations."""
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     toc_hint: TocHint = Field(TocHint.AUTO, description="Advisory printed TOC declaration: auto | present | absent; independent of PDF extraction.")
     enhancement_intent: EnhancementIntent = EnhancementIntent.RESTORE_SOURCE
     pdf_extraction_mode: PdfExtractionMode = Field(
@@ -304,7 +307,7 @@ class PrepareDocumentResponse(BaseModel):
 class PrepareTaskLayoutRequest(BaseModel):
     """Request payload for prepare-if-needed task-layout orchestration."""
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     toc_hint: TocHint = TocHint.AUTO
     enhancement_intent: EnhancementIntent = EnhancementIntent.RESTORE_SOURCE
 
@@ -357,7 +360,7 @@ class PrepareTaskLayoutRequest(BaseModel):
 
 class AskDocumentRequest(BaseModel):
     """Request payload for document QA endpoint."""
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     query: str = Field(..., description="User question")
     top_k: int = Field(3, ge=1, le=20)
     session_id: str | None = Field(None, description="Reading session id")
@@ -751,9 +754,9 @@ class DocumentLifecycleActionRequest(BaseModel):
     _ALLOWED_ACTIONS: ClassVar[frozenset[str]] = DOCUMENT_LIFECYCLE_ACTIONS
     model_config = ConfigDict(extra="forbid")
 
-    doc_name: str
+    doc_name: DocumentName
     action: str
-    new_doc_name: str | None = None
+    new_doc_name: DocumentName | None = None
     command_id: UUID | None = None
     expected_source_token: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     expected_source_hash: str | None = None
@@ -890,7 +893,7 @@ class DocumentLifecycleActionResponse(BaseModel):
 class SectionTaskRequest(BaseModel):
     """Request payload for section-summary / section-quiz endpoints."""
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     section_id: str = Field(..., description="Target structured section id")
     task_unit_split_mode: str | None = Field(
         None,
@@ -955,7 +958,7 @@ class SectionQuizResponse(BaseModel):
 class SummarizeChapterRequest(BaseModel):
     """Request payload for chapter-summary endpoint."""
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     chapter_title: str | None = Field(
         None,
         description=(
@@ -1023,7 +1026,7 @@ class SummarizeChapterResponse(BaseModel):
 class ChapterQuizRequest(BaseModel):
     """Request payload for chapter-quiz endpoint."""
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     chapter_title: str | None = Field(
         None,
         description=(
@@ -1191,7 +1194,7 @@ class ContentBlockInteractionAvailabilityResponse(BaseModel):
 class GetDocumentTaskLayoutRequest(BaseModel):
     """Request payload for document task-layout endpoint."""
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     refresh_task_units: bool = Field(
         False,
         description=(
@@ -1226,7 +1229,7 @@ class GetDocumentTaskLayoutRequest(BaseModel):
 class GetTaskUnitContentRequest(BaseModel):
     """Path-parameter request contract for on-demand task-unit content lookup."""
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     task_unit_id: str = Field(
         ...,
         description="Stable task unit id from task-layout response",
@@ -1251,8 +1254,8 @@ class BatchTaskUnitContentRequest(BaseModel):
     """Request payload for batched on-demand task-unit content lookup."""
 
     task_unit_ids: list[str] = Field(
-        ...,
-        description="Ordered stable task-unit ids from task-layout response.",
+        ..., min_length=1, max_length=MAX_TASK_UNIT_CONTENT_IDS,
+        description="1–20 ordered unique stable task-unit ids from task-layout response.",
     )
     segmented: bool = Field(
         False,
@@ -1433,7 +1436,7 @@ class ReadingInteractionTargetRequest(BaseModel):
     _ALLOWED_TARGET_TYPES: ClassVar[frozenset[str]] = READING_INTERACTION_TARGET_TYPES
     model_config = ConfigDict(extra="forbid")
 
-    doc_name: str = Field(..., description="Document name.")
+    doc_name: DocumentName = Field(..., description="Document name.")
     target_type: str = Field(
         ...,
         description=(
@@ -1729,15 +1732,11 @@ class AnalysisArtifactPayloadResponse(BaseModel):
 class TranslationReadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    doc_name: str = Field(..., strict=True, min_length=1, max_length=255)
+    doc_name: DocumentName = Field(..., strict=True, min_length=1, max_length=255)
     content_block_id: str = Field(..., strict=True, min_length=1, max_length=255)
 
     @model_validator(mode="after")
     def _validate_translation(self):
-        name = self.doc_name.strip()
-        if name in {".", ".."} or any(c in name for c in "/\\") or any(ord(c) < 32 for c in name):
-            raise ValueError("translation_invalid_document_name")
-        self.doc_name = name
         self.content_block_id = self.content_block_id.strip()
         if not self.doc_name or not self.content_block_id:
             raise ValueError("translation_missing_target")
@@ -2769,7 +2768,7 @@ class ManualStructurePlanRequest(BaseModel):
 class ManualStructureValidationRequest(BaseModel):
     """Request payload for manual structure validation/preview."""
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     manual_structure: ManualStructurePlanRequest
 
     @model_validator(mode="after")
@@ -3001,7 +3000,7 @@ class ReparseDocumentStructureRequest(BaseModel):
         {"common", "llm_enhanced", "manual_structure"}
     )
 
-    doc_name: str = Field(..., description="Document name")
+    doc_name: DocumentName = Field(..., description="Document name")
     model_config = ConfigDict(extra="forbid")
     allow_ocr_cleanup: bool = Field(False, strict=True)
     discard_interactions: bool = Field(False, strict=True)
@@ -3052,7 +3051,7 @@ class ReparseDocumentStructureRequest(BaseModel):
 class EnhancementPreflightRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     allow_ocr_cleanup: bool = Field(False, strict=True)
-    doc_name: str = Field(..., min_length=1)
+    doc_name: DocumentName = Field(..., min_length=1)
     parser_mode: Literal["llm_enhanced"] = "llm_enhanced"
     toc_hint: TocHint = TocHint.AUTO
     enhancement_intent: EnhancementIntent = EnhancementIntent.RESTORE_SOURCE

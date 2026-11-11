@@ -1374,9 +1374,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
-- Status: `Reading Interaction Schema Exposure Audit Captured`
-- Completed item count: `17`
-- Needs confirmation count: `0`
+- Status: `SCHEMA-01/02 locally verified; external review pending`
+- Completed item count: `40`
+- Needs confirmation count: `3`
 
 #### Completed Work
 
@@ -1400,7 +1400,9 @@ No unresolved confirmation items identified in module checklist.
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+Three unchecked future-direction items remain in the module checklist; they are
+not part of SCHEMA-01/02. The completed count is reconciled directly from that
+checklist (40); this correction does not mark historical future tasks complete.
 
 #### Future Direction Preparation
 

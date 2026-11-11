@@ -9,6 +9,7 @@ from uuid import uuid4
 from pathlib import Path
 
 from config.storage_namespace_helper import StorageNamespaceHelper
+from shared.document_name import document_name
 from document_structure.document_artifact_repository import (
     DocumentArtifactRepository,
     DocumentListItem,
@@ -69,6 +70,11 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         candidates: list[DocumentListItem] = []
         for path in sorted(self.base_dir.glob("*.structured.json")):
             doc_name = path.name[: -len(".structured.json")]
+            try:
+                document_name(doc_name)
+                self._checked_path(path)
+            except ValueError:
+                continue
             title = self._read_document_title(path)
             searchable = " ".join(part for part in [doc_name, title] if part).casefold()
             if normalized_query and normalized_query not in searchable:
@@ -103,7 +109,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
 
     @contextmanager
     def _artifact_lock(self, doc_name):
-        path = self._resolve_document_path(doc_name).with_suffix(".lock")
+        path = self._checked_path(self._resolve_document_path(doc_name).with_suffix(".lock"))
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
@@ -334,7 +340,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         doc_name: str | None = None,
     ) -> None:
         """Persist structured document with atomic write."""
-        resolved_doc_name = doc_name or document.document_id
+        resolved_doc_name = document.document_id if doc_name is None else doc_name
         path = self._resolve_document_path(resolved_doc_name)
         with self._artifact_lock(resolved_doc_name):
             if path.exists():
@@ -361,7 +367,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         cleaned_document = self.cleanup_reparsed_document_derived_artifacts(document)
         cleaned_document = replace(cleaned_document, parse_provenance={
             **cleaned_document.parse_provenance, "interaction_epoch": uuid4().hex})
-        resolved_doc_name = doc_name or document.document_id
+        resolved_doc_name = document.document_id if doc_name is None else doc_name
         with self._artifact_lock(resolved_doc_name):
             self._atomic_save(cleaned_document, self._resolve_document_path(resolved_doc_name))
 
@@ -663,11 +669,23 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     def _resolve_document_path(self, doc_name: str) -> Path:
         """Resolve logical doc name to structured artifact path."""
         normalized_name = StorageNamespaceHelper.normalize_namespace(
-            doc_name,
+            document_name(doc_name),
             known_extensions=self._NAMESPACE_EXTENSIONS,
             fallback_namespace=StorageNamespaceHelper.DEFAULT_NAMESPACE,
         )
-        return self.base_dir / f"{normalized_name}.structured.json"
+        document_name(normalized_name)
+        return self._checked_path(self.base_dir / f"{normalized_name}.structured.json")
+
+    def _checked_path(self, path: Path) -> Path:
+        """Reject pre-existing links outside the configured root before any IO."""
+        try:
+            resolved = path.resolve()
+            root = self.base_dir.resolve()
+        except (OSError, RuntimeError) as error:
+            raise ValueError("invalid_document_path") from error
+        if resolved == root or not resolved.is_relative_to(root):
+            raise ValueError("invalid_document_path")
+        return path
 
     @staticmethod
     def _read_document_title(path: Path) -> str | None:
@@ -683,6 +701,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
 
     def _atomic_save(self, document: StructuredDocument, path: Path) -> StructuredDocument:
         """Persist document atomically through temp-file + replace."""
+        self._checked_path(path)
         from document_structure.source_review_blocks import persist_region_mapping
 
         from document_structure.learning_lifecycle import guard_source_transition

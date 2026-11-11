@@ -1,5 +1,18 @@
 # document_structure Detailed Design
 
+## SCHEMA-01 storage boundary (2026-11-11, implemented)
+
+StructuredDocumentArtifactRepository validates the supplied logical name before
+suffix normalization, validates the normalized stem again, and requires resolved
+artifact/lock paths to remain below its resolved configured base directory.
+Existing symlinks escaping that root are rejected; discovery skips unsafe entries
+before reading their contents. Save, reparse, load, delete and rename use this guard.
+The low-level StructuredDocumentStore still accepts explicit internal file paths;
+it is not a public name-to-path router. Ordinary-save incarnation fences remain
+unchanged; explicit reparse is required when a test replaces an entire document.
+This guards request-controlled paths and pre-existing links, not hostile concurrent
+OS-level link replacement outside cooperating repository ownership.
+
 ## Incarnation comparison before annotation preservation (2026-11-11, implemented)
 
 Ordinary save compares incoming and persisted interaction_epoch while holding the source write lock, before preserving annotations or writing anything. A mismatch, including a missing incoming epoch against an identified document, raises ReadingContentConflict. Legacy documents with no epoch on either side remain writable; loaded current snapshots retain their identity. Explicit initial import/reparse remains the path for a new incarnation. The shared annotation-preservation guard also applies within the SQL transaction. An epoch-less metadata worker must reload instead of adopting the current incarnation. Regressions compare the complete new-book payload after rejecting a snapshot retained across rename and reimport.

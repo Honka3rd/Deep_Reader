@@ -3,11 +3,12 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
+from api_document_name import DocumentName
 from api_schemas import (
     SMART_CLEANUP_REASONS, SmartCleanupErrorResponse, SmartCleanupExecuteRequest, SmartCleanupOperationId,
     SmartCleanupOperationResponse, SmartCleanupPreflightRequest, SmartCleanupPreflightResponse,
@@ -16,7 +17,6 @@ from app.standalone_cleanup import CleanupUnavailable, StandaloneCleanupService
 
 
 LOGGER = logging.getLogger(__name__)
-DocumentName = Annotated[str, Path(min_length=1, max_length=255, pattern=r"^[^/\\\x00-\x1f\x7f]+$")]
 
 
 def _status(reason, *, lookup=False):
@@ -42,8 +42,7 @@ class _CleanupRoute(APIRoute):
 
         async def guarded(request):
             try:
-                name = request.path_params.get("doc_name", "")
-                if request.query_params or name.strip() != name or name in {".", ".."}:
+                if request.query_params:
                     raise HTTPException(422, "cleanup_request_invalid")
                 if request.method == "GET" and await request.body():
                     raise HTTPException(422, "cleanup_request_invalid")
