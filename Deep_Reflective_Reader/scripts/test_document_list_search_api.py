@@ -100,7 +100,7 @@ def test_raw_document_discovery_lists_supported_raw_files() -> None:
         items = main._list_raw_documents(base_dir=base_dir)
 
         _assert(
-            [item.doc_name for item in items] == ["Paper", "Raw Book"],
+            [item.doc_name for item in items] == ["Paper.pdf", "Raw Book.txt"],
             f"unexpected raw document candidates: {items}",
         )
         _assert(items[0].source == "raw.pdf", "source should identify raw pdf candidate")
@@ -108,7 +108,7 @@ def test_raw_document_discovery_lists_supported_raw_files() -> None:
 
         filtered = main._list_raw_documents(query="raw", base_dir=base_dir)
         _assert(
-            [item.doc_name for item in filtered] == ["Raw Book"],
+            [item.doc_name for item in filtered] == ["Raw Book.txt"],
             f"unexpected raw query result: {filtered}",
         )
 

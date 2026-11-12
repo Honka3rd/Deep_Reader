@@ -19,6 +19,7 @@ Args:
         payload = profile.to_dict()
 
         path = config.get_raw_profile_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".profile-")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:

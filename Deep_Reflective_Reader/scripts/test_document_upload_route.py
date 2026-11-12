@@ -41,7 +41,7 @@ def test_upload_stores_raw_source_candidate_without_preparing() -> None:
 
         _assert(response.status_code == 201, f"unexpected status: {response.status_code}")
         payload = response.json()
-        _assert(payload["doc_name"] == "Reader Notes", f"unexpected payload: {payload}")
+        _assert(payload["doc_name"] == "Reader Notes.txt", f"unexpected payload: {payload}")
         _assert(payload["title"] == "Reader Notes", "title should be normalized")
         _assert(payload["source_filename"] == "Reader Notes.txt", "filename mismatch")
         _assert(payload["source_type"] == "txt", "source type mismatch")
@@ -60,7 +60,7 @@ def test_upload_stores_raw_source_candidate_without_preparing() -> None:
         _assert(list_response.status_code == 200, "document list should remain readable")
         listed = list_response.json()["items"]
         _assert(
-            any(item["doc_name"] == "Reader Notes" and item["source"] == "raw.txt" for item in listed),
+            any(item["doc_name"] == "Reader Notes.txt" and item["source"] == "raw.txt" for item in listed),
             f"uploaded raw candidate should be discoverable: {listed}",
         )
 
@@ -119,7 +119,7 @@ def test_upload_create_distinct_policy_avoids_overwrite() -> None:
         _assert(response.status_code == 201, f"unexpected status: {response.status_code}")
         payload = response.json()
         _assert(payload["source_filename"] == "Book (1).txt", f"unexpected payload: {payload}")
-        _assert(payload["doc_name"] == "Book (1)", "distinct upload should expose unique doc name")
+        _assert(payload["doc_name"] == "Book (1).txt", "distinct upload should expose unique doc name")
         _assert(
             payload["conflict_policy"] == "create_distinct",
             "distinct upload should round-trip normalized policy",

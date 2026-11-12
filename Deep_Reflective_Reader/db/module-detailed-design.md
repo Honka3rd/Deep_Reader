@@ -1,5 +1,14 @@
 # db Detailed Design
 
+## CONFIG-01 qualified identities (2026-11-12)
+
+SQL document names retain source suffixes. The active repository resolves legacy
+aliases from names in its own namespace plus matching raw-source candidates;
+residual structured JSON is irrelevant. Target construction remains pure. New
+imports write their explicit identities; ordinary snapshots saved through an alias
+must resolve to that snapshot's identity, retaining all existing epoch checks.
+No table migration or read-time data repair is introduced.
+
 ## Ordinary save incarnation fence (2026-11-11, implemented)
 
 The shared annotation-preservation function now validates incoming/current document incarnation before replacing provenance, within the existing SQL write transaction and locks. Explicit reparse retains its new-epoch behavior. Real PostgreSQL HTTP regressions exercise rename, delete/reimport, delayed old commands and ordinary stale saves; SQL-only documents still require no local files. No schema migration or inactive-backend mutation is introduced.

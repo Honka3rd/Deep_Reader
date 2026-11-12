@@ -1,5 +1,15 @@
 # config Checklist
 
+- [x] CONFIG-01: preserve distinct source identities across upload, body, index and lifecycle.
+  Acceptance: file/real PostgreSQL source and note isolation, upload conflict policies, safe legacy aliases and fail-closed ambiguity, rename/delete and stale command protection.
+  Evidence: `scripts/test_config_storage_audit.py`; 23 source/read-path cases; 479 backend tests without skips, real SQL/TCP and regression evidence in `/tmp/audit-config-dcb3095/`. External review pending.
+  Timestamp: 2026-11-12
+
+- [x] CONFIG-02: make storage resolution and ordinary reads free of filesystem mutations.
+  Acceptance: snapshot paths/contents for layout, content and profile reads with legacy-only, coexisting and missing directories; explicit writes still create required parents.
+  Evidence: `scripts/test_config_storage_audit.py`; 23 source/read-path cases; 479 backend tests without skips, real SQL/TCP and regression evidence in `/tmp/audit-config-dcb3095/`. External review pending.
+  Timestamp: 2026-11-12
+
 ## Shared sentence translation (2026-11-09)
 
 - [x] Wire ordinary translation to the existing learning runtime and single-attempt provider.
@@ -58,9 +68,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/config/container.py; Deep_Reflective_Reader/config/module-detailed-design.md (Main Responsibilities)`
   Notes: Container wires providers, repositories, coordinators, and service selectors.
 
-- [x] Implements namespace normalization and legacy namespace/file migration for artifact storage configs.
+- [x] Provides lossless source identities and pure legacy alias resolution for artifact storage configs.
   Evidence: `Deep_Reflective_Reader/config/faiss_storage_config.py; Deep_Reflective_Reader/config/structured_document_storage_config.py; Deep_Reflective_Reader/config/module-detailed-design.md (Known Legacy / Compatibility Behavior)`
-  Notes: Storage naming compatibility is handled at config boundary.
+  Notes: CONFIG-01/02 replace lossy suffix stripping and implicit migration with checked, non-mutating resolution.
+  Timestamp: 2026-11-12
 
 - [x] Wire analysis reading interaction dependencies into the container
   Evidence: `Deep_Reflective_Reader/config/container.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_llm_generator.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_service.py`; `Deep_Reflective_Reader/section_tasks/analysis_interaction_orchestrator.py`; `Deep_Reflective_Reader/section_tasks/reading_interaction_artifact_store.py`; `Deep_Reflective_Reader/scripts/test_analysis_interaction_routes.py`; `Deep_Reflective_Reader/scripts/test_reading_interaction_artifact_store.py`.

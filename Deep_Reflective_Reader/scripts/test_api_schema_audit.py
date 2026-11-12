@@ -175,12 +175,22 @@ class SchemaAuditTests(unittest.TestCase):
     def test_chinese_and_existing_pdf_txt_aliases_remain_valid_over_http(self):
         name = '中國文化【新千年版】 (1)'
         self.repo.save_document(self.document, name)
-        for alias in (name, name+'.pdf', name+'.TXT', ' '+name+' '):
-            with self.subTest(alias=alias):
-                result = self.client.post('/documents/reading-interactions/note/read',
-                    json={'target':{'doc_name':alias,'target_type':'document'}})
-                self.assertEqual(result.status_code, 200, result.text)
-                self.assertEqual(self.repo.load_document(alias).to_dict(), self.repo.load_document(name).to_dict())
+        self.repo.raw_dir.mkdir(parents=True)
+        # A legacy alias must have one real source, not map every format to one book.
+        for suffix in ('.pdf', '.TXT'):
+            source = self.repo.raw_dir / (name+suffix)
+            source.write_bytes(b'legacy source')
+            for alias in (name, name+suffix, ' '+name+' '):
+                with self.subTest(alias=alias):
+                    result = self.client.post('/documents/reading-interactions/note/read',
+                        json={'target':{'doc_name':alias,'target_type':'document'}})
+                    self.assertEqual(result.status_code, 200, result.text)
+                    self.assertEqual(self.repo.load_document(alias).to_dict(), self.repo.load_document(name).to_dict())
+            other = name+('.TXT' if suffix == '.pdf' else '.pdf')
+            result = self.client.post('/documents/reading-interactions/note/read',
+                json={'target':{'doc_name':other,'target_type':'document'}})
+            self.assertEqual(result.status_code, 404, result.text)
+            source.unlink()
 
     def test_batch_limit_rejects_before_service_and_accepts_twenty(self):
         chapter = self.document.chapters[0]; section = chapter.sections[0]; unit = section.task_units[0]

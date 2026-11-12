@@ -105,7 +105,8 @@ class TranslationAction:
 
     def _default_language(self, doc_name):
         try:
-            profile = self._profiles.load(FaissStorageConfig(doc_name, read_only=True))
+            profile = self._profiles.load(FaissStorageConfig(doc_name, read_only=True, identity_resolver=
+                getattr(self._repository, "resolve_document_name", None)))
         except FileNotFoundError:
             return None
         except Exception:

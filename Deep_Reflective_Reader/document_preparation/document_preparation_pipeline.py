@@ -116,8 +116,10 @@ class DocumentPreparationPipeline:
         bundle_provider: BundleProvider,
         post_structure_enricher: PostStructureMetadataEnricher | None = None,
         cleanup_provider=None,
+        identity_resolver=None,
     ):
         """Initialize pipeline with explicit dependencies for preparation steps."""
+        self.identity_resolver = identity_resolver
         self.loader_factory = loader_factory
         self.cleanup_provider = cleanup_provider
         self.language_detector = language_detector
@@ -133,6 +135,12 @@ class DocumentPreparationPipeline:
         self.post_structure_enricher = (
             post_structure_enricher or PostStructureMetadataEnricher()
         )
+
+    def _structured_config(self, namespace):
+        return StructuredDocumentStorageConfig(namespace, identity_resolver=self.identity_resolver)
+
+    def _index_config(self, namespace):
+        return FaissStorageConfig(namespace, identity_resolver=self.identity_resolver)
 
     @log_stage(logger, "prepare_pipeline")
     def prepare(
@@ -153,6 +161,8 @@ class DocumentPreparationPipeline:
         hint_options = {"toc_hint": TocHint(toc_hint)} if toc_hint is not None else {}
         if intent != EnhancementIntent.RESTORE_SOURCE:
             hint_options["enhancement_intent"] = intent.value
+        if self.identity_resolver is not None:
+            doc_name = self.identity_resolver(doc_name)
         scope = getattr(self.loader_factory, "preparation_scope", nullcontext)
         with scope():
             loader = self.loader_factory.get(doc_name)
@@ -216,7 +226,7 @@ class DocumentPreparationPipeline:
             return assets
 
         assets.profile_creation_allowed = force_rebuild or not self.structured_document_store.exists(
-            StructuredDocumentStorageConfig(namespace=doc_name))
+            self._structured_config(namespace=doc_name))
 
         # Step 1. Load canonical raw text.
         extraction = None
@@ -458,7 +468,7 @@ class DocumentPreparationPipeline:
 
         loader = self.loader_factory.get(normalized_doc_name)
         if callable(getattr(loader, "source_path", None)):
-            config = StructuredDocumentStorageConfig(namespace=normalized_doc_name)
+            config = self._structured_config(namespace=normalized_doc_name)
             if self.structured_document_store.exists(config):
                 document = self.structured_document_store.load(config)
                 if "extraction" in document.parse_provenance or "pdf_extraction" in document.parse_provenance:
@@ -689,7 +699,7 @@ class DocumentPreparationPipeline:
             )
             return False, None
 
-        storage_config = StructuredDocumentStorageConfig(namespace=doc_name)
+        storage_config = self._structured_config(namespace=doc_name)
         structured_document_path = self.structured_document_store.location(storage_config)
         try:
             # TODO: Pass document_profile.parser_metadata hints into structured parser
@@ -797,7 +807,7 @@ class DocumentPreparationPipeline:
             return False
 
         try:
-            resolved_storage_config = storage_config or StructuredDocumentStorageConfig(
+            resolved_storage_config = storage_config or self._structured_config(
                 namespace=doc_name
             )
             resolved_path = structured_document_path or self.structured_document_store.location(
@@ -947,7 +957,7 @@ class DocumentPreparationPipeline:
             )
             self.profile_store.save(
                 enriched_profile,
-                FaissStorageConfig(namespace=doc_name),
+                self._index_config(namespace=doc_name),
             )
             print(
                 "DocumentPreparationPipeline#post_structure_enrichment_success",
@@ -993,7 +1003,7 @@ class DocumentPreparationPipeline:
             assets.errors.append("prepare_faiss_skipped:missing_raw_text")
             return False, None
 
-        config = FaissStorageConfig(namespace=doc_name)
+        config = self._index_config(namespace=doc_name)
         namespace = config.get_doc_name()
 
         try:
@@ -1033,7 +1043,8 @@ class DocumentPreparationPipeline:
     ) -> tuple[bool, DocumentProfile | None]:
         # Serialize initial profile creation across workers; recheck inside the lock.
         import fcntl
-        config = FaissStorageConfig(namespace=doc_name)
+        config = self._index_config(namespace=doc_name)
+        config.base_dir.mkdir(parents=True, exist_ok=True)
         with open(Path(config.get_raw_profile_path()).with_suffix(".lock"), "a") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
@@ -1050,7 +1061,7 @@ class DocumentPreparationPipeline:
         force_rebuild: bool,
     ) -> tuple[bool, DocumentProfile | None]:
         """Prepare profile artifact using canonical raw text and detected language."""
-        config = FaissStorageConfig(namespace=doc_name)
+        config = self._index_config(namespace=doc_name)
 
         try:
             if self.profile_store.exists(config) and not force_rebuild:

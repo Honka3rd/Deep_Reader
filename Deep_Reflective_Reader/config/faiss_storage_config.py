@@ -14,67 +14,27 @@ class FaissStorageConfig:
     profile_path: Path
     _NAMESPACE_EXTENSIONS: tuple[str, ...] = (".pdf", ".txt")
 
-    def __init__(self, namespace: str = "default", *, read_only: bool = False):
-        """Initialize object state and injected dependencies.
-
-Args:
-    namespace: Storage namespace, typically same as document name.
-"""
-        normalized_namespace = self.normalize_namespace(namespace)
-        base_root = Path("data/faiss")
-        if not read_only:
-            self._migrate_legacy_namespace_dir(
-                base_root=base_root,
-                original_namespace=namespace,
-                normalized_namespace=normalized_namespace,
-            )
-
-        self.base_dir = base_root / normalized_namespace
-        if not read_only:
-            self.base_dir.mkdir(parents=True, exist_ok=True)
-        self.doc_name = normalized_namespace
+    def __init__(self, namespace="default", *, read_only=False, base_root="data/faiss",
+                 identity_resolver=None):
+        # read_only remains accepted for callers; all configuration is now pure.
+        root = Path(base_root)
+        self.doc_name = (identity_resolver(namespace) if identity_resolver else
+                         StorageNamespaceHelper.file_identity(namespace, root))
+        physical_name = self.doc_name
+        if (identity_resolver and StorageNamespaceHelper.stem(self.doc_name) == self.doc_name
+                and not (root / self.doc_name).exists()):
+            candidates = [path.name for path in root.iterdir()
+                          if path.name != self.doc_name and
+                          StorageNamespaceHelper.stem(path.name) == self.doc_name] if root.exists() else []
+            if len(candidates) == 1 and identity_resolver(candidates[0]) == self.doc_name:
+                physical_name = candidates[0]
+        self.base_dir = StorageNamespaceHelper.checked_path(root, root / physical_name)
         self.index_path = self.base_dir / "index.faiss"
         self.records_path = self.base_dir / "records.json"
         self.meta_path = self.base_dir / "meta.json"
         self.profile_path = self.base_dir / "profile.json"
 
-    @classmethod
-    def normalize_namespace(cls, namespace: str) -> str:
-        """Normalize storage namespace by dropping known file extensions."""
-        return StorageNamespaceHelper.normalize_namespace(
-            namespace,
-            known_extensions=cls._NAMESPACE_EXTENSIONS,
-            fallback_namespace="default",
-        )
-
-    @classmethod
-    def _migrate_legacy_namespace_dir(
-        cls,
-        *,
-        base_root: Path,
-        original_namespace: str,
-        normalized_namespace: str,
-    ) -> None:
-        """Migrate legacy folder with extension to normalized namespace folder."""
-        if original_namespace == normalized_namespace:
-            return
-
-        legacy_dir = base_root / original_namespace
-        normalized_dir = base_root / normalized_namespace
-        if not legacy_dir.exists():
-            return
-        if normalized_dir.exists():
-            print(
-                "FaissStorageConfig#namespace_migration: "
-                f"skip (legacy={legacy_dir}, normalized={normalized_dir})"
-            )
-            return
-
-        legacy_dir.rename(normalized_dir)
-        print(
-            "FaissStorageConfig#namespace_migration: "
-            f"moved {legacy_dir} -> {normalized_dir}"
-        )
+    normalize_namespace = StorageNamespaceHelper.normalize_namespace
 
     def get_raw_index_path(self) -> str:
         """Return raw index path.

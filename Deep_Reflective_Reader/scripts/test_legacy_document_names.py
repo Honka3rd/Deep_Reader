@@ -5,7 +5,6 @@ from unittest.mock import patch
 from urllib.parse import quote
 
 import main
-from config.storage_namespace_helper import StorageNamespaceHelper
 from document_structure.structured_document_artifact_repository import StructuredDocumentArtifactRepository
 from scripts import test_learning_lifecycle as lifecycle
 from scripts import test_learning_file_repository as files
@@ -18,10 +17,14 @@ from section_tasks.note_interaction_service import NoteInteractionService
 class LegacyFileRepository(StructuredDocumentArtifactRepository):
     """Only fixture creation: name resolution used before SCHEMA-01 (440471fa)."""
     def _resolve_document_path(self, doc_name):
-        name = StorageNamespaceHelper.normalize_namespace(
-            doc_name, known_extensions=self._NAMESPACE_EXTENSIONS,
-            fallback_namespace=StorageNamespaceHelper.DEFAULT_NAMESPACE)
+        # Freeze the old rule; do not use the upgraded resolver in an upgrade fixture.
+        name = doc_name.strip()
+        if name.lower().endswith(('.pdf', '.txt')):
+            name = name[:-4].strip()
+        name = name or 'default'
         return self.base_dir / f'{name}.structured.json'
+
+    _exact_document_path = _resolve_document_path
 
 
 class LegacyNameCases:

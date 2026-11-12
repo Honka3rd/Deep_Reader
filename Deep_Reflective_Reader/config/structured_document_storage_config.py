@@ -12,61 +12,15 @@ class StructuredDocumentStorageConfig:
     document_path: Path
     doc_name: str
 
-    def __init__(
-        self,
-        namespace: str = "default",
-    ):
-        """Initialize storage paths for one logical document namespace."""
-        normalized_namespace = self.normalize_namespace(namespace)
-        self.base_dir = Path("data/structured",)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, namespace="default", *, base_dir="data/structured", identity_resolver=None):
+        self.base_dir = Path(base_dir)
+        self.doc_name = (identity_resolver(namespace) if identity_resolver else
+                         StorageNamespaceHelper.file_identity(namespace, self.base_dir,
+                                                              suffix=".structured.json"))
+        self.document_path = StorageNamespaceHelper.checked_path(
+            self.base_dir, self.base_dir / f"{self.doc_name}.structured.json")
 
-        self._migrate_legacy_document_file(
-            base_root=self.base_dir,
-            original_namespace=namespace,
-            normalized_namespace=normalized_namespace,
-        )
-
-        self.doc_name = normalized_namespace
-        self.document_path = self.base_dir / f"{self.doc_name}.structured.json"
-
-    @classmethod
-    def normalize_namespace(cls, namespace: str) -> str:
-        """Normalize namespace by dropping known document file extensions."""
-        return StorageNamespaceHelper.normalize_namespace(
-            namespace,
-            known_extensions=cls._NAMESPACE_EXTENSIONS,
-            fallback_namespace="default",
-        )
-
-    @classmethod
-    def _migrate_legacy_document_file(
-        cls,
-        *,
-        base_root: Path,
-        original_namespace: str,
-        normalized_namespace: str,
-    ) -> None:
-        """Migrate legacy JSON file name with extension to normalized namespace."""
-        if original_namespace == normalized_namespace:
-            return
-
-        legacy_file = base_root / f"{original_namespace}.structured.json"
-        normalized_file = base_root / f"{normalized_namespace}.structured.json"
-        if not legacy_file.exists():
-            return
-        if normalized_file.exists():
-            print(
-                "StructuredDocumentStorageConfig#namespace_migration: "
-                f"skip (legacy={legacy_file}, normalized={normalized_file})"
-            )
-            return
-
-        legacy_file.rename(normalized_file)
-        print(
-            "StructuredDocumentStorageConfig#namespace_migration: "
-            f"moved {legacy_file} -> {normalized_file}"
-        )
+    normalize_namespace = StorageNamespaceHelper.normalize_namespace
 
     def get_raw_document_path(self) -> str:
         """Return filesystem path for structured document JSON artifact."""

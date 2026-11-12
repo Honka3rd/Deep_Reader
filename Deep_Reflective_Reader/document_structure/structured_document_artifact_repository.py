@@ -48,9 +48,11 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         store: StructuredDocumentStore | None = None,
         base_dir: str = "data/structured",
         namespace: str = "default",
+        raw_dir: str | None = None,
     ):
         self.store = store or StructuredDocumentStore()
         self.base_dir = Path(base_dir)
+        self.raw_dir = Path(raw_dir) if raw_dir is not None else self.base_dir.parent / "raw"
         self._cleanup_namespace = namespace
         self._learning_lifecycle = None
 
@@ -98,6 +100,7 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
 
     def delete_document(self, doc_name: str) -> bool:
         """Delete the structured artifact without requiring valid hierarchy content."""
+        doc_name = self.resolve_document_name(doc_name)
         if self._learning_lifecycle is not None:
             return self._learning_lifecycle.delete(doc_name)
         with self._artifact_lock(doc_name):
@@ -108,8 +111,9 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
             return True
 
     @contextmanager
-    def _artifact_lock(self, doc_name):
-        path = self._checked_path(self._resolve_document_path(doc_name).with_suffix(".lock"))
+    def _artifact_lock(self, doc_name, *, exact=False):
+        artifact = self._exact_document_path(doc_name) if exact else self._resolve_document_path(doc_name)
+        path = self._checked_path(artifact.with_suffix(".lock"))
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
@@ -148,10 +152,11 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
     def lifecycle_path(self, doc_name):
         from reading_preferences.models import identifier
         identifier(doc_name)
-        return self._resolve_document_path(doc_name)
+        # Lifecycle journals contain canonical identities, never dynamic aliases.
+        return self._exact_document_path(doc_name)
 
     def lifecycle_lock(self, doc_name):
-        return self._artifact_lock(doc_name)
+        return self._artifact_lock(doc_name, exact=True)
 
     @staticmethod
     def lifecycle_payload(document):
@@ -288,15 +293,17 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         return False
 
     def rename_document(self, doc_name, new_name, transform):
+        doc_name = self.resolve_document_name(doc_name)
+        new_name = document_name(new_name)
         if self._learning_lifecycle is not None:
             return self._learning_lifecycle.rename(doc_name, new_name, transform)
         with ExitStack() as stack:
             for name in sorted({doc_name, new_name}):
-                stack.enter_context(self._artifact_lock(name))
-            destination = self._resolve_document_path(new_name)
+                stack.enter_context(self._artifact_lock(name, exact=True))
+            destination = self._exact_document_path(new_name)
             if destination.exists():
                 raise ValueError("conflict")
-            original = self._resolve_document_path(doc_name)
+            original = self._exact_document_path(doc_name)
             if not original.exists():
                 return False
             document = transform(self.load_document(doc_name), new_name)
@@ -340,9 +347,9 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         doc_name: str | None = None,
     ) -> None:
         """Persist structured document with atomic write."""
-        resolved_doc_name = document.document_id if doc_name is None else doc_name
-        path = self._resolve_document_path(resolved_doc_name)
-        with self._artifact_lock(resolved_doc_name):
+        resolved_doc_name = self._write_document_name(document, doc_name)
+        path = self._exact_document_path(resolved_doc_name)
+        with self._artifact_lock(resolved_doc_name, exact=True):
             if path.exists():
                 current = self.load_document(resolved_doc_name)
                 version = current.parse_provenance.get("storage_structure_version")
@@ -367,9 +374,9 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         cleaned_document = self.cleanup_reparsed_document_derived_artifacts(document)
         cleaned_document = replace(cleaned_document, parse_provenance={
             **cleaned_document.parse_provenance, "interaction_epoch": uuid4().hex})
-        resolved_doc_name = document.document_id if doc_name is None else doc_name
-        with self._artifact_lock(resolved_doc_name):
-            self._atomic_save(cleaned_document, self._resolve_document_path(resolved_doc_name))
+        resolved_doc_name = self._write_document_name(document, doc_name)
+        with self._artifact_lock(resolved_doc_name, exact=True):
+            self._atomic_save(cleaned_document, self._exact_document_path(resolved_doc_name))
 
     def update_section_artifacts(
         self,
@@ -666,15 +673,29 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         self.save_document(updated_document, doc_name=doc_name)
         return updated_document
 
+    def _write_document_name(self, document, doc_name):
+        name = document.document_id if doc_name is None else document_name(doc_name)
+        # New imports retain their explicit identity. Existing snapshots can be
+        # saved through an alias only when it resolves back to that snapshot.
+        if name != document.document_id:
+            resolved = self.resolve_document_name(name)
+            if resolved == document.document_id:
+                return resolved
+        return document_name(name)
+
+    def _exact_document_path(self, doc_name):
+        return self._checked_path(self.base_dir / f"{document_name(doc_name)}.structured.json")
+
+    def contains_document(self, doc_name: str) -> bool:
+        return self._exact_document_path(doc_name).is_file()
+
+    def resolve_document_name(self, doc_name: str) -> str:
+        return StorageNamespaceHelper.file_identity(document_name(doc_name), self.base_dir,
+                                                   suffix=".structured.json", raw_root=self.raw_dir)
+
     def _resolve_document_path(self, doc_name: str) -> Path:
-        """Resolve logical doc name to structured artifact path."""
-        normalized_name = StorageNamespaceHelper.normalize_namespace(
-            document_name(doc_name),
-            known_extensions=self._NAMESPACE_EXTENSIONS,
-            fallback_namespace=StorageNamespaceHelper.DEFAULT_NAMESPACE,
-        )
-        document_name(normalized_name)
-        return self._checked_path(self.base_dir / f"{normalized_name}.structured.json")
+        name = self.resolve_document_name(doc_name)
+        return self._checked_path(self.base_dir / f"{name}.structured.json")
 
     def _checked_path(self, path: Path) -> Path:
         """Reject pre-existing links outside the configured root before any IO."""

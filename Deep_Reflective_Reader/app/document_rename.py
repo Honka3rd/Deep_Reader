@@ -188,7 +188,13 @@ class DocumentRename:
             if move['kind'] == 'raw':
                 if any(Path(name).suffix.lower() not in ('.txt','.pdf') for name in names):
                     raise RenameRecoveryRequired(record['operation_id'])
-                names = tuple(Path(name).stem for name in names)
+                names = tuple(logical if actual == logical or Path(actual).stem == logical else actual
+                              for actual, logical in zip(names, (old, new)))
+            if move['kind'] == 'derived':
+                raw_move = next((item for item in record['moves'] if isinstance(item, dict) and item.get('kind') == 'raw'), None)
+                if raw_move is not None:
+                    names = tuple(logical if actual == logical or actual == raw_move.get(key) else actual
+                                  for actual, logical, key in zip(names, (old, new), ('source', 'target')))
             if names != (old,new):
                 raise RenameRecoveryRequired(record['operation_id'])
             self._paths(move)
@@ -291,10 +297,13 @@ class DocumentRename:
         # Check both supported extensions, even when there is no raw file to move.
         if self.raw_root.exists():
             for candidate in self.raw_root.iterdir():
-                if candidate.stem == new and candidate.suffix.lower() in ('.txt', '.pdf'):
+                if (candidate.name == new or candidate.stem == new) and candidate.suffix.lower() in ('.txt', '.pdf'):
                     raise ValueError('conflict')
+        from config.faiss_storage_config import FaissStorageConfig
+        derived_source = FaissStorageConfig(old, base_root=self.derived_root,
+            identity_resolver=self.repository.resolve_document_name).base_dir
         moves = [self._plan_move('raw', raw_source, raw_target),
-                 self._plan_move('derived', self.derived_root/old, self.derived_root/new)]
+                 self._plan_move('derived', derived_source, self.derived_root/new)]
         moves = [move for move in moves if move is not None]
         # A stale derived-only directory is not a document candidate.
         if source is None and not any(move['kind']=='raw' for move in moves):
@@ -326,9 +335,19 @@ class DocumentRename:
                     record = json.loads(path.read_text())
                 except (OSError, ValueError) as error:
                     raise RenameRecoveryRequired('unreadable-journal') from error
-                self._validate_record(record, old, new)
+                self._validate_record(record, record.get('old') if isinstance(record, dict) else None,
+                                      record.get('new') if isinstance(record, dict) else None)
                 if record['command_id'] != command_id or record['source_token'] != source_token:
                     raise ValueError('conflict')
+                # The raw move is durable alias evidence. A completed move must
+                # not require resolving the now-missing source alias again.
+                old_names, new_names = {record['old']}, {record['new']}
+                for move in record['moves']:
+                    if move['kind'] == 'raw':
+                        old_names.add(move['source']); new_names.add(move['target'])
+                if old not in old_names or new not in new_names:
+                    raise ValueError('conflict')
+                old, new = record['old'], record['new']
                 if path == self.pending and record['version'] != 3:
                     raise RenameRecoveryRequired(record['operation_id'])
                 if path == receipt:

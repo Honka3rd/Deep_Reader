@@ -1,5 +1,14 @@
 # profile Detailed Design
 
+## CONFIG-02 pure path dependency (2026-11-12)
+
+All storage config constructors are pure, including callers without read_only=True.
+DocumentProfileStore.save creates its parent before atomic publication; exists,
+load and load_source do not create directories or migrate files. The active
+repository resolves production profile identity; a different source's legacy
+profile directory cannot substitute for an exact qualified document. A bare legacy
+owner may read its uniquely source-bound qualified directory without moving it.
+
 ## Learning source-only reader (LLRN-15, 2026-10-28)
 
 `VersionedDocumentProfileStore.load_source(config)` 直接讀既有 profile JSON，供 learning

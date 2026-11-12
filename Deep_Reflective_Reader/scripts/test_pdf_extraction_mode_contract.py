@@ -53,6 +53,7 @@ class ExtractionContractTests(unittest.TestCase):
         # Route contract tests stub preparation; integration tests exercise real extraction.
         self.pipeline = object.__new__(DocumentPreparationPipeline)
         self.pipeline.loader_factory = self.factory
+        self.pipeline.identity_resolver = None
         self.client = TestClient(main.app)
         ensure_patch = patch.object(main.section_task_coordinator, "ensure_document_task_layout")
         self.ensure_layout = ensure_patch.start()

@@ -24,6 +24,12 @@ class _FakeDocumentRepository:
     def __init__(self) -> None:
         self.calls: list[tuple[str | None, int]] = []
 
+    def resolve_document_names(self, names):
+        from config.storage_namespace_helper import StorageNamespaceHelper
+        return {name: StorageNamespaceHelper.resolve(name, existing={'Prepared Book','Shared Book'},
+                raw_names=StorageNamespaceHelper.raw_names(main._RAW_DOCUMENT_BASE_DIR, name))
+                for name in names}
+
     def list_documents(
         self,
         query: str | None = None,
@@ -86,7 +92,7 @@ def test_management_route_merges_structured_readiness_and_raw_source_status() ->
         _assert(prepared["preparation_status"] == "ready", "structured-only row should be ready")
         _assert(prepared["source_filename"] is None, "structured-only row should not invent source filename")
 
-        raw_only = items["Raw Only"]
+        raw_only = items["Raw Only.txt"]
         _assert(raw_only["source"] == "raw.txt", "raw-only source mismatch")
         _assert(raw_only["source_filename"] == "Raw Only.txt", "raw filename mismatch")
         _assert(raw_only["source_type"] == "txt", "raw type mismatch")

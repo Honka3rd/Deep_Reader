@@ -4463,7 +4463,8 @@ class SectionTaskCoordinator:
     @log_stage(logging.getLogger(__name__), "task_layout.profile_read")
     def _load_existing_document_profile(self, doc_name: str) -> DocumentProfile | None:
         """Load existing profile artifact when available; return None otherwise."""
-        config = FaissStorageConfig(namespace=doc_name)
+        config = FaissStorageConfig(namespace=doc_name, identity_resolver=
+            getattr(self.document_artifact_repository, "resolve_document_name", None))
         if not self.document_profile_store.exists(config):
             return None
         try:

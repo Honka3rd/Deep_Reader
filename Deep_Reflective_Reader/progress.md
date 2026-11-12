@@ -438,7 +438,7 @@ It is used to:
 |---|---|---|---:|---:|---|
 | `app/` | package | `app/module-checklist.md` | 54 | 11 | MAIN-06 pending identity recovery verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `auth/` | package | `auth/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `config/` | package | `config/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `config/` | package | `config/module-checklist.md` | 9 | 9 | CONFIG-01/02 locally verified; historical unchecked items retained; external review pending (2026-11-12 recount; sample item excluded) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 61 | 0 | OCR-KEEP owner 5/5; no unchecked items |
 | `db/` | package + design module | `db/module-checklist.md` | 62 | 4 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |

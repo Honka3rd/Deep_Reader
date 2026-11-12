@@ -29,6 +29,15 @@ class _FakePostgresStore(PostgresStructuredDocumentStore):
         self.names = {doc_name}
         self.fail_delete = False
 
+    def resolve_document_name(self, doc_name):
+        return doc_name
+
+    def resolve_document_names(self, names):
+        return {name: name for name in names}
+
+    def exists(self, target):
+        return target.document_name in self.names
+
     def list_documents(self, query=None, limit=50):
         return [DocumentListItem(name, source="structured_postgres") for name in self.names]
 

@@ -86,6 +86,7 @@ Args:
 Args:
     bundle: Active FaissIndexBundle used for lookup and metadata access.
     config: FaissStorageConfig describing filesystem artifact paths."""
+        config.base_dir.mkdir(parents=True, exist_ok=True)
         faiss.write_index(bundle.faiss_index, config.get_raw_index_path())
 
         payload: dict = {

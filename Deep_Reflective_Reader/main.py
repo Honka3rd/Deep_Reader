@@ -249,24 +249,6 @@ _DOCUMENT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _DOCUMENT_UPLOAD_REQUEST_MAX_BYTES = 51 * 1024 * 1024
 
 
-def _raw_document_doc_name(path: Path, sibling_counts: dict[str, int]) -> str:
-    """Return stable API doc_name for a raw file candidate."""
-    if sibling_counts.get(path.stem, 0) > 1:
-        return path.name
-    return path.stem
-
-
-def _raw_document_sibling_counts(base_dir: Path = _RAW_DOCUMENT_BASE_DIR) -> dict[str, int]:
-    """Return supported raw-file stem counts for doc_name disambiguation."""
-    if not base_dir.exists():
-        return {}
-    sibling_counts: dict[str, int] = {}
-    for path in base_dir.iterdir():
-        if path.is_file() and path.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS:
-            sibling_counts[path.stem] = sibling_counts.get(path.stem, 0) + 1
-    return sibling_counts
-
-
 def _normalize_upload_filename(filename: str | None) -> str:
     """Validate and normalize a user-uploaded raw source filename."""
     try:
@@ -285,20 +267,24 @@ def _resolve_upload_destination(
     base_dir: Path = _RAW_DOCUMENT_BASE_DIR,
 ) -> Path:
     """Resolve destination path according to the explicit upload conflict policy."""
+    def conflict(path):
+        if path.exists():
+            return True
+        # Metadata-only checks; uploads never load body or prepare a document.
+        return any(document_artifact_repository.contains_document(name)
+                   for name in (path.name, path.stem))
+
     destination = base_dir / filename
-    if not destination.exists():
+    if not conflict(destination):
         return destination
-
-    if conflict_policy == "reject":
+    if conflict_policy == "replace" and destination.is_file():
+        # Replacing an existing exact source is explicit; never replace its sibling.
+        return destination
+    if conflict_policy != "create_distinct":
         raise FileExistsError("duplicate_conflict")
-    if conflict_policy == "replace":
-        return destination
-
-    stem = destination.stem
-    suffix = destination.suffix
     for index in range(1, 1000):
-        candidate = base_dir / f"{stem} ({index}){suffix}"
-        if not candidate.exists():
+        candidate = base_dir / f"{destination.stem} ({index}){destination.suffix}"
+        if not conflict(candidate):
             return candidate
     raise FileExistsError("duplicate_conflict")
 
@@ -314,9 +300,8 @@ def _build_document_upload_response(
     reason: str | None = None,
 ) -> DocumentUploadResponse:
     """Build a lightweight upload response without preparing the document."""
-    sibling_counts = _raw_document_sibling_counts(destination.parent)
     return DocumentUploadResponse(
-        doc_name=_raw_document_doc_name(destination, sibling_counts),
+        doc_name=_document_lifecycle_namespace(destination.name),
         title=title or destination.stem,
         source_filename=destination.name,
         source_type=destination.suffix.casefold().lstrip(".") or "unknown",
@@ -355,13 +340,13 @@ def _list_raw_documents(
         for path in sorted(base_dir.iterdir(), key=lambda candidate: candidate.name.casefold())
         if path.is_file() and path.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS
     ]
-    sibling_counts: dict[str, int] = {}
-    for path in raw_paths:
-        sibling_counts[path.stem] = sibling_counts.get(path.stem, 0) + 1
+    raw_paths = [path for path in raw_paths
+                 if not normalized_query or normalized_query in f"{path.name} {path.stem}".casefold()][:bounded_limit]
+    names = document_artifact_repository.resolve_document_names([path.name for path in raw_paths])
 
     candidates: list[DocumentListItem] = []
     for path in raw_paths:
-        doc_name = _raw_document_doc_name(path, sibling_counts)
+        doc_name = names[path.name]
         title = path.stem
         searchable = f"{doc_name} {title}".casefold()
         if normalized_query and normalized_query not in searchable:
@@ -422,13 +407,13 @@ def _list_raw_document_management_items(
         for path in sorted(base_dir.iterdir(), key=lambda candidate: candidate.name.casefold())
         if path.is_file() and path.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS
     ]
-    sibling_counts: dict[str, int] = {}
-    for path in raw_paths:
-        sibling_counts[path.stem] = sibling_counts.get(path.stem, 0) + 1
+    raw_paths = [path for path in raw_paths
+                 if not normalized_query or normalized_query in f"{path.name} {path.stem}".casefold()][:bounded_limit]
+    names = document_artifact_repository.resolve_document_names([path.name for path in raw_paths])
 
     candidates: list[DocumentManagementItemResponse] = []
     for path in raw_paths:
-        doc_name = _raw_document_doc_name(path, sibling_counts)
+        doc_name = names[path.name]
         title = path.stem
         searchable = f"{doc_name} {title}".casefold()
         if normalized_query and normalized_query not in searchable:
@@ -540,51 +525,22 @@ def _resolve_raw_document_delete_path(
         for path in sorted(base_dir.iterdir(), key=lambda candidate: candidate.name.casefold())
         if path.is_file() and path.suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS
     ]
-    sibling_counts: dict[str, int] = {}
-    for path in raw_paths:
-        sibling_counts[path.stem] = sibling_counts.get(path.stem, 0) + 1
-
     matches = [
         path
         for path in raw_paths
-        if _raw_document_doc_name(path, sibling_counts) == normalized_doc_name
+        if path.stem == normalized_doc_name
     ]
     if not matches:
         return None
     if len(matches) > 1:
-        raise ValueError("conflict")
+        raise ValueError("source_ambiguous")
     return matches[0]
 
 
-def _structured_document_base_dir() -> Path:
-    """Return the active file-backed structured document directory."""
-    base_dir = getattr(document_artifact_repository, "base_dir", None)
-    if isinstance(base_dir, Path):
-        return base_dir
-    if isinstance(base_dir, str):
-        return Path(base_dir)
-    return Path("data/structured")
-
-
-def _resolve_structured_document_delete_path(doc_name: str) -> Path:
-    """Resolve the structured JSON artifact path for a lifecycle target."""
-    normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
-    suffix = ".structured.json"
-    if normalized_doc_name.endswith(suffix):
-        file_name = normalized_doc_name
-    elif Path(normalized_doc_name).suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS:
-        file_name = f"{Path(normalized_doc_name).stem}{suffix}"
-    else:
-        file_name = f"{normalized_doc_name}{suffix}"
-    return _structured_document_base_dir() / file_name
-
-
 def _resolve_faiss_document_artifact_dir(doc_name: str) -> Path:
-    """Resolve the current file-backed derived artifact directory without creating it."""
-    normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
-    if Path(normalized_doc_name).suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS:
-        normalized_doc_name = Path(normalized_doc_name).stem
-    return _DERIVED_DOCUMENT_BASE_DIR / normalized_doc_name
+    from config.faiss_storage_config import FaissStorageConfig
+    return FaissStorageConfig(doc_name, base_root=_DERIVED_DOCUMENT_BASE_DIR,
+                              identity_resolver=_document_lifecycle_namespace).base_dir
 
 
 def _delete_document_file_backed_artifacts(doc_name: str, *, file_identity) -> dict[str, bool]:
@@ -617,14 +573,9 @@ def _delete_document_file_backed_artifacts(doc_name: str, *, file_identity) -> d
 
 
 def _document_lifecycle_namespace(doc_name: str) -> str:
-    """Return extension-free namespace for structured/derived lifecycle operations."""
-    normalized_doc_name = _validate_document_lifecycle_doc_name(doc_name)
-    suffix = ".structured.json"
-    if normalized_doc_name.endswith(suffix):
-        return normalized_doc_name[: -len(suffix)]
-    if Path(normalized_doc_name).suffix.casefold() in _RAW_DOCUMENT_EXTENSIONS:
-        return Path(normalized_doc_name).stem
-    return normalized_doc_name
+    name = _validate_document_lifecycle_doc_name(doc_name)
+    resolver = getattr(document_artifact_repository, "resolve_document_name", None)
+    return resolver(name) if callable(resolver) else name
 
 
 def _resolve_raw_document_rename_target(
@@ -1448,12 +1399,14 @@ async def upload_document(request: Request, response: Response):
                                                               _RAW_DOCUMENT_BASE_DIR)
                     if conflict_policy == "replace":
                         identity.advance(destination.stem)
+                        identity.advance(destination.name)
                         os.replace(staged_path, destination)
                     else:
                         # Link also refuses an out-of-band writer's destination.
                         while True:
                             try:
                                 identity.advance(destination.stem)
+                                identity.advance(destination.name)
                                 os.link(staged_path, destination)
                                 break
                             except FileExistsError:
@@ -1579,6 +1532,7 @@ def delete_document_lifecycle(
         from app.document_file_identity import DocumentFileIdentity
         identity = DocumentFileIdentity(_RAW_DOCUMENT_BASE_DIR)
         with identity.locked():
+            doc_name = _document_lifecycle_namespace(doc_name)
             effects = _delete_document_file_backed_artifacts(doc_name, file_identity=identity)
             # Keep the discoverable structured record until file cleanup succeeds.
             effects["structured_artifacts_affected"] = (

@@ -1,5 +1,51 @@
 # config Detailed Design
 
+## CONFIG-01/02 storage identity and pure resolution (2026-11-12, implemented)
+
+Document names retain supported source suffixes; normalization must not merge PDF
+and TXT sources. One shared resolver accepts exact existing identities first and
+legacy aliases only when the active backend and raw-source candidates identify one
+owner. Ambiguous bare names fail with source_ambiguous; qualified requests must not
+fall through to an unrelated format or inactive backend. Upload conflict handling
+uses the same identity domain, including pre-existing legacy stem ownership, and
+create_distinct/reject/replace cannot overwrite a different source. Lifecycle operations use
+the active repository identity and preserve source incarnation/command fences.
+
+Qualified legacy aliases require one matching raw source and a sole bare stored
+owner. Bare identities never rebind to a remaining qualified book after deletion
+or rename. SQL-only legacy books remain accessible by their exact stored name.
+Lifecycle journal paths/locks are exact canonical identities, not alias lookups.
+For a legacy bare owner whose derived data remains in one qualified directory,
+pure FAISS/profile resolution may select that directory only when the active
+repository confirms the alias. Explicit rename/delete use the same physical path;
+rename journals bind a qualified derived move to the corresponding raw move.
+
+
+Storage config constructors and exists/path/profile/layout/content reads perform no
+mkdir, rename or migration. Existing qualified/legacy locations are selected without
+rewriting them; coexistence never authorizes overwriting another location. Storage
+owners create parent directories only on explicit writes. Any physical migration
+must use an explicit lifecycle/maintenance operation, not a read side effect.
+
+Acceptance: file and real PostgreSQL tests cover duplicate-stem PDF/TXT sources,
+upload policies, body/note/index and lifecycle isolation, safe legacy aliases and
+ambiguous legacy data. Read-path snapshots cover missing directories, legacy-only
+and coexisting paths, including layout/content/profile reads. Keep prior MAIN and
+SCHEMA regression fences. No deployment or push before new external approval.
+
+Validation: `scripts/test_config_storage_audit.py` has 23 file/real PostgreSQL
+cases (including TCP). Four focused repros fail on dcb3095 and pass after repair:
+PDF requests read TXT body on both backends; config reads create/move paths.
+The final complete 479-test regression passes without skips, including immutable
+sample/sample2/noise backup HTTP cases on both backends. Fourteen standalone
+route/schema/config scripts pass. Python compilation and diff checks pass.
+Evidence: `/tmp/audit-config-dcb3095/` (baseline.log, final-all.log,
+standalone-results.json, route logs and validation-report.txt).
+No paid provider, UI/browser deployment or production data migration was performed.
+Historically merged data with unknown ownership is not guessed or automatically
+repaired. External review is pending.
+
+
 ## Shared sentence translation (2026-11-09)
 
 Production TranslationAction receives a lazy factory for the same learning_service
@@ -40,9 +86,8 @@ Supporting fix：file rename/delete 已取得 preference lock 並留下 tombston
 TRANS-API-02 injects the existing llm_provider into TranslationService and wires it
 with the selected structured repository and profile store into TranslationAction.
 Main exposes the action through app.state; no model settings/new provider/private
-key handling or import-time completion. FaissStorageConfig adds opt-in read_only
-path resolution for this action, suppressing mkdir and legacy directory migration;
-existing callers retain their defaults. No automatic migration on translation reads.
+key handling or import-time completion. All FaissStorageConfig callers now use pure resolution (CONFIG-02); the historical
+read_only keyword remains accepted. No automatic migration occurs on any read.
 
 ## Smart Cleanup Wiring (2026-10-24)
 
@@ -93,9 +138,9 @@ not invalidation semantics. Container wiring and real API/DB acceptance pass.
 | `config/app_DI_config.py` | `AppDIConfig` 與多組 policy dataclass | 集中 app-level policy 值 **[Code-Confirmed]** |
 | `config/container.py` | `ApplicationLookupContainer` 依賴注入組裝 | services/repositories/providers wiring **[Code-Confirmed]** |
 | `config/token_budget_resolver.py` | capability-aware token budget 計算 | 有 fallback_used 訊號 **[Code-Confirmed]** |
-| `config/faiss_storage_config.py` | FAISS artifact path + namespace migration | 含 legacy folder migration **[Code-Confirmed]** |
-| `config/structured_document_storage_config.py` | structured JSON path + namespace migration | 含 legacy filename migration **[Code-Confirmed]** |
-| `config/storage_namespace_helper.py` | namespace normalization 共用 helper | 去除 `.pdf/.txt` extension **[Code-Confirmed]** |
+| `config/faiss_storage_config.py` | FAISS artifact path resolution | 無隱式建立或搬移 **[Code-Confirmed]** |
+| `config/structured_document_storage_config.py` | structured JSON path resolution | 無隱式建立或搬移 **[Code-Confirmed]** |
+| `config/storage_namespace_helper.py` | namespace normalization 共用 helper | 保留 `.pdf/.txt`，以明確且無歧義的舊名稱別名相容 **[Code-Confirmed]** |
 
 ## 4. Main Responsibilities
 
@@ -133,19 +178,19 @@ not invalidation semantics. Container wiring and real API/DB acceptance pass.
 
 1. 啟動時 DI assembly flow。 **[Code-Confirmed]**
 2. prepare/ask/task path 注入 policy。 **[Code-Confirmed]**
-3. storage namespace normalization 與 legacy migration。 **[Code-Confirmed]**
+3. 無損 storage identity 及純讀取的 legacy alias resolution。 **[Code-Confirmed]**
 
 ## 9. Persistence / Side Effects
 
 - read persistence：間接（storage path 檢查）
 - write persistence：否
 - mutate artifact：否
-- side effect：legacy namespace rename（檔案系統）。 **[Code-Confirmed]**
+- side effect：無；寫入 owner 在明確寫入時建立目錄。 **[Code-Confirmed]**
 
 ## 10. Known Legacy / Compatibility Behavior
 
-1. `FaissStorageConfig` 會把舊 namespace 目錄遷移到 normalized namespace。 **[Code-Confirmed]**
-2. `StructuredDocumentStorageConfig` 會把舊 structured filename 遷移到 normalized namespace。 **[Code-Confirmed]**
+1. 舊名稱只在來源及啟用儲存後端可唯一定位時作別名，不搬移目錄或檔案。
+2. 新舊位置並存時不覆寫、不合併；同 stem 多來源未能確定舊 artifact 歸屬時回報 `source_ambiguous`。
 
 ## 11. Current Risks
 
@@ -157,9 +202,9 @@ not invalidation semantics. Container wiring and real API/DB acceptance pass.
 - why：改一處可能波及多模組
 - guardrail：維持 module-level docs + smoke tests
 
-3. risk：storage migration side effect 未被觀測
-- why：部署時可能與既有檔案衝突
-- guardrail：保留 migration log 並補文件
+3. risk：歷史資料缺少來源歸屬證據
+- why：舊版曾移除副檔名，可能已合併不同來源
+- guardrail：拒絕歧義別名；必須由明確維護或重新匯入操作修復，不猜測或在讀取時改寫
 
 ## 12. Open Questions for Maintainer
 

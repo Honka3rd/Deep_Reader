@@ -1,5 +1,14 @@
 # document_preparation Detailed Design
 
+## CONFIG-01/02 storage resolution dependency (2026-11-12)
+
+Production preparation receives the active repository's identity resolver. Resolve
+once before source loading and use that identity for structured output, index and
+profile configs. Config construction is pure; explicit preparation creates the
+profile-lock parent, while artifact stores create parents on save. Reads and cache
+inspection never migrate old paths. Ambiguous legacy sources require explicit
+repair rather than a guessed owner or silent overwrite.
+
 ## Independent Cleanup Adapters (2026-10-23)
 
 **[Code-Confirmed: SCLEAN-02/07]** Adapters support the
@@ -575,8 +584,8 @@ The earlier completed parser/prompt work does not close this new entry-flow defe
 ENH-PREP-01 implementation: `accepted_source_snapshot.py` provides an immutable
 snapshot and `SourceNotReady` reason/recovery contract. Storage owners supply a
 consistently read document, namespace, expected ID, structure version, accepted state
-and trusted source path; the validator does not construct storage configs (which
-can migrate files), invoke loaders or write artifacts. Public adapters remain APP-01.
+and trusted source path; the validator does not construct storage configs, invoke
+loaders or write artifacts. Config resolution itself is pure under CONFIG-02. Public adapters remain APP-01.
 It streams source bytes in 1 MiB chunks and checks file identity/stat changes during
 hashing. Commit-time revalidation remains mandatory; this read is not a lock.
 

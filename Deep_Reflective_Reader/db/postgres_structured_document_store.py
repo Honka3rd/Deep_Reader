@@ -1690,6 +1690,33 @@ class PostgresStructuredDocumentStore:
         resolved = self._resolve_target(target)
         return f"postgres://structured/{resolved.namespace}/{resolved.document_name}"
 
+    def resolve_document_name(self, doc_name: str) -> str:
+        from shared.document_name import document_name
+        name = document_name(doc_name)
+        return self.resolve_document_names([name])[name]
+
+    def resolve_document_names(self, names):
+        # Bounded, metadata-only discovery: never one connection per raw file.
+        from shared.document_name import document_name
+        names = [document_name(name) for name in names]
+        if len(names) > 200:
+            raise ValueError('document_name_batch_too_large')
+        if not names:
+            return {}
+        stems = list({StorageNamespaceHelper.stem(name) for name in names})
+        psycopg, _, _ = self._load_psycopg()
+        with psycopg.connect(self._dsn) as connection:
+            rows = connection.execute(
+                "SELECT document_name FROM documents WHERE namespace = %s AND "
+                "(document_name = ANY(%s) OR "
+                "(left(document_name, -4) = ANY(%s) AND "
+                "lower(right(document_name, 4)) IN ('.pdf', '.txt')))",
+                (self.namespace, stems, stems)).fetchall()
+        existing = {row[0] for row in rows}
+        return {name: StorageNamespaceHelper.resolve(name, existing=existing,
+            raw_names=StorageNamespaceHelper.raw_names(getattr(self, 'raw_root', Path('data/raw')), name))
+            for name in names}
+
     def target_for_doc_name(self, doc_name: str) -> PostgresStructuredDocumentTarget:
         """Build a DB target from a logical document name."""
         return PostgresStructuredDocumentTarget(

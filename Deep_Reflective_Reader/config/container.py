@@ -332,6 +332,8 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
     reading_preferences_repository = learning_storage.provided.preferences
     learning_repository = learning_storage.provided.learning
     document_profile_store.add_kwargs(repository=structured_document_artifact_repository)
+    storage_config_factory.add_kwargs(
+        identity_resolver=structured_document_artifact_repository.provided.resolve_document_name)
     learning_runtime = providers.Resource(
         open_learning_runtime,
         storage=learning_storage,
@@ -367,6 +369,7 @@ class ApplicationLookupContainer(containers.DeclarativeContainer):
         bundle_provider=bundle_provider,
         post_structure_enricher=post_structure_metadata_enricher,
         cleanup_provider=llm_provider,
+        identity_resolver=structured_document_artifact_repository.provided.resolve_document_name,
     )
 
     session_manager = providers.Singleton(

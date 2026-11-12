@@ -1,5 +1,17 @@
 # main.py Detailed Design
 
+## CONFIG-01 name-resolution dependency (2026-11-12)
+
+Raw candidates keep their source suffix unless the active repository proves a
+unique legacy owner. Upload reject/replace/create_distinct policies use the same
+identity domain; replace only overwrites an existing exact raw source. Upload
+advances both qualified and legacy-stem file generations so neither kind of stale
+rename command can adopt a replacement. Lifecycle resolves aliases before file
+effects. Rename receipts retain original raw-move evidence for alias retries;
+source tokens, epochs, physical identities and generation fences still apply.
+A legacy qualified derived directory is moved only with its matching raw source
+evidence. No inactive structured backend is consulted or modified.
+
 ## SCHEMA-01/02 transport dependency (2026-11-11, implemented)
 
 All document path/query parameters consume the same api_schemas document-name

@@ -331,7 +331,7 @@ assert not list(Path('.').rglob('*'))
         scope = WorkspaceScope('default')
         reader = existing_profile_reader(scope, VersionedDocumentProfileStore(), FaissStorageConfig)
         with (patch.object(Path, 'mkdir', side_effect=AssertionError('mkdir')),
-              patch.object(FaissStorageConfig, '_migrate_legacy_namespace_dir', side_effect=AssertionError('migration'))):
+              patch.object(Path, 'rename', side_effect=AssertionError('migration'))):
             self.assertEqual(reader.read(scope, 'missing-'+uuid4().hex).problem, 'profile_missing')
 
     def test_invalid_operational_limits_rejected(self):

@@ -1,5 +1,12 @@
 # retrieval Detailed Design
 
+## CONFIG-02 explicit write ownership (2026-11-12)
+
+FaissIndexStore.save creates the destination parent before index/record writes.
+Config construction and index reads do not create or rename directories. Production
+config factories use the active repository's source identity, preserving PDF/TXT
+isolation without changing the index/records schema or embedding behavior.
+
 ## FULL-01 Capacity Logs (2026-10-20)
 
 Builder/store budget logs distinguish shared context_window from optional max_input;

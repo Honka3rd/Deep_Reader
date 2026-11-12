@@ -75,6 +75,22 @@ class DocumentListItem:
 class DocumentArtifactRepository(ABC):
     """Repository contract for structured-document task-artifact persistence."""
 
+    def resolve_document_name(self, doc_name: str) -> str:
+        """Read-only canonical identity; adapters may accept proven legacy aliases."""
+        from shared.document_name import document_name
+        return document_name(doc_name)
+
+    def resolve_document_names(self, names):
+        """Resolve a bounded discovery batch without reading document content."""
+        return {name: self.resolve_document_name(name) for name in names}
+
+    def contains_document(self, doc_name: str) -> bool:
+        """Exact identity existence; adapters should use metadata-only checks."""
+        try:
+            return self.load_document(doc_name).document_id == doc_name
+        except FileNotFoundError:
+            return False
+
     def mutate_document_artifacts(self, doc_name, mutation):
         """Atomically apply mutation(current_document) -> (artifacts, result)."""
         raise NotImplementedError("atomic artifact mutation not supported")

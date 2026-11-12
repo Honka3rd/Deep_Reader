@@ -1,9 +1,19 @@
 # document_structure Detailed Design
 
+## CONFIG-01 explicit identities (2026-11-12)
+
+File repository reads use the common lossless name resolver. Exact qualified names
+remain separate; legacy aliases require a unique compatible owner. Explicit imports
+use their own exact names rather than aliasing a new document onto another source.
+Ordinary snapshot saves keep incarnation checks under the exact artifact lock.
+Lifecycle journal paths and locks always use exact canonical names; a retired bare
+identity cannot be rebound to another qualified book.
+Ambiguous legacy identities remain visible in discovery and fail closed on access;
+resolution never migrates or rewrites files. Path/lock containment remains required.
+
 ## SCHEMA-01 storage boundary (2026-11-11, implemented)
 
-StructuredDocumentArtifactRepository validates the supplied logical name before
-suffix normalization, validates the normalized stem again, and requires resolved
+StructuredDocumentArtifactRepository validates the supplied logical name, preserves its source suffix, and requires resolved
 artifact/lock paths to remain below its resolved configured base directory.
 Existing symlinks escaping that root are rejected; discovery skips unsafe entries
 before reading their contents. Save, reparse, load, delete and rename use this guard.

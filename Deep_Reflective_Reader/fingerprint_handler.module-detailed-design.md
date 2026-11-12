@@ -1,5 +1,11 @@
 # fingerprint_handler.py Detailed Design
 
+## CONFIG-02 explicit write ownership (2026-11-12)
+
+FingerprintHandler.save creates the metadata parent when needed. Path resolution,
+exists, load and matches remain read-only; configuration no longer creates this
+parent as a side effect. Fingerprint payload and comparison rules are unchanged.
+
 ## 1. Module Purpose
 
 `fingerprint_handler.py` 提供內容與索引配置（embedding model/chunk params）的 fingerprint 計算與比對，用於 artifact reuse 決策。 **[Code-Confirmed]**
