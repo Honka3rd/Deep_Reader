@@ -12,6 +12,11 @@ source tokens, epochs, physical identities and generation fences still apply.
 A legacy qualified derived directory is moved only with its matching raw source
 evidence. No inactive structured backend is consulted or modified.
 
+CONFIG-03 follow-up (implemented): upload and rename use config's shared destination
+conflict predicate, including exact legacy stem ownership. A rejected new rename
+leaves journals and all document resources unchanged; receipt/recovery handling
+retains the existing identity fences. See config's CONFIG-03 acceptance contract.
+
 ## SCHEMA-01/02 transport dependency (2026-11-11, implemented)
 
 All document path/query parameters consume the same api_schemas document-name

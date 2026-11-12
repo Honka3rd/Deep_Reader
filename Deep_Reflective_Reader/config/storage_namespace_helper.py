@@ -1,5 +1,6 @@
 """Lossless storage names and read-only, unambiguous legacy alias resolution."""
 from pathlib import Path
+from typing import Callable
 from shared.document_name import document_name
 
 
@@ -23,6 +24,28 @@ class StorageNamespaceHelper:
             return set()
         return {p.name for p in Path(root).iterdir()
                 if p.is_file() and p.suffix.lower() in cls.DEFAULT_EXTENSIONS and p.stem == stem}
+
+    @classmethod
+    def destination_conflicts(cls, name: str, *, raw_root: Path,
+                              contains_document: Callable[[str], bool]) -> bool:
+        """Pure occupancy check for a new upload/rename, never a receipt replay.
+
+        Exact repository metadata is essential: resolving a missing qualified
+        name would miss an incompatible bare legacy owner of the same stem.
+        Distinct qualified sources can coexist when no such owner exists.
+        """
+        name = cls.normalize_namespace(name)
+        stem = cls.stem(name)
+        path = cls.checked_path(raw_root, Path(raw_root)/name)
+        if path.exists() or path.is_symlink():
+            return True
+        if any(contains_document(candidate) for candidate in dict.fromkeys((name, stem))):
+            return True
+        if name == stem and Path(raw_root).exists():
+            # Bare targets must not acquire an already occupied raw family.
+            return any(p.stem == name and p.suffix.lower() in cls.DEFAULT_EXTENSIONS
+                       for p in Path(raw_root).iterdir())
+        return False
 
     @classmethod
     def resolve(cls, name, *, existing, raw_names=()):

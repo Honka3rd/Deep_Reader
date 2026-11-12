@@ -1,5 +1,10 @@
 # config Checklist
 
+- [x] CONFIG-03: share upload/rename destination conflicts and reject legacy ambiguity before effects.
+  Acceptance: file/real PostgreSQL HTTP `Legacy` + `Legacy.pdf`, `Source.txt -> Legacy.txt` rejects without changing body, notes, raw/index, journals or sidecars; independent qualified sources, replay and generation fences remain valid.
+  Evidence: `scripts/test_config_storage_audit.py` passes 35 cases (12 new); 199 related regressions, two real-backup file/PostgreSQL acceptance cases and seven standalone scripts pass, zero skips. Original two HTTP repros fail on 2a213b9. `/tmp/audit-config-03/validation-report.txt`; external review pending.
+  Timestamp: 2026-11-12
+
 - [x] CONFIG-01: preserve distinct source identities across upload, body, index and lifecycle.
   Acceptance: file/real PostgreSQL source and note isolation, upload conflict policies, safe legacy aliases and fail-closed ambiguity, rename/delete and stale command protection.
   Evidence: `scripts/test_config_storage_audit.py`; 23 source/read-path cases; 479 backend tests without skips, real SQL/TCP and regression evidence in `/tmp/audit-config-dcb3095/`. External review pending.

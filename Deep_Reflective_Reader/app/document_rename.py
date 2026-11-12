@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from document_structure.learning_file_lifecycle import atomic_write
 from app.document_file_identity import DocumentFileIdentity, sync_directory as _sync_directory
+from config.storage_namespace_helper import StorageNamespaceHelper
 from reading_preferences.models import PreferenceConflict
 from section_tasks.interaction_rename import renamed_interactions
 
@@ -287,18 +288,20 @@ class DocumentRename:
                     derived_resources_affected='derived' in kinds,
                     operation_id=record['operation_id'])
 
+    def _check_destination(self, new, raw_target):
+        names = {new}
+        if raw_target is not None:
+            names.add(raw_target.name)
+        if any(StorageNamespaceHelper.destination_conflicts(
+                name, raw_root=self.raw_root,
+                contains_document=self.repository.contains_document) for name in names):
+            raise ValueError('conflict')
+
     def _start(self, old, new, raw_source, raw_target, command_id, source_token):
         actual_token, source = self._source_context(old, raw_source)
         if actual_token != source_token:
             raise ValueError('conflict')
-        if _document(self.repository, new) is not None:
-            raise ValueError('conflict')
-        # A repository-only source must not adopt another raw candidate/profile.
-        # Check both supported extensions, even when there is no raw file to move.
-        if self.raw_root.exists():
-            for candidate in self.raw_root.iterdir():
-                if (candidate.name == new or candidate.stem == new) and candidate.suffix.lower() in ('.txt', '.pdf'):
-                    raise ValueError('conflict')
+        self._check_destination(new, raw_target)
         from config.faiss_storage_config import FaissStorageConfig
         derived_source = FaissStorageConfig(old, base_root=self.derived_root,
             identity_resolver=self.repository.resolve_document_name).base_dir
@@ -328,6 +331,17 @@ class DocumentRename:
         if old == new or re.fullmatch('[0-9a-f]{64}', source_token) is None:
             raise ValueError('conflict')
         receipt = self.directory / ('command-' + command_id + '.json')
+        # Reject known new-command conflicts without even creating lock/journal
+        # directories. _start rechecks under the lock; replay/recovery uses its
+        # durable identity evidence instead of treating its own target as a clash.
+        if not self.pending.exists() and not receipt.exists():
+            try:
+                self._check_destination(new, raw_target)
+            except ValueError:
+                # A concurrent copy may have published this command while the
+                # pure check ran. Let the locked replay path reconcile it.
+                if not self.pending.exists() and not receipt.exists():
+                    raise
         with self._locked():
             if self.pending.exists() or receipt.exists():
                 path = self.pending if self.pending.exists() else receipt

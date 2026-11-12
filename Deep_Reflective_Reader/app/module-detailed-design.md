@@ -57,6 +57,13 @@ record blocks other rename operations in that scope. Changes outside cooperating
 owners cause a recovery conflict, never guessed rollback or overwrite. Do not
 claim coordination with external filesystem tools or distributed deployments.
 
+CONFIG-03 follow-up (implemented): new commands run config's shared upload/rename
+destination predicate before creating coordination state, then recheck under the
+lock before journal publication. A qualified target cannot acquire a stored bare
+legacy stem's source family. Pending recovery and completed receipts continue
+through their recorded identity/stage/generation checks rather than new-command
+occupancy checks, preserving idempotent recovery after a completed move.
+
 Journals live in `<raw-root-parent>/.document-renames/<storage-scope-hash>/`;
 `pending.json` is fsynced before repository commit, completed receipts are keyed
 by caller command identity (see correction above). A new DocumentRename instance on an explicit identical HTTP

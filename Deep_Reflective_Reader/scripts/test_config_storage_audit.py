@@ -1,4 +1,4 @@
-"""CONFIG-01/02: source identity and side-effect-free resolution regressions."""
+"""CONFIG-01/02/03: source identity, destination conflicts and pure reads."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -142,6 +142,126 @@ class StorageHttpCases:
     def upload(self, filename, data=b'text', policy='reject'):
         return self.client.post('/documents/upload', files={'file':(filename, data, 'application/octet-stream')},
                                 data={'conflict_policy':policy})
+
+    def storage_snapshot(self):
+        if self.docs.lifecycle_storage_identity[0] == 'file':
+            return snapshot(self.root)
+        # Real SQL rows, including preferences, learning, receipts and revisions.
+        # This fixture owns a disposable schema; no production data is inspected.
+        import psycopg
+        from psycopg import sql
+        with psycopg.connect(self.scoped) as connection:
+            tables = connection.execute("SELECT tablename FROM pg_tables WHERE schemaname=current_schema()").fetchall()
+            return {name: connection.execute(sql.SQL(
+                'SELECT row_to_json(t)::text FROM {} AS t ORDER BY 1'
+            ).format(sql.Identifier(name))).fetchall() for (name,) in tables}
+
+    def legacy_rename_conflict(self, *, raw_source=True):
+        self.persist('Legacy', 'original legacy body')
+        self.persist('Source.txt', 'original source body')
+        (self.raw/'Legacy.pdf').write_bytes(b'original PDF source')
+        if raw_source:
+            (self.raw/'Source.txt').write_bytes(b'original TXT source')
+        for name in ('Legacy', 'Source.txt'):
+            directory = self.derived/name; directory.mkdir()
+            (directory/'index.faiss').write_bytes(('index '+name).encode())
+            (directory/'profile.json').write_text('{"topic":"preserved"}')
+        command = rename.RenameCases.rename_command(self, 'Source.txt', 'Legacy.txt')
+        before_files, before_storage = snapshot(self.files), self.storage_snapshot()
+        response = self.client.post('/documents/lifecycle/rename', json=command)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['status'], 'conflict')
+        self.assertEqual(response.json()['reason'], 'conflict')
+        self.assertEqual(snapshot(self.files), before_files)
+        self.assertEqual(self.storage_snapshot(), before_storage)
+        self.check_source('Legacy', 'original legacy body')
+        self.check_source('Legacy.pdf', 'original legacy body')
+        self.check_source('Source.txt', 'original source body')
+        self.assertEqual(snapshot(self.files), before_files)
+        self.assertEqual(self.storage_snapshot(), before_storage)
+
+    def test_legacy_destination_rename_rejects_before_any_mutation(self):
+        self.legacy_rename_conflict()
+
+    def test_legacy_destination_repository_only_rename_rejects_before_any_mutation(self):
+        self.legacy_rename_conflict(raw_source=False)
+
+    def test_legacy_destination_conflict_over_tcp(self):
+        rename.RenameCases.over_tcp(self, self.legacy_rename_conflict)
+
+    def test_qualified_destination_sibling_allows_rename_and_receipt_replay(self):
+        for name, text in (('Twin.pdf', 'PDF body'), ('Source.txt', 'TXT body')):
+            self.persist(name, text)
+            (self.raw/name).write_bytes(text.encode())
+        pdf = self.docs.load_document('Twin.pdf').to_dict()
+        command = rename.RenameCases.rename_command(self, 'Source.txt', 'Twin.txt')
+        result = self.client.post('/documents/lifecycle/rename', json=command)
+        self.assertEqual(result.status_code, 200, result.text)
+        before_files, before_storage = snapshot(self.files), self.storage_snapshot()
+        repeated = self.client.post('/documents/lifecycle/rename', json=command)
+        self.assertEqual(repeated.status_code, 200, repeated.text)
+        self.assertEqual(repeated.json()['operation_id'], result.json()['operation_id'])
+        self.assertEqual(snapshot(self.files), before_files)
+        self.assertEqual(self.storage_snapshot(), before_storage)
+        self.check_source('Twin.pdf', 'PDF body'); self.check_source('Twin.txt', 'TXT body')
+        self.assertEqual(self.docs.load_document('Twin.pdf').to_dict(), pdf)
+        self.assertEqual((self.raw/'Twin.pdf').read_bytes(), b'PDF body')
+        self.assertEqual((self.raw/'Twin.txt').read_bytes(), b'TXT body')
+        self.assertFalse((self.raw/'Source.txt').exists())
+
+    def test_destination_conflict_is_rechecked_under_lock_before_journal(self):
+        from contextlib import contextmanager
+        from app.document_rename import DocumentRename
+        self.persist('Source.txt', 'source body')
+        (self.raw/'Source.txt').write_bytes(b'source')
+        command = rename.RenameCases.rename_command(self, 'Source.txt', 'Legacy.txt')
+        locked = DocumentRename._locked
+        before = {}
+
+        @contextmanager
+        def occupied_while_waiting(operation):
+            with locked(operation):
+                # Another owner committed before this command acquired the lock.
+                self.persist('Legacy', 'legacy body')
+                (self.raw/'Legacy.pdf').write_bytes(b'legacy PDF')
+                before['files'] = snapshot(self.files)
+                before['storage'] = self.storage_snapshot()
+                yield
+
+        with patch.object(DocumentRename, '_locked', occupied_while_waiting), \
+                patch.object(DocumentRename, '_save') as journal_write:
+            response = self.client.post('/documents/lifecycle/rename', json=command)
+            self.assertEqual(response.status_code, 409, response.text)
+            journal_write.assert_not_called()
+        self.assertEqual(snapshot(self.files), before['files'])
+        self.assertEqual(self.storage_snapshot(), before['storage'])
+        self.check_source('Legacy', 'legacy body'); self.check_source('Source.txt', 'source body')
+
+    def test_same_command_finishing_during_preflight_reconciles_its_receipt(self):
+        from app.document_rename import DocumentRename
+        self.persist('Source.txt', 'source body')
+        (self.raw/'Source.txt').write_bytes(b'source')
+        command = rename.RenameCases.rename_command(self, 'Source.txt', 'Moved.txt')
+        check = DocumentRename._check_destination
+        completed = []
+
+        def complete_during_check(operation, new, raw_target):
+            # Deterministic interleaving: the other copy finishes after the first
+            # receipt-existence check, before destination occupancy is read.
+            with patch.object(DocumentRename, '_check_destination', check):
+                result = self.client.post('/documents/lifecycle/rename', json=command)
+            self.assertEqual(result.status_code, 200, result.text)
+            completed.append((result.json(), snapshot(self.files), self.storage_snapshot()))
+            return check(operation, new, raw_target)
+
+        with patch.object(DocumentRename, '_check_destination', complete_during_check):
+            response = self.client.post('/documents/lifecycle/rename', json=command)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(completed), 1)
+        result, files, storage = completed[0]
+        self.assertEqual(response.json()['operation_id'], result['operation_id'])
+        self.assertEqual(snapshot(self.files), files)
+        self.assertEqual(self.storage_snapshot(), storage)
 
     def test_same_stem_http_body_notes_index_and_lifecycle_are_isolated(self):
         for name, text in [('Twin.pdf', 'PDF only'), ('Twin.txt', 'TXT only')]:

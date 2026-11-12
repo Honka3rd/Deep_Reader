@@ -1,5 +1,40 @@
 # config Detailed Design
 
+## CONFIG-03 destination conflicts (2026-11-12, implemented)
+
+Upload and new rename commands share a pure destination-conflict predicate owned
+by `StorageNamespaceHelper`. Consult exact identities in the active repository:
+a qualified destination conflicts with both its exact identity and a stored bare
+legacy stem. Thus `Legacy` plus `Legacy.pdf` prevents introducing `Legacy.txt`.
+Independent qualified PDF/TXT documents without a bare owner remain supported.
+Existing raw destinations also conflict; a bare destination must not adopt any
+existing raw source of that stem. Upload's explicit replace policy may replace
+only its existing exact source, and create_distinct tests every proposed name.
+
+New renames check before creating coordination state and recheck under the lock
+before publishing a journal or changing body, source, index or lifecycle sidecars.
+Known pending commands and completed receipts instead retain their existing
+identity/stage/generation validation; destination occupancy caused by that same
+operation must not prevent legitimate recovery or replay. No reads repair data.
+
+Acceptance: file and real PostgreSQL HTTP rejection of `Source.txt -> Legacy.txt`
+with unchanged body/notes, raw/index files, journal and sidecars; both original
+documents remain readable. Cover upload policy parity, independent PDF/TXT rename,
+repository-only sources, lock-time revalidation and existing recovery/generation
+regressions. External review is required before deployment or push.
+
+Validation: the two original HTTP repros returned incorrect 200/accepted on
+2a213b9 (file and real PostgreSQL), and now return 409/conflict with unchanged
+storage snapshots and readable body/notes. The config suite passes 35 cases,
+including 12 new cases for this correction. Related rename, lifecycle, legacy
+names, schema safety and upload regressions pass 199 cases; seven standalone
+route/schema scripts pass. Two additional immutable PDF/TXT backup acceptance
+cases pass on file/real PostgreSQL, preserving body, notes, files and backup
+hashes. All 236 test executions pass without skips. Evidence and commands:
+`/tmp/audit-config-03/validation-report.txt`. Index checks verify bytes/path
+preservation, not retrieval quality. No parsing/provider call, UI change,
+deployment, production-data migration or push is part of this correction.
+
 ## CONFIG-01/02 storage identity and pure resolution (2026-11-12, implemented)
 
 Document names retain supported source suffixes; normalization must not merge PDF

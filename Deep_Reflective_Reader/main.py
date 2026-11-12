@@ -267,12 +267,13 @@ def _resolve_upload_destination(
     base_dir: Path = _RAW_DOCUMENT_BASE_DIR,
 ) -> Path:
     """Resolve destination path according to the explicit upload conflict policy."""
+    from config.storage_namespace_helper import StorageNamespaceHelper
+
     def conflict(path):
-        if path.exists():
-            return True
         # Metadata-only checks; uploads never load body or prepare a document.
-        return any(document_artifact_repository.contains_document(name)
-                   for name in (path.name, path.stem))
+        return StorageNamespaceHelper.destination_conflicts(
+            path.name, raw_root=base_dir,
+            contains_document=document_artifact_repository.contains_document)
 
     destination = base_dir / filename
     if not conflict(destination):
