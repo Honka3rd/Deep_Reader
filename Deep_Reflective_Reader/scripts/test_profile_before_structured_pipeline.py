@@ -5,6 +5,23 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from contextlib import contextmanager
+
+
+class ProfileGuardFixture:
+    """Explicit orchestration-only double; real guards have a separate file/SQL suite."""
+    def capture(self):
+        return self
+
+    def verify_source(self):
+        pass
+
+    def accept_prepared_structure(self, document):
+        pass
+
+    @contextmanager
+    def publication(self):
+        yield self.verify_source
 
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
 from document_preparation.prepared_document_assets import PreparedDocumentAssets
@@ -159,8 +176,10 @@ class _FakeProfileStore:
         self.clear_calls += 1
         self.exists_value = False
 
-    def save(self, profile: DocumentProfile, config) -> None:
+    def save(self, profile: DocumentProfile, config, *, validate=None) -> None:
         _ = config
+        if validate is not None:
+            validate()
         self.save_calls += 1
         self.loaded_profile = profile
         self.exists_value = True
@@ -267,6 +286,7 @@ def _build_real_pipeline_for_profile_tests(
         profile_builder=profile_builder,
         profile_store=profile_store,
         bundle_provider=_NoopBundleProvider(),
+        profile_guard_factory=lambda **kwargs: ProfileGuardFixture(),
     )
 
 

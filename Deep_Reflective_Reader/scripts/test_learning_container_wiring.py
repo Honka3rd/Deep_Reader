@@ -306,7 +306,7 @@ assert not list(Path('.').rglob('*'))
     def test_source_profile_is_read_only_and_does_not_reenter_repository(self):
         with TemporaryDirectory() as root:
             path = Path(root)/'profile.json'
-            path.write_text(json.dumps({'document_language': 'en'}))
+            path.write_text(json.dumps({'topic': 'fiction', 'summary': 'A valid saved profile.', 'document_language': 'en'}))
             config = SimpleNamespace(doc_name='book', get_raw_profile_path=lambda: str(path))
             factory = Mock(return_value=config)
             repo = Mock()

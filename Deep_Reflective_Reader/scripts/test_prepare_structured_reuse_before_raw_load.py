@@ -152,8 +152,10 @@ class _ProfileStore:
     def clear(self, config: object) -> None:
         _ = config
 
-    def save(self, profile: DocumentProfile, config: object) -> None:
+    def save(self, profile: DocumentProfile, config: object, *, validate=None) -> None:
         _ = (profile, config)
+        if validate is not None:
+            validate()
         self.save_calls += 1
 
 
@@ -230,6 +232,15 @@ def _build_pipeline(
     loader: object,
     store: _StructuredStore,
 ) -> DocumentPreparationPipeline:
+    def guard(**kwargs):
+        # This helper's in-memory store models orchestration only. If a caller
+        # replaces it with a real store, retain the real publication boundary.
+        from test_profile_before_structured_pipeline import ProfileGuardFixture
+        from config.profile_publication_factory import profile_publication_guard
+        if isinstance(kwargs["store"], _StructuredStore):
+            return ProfileGuardFixture()
+        return profile_publication_guard(**kwargs)
+
     return DocumentPreparationPipeline(
         loader_factory=_LoaderFactory(loader),  # type: ignore[arg-type]
         language_detector=_LanguageDetector(),  # type: ignore[arg-type]
@@ -243,6 +254,7 @@ def _build_pipeline(
         profile_store=_ProfileStore(),  # type: ignore[arg-type]
         bundle_provider=_NoopBundleProvider(),  # type: ignore[arg-type]
         post_structure_enricher=_NoopPostStructureEnricher(),  # type: ignore[arg-type]
+        profile_guard_factory=guard,
     )
 
 

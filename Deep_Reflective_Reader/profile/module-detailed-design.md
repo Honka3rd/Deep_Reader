@@ -1,5 +1,79 @@
 # profile Detailed Design
 
+## PROFILE audit integration (2026-11-13)
+
+PROFILE-01/02 implemented publication/read correction: capture source session, lifecycle
+generation, document identity/incarnation/version and existing profile digest before
+generation. Model work runs outside publication locks. Publish under raw lifecycle lock
+then the active store snapshot boundary; recheck source and profile digest immediately
+before atomic replacement. Reject stale results without changing prior bytes or
+reporting profile ready. Enrichment uses the same original source/lifecycle binding and
+the explicitly saved hierarchy snapshot; it cannot adopt arbitrary current hierarchy.
+Required persisted topic/summary/language are nonempty strings, language resolves
+through the registry; absent optional legacy derived metadata stays compatible. Invalid
+reads raise an explicit load error without generation or write-back.
+
+## External audit remediation (2026-11-13)
+
+Baseline `fc1dd28533daacbc2971c5b70a41608793f5590f`; implementation is split into
+two independently validated units, with developer confirmation between units.
+
+1. PROFILE-03/04 (locally implemented, external review pending): budget the complete serialized classification request (fixed
+   instructions/schema, deterministic metadata, all excerpts/candidates and JSON
+   escaping). Use provider token counting when available, otherwise UTF-8 byte
+   length as a conservative upper bound. Apply the provider's effective output
+   reserve, or model maximum when absent, exactly once, and leave a framing/safety
+   margin of max(256, ceil(5% of available input)). Reduce evidence samples and
+   whole candidate entries coherently; do not truncate serialized JSON. If fixed
+   instructions/metadata do not fit or capability is unavailable, raise an explicit
+   profile prompt-budget failure before dispatch; do not route that failure into
+   unbounded topic/summary calls. Malformed model output retains the existing
+   topic/summary fallback, with complete-request checks on those calls too.
+   Classification confidence may be absent/null or a finite JSON number in [0,1].
+   Strings, booleans, containers, non-finite and out-of-range values are invalid.
+   Unknown confidence preserves valid classification and deterministic metadata.
+2. PROFILE-01/02 (locally implemented, external review pending): guard generation/enrichment publication against the
+   captured source and lifecycle identity, preserving prior bytes on conflict;
+   validate required persisted source metadata without rejecting valid legacy
+   profiles lacking optional derived metadata. Runtime/source-only reads remain
+   generation-free and write-free. Model work stays outside storage transactions.
+
+Acceptance includes the six external red assertions, boundary matrices, real SQL,
+immutable full-book copies, legacy/learning reads and current fixture contracts.
+No cross-resource transaction or semantic/live-model acceptance is implied.
+
+Final local evidence: the original six assertions fail on baseline and all six
+now pass. `test_profile_classification_contract.py` passes 11 methods with boundary
+subcases (baseline: 27 failed subcase assertions, zero errors/skips).
+`test_profile_persistence_contract.py` passes 32 file/real PostgreSQL methods:
+source changes during generation/serialization/enrichment, same-byte HTTP
+reimport, HTTP rename round trips, late/new concurrent generation, source-owner
+locks, reparse, atomic-save faults, strict core payload matrix, legacy reads and
+source-only reads. Newer valid results and existing bytes survive rejected writes.
+Initial creation retains its generation-only deduplication gate; provider work is
+outside raw/source/SQL publication locks. Explicit force requests may overlap;
+publication compares both source binding and prior profile digest.
+
+Ten original profile suites now pass 42/42, including both diagnostics fixtures.
+Read-contract setup supplies the repository snapshot/current resolver metadata;
+malformed-response tests supply known capacity; source-only/config fixtures supply
+actual core field names and values. Original behavioral assertions remain. The
+lease test now targets the same stored identity (an unbound doc.pdf is distinct);
+the stale-save test expects the earlier incarnation rejection without weakening it.
+Enrichment 6/6, learning wiring 29/29, PREP runtime 24/24, PREP regression 142/142,
+SQL support 16/16 and seven scripts pass. Enhancement support executes 33: 32 pass,
+one private-source readback opt-in skip. Exact-index 10/10, atomic artifacts 18/18,
+generated-source 23/23 and config 35/35 pass. Groups overlap; no unique-case sum.
+
+Two immutable full-book copies (652001/147401 characters) retain source hashes,
+backup manifest and profile roundtrips. Classification prompts use 1242/1475 cl100k
+tokens under the configured 6000 input limit; numeric reproduction 8407 -> 1371.
+Null-confidence classification takes one call, retaining topic/text form.
+Evidence and commands: `/tmp/profile-fix-fc1dd285/final-report.txt` and sibling
+runners/logs. Providers are deterministic; no live LLM/OCR semantic, UI or deployment
+acceptance is claimed. This remains profile remediation, not a db/config/structure
+module audit. External review of the new local commit is required before delivery.
+
 ## CONFIG-02 pure path dependency (2026-11-12)
 
 All storage config constructors are pure, including callers without read_only=True.

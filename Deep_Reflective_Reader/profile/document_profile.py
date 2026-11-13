@@ -374,6 +374,14 @@ class DocumentProfile:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "DocumentProfile":
+        if not isinstance(payload, dict):
+            raise ValueError("profile_invalid:object_required")
+        for key in ("topic", "summary", "document_language"):
+            if not isinstance(payload.get(key), str) or not payload[key].strip():
+                raise ValueError(f"profile_invalid:{key}_required_string")
+        language = LanguageCodeResolver.resolve(payload["document_language"])
+        if language == LanguageCode.UNKNOWN:
+            raise ValueError("profile_invalid:document_language_unknown")
         parser_metadata_payload = payload.get("parser_metadata")
         post_structure_metadata_payload = payload.get("post_structure_metadata")
         structure_profile_payload = payload.get("structure_profile")
@@ -393,9 +401,9 @@ class DocumentProfile:
             else DocumentStructureProfile.from_dict(structure_profile_payload)
         )
         return cls(
-            topic=str(payload.get("topic") or "").strip(),
-            summary=str(payload.get("summary") or "").strip(),
-            document_language=LanguageCodeResolver.resolve(payload.get("document_language")),
+            topic=payload["topic"].strip(),
+            summary=payload["summary"].strip(),
+            document_language=language,
             parser_metadata=parser_metadata,
             post_structure_metadata=post_structure_metadata,
             structure_profile=structure_profile,

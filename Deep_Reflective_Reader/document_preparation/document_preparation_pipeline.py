@@ -43,6 +43,8 @@ from profile.document_profile_builder import DocumentProfileBuilder
 from profile.document_profile import DocumentProfile
 from profile.document_profile_store import DocumentProfileStore
 from profile.post_structure_metadata_enricher import PostStructureMetadataEnricher
+from profile.profile_publication import ProfilePublicationConflict
+from config.profile_publication_factory import profile_publication_guard
 from retrieval.faiss_index_builder import FaissIndexBuilder
 from retrieval.faiss_index_store import FaissIndexStore
 from retrieval.node_provider import NodeProvider
@@ -121,9 +123,11 @@ class DocumentPreparationPipeline:
         post_structure_enricher: PostStructureMetadataEnricher | None = None,
         cleanup_provider=None,
         identity_resolver=None,
+        profile_guard_factory=profile_publication_guard,
     ):
         """Initialize pipeline with explicit dependencies for preparation steps."""
         self.identity_resolver = identity_resolver
+        self.profile_guard_factory = profile_guard_factory
         self.loader_factory = loader_factory
         self.cleanup_provider = cleanup_provider
         self.language_detector = language_detector
@@ -276,6 +280,9 @@ class DocumentPreparationPipeline:
                 doc_name=doc_name, raw_text=assets.raw_text, language=assets.language,
                 assets=assets, force_rebuild=force_rebuild)
 
+        if assets.profile_publication_rejected:
+            return assets
+
         # Step 4. Prepare structured document artifact.
         (
             assets.structured_document_ready,
@@ -319,6 +326,9 @@ class DocumentPreparationPipeline:
             )
             if enriched_profile is not None:
                 prepared_profile = enriched_profile
+
+        if assets.profile_publication_rejected:
+            return assets
 
         if preparation_mode == PreparationMode.BASE:
             self._log_preparation_result(assets)
@@ -424,6 +434,8 @@ class DocumentPreparationPipeline:
             guard = assets.source_guard or assets.source_session
             if guard is not None:
                 guard.verify_source()
+            if assets.profile_publication_guard is not None:
+                assets.profile_publication_guard.verify_source()
             return True
         except Exception as error:
             assets.errors.append(f"source_not_ready:explicit_prepare_required:{error}")
@@ -431,6 +443,7 @@ class DocumentPreparationPipeline:
             assets.faiss_ready = False
             assets.bundle_ready = False
             assets.runtime_bundle = None
+            assets.profile_ready = False
             return False
 
     def _accepted_assets(self, doc_name):
@@ -864,10 +877,12 @@ class DocumentPreparationPipeline:
                              "char_end": b.char_end, "page_label": b.page_label}
                             for b in extraction.page_boundaries]
                 structured_document.parse_provenance["extraction"] = result.record()
-            self._save_structured_document_atomically(
+            saved_document = self._save_structured_document_atomically(
                 document=structured_document,
                 storage_config=storage_config,
             )
+            if assets.profile_publication_guard is not None:
+                assets.profile_publication_guard.accept_prepared_structure(saved_document)
             self._persist_ocr_run(
                 doc_name=doc_name,
                 raw_text=raw_text,
@@ -1044,16 +1059,21 @@ class DocumentPreparationPipeline:
                 profile=profile,
                 structured_document=structured_document,
             )
-            self.profile_store.save(
-                enriched_profile,
-                self._index_config(namespace=doc_name),
-            )
+            guard = assets.profile_publication_guard
+            if guard is None:
+                raise ProfilePublicationConflict("profile_publication_binding_missing")
+            with guard.publication() as validate:
+                self.profile_store.save(enriched_profile, self._index_config(namespace=doc_name),
+                                        validate=validate)
             print(
                 "DocumentPreparationPipeline#post_structure_enrichment_success",
                 f"doc={doc_name}",
                 f"has_post_structure_metadata={enriched_profile.post_structure_metadata is not None}",
             )
             return enriched_profile
+        except ProfilePublicationConflict as error:
+            self._reject_profile_publication(assets, error)
+            return None
         except Exception as error:
             print(
                 "DocumentPreparationPipeline#post_structure_enrichment_failed",
@@ -1070,7 +1090,7 @@ class DocumentPreparationPipeline:
         *,
         document,
         storage_config: StructuredDocumentStorageConfig,
-    ) -> None:
+    ) -> StructuredDocument:
         """Atomically replace structured artifact to prevent half-written corruption."""
         if not document.parse_provenance.get("interaction_epoch"):
             document = replace(document, parse_provenance={
@@ -1079,7 +1099,7 @@ class DocumentPreparationPipeline:
             self.structured_document_store.save(document=document, target=storage_config)
         # Read-back validation before reporting structured readiness.
         with log_stage(logger, "structured_readback"):
-            self.structured_document_store.load(storage_config)
+            return self.structured_document_store.load(storage_config)
 
     @log_stage(logger, "faiss_prepare")
     def _prepare_faiss(
@@ -1129,18 +1149,21 @@ class DocumentPreparationPipeline:
     def _prepare_profile(
         self, doc_name, raw_text, language, assets, force_rebuild,
     ) -> tuple[bool, DocumentProfile | None]:
-        # Serialize initial profile creation across workers; recheck inside the lock.
+        if force_rebuild:
+            return self._prepare_profile_candidate(doc_name, raw_text, language, assets, True)
+        # Initial cache creation retains cross-worker deduplication. This is only
+        # a generation gate, not the source/lifecycle/SQL publication boundary.
         import fcntl
         config = self._index_config(namespace=doc_name)
         config.base_dir.mkdir(parents=True, exist_ok=True)
         with open(Path(config.get_raw_profile_path()).with_suffix(".lock"), "a") as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            fcntl.flock(lock, fcntl.LOCK_EX)
             try:
-                return self._prepare_profile_locked(doc_name, raw_text, language, assets, force_rebuild)
+                return self._prepare_profile_candidate(doc_name, raw_text, language, assets, False)
             finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
-    def _prepare_profile_locked(
+    def _prepare_profile_candidate(
         self,
         doc_name: str,
         raw_text: str | None,
@@ -1183,13 +1206,19 @@ class DocumentPreparationPipeline:
                 f"doc={doc_name}",
             )
             logger.info("profile_cache outcome=rebuild force_rebuild=%s", force_rebuild)
+            guard = self.profile_guard_factory(name=doc_name, source=assets.source_session,
+                store=self.structured_document_store, target=self._structured_config(doc_name),
+                profile_config=config)
+            guard.capture()
+            assets.profile_publication_guard = guard
             with log_stage(logger, "profile_generate", raw_chars=len(raw_text), language=language.strip().lower()):
                 profile = self.profile_builder.build(
                     text=raw_text,
                     document_language=language.strip().lower(),
                 )
             with log_stage(logger, "profile_save"):
-                self.profile_store.save(profile, config)
+                with guard.publication() as validate:
+                    self.profile_store.save(profile, config, validate=validate)
             assets.profile_generated = True
             print(
                 "DocumentPreparationPipeline#profile_build_success",
@@ -1198,6 +1227,9 @@ class DocumentPreparationPipeline:
                 f"has_structure_profile={profile.structure_profile is not None}",
             )
             return True, profile
+        except ProfilePublicationConflict as error:
+            self._reject_profile_publication(assets, error)
+            return False, None
         except Exception as error:
             print(
                 "DocumentPreparationPipeline#profile_build_failed",
@@ -1206,6 +1238,17 @@ class DocumentPreparationPipeline:
             )
             assets.errors.append(f"prepare_profile_failed:{doc_name}:{error}")
             return False, None
+
+    @staticmethod
+    def _reject_profile_publication(assets, error):
+        assets.profile_publication_rejected = True
+        assets.profile_ready = False
+        assets.profile_generated = False
+        assets.structured_document_ready = False
+        assets.faiss_ready = False
+        assets.bundle_ready = False
+        assets.runtime_bundle = None
+        assets.errors.append(f"source_not_ready:profile_publication_rejected:{error}")
 
     @log_stage(logger, "bundle_prepare")
     def _prepare_bundle(

@@ -1,5 +1,11 @@
 # db Checklist
 
+## Profile audit support (2026-11-13)
+
+- [x] PROFILE-01 support: same-connection SQL snapshot boundary fences lifecycle writes and missing-row insertion without SQL/profile cross-resource atomicity claims.
+  Evidence: `test_profile_persistence_contract.py` 32/32 file/real SQL publication/lifecycle/read cases; PREP 142, runtime 24, index 10, atomic artifact 18, generated-source 23 and config 35 pass; 16 SQL support tests/seven scripts pass. `/tmp/profile-fix-fc1dd285/final-report.txt`; supporting integration only, external review pending.
+  Timestamp: 2026-11-13
+
 ## STRUCT-04 supporting integration (2026-11-13)
 
 - [x] STRUCT-04 support: Validate generated artifacts on the locked connection and advance rename generation identity in metadata/snapshot atomically. File/real SQL source matrix and all 120 HTTP rename cases pass; existing rollback and lifecycle behavior retained.

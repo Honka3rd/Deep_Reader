@@ -1,5 +1,11 @@
 # document_structure Checklist
 
+## Profile audit support (2026-11-13)
+
+- [x] PROFILE-01 support: file publication snapshot uses the repository document lock without hierarchy writes.
+  Evidence: `test_profile_persistence_contract.py` 32/32 file/real SQL publication/lifecycle/read cases; PREP 142, runtime 24, index 10, atomic artifact 18, generated-source 23 and config 35 pass; 16 SQL support tests/seven scripts pass. `/tmp/profile-fix-fc1dd285/final-report.txt`; supporting integration only, external review pending.
+  Timestamp: 2026-11-13
+
 ## STRUCT-01 audit correction (2026-11-13)
 
 - [x] STRUCT-01: Serialize latest read, target validation, owned-field merge and save.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
@@ -20,6 +21,7 @@ from profile.document_profile import (
 )
 from profile.parser_metadata_extractor import ParserMetadataExtractor
 from profile.document_profile_evidence_builder import DocumentProfileEvidenceBuilder
+from profile.profile_prompt_budget import ProfilePromptBudget, ProfilePromptBudgetError
 
 
 _FENCED_JSON_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
@@ -95,6 +97,7 @@ class DocumentProfileBuilder:
                 f"document_language={document_language.value}",
                 f"text_len={len(text or '')}",
             )
+            budget = ProfilePromptBudget(self.llm_provider)
             evidence = self._build_profile_evidence(
                 text=text,
                 document_language=document_language.value,
@@ -102,6 +105,7 @@ class DocumentProfileBuilder:
             prompt = self._build_profile_classification_prompt(
                 evidence=evidence,
                 deterministic_metadata=deterministic_metadata,
+                budget=budget,
             )
             raw_response = self.llm_provider.complete_text(prompt)
             payload = self._parse_json_object_payload(raw_response)
@@ -125,6 +129,10 @@ class DocumentProfileBuilder:
                 return None
             print("DocumentProfileBuilder#parser_metadata_classification_success")
             return profile
+        except ProfilePromptBudgetError:
+            # Capacity failure is not malformed model output. Do not dispatch
+            # fallback calls with unknown/insufficient capacity.
+            raise
         except Exception as error:
             print(
                 "DocumentProfileBuilder#parser_metadata_classification_fallback",
@@ -204,7 +212,7 @@ class DocumentProfileBuilder:
                     f"reason={field_name}_invalid",
                 )
                 return False
-        if "confidence" in payload and self._safe_confidence(payload.get("confidence")) is None:
+        if payload.get("confidence") is not None and self._safe_confidence(payload["confidence"]) is None:
             print(
                 "DocumentProfileBuilder#parser_metadata_payload_invalid",
                 "reason=confidence_invalid",
@@ -247,13 +255,13 @@ class DocumentProfileBuilder:
                 return None
 
     def _safe_confidence(self, value: Any) -> float | None:
-        if value is None:
+        if type(value) not in (int, float):
             return None
         try:
             confidence = float(value)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return None
-        if confidence < 0.0 or confidence > 1.0:
+        if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
             return None
         return confidence
 
@@ -270,6 +278,28 @@ class DocumentProfileBuilder:
         return notes
 
     def _build_profile_classification_prompt(
+        self,
+        *,
+        evidence: dict[str, Any],
+        deterministic_metadata: ParserRelevantMetadata,
+        budget: ProfilePromptBudget | None = None,
+    ) -> str:
+        budget = budget or ProfilePromptBudget(self.llm_provider)
+        sampled = dict(evidence)
+        while True:
+            prompt = self._render_profile_classification_prompt(
+                evidence=sampled, deterministic_metadata=deterministic_metadata,
+            )
+            if budget.fits(prompt):
+                return prompt
+            reduced = self.evidence_builder.reduce_samples(sampled)
+            if reduced == sampled:
+                raise ProfilePromptBudgetError(
+                    "profile_prompt_budget:mandatory_content_exceeds_capacity"
+                )
+            sampled = reduced
+
+    def _render_profile_classification_prompt(
         self,
         *,
         evidence: dict[str, Any],
@@ -327,12 +357,14 @@ class DocumentProfileBuilder:
         )
 
     def _detect_topic(self, text: str, document_language: str) -> str:
+        budget = ProfilePromptBudget(self.llm_provider)
         excerpt = self._build_prompt_excerpt(
             text=text,
             prompt_overhead_tokens=self.profile_prompt_policy.topic_prompt_overhead_tokens,
             token_utilization_ratio=self.profile_prompt_policy.topic_excerpt_token_utilization_ratio,
         )
-        prompt = f"""
+        def render(sample: str) -> str:
+            return f"""
 You are a document classifier.
 
 Determine the primary topic/category of the following document.
@@ -341,8 +373,9 @@ Return ONLY a short topic label in English.
 Document language: {document_language}
 
 Document excerpt:
-{excerpt}
+{sample}
 """
+        prompt = budget.fit_excerpt(render, excerpt)
         return self.llm_provider.complete_text(prompt).strip().lower()
 
     def _generate_summary(
@@ -351,12 +384,14 @@ Document excerpt:
         document_language: str,
         topic: str,
     ) -> str:
+        budget = ProfilePromptBudget(self.llm_provider)
         excerpt = self._build_prompt_excerpt(
             text=text,
             prompt_overhead_tokens=self.profile_prompt_policy.summary_prompt_overhead_tokens,
             token_utilization_ratio=self.profile_prompt_policy.summary_excerpt_token_utilization_ratio,
         )
-        prompt = f"""
+        def render(sample: str) -> str:
+            return f"""
 You are a document profiling assistant.
 
 The document topic is: {topic}
@@ -366,8 +401,9 @@ Generate a concise background summary for prompt conditioning.
 Return only the summary text.
 
 Document excerpt:
-{excerpt}
+{sample}
 """
+        prompt = budget.fit_excerpt(render, excerpt)
         return self.llm_provider.complete_text(prompt).strip()
 
     def _build_prompt_excerpt(

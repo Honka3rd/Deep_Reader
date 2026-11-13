@@ -232,7 +232,9 @@ def test_fake_llm_classification_merge() -> None:
 
 
 def test_malformed_llm_fallback_preserves_deterministic_metadata() -> None:
-    provider = _BrokenCapabilityProvider(
+    # Malformed response fallback requires dispatchable capacity. Unknown capacity
+    # now fails before dispatch and is covered by classification contract tests.
+    provider = _FakeLLMProvider(
         outputs=[
             "{not-json}",
             "essay",

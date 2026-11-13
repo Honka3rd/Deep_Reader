@@ -27,6 +27,26 @@ It is used to:
 
 ## Completed Checklist
 
+- [x] PROFILE-03: Bound complete classification and fallback prompts before dispatch.
+  Acceptance: Actual reserve, full JSON/evidence/metadata, provider counter and conservative fallback; CJK/numeric/English, dense candidates, small/large/unknown capacities; immutable full-book evidence and original excerpt assertions.
+  Evidence: `profile/profile_prompt_budget.py`, builder/evidence reducer; `scripts/test_profile_classification_contract.py` (11 methods shared with PROFILE-04, all pass); original excerpt suite 2/2; `/tmp/profile-fix-fc1dd285/unit1-green.log`, `real-books-unit1.json` (immutable full copies, 1242/1475 tokens < 6000). Local validation only, external review pending.
+  Timestamp: 2026-11-13
+
+- [x] PROFILE-04: Accept absent/null confidence without losing valid classification.
+  Acceptance: One call for absent/null/0/1/ordinary values; reject wrong type, non-finite and out-of-range values; preserve malformed-response fallback and deterministic metadata.
+  Evidence: `scripts/test_profile_classification_contract.py`, parser metadata suite 6/6; external `unit1-external-reproduce.log` records null confidence one-call success; full boundary red/green logs under `/tmp/profile-fix-fc1dd285/`. Local validation only, external review pending.
+  Timestamp: 2026-11-13
+
+- [x] PROFILE-01: Reject source/lifecycle-invalid profile generation and enrichment publication.
+  Acceptance: File/real SQL late/new results, source replacement and rename/delete/reimport; previous valid bytes survive and rejected results are not ready.
+  Evidence: `scripts/test_profile_persistence_contract.py` 32/32 file/real SQL methods; external six 6/6; core 42/42, learning 29/29 and enhancement 32 pass/one private opt-in skip. `/tmp/profile-fix-fc1dd285/final-report.txt`; external review pending.
+  Timestamp: 2026-11-13
+
+- [x] PROFILE-02: Validate persisted core profile fields on read without repair.
+  Acceptance: Empty/missing/wrong-type/malformed payloads fail readiness; valid legacy optional omissions and source-only learning reads remain compatible in both compositions; reconcile current diagnostics/enhancement fixtures.
+  Evidence: `scripts/test_profile_persistence_contract.py` 32/32 file/real SQL methods; external six 6/6; core 42/42, learning 29/29 and enhancement 32 pass/one private opt-in skip. `/tmp/profile-fix-fc1dd285/final-report.txt`; external review pending.
+  Timestamp: 2026-11-13
+
 - [x] Defines `DocumentProfile` contract with `parser_metadata` and `post_structure_metadata` plus legacy compatibility fields.
   Evidence: `Deep_Reflective_Reader/profile/document_profile.py; Deep_Reflective_Reader/profile/module-detailed-design.md (Important Data Structures / Contracts)`
   Notes: Profile schema supports both current and compatibility fields.
@@ -49,7 +69,8 @@ It is used to:
 
 ## Needs Confirmation
 
-No unresolved confirmation items identified in this pass.
+The optional cache-schema/reason-code questions in design sections 11 and 16 remain
+Needs Confirmation; this audit remediation does not resolve those future contracts.
 
 ## Future Task Policy
 

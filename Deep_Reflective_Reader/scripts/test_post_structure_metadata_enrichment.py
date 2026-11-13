@@ -178,8 +178,10 @@ class _CaptureProfileStore:
     def clear(self, config) -> None:
         _ = config
 
-    def save(self, profile: DocumentProfile, config) -> None:
+    def save(self, profile: DocumentProfile, config, *, validate=None) -> None:
         _ = config
+        if validate is not None:
+            validate()
         self.saved_profiles.append(profile)
 
 
@@ -224,6 +226,8 @@ class _PipelineForEnrichment(DocumentPreparationPipeline):
     ) -> tuple[bool, DocumentProfile | None]:
         _ = (doc_name, raw_text, language, assets, force_rebuild)
         assets.profile_generated = True
+        from test_profile_before_structured_pipeline import ProfileGuardFixture
+        assets.profile_publication_guard = ProfileGuardFixture()
         return True, _profile()
 
     def _prepare_structured_document(

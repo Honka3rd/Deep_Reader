@@ -345,6 +345,24 @@ class PostgresStructuredDocumentStore:
             validate_current(current)
             return saved
 
+    @contextmanager
+    def profile_publication_snapshot(self, target):
+        """Short owner transaction fences existing rows and missing-row insertion.
+
+        Only read SQL here; filesystem profile replacement is not a SQL write or
+        part of an atomic cross-resource transaction.
+        """
+        resolved = self._resolve_target(target)
+        psycopg, dict_row, _ = self._load_psycopg()
+        with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+            connection.execute("LOCK TABLE documents IN SHARE MODE")
+            row = connection.execute(
+                "SELECT id FROM documents WHERE namespace=%s AND document_name=%s",
+                (resolved.namespace, resolved.document_name),
+            ).fetchone()
+            yield (self.load_enhancement_snapshot(resolved, _connection=connection).document
+                   if row is not None else None)
+
     def mutate_hierarchy(self, target, mutation):
         """Serialize current-state artifact/layout merges in one SQL transaction."""
         resolved = self._resolve_target(target)

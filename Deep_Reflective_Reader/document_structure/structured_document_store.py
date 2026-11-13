@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 
 from config.structured_document_storage_config import StructuredDocumentStorageConfig
 from document_structure.structured_document import StructuredDocument
@@ -9,6 +10,20 @@ from document_structure.structured_document import StructuredDocument
 
 class StructuredDocumentStore:
     """JSON persistence store for StructuredDocument artifacts."""
+
+    @contextmanager
+    def profile_publication_snapshot(self, target):
+        """Coordinate explicit sidecar publication with repository lifecycle writes."""
+        import fcntl
+        path = self._resolve_path(target)
+        lock_path = path.with_suffix(".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield self.load(target) if self.exists(target) else None
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
     @staticmethod
     def save(

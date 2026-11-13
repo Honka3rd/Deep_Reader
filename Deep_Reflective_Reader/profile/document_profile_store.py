@@ -10,7 +10,7 @@ class DocumentProfileStore:
     """Persist and load document profile JSON artifacts."""
 
     @staticmethod
-    def save(profile: DocumentProfile, config: FaissStorageConfig) -> None:
+    def save(profile: DocumentProfile, config: FaissStorageConfig, *, validate=None) -> None:
         """Persist artifact/data to storage.
 
 Args:
@@ -26,6 +26,8 @@ Args:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
+            if validate is not None:
+                validate()
             os.replace(temporary, path)
         finally:
             if os.path.exists(temporary):

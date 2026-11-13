@@ -1,5 +1,19 @@
 # config Detailed Design
 
+## PROFILE audit integration (2026-11-13)
+
+PROFILE-01 supporting assembly: assemble profile publication guards with the existing
+raw-root DocumentFileIdentity lifecycle owner, source-session verifier and active
+structured store snapshot port. Construction is pure; lock acquisition occurs only in
+explicit preparation publication/capture. This adds no runtime-read mutation and does
+not select an inactive storage backend.
+
+Validation: profile persistence 32/32 file/real SQL methods, original six assertions
+6/6, PREP runtime 24/24, exact-index 10/10 and 142 related regressions pass.
+Atomic artifact 18/18 and generated-source 23/23 preserve existing fences; config
+35/35 passes with valid profile fixtures. No new module audit or deployment.
+Evidence: `/tmp/profile-fix-fc1dd285/final-report.txt`; external review pending.
+
 ## CONFIG-03 destination conflicts (2026-11-12, implemented)
 
 Upload and new rename commands share a pure destination-conflict predicate owned

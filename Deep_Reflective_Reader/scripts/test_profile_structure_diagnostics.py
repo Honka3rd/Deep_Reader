@@ -87,6 +87,13 @@ class _SpyProfileStore:
 
 
 class _FakeRepository:
+    def __init__(self, document):
+        self.document = document
+
+    def load_document(self, doc_name):
+        assert doc_name == self.document.document_id
+        return self.document
+
     @staticmethod
     def update_task_layout(doc_name, sections, task_layout_metadata):
         _ = (doc_name, sections, task_layout_metadata)
@@ -200,7 +207,7 @@ def _build_cached_document(
             "source_hash": source_hash,
             "task_unit_split_mode": TaskUnitSplitMode.SEMANTIC_SAFE.value,
             "semantic_top_k_candidates": None,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     return replace(
@@ -212,7 +219,7 @@ def _build_cached_document(
 def _build_coordinator(document: StructuredDocument) -> SectionTaskCoordinator:
     return SectionTaskCoordinator(
         document_preparation_pipeline=_FakePipeline(document),
-        document_artifact_repository=_FakeRepository(),
+        document_artifact_repository=_FakeRepository(document),
         document_profile_store=_MissingProfileStore(),
         chapter_summary_service=_NoopSummaryService(),
         chapter_quiz_service=_NoopQuizService(),
@@ -227,7 +234,7 @@ def _build_coordinator_with_profile_store(
 ) -> SectionTaskCoordinator:
     return SectionTaskCoordinator(
         document_preparation_pipeline=_FakePipeline(document),
-        document_artifact_repository=_FakeRepository(),
+        document_artifact_repository=_FakeRepository(document),
         document_profile_store=profile_store,
         chapter_summary_service=_NoopSummaryService(),
         chapter_quiz_service=_NoopQuizService(),

@@ -60,11 +60,11 @@ class ConfigPathTests(unittest.TestCase):
                 docs.save_document(original, 'Reader.pdf')
                 if scenario != 'no_profile_directory':
                     folder = Path('data/faiss/Reader.pdf'); folder.mkdir(parents=True)
-                    (folder/'profile.json').write_text('{"topic":"preserved","language":"en","summary":"old"}')
+                    (folder/'profile.json').write_text('{"topic":"preserved","document_language":"en","summary":"old"}')
                 if scenario == 'coexisting':
                     docs.save_reparsed_document(replace(original, document_id='Reader'), 'Reader')
                     old = Path('data/faiss/Reader'); old.mkdir()
-                    (old/'profile.json').write_text('{"topic":"other","language":"en","summary":"keep"}')
+                    (old/'profile.json').write_text('{"topic":"other","document_language":"en","summary":"keep"}')
                 coordinator, _ = content._build_coordinator(original)
                 coordinator.document_artifact_repository = docs
                 coordinator.document_preparation_pipeline.loader_factory = None
@@ -89,7 +89,7 @@ class ConfigPathTests(unittest.TestCase):
         from profile.document_profile_store import DocumentProfileStore
         config = FaissStorageConfig('New.txt')
         self.assertFalse(Path('data').exists())
-        profile = DocumentProfile.from_dict({'topic':'test', 'language':'en', 'summary':'summary'})
+        profile = DocumentProfile.from_dict({'topic':'test', 'document_language':'en', 'summary':'summary'})
         DocumentProfileStore.save(profile, config)
         self.assertEqual(DocumentProfileStore.load(config), profile)
 
@@ -357,7 +357,7 @@ class StorageHttpCases:
     def test_legacy_index_path_is_read_without_migration_and_explicitly_moved(self):
         self.persist('Old', 'legacy body'); (self.raw/'Old.txt').write_bytes(b'old text')
         legacy = self.derived/'Old.txt'; legacy.mkdir()
-        (legacy/'profile.json').write_text('{"topic":"old","language":"en","summary":"keep"}')
+        (legacy/'profile.json').write_text('{"topic":"old","document_language":"en","summary":"keep"}')
         (legacy/'index.faiss').write_bytes(b'old index')
         before = snapshot(self.files)
         from profile.document_profile_store import DocumentProfileStore

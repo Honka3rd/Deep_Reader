@@ -128,8 +128,11 @@ class PostgresPreflightTests(unittest.TestCase):
     def test_document_lease_blocks_second_connection_and_releases_on_error(self):
         with self.repository.enhancement_lease("doc"):
             with self.assertRaises(BlockingIOError):
-                with self.repository.enhancement_lease("doc.pdf"):
+                # This fixture owns bare 'doc'; no source evidence binds doc.pdf.
+                with self.repository.enhancement_lease("doc"):
                     self.fail("lease acquired twice")
+            with self.repository.enhancement_lease("doc.pdf"):
+                pass  # An unbound qualified name is a distinct identity.
             other = PostgresStructuredDocumentStore(self.scoped, namespace="another")
             with other.enhancement_lease(other.target_for_doc_name("doc")):
                 pass
@@ -548,7 +551,8 @@ class PostgresPreflightTests(unittest.TestCase):
                                                 (self.doc_id,)).fetchone()[0], {"summary": "keep"})
             self.assertEqual(connection.execute("SELECT source_structure_version FROM structured_document_snapshots WHERE document_id=%s",
                                                 (self.doc_id,)).fetchall(), [(2,)])
-        with self.assertRaisesRegex(EnhancementCommitConflict, "stale_structure_write"):
+        from document_structure.reading_content import ReadingContentConflict
+        with self.assertRaisesRegex(ReadingContentConflict, "reading_document_incarnation_changed_reload_required"):
             self.repository.save_document(old, "doc")
 
     def test_commit_rejects_new_interaction_and_duplicate_submission(self):

@@ -134,10 +134,14 @@ def test_excerpt_fallback_when_capability_unavailable() -> None:
         prompt_text_normalization=_build_prompt_text_normalization(),
         profile_prompt_policy=_build_profile_prompt_policy(),
     )
-    builder.build(text=text, document_language="zh")
-
-    topic_excerpt = _extract_document_excerpt(provider.prompts[1])
-    summary_excerpt = _extract_document_excerpt(provider.prompts[2])
+    # Keep the original normalizer fallback-length contract. A complete request
+    # with unknown capacity must now fail closed before any provider dispatch.
+    topic_excerpt = builder._build_prompt_excerpt(
+        text=text, prompt_overhead_tokens=700, token_utilization_ratio=0.55,
+    )
+    summary_excerpt = builder._build_prompt_excerpt(
+        text=text, prompt_overhead_tokens=900, token_utilization_ratio=0.70,
+    )
     _assert(
         len(topic_excerpt) == 16_000,
         "topic excerpt should fall back to default excerpt length",
@@ -146,6 +150,14 @@ def test_excerpt_fallback_when_capability_unavailable() -> None:
         len(summary_excerpt) == 16_000,
         "summary excerpt should fall back to default excerpt length",
     )
+    from profile.profile_prompt_budget import ProfilePromptBudgetError
+    try:
+        builder.build(text=text, document_language="zh")
+    except ProfilePromptBudgetError:
+        pass
+    else:
+        raise AssertionError("unknown complete-request capacity must reject dispatch")
+    _assert(provider.prompts == [], "unknown capacity must not call a provider")
 
 
 if __name__ == "__main__":

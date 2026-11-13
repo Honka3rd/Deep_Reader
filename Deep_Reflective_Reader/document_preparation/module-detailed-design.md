@@ -1,5 +1,21 @@
 # document_preparation Detailed Design
 
+## PROFILE audit integration (2026-11-13)
+
+PROFILE-01/02 integration: preparation captures a server-owned profile publication guard
+before provider work; source/lifecycle conflicts block subsequent
+structured/index/bundle stages and clear profile readiness. Successful explicit
+structure writes hand their readback snapshot to the guard for enrichment, retaining the
+original source generation and profile digest. Optional enrichment/provider errors
+remain distinct from source invalidation. Runtime invalid persisted profiles report
+readiness and never repair themselves.
+
+Validation: profile persistence 32/32 file/real SQL methods, original six assertions
+6/6, PREP runtime 24/24, exact-index 10/10 and 142 related regressions pass.
+Atomic artifact 18/18 and generated-source 23/23 preserve existing fences; config
+35/35 passes with valid profile fixtures. No new module audit or deployment.
+Evidence: `/tmp/profile-fix-fc1dd285/final-report.txt`; external review pending.
+
 ## STRUCT-04 initial incarnation dependency (2026-11-13, implemented)
 
 Explicit structured publication assigns an incarnation when the new document lacks

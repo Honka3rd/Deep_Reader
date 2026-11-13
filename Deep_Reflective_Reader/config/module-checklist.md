@@ -1,5 +1,11 @@
 # config Checklist
 
+## Profile audit support (2026-11-13)
+
+- [x] PROFILE-01 support: pure assembly of source/lifecycle and active-store publication guard.
+  Evidence: `test_profile_persistence_contract.py` 32/32 file/real SQL publication/lifecycle/read cases; PREP 142, runtime 24, index 10, atomic artifact 18, generated-source 23 and config 35 pass; 16 SQL support tests/seven scripts pass. `/tmp/profile-fix-fc1dd285/final-report.txt`; supporting integration only, external review pending.
+  Timestamp: 2026-11-13
+
 - [x] CONFIG-03: share upload/rename destination conflicts and reject legacy ambiguity before effects.
   Acceptance: file/real PostgreSQL HTTP `Legacy` + `Legacy.pdf`, `Source.txt -> Legacy.txt` rejects without changing body, notes, raw/index, journals or sidecars; independent qualified sources, replay and generation fences remain valid.
   Evidence: `scripts/test_config_storage_audit.py` passes 35 cases (12 new); 199 related regressions, two real-backup file/PostgreSQL acceptance cases and seven standalone scripts pass, zero skips. Original two HTTP repros fail on 2a213b9. `/tmp/audit-config-03/validation-report.txt`; external review pending.

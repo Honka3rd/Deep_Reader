@@ -438,18 +438,18 @@ It is used to:
 |---|---|---|---:|---:|---|
 | `app/` | package | `app/module-checklist.md` | 56 | 11 | STRUCT-03/04 orchestration locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
-| `config/` | package | `config/module-checklist.md` | 10 | 9 | CONFIG-01/02/03 locally verified; historical unchecked items retained; external review pending (2026-11-12 recount; sample item excluded) |
+| `config/` | package | `config/module-checklist.md` | 11 | 9 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
-| `db/` | package + design module | `db/module-checklist.md` | 64 | 4 | STRUCT-01/03/04 transaction and lifecycle support locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
-| `document_preparation/` | package | `document_preparation/module-checklist.md` | 35 | 13 | STRUCT-03/04 source handoff and PREP-01–05 locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 98 | 18 | STRUCT-01–04 locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
+| `db/` | package + design module | `db/module-checklist.md` | 65 | 4 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `document_preparation/` | package | `document_preparation/module-checklist.md` | 36 | 13 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 99 | 18 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `learning/` | application package | `learning/module-checklist.md` | 3 | 0 | Extraction locally verified; LLRN-13/completion evidence transferred; external review/Docker/push pending |
 | `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
-| `profile/` | package | `profile/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
+| `profile/` | package | `profile/module-checklist.md` | 9 | 0 | PROFILE-01–04 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
@@ -605,9 +605,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `config/module-checklist.md`
 - Detailed Design: `config/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
-- Needs confirmation count: `0`
+- Status: `PROFILE publication support locally verified; external review pending; unrelated checklist items retained`
+- Completed item count: `11`
+- Unresolved checklist count: `9` (templates excluded)
 
 #### Completed Work
 
@@ -756,9 +756,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_preparation/module-checklist.md`
 - Detailed Design: `document_preparation/module-detailed-design.md`
-- Status: `Guarded Enhancement Workflow Accepted`
-- Completed item count: `21`
-- Needs confirmation count: `0`
+- Status: `PROFILE publication support locally verified; external review pending; unrelated checklist items retained`
+- Completed item count: `36`
+- Unresolved checklist count: `13` (templates excluded)
 - Unchecked item count: `13` (historical items).
 - 2026-10-19: source snapshot validation, structure-only execution and end-to-end
   consent acceptance are 3/3. ENH-PREP-02 delivers the no-extraction candidate path:
@@ -828,9 +828,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
-- Status: `ENH-REV-02 Conditional Commit Delivered`
-- Completed item count: `54` (direct checklist count, excluding the template example).
-- Needs confirmation count: `0`
+- Status: `PROFILE publication support locally verified; external review pending; unrelated checklist items retained`
+- Completed item count: `65` (direct checklist count, excluding the template example).
+- Unresolved checklist count: `4` (templates excluded)
 - Unchecked item count: `4` (historical items; ENH-REV-02 complete).
 - 2026-10-21: ENH-REV-02 implements locked three-way classification, no-op without
   writes, title-only updates preserving IDs/version/interactions and snapshot labels,
@@ -913,9 +913,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `SRREPAIR-01/02/03/04/07 Guarded Source Region Repair Accepted`
-- Completed item count: `87` (direct owner recount including TRUI-02/03).
-- Needs confirmation count: `0`
+- Status: `PROFILE publication support locally verified; external review pending; unrelated checklist items retained`
+- Completed item count: `99` (direct owner recount including TRUI-02/03).
+- Unresolved checklist count: `18` (templates excluded)
 - Unchecked item count: `18` (historical items; TRUI-02/03 accepted).
 - 2026-10-21 ENH-REF: final real-model implementation passes twice on the reported
   private 147401-character book, each after one validator-guided correction. Exact
@@ -1127,9 +1127,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `profile/module-checklist.md`
 - Detailed Design: `profile/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `5`
-- Needs confirmation count: `0`
+- Status: `PROFILE-01–04 locally verified; external review pending; cache design questions retained`
+- Completed item count: `9`
+- Unresolved checklist count: `0` (templates excluded)
 
 #### Completed Work
 
@@ -1139,9 +1139,24 @@ No unresolved confirmation items identified in module checklist.
 - [x] Completed documentation governance cleanup for advisory-only profile semantics and diagnostics projection boundaries.
 - [x] Clarified artifact governance vs profile metadata boundary and fixed snapshot/projection semantics wording.
 
+PROFILE-01–04 local evidence (2026-11-13): external six assertions red -> green;
+32 file/real SQL persistence methods, 11 builder methods and 42 existing profile
+executions pass without skips. Source/session and lifecycle guards protect atomic
+profile publication; runtime core-field validation never repairs or generates.
+Enrichment 6, learning 29, PREP runtime 24, PREP related 142, SQL support 16,
+exact-index 10, atomic artifacts 18, generated-source 23 and config 35 pass.
+Seven scripts pass. Enhancement support executes 33 with 32 pass and one private
+source readback opt-in skip. Groups overlap and are not a unique-case sum.
+Two immutable full-book copies retain hashes/roundtrips and fit classification
+input capacity (1242/1475 tokens under 6000). Evidence and commands:
+`/tmp/profile-fix-fc1dd285/final-report.txt`. No live LLM/OCR semantics, deployment
+or next-module audit; a new local review commit must receive external approval.
+
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+No pending PROFILE-01–04 implementation checklist items. Design sections 11/16
+still retain optional cache-schema/reason-code questions; this audit remediation
+does not resolve them.
 
 ### `prompts/`
 

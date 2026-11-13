@@ -32,6 +32,8 @@ class PreparedDocumentAssets:
     extraction_result: ExtractionResult | None = None
     source_session: Any = field(default=None, repr=False)
     source_guard: Any = field(default=None, repr=False)
+    profile_publication_guard: Any = field(default=None, repr=False)
+    profile_publication_rejected: bool = False
     runtime_bundle: Any = field(default=None, repr=False)
 
     def apply_extraction_status(self, status):

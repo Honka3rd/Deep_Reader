@@ -74,6 +74,24 @@ class DocumentProfileEvidenceBuilder:
             "candidate_lines": candidate_lines,
         }
 
+    @staticmethod
+    def reduce_samples(evidence: dict[str, Any]) -> dict[str, Any]:
+        """Reduce optional evidence, retaining coherent excerpts and whole lines."""
+        reduced = dict(evidence)
+        for key in ("excerpt_for_classification", "head_excerpt", "tail_excerpt", "middle_excerpt"):
+            sample = evidence.get(key, "")
+            size = int(len(sample) * 0.75)
+            if key == "tail_excerpt":
+                reduced[key] = sample[-size:] if size else ""
+            elif key == "middle_excerpt":
+                start = (len(sample) - size) // 2
+                reduced[key] = sample[start:start + size]
+            else:
+                reduced[key] = sample[:size]
+        lines = evidence.get("candidate_lines", [])
+        reduced["candidate_lines"] = lines[:int(len(lines) * 0.75)]
+        return reduced
+
     def _extract_candidate_lines(
         self,
         *,
