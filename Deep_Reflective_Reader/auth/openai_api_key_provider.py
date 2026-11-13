@@ -13,12 +13,12 @@ class OpenAIAPIKeyProvider(APIKeyProvider):
 Args:
     env_var: Environment variable name storing API key.
 """
-        api_key = os.getenv(env_var)
+        api_key = (os.getenv(env_var) or "").strip()
         if not api_key:
             raise RuntimeError(
                 f"{env_var} environment variable not found."
             )
-        self.api_key = api_key.strip()
+        self.api_key = api_key
 
     def get(self) -> str:
         """Return configured value from provider.

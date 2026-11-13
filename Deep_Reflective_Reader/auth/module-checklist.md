@@ -39,6 +39,11 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/auth/openai_api_key_provider.py; Deep_Reflective_Reader/auth/module-detailed-design.md (Current Risks)`
   Notes: RuntimeError is raised at provider initialization boundary.
 
+- [x] AUTH-01: Trim the selected environment value before rejecting missing, empty or whitespace-only keys; preserve source selection, snapshots, safe errors and lazy DI reads.
+  Evidence: `auth/openai_api_key_provider.py`; `scripts/test_auth_api_key_provider.py` (7 tests); combined with existing `test_learning_container_wiring.WiringBoundaryTests`, `FileCompositionTests` and `test_learning_provider_once`: 31 passed, zero skips. Before the fix, the same auth suite reports 9 failing whitespace subcases; after the fix all pass.
+  Notes: Provider initialization is distinct from application startup; no new eager validation.
+  Timestamp: 2026-11-13
+
 ## Needs Confirmation
 
 No unresolved confirmation items identified in this pass.
