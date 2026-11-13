@@ -1,5 +1,11 @@
 # bundle_provider.py Detailed Design
 
+## PREP runtime reuse-only handoff (2026-11-13)
+
+Implemented supporting load_prepared_bundle accepts owner-validated canonical text and
+delegates to BundleFactory.load_prepared. It never invokes the loader or an index
+ensure/rebuild fallback; preparation retains source/version validation authority.
+
 ## 1. Module Purpose
 
 `bundle_provider.py` 提供較高層 facade：載入 raw document、建立 runtime objects、呼叫 `BundleFactory` 取得可查詢 bundle。 **[Code-Confirmed]**

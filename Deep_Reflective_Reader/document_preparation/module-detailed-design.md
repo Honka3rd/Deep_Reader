@@ -1,5 +1,58 @@
 # document_preparation Detailed Design
 
+## PREP-01–04 runtime/source publication correction (2026-11-13)
+
+Implemented audit correction: ordinary QA loads an accepted canonical snapshot and
+existing profile/index through read-only readiness gates, independently of the
+current extractor/settings defaults. Missing or invalid accepted data requires
+explicit preparation; it cannot authorize hierarchy replacement. Explicit prepare
+retains initial Fast default and explicit Fast/OCR/Auto changes. Warm accepted
+free-QA reuse must not extract, detect language, generate profile or rebuild a
+valid index. These checks preserve IDs, versions and interaction artifacts.
+
+Manual source and task-layout page evidence share accepted-source validation,
+including PostgreSQL contiguous-section reconstruction, full digest/length,
+source identity and version. Task-layout uses the supplied document only; it
+must not reload another hierarchy. Missing optional page spans yield no pages;
+invalid canonical evidence is rejected without extraction or write-back.
+
+Source invalidation blocks derived publication and bundle readiness. Verify the
+captured source after extraction, before structured persistence, after expensive
+index construction, before index publication and before returning a runtime bundle.
+Structured or index failure cannot fall through to a second bundle-triggered build.
+Profile errors and optional layout failures retain their separate non-blocking
+structure behavior. SQL/hierarchy/profile and FAISS are not one transaction.
+
+Index publication is delegated to retrieval's staged three-file contract. Explicit
+preparation can build candidates; runtime bundle loading is reuse-only and must
+not call an ensure/rebuild fallback. Regression evidence must cover real file and
+PostgreSQL stores, accepted PDF modes/TXT, notes/IDs/versions, source replacement,
+invalid/gapped canonical evidence and parse/embedding/save/switch failures.
+
+Implementation detail: omitted-mode `prepare_and_load(free_qa)` is a read-only
+runtime entry, including when hierarchy/profile/index is missing. Call explicit
+`prepare` to initialize or recover assets. Explicit free-QA prepare can build a
+missing index from a valid accepted snapshot without re-extraction; explicit mode
+or force requests retain the preparation path. Accepted source guards also compare
+current version/incarnation across work. File initial version follows the existing
+repository baseline of 1; no synthetic version is written back.
+
+Validation evidence: `/tmp/prep-fix-e3eb6a8/`. Original external six assertions
+reproduced as failures on the unchanged baseline. New file/real PostgreSQL suite
+covers all four findings with deterministic vectors/profile, real FAISS and Common
+builder; normal QA uses the actual coordinator and bundle facade. Two old fixture
+builders (mode preparation and synthetic third-format loader) retained unrelated
+fake sections after replacing raw_text. They now build complete Common hierarchy;
+original assertions remain. No production parsing policy was changed.
+
+Full immutable-backup Madame Bovary (652001 characters) and Red Roulette (147401)
+pass isolated file/FAISS cold preparation and warm QA/manual reads: exact canonical
+digests, zero warm extraction/language/profile/embedding calls, unchanged hierarchy
+and all temporary persisted files, unchanged backup manifest and original profiles.
+These are technical source/cache checks, not LLM or OCR semantic-quality validation.
+External review/deployment acceptance of this candidate remains pending. No UI,
+production-data, Docker deployment, remote push or next-module audit is included.
+
 ## CONFIG-01/02 storage resolution dependency (2026-11-12)
 
 Production preparation receives the active repository's identity resolver. Resolve
@@ -228,7 +281,7 @@ are unchanged; the explicit OCR review flag is part of its extraction identity.
 concrete PDF/TXT loaders, reads their private paths or branches on source_format.
 Both adapters supply source sessions; warm reuse verifies captured identity and
 stored canonical coverage without extraction. prepare_and_load also forwards an
-explicit mode; omitted session mode is Fast. source_capture/source_extract stage
+explicit mode; omitted explicit preparation mode is Fast; ordinary QA reuses accepted evidence. source_capture/source_extract stage
 logs contain timing/implementation identifiers, never source text.
 New page evidence uses source_page_spans with read compatibility for pdf_page_spans.
 Legacy API status is projected through PreparedDocumentAssets, never cache truth.
@@ -889,10 +942,12 @@ backfill extraction metadata. Mode is not document/chapter identity.
 The existing validated structured save boundary adds the record only for applied
 extraction with a matching effective mode and unchanged canonical raw text. No
 sidecar or DB schema is introduced: JSON and PostgreSQL already preserve nested
-parse_provenance. Explicit identity-bearing profile/FAISS/bundle preparations
-conservatively rebuild instead of trusting resources with no identity marker;
-missing raw text exits before those stores are touched. This does not claim
-transactional rollback across all derived-resource writes or add a new raw cache.
+parse_provenance. PREP-01–04 supersedes the old identity-bearing forced rebuild:
+profile reuse follows lifecycle authority, accepted QA uses persisted canonical
+source, and index reuse validates its fingerprint/records. Explicit index rebuilding
+stages and publishes the three files through retrieval; bundle loading never repeats
+that build. Missing/invalid source blocks publication. This does not claim rollback
+across hierarchy/profile/SQL and index stores or introduce a new raw cache.
 
 These are integration hooks: PDF-MODE-05 must construct the identity from the actual
 snapshot, populate applied provenance only after successful extraction, and pass
@@ -1024,7 +1079,7 @@ Step 6  Prepare runtime bundle
 |---|---:|---:|---:|---|
 | profile load/build fail | No | `false` | unaffected | add error reason |
 | post-structure enrichment fail | No | keep prior profile result | unaffected | add error reason |
-| structured build/save fail | Yes for structured-ready | unaffected | `false` | add error reason |
+| structured build/save or source validity fail | Yes; no derived publication/bundle | unaffected | `false` | add explicit readiness reason |
 | faiss/bundle fail (free_qa path) | Yes for index/bundle readiness | unaffected | unaffected | add error reason |
 
 **[Code-Confirmed]**
@@ -1060,7 +1115,7 @@ Step 6  Prepare runtime bundle
 
 ## 13. Known Legacy / Compatibility Behavior
 
-1. profile load path 支援 cache hit/reload failure rebuild。 **[Code-Confirmed]**
+1. Profile reads reuse existing bytes; reload failure requires explicit recovery and does not rebuild. **[Code-Confirmed]**
 2. structured load/save 仍允許舊 JSON 讀取（由 model/store 層承接）。 **[Code-Confirmed]**
 3. 本模組不直接管理 root sections/structure_nodes compatibility 細節（委派到 structure layer）。 **[Code-Confirmed]**
 

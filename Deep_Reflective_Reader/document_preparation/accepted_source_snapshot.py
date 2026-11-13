@@ -120,6 +120,19 @@ def resolve_accepted_source_snapshot(
     if record.get("text_length", len(text)) != len(text):
         raise SourceNotReady("canonical_length_mismatch")
 
+    # A file store retaining raw_text must prove the same complete hierarchy as
+    # PostgreSQL reconstruction; raw_text cannot mask corrupt canonical slices.
+    cursor = 0
+    for chapter in document.chapters:
+        for section in chapter.sections:
+            if (type(section.char_start) is not int or type(section.char_end) is not int
+                    or section.char_start != cursor or section.char_end <= cursor
+                    or section.content != text[cursor:section.char_end]):
+                raise SourceNotReady("canonical_coverage_invalid")
+            cursor = section.char_end
+    if cursor != len(text):
+        raise SourceNotReady("canonical_coverage_invalid")
+
     logging.getLogger(__name__).info(
         "accepted_source outcome=ready format=%s schema=%s chars=%s extraction=reused",
         identity.source_format, identity.schema_version, len(text))

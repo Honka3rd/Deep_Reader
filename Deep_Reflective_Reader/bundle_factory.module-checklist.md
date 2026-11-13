@@ -1,5 +1,11 @@
 # bundle_factory.py Checklist
 
+## Preparation audit correction (2026-11-13)
+
+- [x] PREP runtime handoff: Load validated persisted index and profile without build/cache fallback.
+  Evidence: `test_preparation_runtime_safety.py` file/real PostgreSQL matrix, original regressions and isolated real-book checks; `/tmp/prep-fix-e3eb6a8/`. Local implementation verified; external review/deployment pending, no production data mutation.
+  Timestamp: 2026-11-13
+
 ## Content Read Performance (2026-10-21)
 
 - [x] CONTENT-03: Make runtime bundle profile access reuse-only and preserve profiles during index rebuilds.

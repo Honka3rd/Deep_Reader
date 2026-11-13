@@ -1,5 +1,13 @@
 # bundle_factory.py Detailed Design
 
+## PREP runtime reuse-only handoff (2026-11-13)
+
+Implemented supporting entry: load_prepared verifies persisted index/records/fingerprint
+through retrieval's coherent read contract, then attaches the existing profile.
+It does not extract, parse, embed, publish, or use an unversioned cached bundle.
+Preparation/QA uses this path; existing explicit ensure_index_ready callers retain
+separate build authority. Missing/corrupt assets report explicit readiness errors.
+
 ## Reuse-Only Profile Policy (2026-10-21)
 
 CONTENT-03 supersedes the former missing/corrupt-profile rebuild fallback.

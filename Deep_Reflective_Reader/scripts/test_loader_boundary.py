@@ -12,6 +12,7 @@ from doc_loaders.extraction_identity import ExtractionIdentity, ExtractionResult
 from doc_loaders.source_session import SourceArtifact, SourceSession
 from doc_loaders.text_document_loader import TextDocumentLoader
 from document_preparation.document_preparation_pipeline import DocumentPreparationPipeline
+from document_structure.structured_document_builder import StructuredDocumentBuilder
 from test_prepare_structured_reuse_before_raw_load import _build_pipeline, _StructuredStore, _fake_document
 
 
@@ -48,8 +49,8 @@ class LoaderBoundaryTests(unittest.TestCase):
         self.store = _StructuredStore(exists_value=False, document=_fake_document("doc"))
         self.pipeline = _build_pipeline(loader=self.loader, store=self.store)
         self.pipeline.structured_document_builder = Mock()
-        self.pipeline.structured_document_builder.build.side_effect = lambda **kw: replace(
-            _fake_document("doc"), raw_text=kw["raw_text"])
+        self.pipeline.structured_document_builder.build.side_effect = lambda **kw: StructuredDocumentBuilder().build(
+            document_id="doc", title="doc", raw_text=kw["raw_text"], language=kw["language"])
 
     def test_third_format_prepare_cache_and_manual_read_without_format_dispatch(self):
         first = self.pipeline.prepare("doc", mode="base")

@@ -31,6 +31,8 @@ class PreparedDocumentAssets:
     profile_generated: bool = False
     extraction_result: ExtractionResult | None = None
     source_session: Any = field(default=None, repr=False)
+    source_guard: Any = field(default=None, repr=False)
+    runtime_bundle: Any = field(default=None, repr=False)
 
     def apply_extraction_status(self, status):
         """Project legacy API metadata; never use it as extraction authority."""

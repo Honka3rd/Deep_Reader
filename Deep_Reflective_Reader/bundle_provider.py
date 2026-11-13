@@ -52,6 +52,11 @@ class BundleProvider:
             force_rebuild=False,
         )
 
+    def load_prepared_bundle(self, doc_name: str, raw_text: str) -> FaissIndexBundle:
+        """Read accepted persisted assets; never load/extract or ensure/rebuild."""
+        config, _, factory = self._build_runtime_objects(doc_name)
+        return factory.load_prepared(config, raw_text)
+
     def get_bundle_from_raw_text(
         self,
         doc_name: str,

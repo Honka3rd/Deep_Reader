@@ -1,5 +1,11 @@
 # retrieval Checklist
 
+## Preparation audit correction (2026-11-13)
+
+- [x] PREP-04: Stage and validate index/records/fingerprint, with durable rollback and coherent read/recovery.
+  Evidence: `test_preparation_runtime_safety.py` file/real PostgreSQL matrix, original regressions and isolated real-book checks; `/tmp/prep-fix-e3eb6a8/`. Local implementation verified; external review/deployment pending, no production data mutation.
+  Timestamp: 2026-11-13
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `retrieval` module.

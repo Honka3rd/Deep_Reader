@@ -1,5 +1,11 @@
 # bundle_provider.py Checklist
 
+## Preparation audit correction (2026-11-13)
+
+- [x] PREP runtime facade: Delegate accepted text to reuse-only bundle loading without extraction.
+  Evidence: `test_preparation_runtime_safety.py` file/real PostgreSQL matrix, original regressions and isolated real-book checks; `/tmp/prep-fix-e3eb6a8/`. Local implementation verified; external review/deployment pending, no production data mutation.
+  Timestamp: 2026-11-13
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `bundle_provider.py` module.

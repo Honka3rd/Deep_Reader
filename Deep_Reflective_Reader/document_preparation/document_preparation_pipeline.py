@@ -163,6 +163,19 @@ class DocumentPreparationPipeline:
             hint_options["enhancement_intent"] = intent.value
         if self.identity_resolver is not None:
             doc_name = self.identity_resolver(doc_name)
+        if (PreparationMode.resolve(mode) == PreparationMode.FREE_QA
+                and not force_rebuild and pdf_extraction_mode is None
+                and SectionSplitterMode.resolve(structured_parser_mode) == SectionSplitterMode.COMMON
+                and toc_hint is None
+                and self.structured_document_store.exists(self._structured_config(doc_name))):
+            assets, _ = self._accepted_assets(doc_name)
+            if assets.structured_document_ready:
+                assets.faiss_ready, assets.faiss_namespace = self._prepare_faiss(
+                    doc_name, assets.raw_text, assets, False)
+                if assets.faiss_ready:
+                    assets.bundle_ready = self._prepare_bundle(doc_name, assets.raw_text, assets, False)
+            self._log_preparation_result(assets, reused=True)
+            return assets
         scope = getattr(self.loader_factory, "preparation_scope", nullcontext)
         with scope():
             loader = self.loader_factory.get(doc_name)
@@ -240,6 +253,8 @@ class DocumentPreparationPipeline:
             if page_boundaries and self._validate_manual_structure_page_boundaries(boundaries=page_boundaries, raw_text=raw_text):
                 raise ValueError("Invalid extracted text/page evidence")
             assets.extraction_result = extraction.result
+            if not self._verify_source(assets):
+                return assets
             assets.apply_extraction_status(source_session.compatibility_status("applied"))
         assets.raw_text = raw_text
 
@@ -281,6 +296,9 @@ class DocumentPreparationPipeline:
                 doc_name=doc_name, raw_text=assets.raw_text, language=assets.language,
                 assets=assets, force_rebuild=force_rebuild)
 
+        if not assets.structured_document_ready or not self._verify_source(assets):
+            return assets
+
         # Step 4.5 Enrich profile with hierarchy-grounded structured metadata.
         if (
             assets.profile_ready
@@ -311,12 +329,11 @@ class DocumentPreparationPipeline:
         )
 
         # Step 6. Prepare runtime bundle.
-        assets.bundle_ready = self._prepare_bundle(
-            doc_name=doc_name,
-            raw_text=assets.raw_text,
-            assets=assets,
-            force_rebuild=force_rebuild,
-        )
+        if assets.faiss_ready:
+            assets.bundle_ready = self._prepare_bundle(
+                doc_name=doc_name, raw_text=assets.raw_text, assets=assets,
+                force_rebuild=False,
+            )
 
         self._log_preparation_result(assets)
         return assets
@@ -343,6 +360,20 @@ class DocumentPreparationPipeline:
     ) -> PreparedDocumentResult:
         """Prepare document artifacts, then load reusable runtime artifacts."""
         preparation_mode = PreparationMode.resolve(mode)
+        if (preparation_mode == PreparationMode.FREE_QA and not force_rebuild
+                and pdf_extraction_mode is None and toc_hint is None
+                and SectionSplitterMode.resolve(structured_parser_mode) == SectionSplitterMode.COMMON):
+            if self.identity_resolver is not None:
+                doc_name = self.identity_resolver(doc_name)
+            assets, document = self._accepted_assets(doc_name)
+            if assets.structured_document_ready:
+                assets.bundle_ready = self._prepare_bundle(doc_name, assets.raw_text, assets, False)
+                assets.faiss_ready = assets.bundle_ready
+                if assets.faiss_ready:
+                    assets.faiss_namespace = self._index_config(doc_name).get_doc_name()
+            self._log_preparation_result(assets, reused=True)
+            return PreparedDocumentResult(assets=assets, structured_document=document,
+                                          bundle=assets.runtime_bundle)
         assets = self.prepare(
             doc_name=doc_name,
             force_rebuild=force_rebuild,
@@ -373,27 +404,57 @@ class DocumentPreparationPipeline:
                     f"prepare_and_load_structured_failed:{doc_name}:{error}"
                 )
 
-        bundle = None
-        if preparation_mode == PreparationMode.FREE_QA and assets.bundle_ready:
-            try:
-                if assets.raw_text is not None and assets.raw_text.strip():
-                    bundle = self.bundle_provider.get_bundle_from_raw_text(
-                        doc_name=doc_name,
-                        raw_text=assets.raw_text,
-                        force_rebuild=force_rebuild,
-                    )
-                else:
-                    bundle = self.bundle_provider.get_bundle(doc_name)
-            except Exception as error:
-                assets.errors.append(
-                    f"prepare_and_load_bundle_failed:{doc_name}:{error}"
-                )
+        bundle = assets.runtime_bundle if assets.bundle_ready else None
+        if bundle is not None and not self._verify_source(assets):
+            bundle = None
 
         return PreparedDocumentResult(
             assets=assets,
             structured_document=structured_document,
             bundle=bundle,
         )
+
+    @staticmethod
+    def _verify_source(assets):
+        try:
+            guard = assets.source_guard or assets.source_session
+            if guard is not None:
+                guard.verify_source()
+            return True
+        except Exception as error:
+            assets.errors.append(f"source_not_ready:explicit_prepare_required:{error}")
+            assets.structured_document_ready = False
+            assets.faiss_ready = False
+            assets.bundle_ready = False
+            assets.runtime_bundle = None
+            return False
+
+    def _accepted_assets(self, doc_name):
+        from document_preparation.accepted_source_guard import AcceptedSourceGuard
+        assets = PreparedDocumentAssets(doc_name, None, None, False, False, False, False, None, None)
+        document = None
+        try:
+            config = self._structured_config(doc_name)
+            if not self.structured_document_store.exists(config):
+                raise ValueError("accepted_document_missing")
+            document = self.structured_document_store.load(config)
+            loader = self.loader_factory.get(doc_name)
+            guard = AcceptedSourceGuard(
+                document=document, doc_name=doc_name,
+                source_path=lambda: loader.source_path(doc_name),
+                current_document=lambda: self.structured_document_store.load(config))
+            assets.source_guard = guard
+            assets.raw_text = guard.snapshot.canonical_text
+            assets.language = guard.snapshot.language
+            assets.structured_document_ready = True
+            assets.structured_document_path = self.structured_document_store.location(config)
+            profile_config = self._index_config(doc_name)
+            if self.profile_store.exists(profile_config):
+                self.profile_store.load(profile_config)
+                assets.profile_ready = True
+        except Exception as error:
+            assets.errors.append(f"runtime_not_ready:explicit_prepare_required:{error}")
+        return assets, document
 
     def load_task_layout_page_boundaries(
         self, doc_name: str, *, document: StructuredDocument,
@@ -402,19 +463,14 @@ class DocumentPreparationPipeline:
         with log_stage(logger, "task_layout.persisted_page_evidence") as timing:
             timing["outcome"] = "unavailable"
             try:
-                identity, record = read_extraction_record(document.parse_provenance)
-                if not extraction_matches(document.parse_provenance, identity, document.raw_text):
-                    timing["reason"] = "text_identity_mismatch"
-                    return []
+                from document_preparation.accepted_source_guard import resolve_snapshot
                 loader = self.loader_factory.get(doc_name)
                 if not callable(getattr(loader, "source_path", None)):
                     timing["reason"] = "source_verification_unavailable"
                     return []
-                source_path = loader.source_path(doc_name)
-                from document_preparation.accepted_source_snapshot import source_file_sha256
-                if source_file_sha256(source_path) != identity.source_sha256:
-                    timing["reason"] = "source_changed"
-                    return []
+                snapshot = resolve_snapshot(document, doc_name, loader.source_path(doc_name))
+                identity = snapshot.extraction_identity
+                raw_text = snapshot.canonical_text
                 spans = document.parse_provenance.get("source_page_spans", document.parse_provenance.get("pdf_page_spans"))
                 if not isinstance(spans, list) or not spans:
                     timing["reason"] = "missing_spans"
@@ -432,11 +488,11 @@ class DocumentPreparationPipeline:
                     boundaries.append(PdfPageTextBoundary(
                         page_index=span["page_index"], char_start=span["char_start"],
                         char_end=span["char_end"], page_label=label,
-                        text=document.raw_text[span["char_start"]:span["char_end"]],
+                        text=raw_text[span["char_start"]:span["char_end"]],
                         source_sha256=identity.source_sha256,
                     ))
                 if self._validate_manual_structure_page_boundaries(
-                    boundaries=boundaries, raw_text=document.raw_text,
+                    boundaries=boundaries, raw_text=raw_text,
                 ):
                     timing["reason"] = "invalid_spans"
                     return []
@@ -472,26 +528,34 @@ class DocumentPreparationPipeline:
             if self.structured_document_store.exists(config):
                 document = self.structured_document_store.load(config)
                 if "extraction" in document.parse_provenance or "pdf_extraction" in document.parse_provenance:
-                    identity, record = read_extraction_record(document.parse_provenance)
-                    from document_preparation.accepted_source_snapshot import source_file_sha256
-                    if not extraction_matches(document.parse_provenance, identity, document.raw_text) or source_file_sha256(loader.source_path(normalized_doc_name)) != identity.source_sha256:
-                        raise ValueError("Prepared source changed; explicit preparation is required.")
+                    from document_preparation.accepted_source_guard import resolve_snapshot
+                    snapshot = resolve_snapshot(document, normalized_doc_name,
+                                                loader.source_path(normalized_doc_name))
+                    identity = snapshot.extraction_identity
+                    raw_text = snapshot.canonical_text
                     spans = document.parse_provenance.get("source_page_spans", document.parse_provenance.get("pdf_page_spans", []))
-                    if not isinstance(spans, list) or (not spans and getattr(loader, "supports_page_boundaries", False)):
+                    if not isinstance(spans, list):
                         raise ValueError("Prepared page evidence is unavailable; prepare explicitly.")
-                    boundaries = [PdfPageTextBoundary(
-                        **span, text=document.raw_text[span["char_start"]:span["char_end"]],
-                        source_sha256=identity.source_sha256,
-                    ) for span in spans]
-                    error = self._validate_manual_structure_page_boundaries(boundaries=boundaries, raw_text=document.raw_text) if boundaries else None
+                    try:
+                        if any(not isinstance(span, dict) or any(type(span.get(key)) is not int
+                               for key in ("page_index", "char_start", "char_end")) for span in spans):
+                            raise ValueError("invalid span fields")
+                        boundaries = [PdfPageTextBoundary(
+                            **span, text=raw_text[span["char_start"]:span["char_end"]],
+                            source_sha256=identity.source_sha256,
+                        ) for span in spans]
+                    except (KeyError, TypeError) as error:
+                        raise ValueError("Prepared page evidence is invalid") from error
+                    error = self._validate_manual_structure_page_boundaries(boundaries=boundaries, raw_text=raw_text) if boundaries else None
                     if error:
                         raise ValueError(f"Prepared PDF page evidence is invalid: {error}")
                     return ManualStructureSourceEvidence(
                         doc_name=normalized_doc_name, source_identity=normalized_doc_name,
-                        raw_text=document.raw_text,
-                        source_hash=hashlib.sha256(document.raw_text.encode("utf-8")).hexdigest(),
+                        raw_text=raw_text,
+                        source_hash=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
                         language=document.language, page_boundaries=boundaries,
                     )
+                raise ValueError("Accepted extraction identity is unavailable; prepare explicitly.")
         raw_text = loader.load(normalized_doc_name)
         if raw_text is None or not raw_text.strip():
             raise ValueError(
@@ -764,7 +828,8 @@ class DocumentPreparationPipeline:
                 result = assets.extraction_result
                 if structured_document.raw_text != result.canonical_text:
                     raise ValueError("Extraction text changed before structured save")
-                assets.source_session.verify_source()
+                if not self._verify_source(assets):
+                    return False, None
                 if extraction is not None:
                     structured_document.parse_provenance.update(extraction.storage_metadata)
                     from document_preparation.cleanup_handoff import extraction_cleanup_metadata
@@ -998,7 +1063,6 @@ class DocumentPreparationPipeline:
         force_rebuild: bool,
     ) -> tuple[bool, str | None]:
         """Prepare FAISS index artifacts using canonical raw text."""
-        force_rebuild = force_rebuild or assets.extraction_result is not None
         if raw_text is None or not raw_text.strip():
             assets.errors.append("prepare_faiss_skipped:missing_raw_text")
             return False, None
@@ -1007,22 +1071,15 @@ class DocumentPreparationPipeline:
         namespace = config.get_doc_name()
 
         try:
-            has_position_metadata = self.faiss_index_store.has_position_metadata(config)
-            fingerprint_matched = self.fingerprint_handler.matches(
-                raw_text,
-                config.get_raw_meta_path(),
-            )
-            if (
-                not force_rebuild
-                and config.exists()
-                and has_position_metadata
-                and fingerprint_matched
-            ):
-                logger.info("faiss_cache outcome=hit")
-                return True, namespace
-
-            self.faiss_index_store.clear(config)
-            self.fingerprint_handler.clear(config.get_raw_meta_path())
+            if not self._verify_source(assets):
+                return False, None
+            if not force_rebuild:
+                try:
+                    self.faiss_index_store.load_validated(config, raw_text, self.fingerprint_handler)
+                    logger.info("faiss_cache outcome=hit")
+                    return True, namespace
+                except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+                    pass
 
             logger.info("faiss_cache outcome=rebuild force_rebuild=%s", force_rebuild)
             with log_stage(logger, "retrieval_parse"):
@@ -1030,8 +1087,12 @@ class DocumentPreparationPipeline:
             with log_stage(logger, "faiss_build"):
                 bundle = self.faiss_index_builder.build_from_parsed_document(parsed_document)
             with log_stage(logger, "faiss_save"):
-                self.faiss_index_store.save(bundle, config)
-            self.fingerprint_handler.save(raw_text, config.get_raw_meta_path())
+                def verify():
+                    if not self._verify_source(assets):
+                        raise ValueError("source_not_ready:explicit_prepare_required")
+                verify()
+                self.faiss_index_store.publish(bundle, config, text=raw_text,
+                    fingerprint=self.fingerprint_handler, verify_source=verify)
             return True, namespace
         except Exception as error:
             assets.errors.append(f"prepare_faiss_failed:{doc_name}:{error}")
@@ -1128,17 +1189,17 @@ class DocumentPreparationPipeline:
         force_rebuild: bool,
     ) -> bool:
         """Validate runtime bundle readiness through the existing bundle provider path."""
-        force_rebuild = force_rebuild or assets.extraction_result is not None
         if raw_text is None or not raw_text.strip():
             assets.errors.append("prepare_bundle_skipped:missing_raw_text")
             return False
 
         try:
-            bundle = self.bundle_provider.get_bundle_from_raw_text(
-                doc_name=doc_name,
-                raw_text=raw_text,
-                force_rebuild=force_rebuild,
-            )
+            if not self._verify_source(assets):
+                return False
+            bundle = self.bundle_provider.load_prepared_bundle(doc_name=doc_name, raw_text=raw_text)
+            if not self._verify_source(assets):
+                return False
+            assets.runtime_bundle = bundle
             return bundle is not None
         except Exception as error:
             assets.errors.append(f"prepare_bundle_failed:{doc_name}:{error}")

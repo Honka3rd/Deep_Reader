@@ -1,5 +1,21 @@
 # retrieval Detailed Design
 
+## PREP-04 staged index publication (2026-11-13)
+
+Implemented supporting contract: prepare index/records/fingerprint together in isolated
+candidate storage, validate reload and fingerprint, then revalidate source before
+publication. Never clear the active files before parsing/embedding. A per-index
+advisory lock coordinates publication and validated reads. Persist an fsynced
+rollback journal and complete previous-file copies before replacing active files;
+remove the journal only after all three new files and directory entries are durable.
+Exceptions roll back; process interruption leaves durable previous-state evidence.
+The lock is held on the existing directory inode, so reads create no lock files.
+Read-only loads use the previous complete snapshot while a pending journal exists;
+explicit recovery/publication restores it. Reads do not mkdir, rename or repair.
+Initial failure has no ready index; replacement failure keeps the old trio reloadable.
+This is a local three-file publication boundary, not a SQL/profile transaction or
+an interlock with arbitrary external writers. Production retrieval policy is unchanged.
+
 ## CONFIG-02 explicit write ownership (2026-11-12)
 
 FaissIndexStore.save creates the destination parent before index/record writes.

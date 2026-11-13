@@ -12,6 +12,7 @@ from doc_loaders.pdf_document_loader import PdfDocumentLoader
 from doc_loaders.pdf_extraction_contract import PdfExtractionError
 from test_pdf_page_inspection import page_fixture
 from test_prepare_structured_reuse_before_raw_load import _build_pipeline, _StructuredStore, _fake_document
+from document_structure.structured_document_builder import StructuredDocumentBuilder
 
 
 class ModePreparationTests(unittest.TestCase):
@@ -26,8 +27,8 @@ class ModePreparationTests(unittest.TestCase):
         self.pipeline = _build_pipeline(loader=self.loader, store=self.store)
         def build(**kwargs):
             kwargs["page_evidence_provider"]()
-            document = _fake_document("sample")
-            return replace(document, raw_text=kwargs["raw_text"])
+            return StructuredDocumentBuilder().build(document_id="sample", title="sample",
+                raw_text=kwargs["raw_text"], language=kwargs["language"])
         self.pipeline.structured_document_builder = Mock()
         self.pipeline.structured_document_builder.build.side_effect = build
 

@@ -162,6 +162,12 @@ Returns:
         self._put_cache(doc_name, bundle)
         return bundle
 
+    def load_prepared(self, config, raw_text):
+        """Read a validated publication and profile, without a rebuild fallback."""
+        bundle = self.store.load_validated(config, raw_text, self.fingerprint_handler)
+        profile = self.ensure_profile_ready(config, raw_text, bundle.document_language)
+        return bundle.set_profile(profile)
+
     def get_or_load(
         self,
         config: FaissStorageConfig,

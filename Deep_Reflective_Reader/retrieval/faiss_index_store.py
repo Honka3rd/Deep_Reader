@@ -124,6 +124,29 @@ Args:
 
 Returns:
     Reconstructed ``FaissIndexBundle`` loaded from persisted files."""
+        from retrieval.index_publication import readable
+        with readable(config) as active:
+            return self._load_files(active)
+
+    def load_validated(self, config, text, fingerprint):
+        """Read all three committed artifacts under one lock; never rebuild."""
+        from retrieval.index_publication import readable
+        with readable(config) as active:
+            if (not active.exists() or not self.has_position_metadata(active)
+                    or not fingerprint.matches(text, active.get_raw_meta_path())):
+                raise ValueError("index_not_ready:explicit_prepare_required")
+            return self._load_files(active)
+
+    def publish(self, bundle, config, *, text, fingerprint, verify_source):
+        from retrieval.index_publication import publish
+        publish(self, bundle, config, text=text, fingerprint=fingerprint,
+                verify_source=verify_source)
+
+    def recover(self, config):
+        from retrieval.index_publication import recover
+        recover(config)
+
+    def _load_files(self, config):
         loaded_index = faiss.read_index(config.get_raw_index_path())
 
         with open(config.get_raw_records_path(), "r", encoding="utf-8") as f:
@@ -133,6 +156,8 @@ Returns:
             int(node_id): NodeRecord.from_persisted_dict(record_dict)
             for node_id, record_dict in payload["records"].items()
         }
+        if loaded_index.ntotal != len(id_to_record) or loaded_index.d != payload["dimension"]:
+            raise ValueError("index_records_mismatch")
         return FaissIndexBundle(
             faiss_index=loaded_index,
             embedder=self.embedder,

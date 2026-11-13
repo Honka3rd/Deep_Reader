@@ -1,5 +1,19 @@
 # document_preparation Checklist
 
+## Preparation audit correction (2026-11-13)
+
+- [x] PREP-01: Read-only accepted-source QA; no implicit extraction-mode replacement or warm generation.
+  Evidence: `test_preparation_runtime_safety.py` file/real PostgreSQL matrix, original regressions and isolated real-book checks; `/tmp/prep-fix-e3eb6a8/`. Local implementation verified; external review/deployment pending, no production data mutation.
+  Timestamp: 2026-11-13
+
+- [x] PREP-02: Block stale-source derived publication and duplicate bundle rebuilds; preserve old assets.
+  Evidence: `test_preparation_runtime_safety.py` file/real PostgreSQL matrix, original regressions and isolated real-book checks; `/tmp/prep-fix-e3eb6a8/`. Local implementation verified; external review/deployment pending, no production data mutation.
+  Timestamp: 2026-11-13
+
+- [x] PREP-03: Use verified accepted canonical slices for manual/page evidence across file and PostgreSQL.
+  Evidence: `test_preparation_runtime_safety.py` file/real PostgreSQL matrix, original regressions and isolated real-book checks; `/tmp/prep-fix-e3eb6a8/`. Local implementation verified; external review/deployment pending, no production data mutation.
+  Timestamp: 2026-11-13
+
 ## Independent Smart Cleanup Backlog (2026-10-23)
 
 Owned tasks 2/2. [Shared order](../document_structure/module-checklist.md#independent-smart-cleanup-backlog-2026-10-23).
@@ -264,8 +278,8 @@ New track: 0/2 implemented. Existing OCR-06 completion remains historical.
   Acceptance: Define source fingerprint + mode + extraction policy/settings version for raw/OCR/structured reuse and derived profile/layout/retrieval dependencies. Different modes or unknown legacy provenance cannot silently satisfy a new explicit mode request. Existing artifacts remain readable; only explicit preparation can rebuild, using existing validated hierarchy replacement/invalidation boundaries, no premature deletion on failed extraction. Cover same-mode reuse, fast-to-ocr/auto switches, legacy artifacts, source changes and failure preservation in file/DB-backed paths as applicable.
   Depends on: PDF-MODE-01 contract; coordinate repository owners without making mode a hierarchy identity authority.
   Evidence: pdf_extraction_identity.py; prepared_document_assets.py; preparation structured reuse/save and derived-resource hooks; test_pdf_extraction_identity.py (9 tests), structured reuse, lazy layout (15) and API contract (11) regressions passed. JSON persistence tested; DB-shaped repository substituted and existing PostgreSQL parse_provenance mapping inspected, not live DB-tested.
-  Boundary: Hooks/identity contract delivered; PDF-MODE-05 supplies actual request snapshot and extraction result. Public PDF prepare stays gated. Derived resources conservatively rebuild when identity-bearing, no new raw cache or hierarchy identity; failed/missing extraction cannot delete existing resources. No deployment or cross-store transaction guarantee.
-  Timestamp: 2026-10-15
+  Boundary: Hooks/identity contract delivered; PDF-MODE-05 supplies actual request snapshot and extraction result. Public PDF prepare stays gated. PREP-01–04 replaces identity-bearing forced derived rebuilds with accepted-source runtime reuse and staged index publication; no new raw cache or hierarchy identity. Failed/missing extraction cannot delete existing resources. No deployment or cross-store transaction guarantee.
+  Timestamp: 2026-11-13
 
 - [x] PDF-MODE-05: Propagate the selected mode through every preparation/evidence path.
   Acceptance: Carry immutable request-scoped mode from both explicit endpoints through factory/raw/page-boundary/lazy-layout calls. Fast cannot render/OCR via optional TOC fallback; ocr cannot silently switch to native; auto uses existing selective policy. Log mode, stage timings and render/OCR counts without content; concurrent requests cannot leak modes. Persist successful provenance and return truthful readiness; failed extraction cannot publish partial structure. Regression covers defaults, cache hits/misses, optional providers and request cancellation/late completion semantics without claiming server cancellation.
