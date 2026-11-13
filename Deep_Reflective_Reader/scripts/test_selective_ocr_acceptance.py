@@ -6,9 +6,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
-from accept_selective_ocr import accept
+from accept_selective_ocr import SCAN_LINES, accept, make_fixtures
+from document_structure.heading_acceptance import heading_decision
 from test_pdf_page_inspection import add_image, page_fixture
 
 
@@ -17,6 +18,22 @@ class SelectiveOcrAcceptanceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "input.pdf"
+
+    def test_synthetic_bookmarks_match_source_heading_lines(self):
+        root = Path(self.temp.name)
+        make_fixtures(root)
+        reader = PdfReader(root / "mixed-outline.pdf")
+        self.assertEqual(len(reader.pages), 3)
+        self.assertEqual(reader.pages[2].extract_text(), "")
+        titles = [bookmark.title for bookmark in reader.outline]
+        self.assertEqual(titles, ["Chapter One", "Chapter Two"])
+        sources = [reader.pages[0].extract_text(), "\n".join(SCAN_LINES)]
+        for title, source in zip(titles, sources):
+            with self.subTest(title=title):
+                self.assertEqual(source.splitlines()[0], title)
+                self.assertEqual(heading_decision(source, 0, title, corroborated=True), "accepted")
+                self.assertEqual(heading_decision(title + ". Body text.", 0, title,
+                                                 corroborated=True), "rejected")
 
     def test_native_cold_persistence_warm_readback_and_exact_text(self):
         writer, _ = page_fixture(

@@ -324,7 +324,7 @@ def test_real_scanned_pdf_load_requires_ocr() -> None:
     if not fixture.exists():
         return
 
-    loader = PdfDocumentLoader(base_dir=str(raw_dir))
+    loader = PdfDocumentLoader(base_dir=str(raw_dir), ocr_enabled=False)
     try:
         loader.load("暗水幽灵")
     except RawTextRequiresOcrError as error:

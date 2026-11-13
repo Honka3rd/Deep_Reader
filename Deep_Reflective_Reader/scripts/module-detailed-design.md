@@ -1,5 +1,36 @@
 # scripts Detailed Design
 
+## DOCLOAD deployment fixture follow-up (2026-11-13)
+
+Deployment acceptance of approved `8569fb1` exposed an obsolete synthetic Outline
+fixture: bookmarks `Chapter One` / `Chapter Two` point to sentence lines containing
+additional body text. Current source-local heading validation correctly rejects
+those projections and selects Common. The harness still requires accepted Outline.
+Correct the generated native and scanned fixtures to place matching titles on
+separate lines; retain the native/blank span, full transcript, Outline parser,
+zero optional layout OCR and cold/warm persistence assertions. Add an engine-free
+regression using generated PDF bookmarks/native text, the known scan transcript
+and the production heading validator; old inline headings must remain rejected.
+
+The standalone disabled-OCR loading test must explicitly disable OCR instead of
+inheriting deployment configuration, which otherwise starts recognition of the
+261-page fixture. Other OCR tests retain their explicit enabled configuration.
+No production loader, parser or heading policy is changed. The generated fixture
+regression reproduces two old inline-heading failures and passes after correction;
+27 harness/lazy-layout/source-boundary cases and 214 PDF cases pass without skips.
+The standalone inspection script passes with the host OCR environment explicitly
+enabled, demonstrating its disabled-path isolation. Host Pillow is loaded from
+a temporary installation of the repository-pinned 12.3.0 dependency.
+
+Evidence: `/tmp/deep-reader-deploy-8569fb1/` contains before/after regression logs,
+the mixed Outline diagnosis and deployment snapshots. The approved predecessor
+passed 214 + 116 Docker tests and 53 related tests (overlapping coverage); 577
+runtime files matched its SHA and all 1,328 original data files remained intact
+except the operational log. Existing API payloads, PostgreSQL data and mounts were
+unchanged. Updated real-engine acceptance remains pending the new review gate;
+prior measurements below are historical evidence, not acceptance of this follow-up.
+
+
 ## External audit e7073bb regression scope (2026-11-10)
 
 `test_learning_routes.py` adds file/PostgreSQL HTTP cases for R2 and R3. R2 holds
@@ -1570,7 +1601,8 @@ Actual subprocess calls are counted independently and cross-checked against
 purpose/stage execution logs. Stage timings come from existing logger arguments;
 nested durations must not be summed as if independent. Fixture transcript checks
 and source hashing outside `prepare` are excluded from its timing. The generated
-horizontal scan asserts its full five-line transcript after whitespace folding;
+horizontal scan asserts its full transcript after whitespace folding (six lines
+after the 2026-11-13 standalone-heading correction; five in historical measurements);
 the mixed native/scan/blank fixture also verifies exact native/blank spans and
 accepted Outline with no optional layout OCR. Three harness regression tests cover
 native cold/warm persistence, disabled recovery/no writes and excerpt/source

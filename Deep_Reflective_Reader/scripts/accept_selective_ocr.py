@@ -228,7 +228,8 @@ def accept(source, *, page=None, language="eng+chi_sim+chi_tra", ocr=True,
 
 
 SCAN_LINES = (
-    "Chapter Two. Evidence and interpretation.",
+    "Chapter Two",
+    "Evidence and interpretation.",
     "Careful readers compare evidence before accepting a claim.",
     "A reliable conclusion explains both the observation and its limits.",
     "We should consider alternative explanations before deciding.",
@@ -239,7 +240,8 @@ TRANSCRIPT = " ".join(SCAN_LINES)
 
 def make_fixtures(root):
     _, native = page_fixture(
-        b"BT /F1 3 Tf 5 70 Td (Chapter One. Native text must remain unchanged and in order.) Tj ET",
+        b"BT /F1 3 Tf 5 70 Td (Chapter One) Tj 0 -8 Td "
+        b"(Native text must remain unchanged and in order.) Tj ET",
         with_font=True,
     )
     writer = PdfWriter()

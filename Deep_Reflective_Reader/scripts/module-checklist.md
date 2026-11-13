@@ -1,5 +1,13 @@
 # scripts Checklist
 
+## DOCLOAD deployment fixture follow-up (2026-11-13)
+
+- [ ] Align synthetic Outline fixtures and disabled-OCR tests with current contracts.
+  Acceptance: Matching standalone native/scanned headings, unchanged strict Outline/transcript/span/cache assertions, old inline-heading rejection, and explicit disabled-OCR configuration independent of deployment environment. Real-engine synthetic acceptance must pass after exact-SHA review.
+  Evidence: Approved `8569fb1` Docker acceptance fails at the mixed Outline parser assertion; diagnosis and preserved-data checks in `/tmp/deep-reader-deploy-8569fb1/`. New regression reproduces two old inline-heading failures; corrected 27 harness/lazy-layout/source-boundary and 214 PDF tests pass with zero skips. Standalone inspection passes with host OCR enabled. Implementation is locally verified; item remains open until external approval and corrected real-engine Docker acceptance.
+  Timestamp: 2026-11-13
+
+
 ## Shared sentence translation (2026-11-09)
 
 - [x] Verify shared translation on file/PostgreSQL/API and backed-up real sources.
