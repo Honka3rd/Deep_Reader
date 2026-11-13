@@ -29,14 +29,14 @@ Args:
 
     @staticmethod
     def compute_text_hash(text: str) -> str:
-        """Compute stable MD5 hash for normalized document text.
+        """Compute SHA-256 over exact canonical text, preserving all whitespace.
 
 Args:
     text: Input text content.
 
 Returns:
-    Hex digest string of the normalized text."""
-        return hashlib.md5(text.strip().encode()).hexdigest()
+    Hex digest string of the exact UTF-8 text."""
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     def build_fingerprint(self, text: str) -> dict[str, Any]:
         """Build fingerprint.
@@ -47,7 +47,9 @@ Args:
 Returns:
     Fingerprint payload containing content hash and index config fields."""
         return {
+            "fingerprint_version": 2,
             "content_hash": self.compute_text_hash(text),
+            "content_length": len(text),
             "embedding_model": self.embedding_model,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,

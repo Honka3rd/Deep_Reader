@@ -1,5 +1,25 @@
 # retrieval Detailed Design
 
+## PREP-05 coordinate-sensitive validation (2026-11-13)
+
+Implemented supporting correction: validated loads check versioned exact canonical
+fingerprints and every record's positional fields, integer bounded offsets and
+canonical slice. NodeRecord stores stripped chunk text, so slice comparison uses
+that existing chunk normalization; the whole-document fingerprint never strips.
+Whitespace between chunks and parser overlap remain legal. Invalid evidence is
+index_not_ready:explicit_prepare_required, never read-time repair or generation.
+Validation applies equally to staged candidates and the complete previous snapshot
+selected by a pending journal. A previous snapshot is usable only for its own exact
+canonical text/configuration; no mixture with active metadata is permitted.
+
+Validation: `scripts/test_preparation_index_identity.py` passes 10 test methods
+(66 matrix subcases across file/real PostgreSQL), with actual SentenceSplitter,
+FAISS and deterministic embeddings. External reproducer changes from two failures
+to zero; PREP-01–04 regressions remain green. Two immutable-backup book copies
+validate 1527/298 exact record slices and zero warm generation/write-back.
+Evidence: `/tmp/prep05-fix-a8c0ca1/`; external approval is pending. No deployment,
+remote push, paid model calls or next-module audit is included.
+
 ## PREP-04 staged index publication (2026-11-13)
 
 Implemented supporting contract: prepare index/records/fingerprint together in isolated

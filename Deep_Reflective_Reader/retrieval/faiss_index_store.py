@@ -135,7 +135,17 @@ Returns:
             if (not active.exists() or not self.has_position_metadata(active)
                     or not fingerprint.matches(text, active.get_raw_meta_path())):
                 raise ValueError("index_not_ready:explicit_prepare_required")
-            return self._load_files(active)
+            bundle = self._load_files(active)
+            for record in bundle.id_to_record.values():
+                start, end = record.char_start(), record.char_end()
+                if (type(start) is not int or type(end) is not int
+                        or not 0 <= start < end <= len(text)
+                        or type(record.chunk_index()) is not int
+                        or record.chunk_index() < 0
+                        or not record.text()
+                        or text[start:end].strip() != record.text()):
+                    raise ValueError("index_not_ready:explicit_prepare_required")
+            return bundle
 
     def publish(self, bundle, config, *, text, fingerprint, verify_source):
         from retrieval.index_publication import publish
@@ -208,10 +218,6 @@ Returns:
             if not isinstance(records, dict) or not records:
                 return False
 
-            first_record = next(iter(records.values()))
-            if not isinstance(first_record, dict):
-                return False
-
             required_fields = {
                 "chunk_index",
                 "char_start",
@@ -219,7 +225,8 @@ Returns:
                 "prev_node_id",
                 "next_node_id",
             }
-            return required_fields.issubset(first_record.keys())
+            return all(isinstance(record, dict) and required_fields.issubset(record)
+                       for record in records.values())
         except Exception as e:
             print(f"FaissIndexStore#has_position_metadata failed: {e}")
             return False

@@ -1,10 +1,29 @@
 # fingerprint_handler.py Detailed Design
 
+## PREP-05 exact text fingerprint v2 (2026-11-13)
+
+Implemented supporting correction: fingerprint_version=2, content_hash=SHA-256 of exact
+UTF-8 canonical text, content_length=Python character count, plus embedding_model,
+chunk_size and chunk_overlap. No trimming or Unicode normalization. Equality includes
+all fields. Unversioned MD5/strip fingerprints and unknown versions fail reuse;
+load/matches never upgrade or persist. Explicit preparation rebuilds and publishes
+all three index files atomically through retrieval, rather than rewriting meta alone.
+Old fingerprints stay readable for diagnostics and rollback evidence, but cannot
+prove coordinate identity even if their normalized hash matches.
+
+Validation: `scripts/test_preparation_index_identity.py` passes 10 test methods
+(66 matrix subcases across file/real PostgreSQL), with actual SentenceSplitter,
+FAISS and deterministic embeddings. External reproducer changes from two failures
+to zero; PREP-01–04 regressions remain green. Two immutable-backup book copies
+validate 1527/298 exact record slices and zero warm generation/write-back.
+Evidence: `/tmp/prep05-fix-a8c0ca1/`; external approval is pending. No deployment,
+remote push, paid model calls or next-module audit is included.
+
 ## CONFIG-02 explicit write ownership (2026-11-12)
 
 FingerprintHandler.save creates the metadata parent when needed. Path resolution,
 exists, load and matches remain read-only; configuration no longer creates this
-parent as a side effect. Fingerprint payload and comparison rules are unchanged.
+parent as a side effect. Fingerprint comparison follows the versioned PREP-05 contract above.
 
 ## 1. Module Purpose
 
@@ -34,7 +53,7 @@ parent as a side effect. Fingerprint payload and comparison rules are unchanged.
 ## 6. Important Data Structures / Contracts
 
 - `FingerprintHandler`
-- fingerprint payload: `content_hash`, `embedding_model`, `chunk_size`, `chunk_overlap`
+- fingerprint payload: `fingerprint_version`, `content_hash`, `content_length`, `embedding_model`, `chunk_size`, `chunk_overlap`
 
 ## 7. Module Relationships
 
@@ -53,7 +72,7 @@ parent as a side effect. Fingerprint payload and comparison rules are unchanged.
 
 ## 10. Known Legacy / Compatibility Behavior
 
-No known legacy compatibility responsibility.
+Legacy normalized fingerprints are read-only evidence; explicit preparation is required to replace them with v2.
 
 ## 11. Current Risks
 
@@ -63,7 +82,7 @@ No known legacy compatibility responsibility.
 
 ## 12. Open Questions for Maintainer
 
-1. fingerprint payload 是否要加入 version 字段？ **[Needs Confirmation]**
+Resolved by PREP-05: version 2 binds exact canonical text and character length.
 
 ## 13. Suggested Next Documentation Improvements
 

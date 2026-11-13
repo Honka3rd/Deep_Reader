@@ -1,5 +1,11 @@
 # document_preparation Checklist
 
+## PREP-05 audit correction (2026-11-13)
+
+- [x] PREP-05: Exact canonical index reuse, legacy readiness and warm zero-generation across file/PostgreSQL.
+  Evidence: `scripts/test_preparation_index_identity.py`: 10 methods / 66 matrix subcases, file and real PostgreSQL, real splitter/FAISS. External independent 8/8, safety 24/24, existing 142/142, SQL 16/16, original six 6/6 and 7 scripts pass; two real-book copies preserve warm zero-generation and exact slices. `/tmp/prep05-fix-a8c0ca1/`; external review pending, no deployment.
+  Timestamp: 2026-11-13
+
 ## Preparation audit correction (2026-11-13)
 
 - [x] PREP-01: Read-only accepted-source QA; no implicit extraction-mode replacement or warm generation.

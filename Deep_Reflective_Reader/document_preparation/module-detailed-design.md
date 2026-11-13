@@ -1,5 +1,27 @@
 # document_preparation Detailed Design
 
+## PREP-05 exact canonical index reuse (2026-11-13)
+
+Implemented audit correction: index reuse must bind the complete accepted canonical text,
+including leading/trailing whitespace, to a versioned digest and character length.
+Identical text/configuration retains warm QA with zero extraction, language/profile
+or embedding calls. Legacy normalized fingerprints cannot prove coordinate identity:
+runtime reports index readiness without writes; explicit preparation rebuilds once
+through the existing staged publication contract. Source guards, accepted hierarchy
+ownership and PREP-01–04 rollback/read-only boundaries remain unchanged.
+Acceptance uses file and real PostgreSQL, real NodeProvider/SentenceSplitter/FAISS,
+whitespace additions/removals, identical text, legacy metadata, invalid record spans,
+and interrupted publication. Check actual canonical slices, build counts and old
+three-file preservation; deterministic vectors do not establish LLM quality.
+
+Validation: `scripts/test_preparation_index_identity.py` passes 10 test methods
+(66 matrix subcases across file/real PostgreSQL), with actual SentenceSplitter,
+FAISS and deterministic embeddings. External reproducer changes from two failures
+to zero; PREP-01–04 regressions remain green. Two immutable-backup book copies
+validate 1527/298 exact record slices and zero warm generation/write-back.
+Evidence: `/tmp/prep05-fix-a8c0ca1/`; external approval is pending. No deployment,
+remote push, paid model calls or next-module audit is included.
+
 ## PREP-01–04 runtime/source publication correction (2026-11-13)
 
 Implemented audit correction: ordinary QA loads an accepted canonical snapshot and

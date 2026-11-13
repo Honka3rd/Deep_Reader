@@ -442,7 +442,7 @@ It is used to:
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
 | `db/` | package + design module | `db/module-checklist.md` | 62 | 4 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
-| `document_preparation/` | package | `document_preparation/module-checklist.md` | 32 | 13 | PREP fixes locally verified; external review pending |
+| `document_preparation/` | package | `document_preparation/module-checklist.md` | 33 | 13 | PREP-01–05 locally verified; external review pending |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 95 | 18 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -452,7 +452,7 @@ It is used to:
 | `profile/` | package | `profile/module-checklist.md` | 5 | 0 | Completed Baseline Captured |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `retrieval/` | package | `retrieval/module-checklist.md` | 4 | 0 | PREP-04 locally verified; external review pending |
+| `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
 | `scripts/` | package | `scripts/module-checklist.md` | 68 | 0 | LLRN-20/22 system acceptance verified (recounted 2026-10-29) |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 97 | 0 | TRUI-01 complete; quality caveat retained |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -460,7 +460,7 @@ It is used to:
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 38 | 3 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 5 | 0 | PREP runtime handoff locally verified |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 4 | 0 | PREP runtime facade locally verified |
-| `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 4 | 0 | PREP-05 support locally verified; external review pending |
 | `main.py` | root-python-module | `main.module-checklist.md` | 49 | 1 | MAIN-06 pending identity recovery verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 
 ## 5. Package Module Progress
