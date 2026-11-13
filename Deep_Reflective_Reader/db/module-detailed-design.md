@@ -1,5 +1,11 @@
 # db Detailed Design
 
+## PROFILE-05 publication coordination (2026-11-13, locally implemented)
+
+Prepare uses save_and_load on one owner connection/transaction, acquiring documents ROW EXCLUSIVE before row locks and returning its own readback before commit. The profile SHARE boundary blocks these writes, including initial insertion. An explicit outer transaction encloses save (which may use a nested savepoint) and readback; returning only after its commit avoids an intervening writer. Direct save uses the same table-before-row order. Model work remains outside transactions; SQL and the profile file are not an atomic cross-resource transaction.
+
+`scripts/test_profile_prepare_publication.py` passes 18/18 file/real PostgreSQL cases; external publication races change from 2 failures to 2 passes. Original six 6/6, persistence 32/32, runtime 24/24, atomic artifacts 18/18, generated-source 23/23, PREP 142/142 and SQL support 16/16 pass; seven scripts pass. See `/tmp/profile05-fix-2c1ece0c/final-report.txt`. Local validation only; latest SHA requires external review.
+
 ## PROFILE audit integration (2026-11-13)
 
 PROFILE-01 supporting port: expose a short read-only profile publication snapshot on the

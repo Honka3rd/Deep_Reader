@@ -441,15 +441,15 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 11 | 9 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
-| `db/` | package + design module | `db/module-checklist.md` | 65 | 4 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
-| `document_preparation/` | package | `document_preparation/module-checklist.md` | 36 | 13 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 99 | 18 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `db/` | package + design module | `db/module-checklist.md` | 66 | 4 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 100 | 18 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `learning/` | application package | `learning/module-checklist.md` | 3 | 0 | Extraction locally verified; LLRN-13/completion evidence transferred; external review/Docker/push pending |
 | `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
-| `profile/` | package | `profile/module-checklist.md` | 9 | 0 | PROFILE-01–04 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
+| `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
@@ -756,8 +756,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_preparation/module-checklist.md`
 - Detailed Design: `document_preparation/module-detailed-design.md`
-- Status: `PROFILE publication support locally verified; external review pending; unrelated checklist items retained`
-- Completed item count: `36`
+- Status: `PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained`
+- Completed item count: `37`
 - Unresolved checklist count: `13` (templates excluded)
 - Unchecked item count: `13` (historical items).
 - 2026-10-19: source snapshot validation, structure-only execution and end-to-end
@@ -828,8 +828,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
-- Status: `PROFILE publication support locally verified; external review pending; unrelated checklist items retained`
-- Completed item count: `65` (direct checklist count, excluding the template example).
+- Status: `PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained`
+- Completed item count: `66` (direct checklist count, excluding the template example).
 - Unresolved checklist count: `4` (templates excluded)
 - Unchecked item count: `4` (historical items; ENH-REV-02 complete).
 - 2026-10-21: ENH-REV-02 implements locked three-way classification, no-op without
@@ -913,8 +913,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `PROFILE publication support locally verified; external review pending; unrelated checklist items retained`
-- Completed item count: `99` (direct owner recount including TRUI-02/03).
+- Status: `PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained`
+- Completed item count: `100` (direct owner recount including TRUI-02/03).
 - Unresolved checklist count: `18` (templates excluded)
 - Unchecked item count: `18` (historical items; TRUI-02/03 accepted).
 - 2026-10-21 ENH-REF: final real-model implementation passes twice on the reported
@@ -1127,8 +1127,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `profile/module-checklist.md`
 - Detailed Design: `profile/module-detailed-design.md`
-- Status: `PROFILE-01–04 locally verified; external review pending; cache design questions retained`
-- Completed item count: `9`
+- Status: `PROFILE-01–05 locally verified; external review pending; cache design questions retained`
+- Completed item count: `10`
 - Unresolved checklist count: `0` (templates excluded)
 
 #### Completed Work
@@ -1152,9 +1152,17 @@ input capacity (1242/1475 tokens under 6000). Evidence and commands:
 `/tmp/profile-fix-fc1dd285/final-report.txt`. No live LLM/OCR semantics, deployment
 or next-module audit; a new local review commit must receive external approval.
 
+PROFILE-05 follow-up (2026-11-13): formal Prepare file saves now share the
+profile lock; file/SQL save and readback stay inside the owner boundary. Both
+publication orderings, enrichment and competing readback pass 18/18 cases; the
+external two races change from 2 failures to 2 passes. Existing groups above were
+rerun successfully, with the same one private-source opt-in skip. Two full-book
+copies retain hashes/roundtrips. Evidence: `/tmp/profile05-fix-2c1ece0c/final-report.txt`.
+This is local validation only; remain in profile without deployment or push.
+
 #### Needs Confirmation
 
-No pending PROFILE-01–04 implementation checklist items. Design sections 11/16
+No pending PROFILE-01–05 implementation checklist items; external approval remains pending. Design sections 11/16
 still retain optional cache-schema/reason-code questions; this audit remediation
 does not resolve them.
 

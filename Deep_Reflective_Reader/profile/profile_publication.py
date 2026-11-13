@@ -60,6 +60,8 @@ class ProfilePublicationGuard:
     def publication(self):
         with self.lifecycle.locked(), self.snapshot() as document:
             self._verify(document)
+            # The store boundary fences ALL structure writers through replacement;
+            # this snapshot stays current. Re-reading without that fence is unsafe.
             yield lambda: self._verify(document)
             self.digest = self._digest()
 

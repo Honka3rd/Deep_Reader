@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from contextlib import contextmanager, nullcontext
 import hashlib
 import json
+import logging
 from pathlib import Path
 from uuid import uuid4
 from document_structure.learning_lifecycle import guard_source_transition
@@ -23,6 +24,9 @@ from document_structure.structured_document import (
 )
 from shared.task_artifacts import DocumentTaskArtifacts, TaskArtifacts
 from shared.task_unit_model import TaskUnit, TaskUnitContentBlock
+from logging_config import log_stage
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -123,6 +127,8 @@ class PostgresStructuredDocumentStore:
         with (nullcontext(_connection) if _connection is not None else
               psycopg.connect(self._dsn, row_factory=dict_row)) as connection:
             with connection.transaction():
+                # Match profile publication's table boundary before taking row locks.
+                connection.execute("LOCK TABLE documents IN ROW EXCLUSIVE MODE")
                 existing_row = connection.execute(
                     """
                     SELECT id,
@@ -325,6 +331,16 @@ class PostgresStructuredDocumentStore:
                             Jsonb({"storage_backend": "postgres"}),
                         ),
                     )
+
+    def save_and_load(self, document, target) -> StructuredDocument:
+        """Publish and read back on one owner transaction, including assigned epochs."""
+        resolved = self._resolve_target(target)
+        psycopg, dict_row, _ = self._load_psycopg()
+        with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+            with connection.transaction():
+                self.save(document, resolved, _connection=connection)
+                with log_stage(logger, "structured_readback"):
+                    return self.load_enhancement_snapshot(resolved, _connection=connection).document
 
     def commit_manual_structure(self, target, *, document, validate_current):
         from document_structure.manual_structure_commit import prepare_manual_replacement

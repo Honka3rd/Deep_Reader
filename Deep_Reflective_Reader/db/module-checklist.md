@@ -1,5 +1,12 @@
 # db Checklist
 
+## PROFILE-05 follow-up (2026-11-13)
+
+- [x] PROFILE-05: Coordinate formal Prepare structure publication with profile validation/replacement and preserve own-write readback.
+  Acceptance: File/real SQL both ordering cases, full Prepare and enrichment; old results rejected, previous profile preserved; lifecycle, warm QA and atomic rollback retained.
+  Evidence: `scripts/test_profile_prepare_publication.py` passes 18/18 file/real PostgreSQL cases; external publication races change from 2 failures to 2 passes. Original six 6/6, persistence 32/32, runtime 24/24, atomic artifacts 18/18, generated-source 23/23, PREP 142/142 and SQL support 16/16 pass; seven scripts pass. See `/tmp/profile05-fix-2c1ece0c/final-report.txt`. Local validation only; latest SHA requires external review.
+  Timestamp: 2026-11-13
+
 ## Profile audit support (2026-11-13)
 
 - [x] PROFILE-01 support: same-connection SQL snapshot boundary fences lifecycle writes and missing-row insertion without SQL/profile cross-resource atomicity claims.

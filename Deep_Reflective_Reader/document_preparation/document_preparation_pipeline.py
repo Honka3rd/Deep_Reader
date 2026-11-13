@@ -1091,15 +1091,13 @@ class DocumentPreparationPipeline:
         document,
         storage_config: StructuredDocumentStorageConfig,
     ) -> StructuredDocument:
-        """Atomically replace structured artifact to prevent half-written corruption."""
+        """Publish and obtain this write's snapshot inside the storage owner boundary."""
         if not document.parse_provenance.get("interaction_epoch"):
             document = replace(document, parse_provenance={
                 **document.parse_provenance, "interaction_epoch": uuid4().hex})
         with log_stage(logger, "structured_save", storage=type(self.structured_document_store).__name__):
-            self.structured_document_store.save(document=document, target=storage_config)
-        # Read-back validation before reporting structured readiness.
-        with log_stage(logger, "structured_readback"):
-            return self.structured_document_store.load(storage_config)
+            return self.structured_document_store.save_and_load(
+                document=document, target=storage_config)
 
     @log_stage(logger, "faiss_prepare")
     def _prepare_faiss(

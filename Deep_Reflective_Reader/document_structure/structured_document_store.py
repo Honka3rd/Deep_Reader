@@ -1,36 +1,62 @@
 from pathlib import Path
 import json
+import logging
 import os
 import tempfile
 from contextlib import contextmanager
 
 from config.structured_document_storage_config import StructuredDocumentStorageConfig
 from document_structure.structured_document import StructuredDocument
+from logging_config import log_stage
+
+logger = logging.getLogger(__name__)
 
 
 class StructuredDocumentStore:
     """JSON persistence store for StructuredDocument artifacts."""
 
+    @staticmethod
     @contextmanager
-    def profile_publication_snapshot(self, target):
-        """Coordinate explicit sidecar publication with repository lifecycle writes."""
+    def _publication_lock(target):
+        """Same lock as repository mutations; never acquire it recursively."""
         import fcntl
-        path = self._resolve_path(target)
+        path = StructuredDocumentStore._resolve_path(target)
         lock_path = path.with_suffix(".lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with lock_path.open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             try:
-                yield self.load(target) if self.exists(target) else None
+                yield
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
-    @staticmethod
+    @contextmanager
+    def profile_publication_snapshot(self, target):
+        """Hold the snapshot stable through final sidecar validation/replacement."""
+        with self._publication_lock(target):
+            yield self.load(target) if self.exists(target) else None
+
+    @classmethod
     def save(
+        cls,
         document: StructuredDocument,
         target: str | StructuredDocumentStorageConfig,
     ) -> None:
-        """Save structured document to UTF-8 JSON file."""
+        """Publish through the document boundary, including direct Prepare callers."""
+        with cls._publication_lock(target):
+            cls._save_unlocked(document, target)
+
+    @classmethod
+    def save_and_load(cls, document, target) -> StructuredDocument:
+        """Return this write's persisted snapshot before a competitor can replace it."""
+        with cls._publication_lock(target):
+            cls._save_unlocked(document, target)
+            with log_stage(logger, "structured_readback"):
+                return cls.load(target)
+
+    @staticmethod
+    def _save_unlocked(document, target) -> None:
+        """Serialization primitive; caller must already hold the document lock."""
         from document_structure.source_review_blocks import persist_region_mapping
         document = persist_region_mapping(document)
         path = StructuredDocumentStore._resolve_path(target)

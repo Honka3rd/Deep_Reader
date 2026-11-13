@@ -109,6 +109,13 @@ class _StructuredStore:
         self.document = document
         self.exists_value = True
 
+    def save_and_load(self, document, target):
+        import logging
+        from logging_config import log_stage
+        self.save(document, target)
+        with log_stage(logging.getLogger(__name__), "structured_readback"):
+            return self.load(target)
+
 
 class _LanguageDetector:
     def __init__(self) -> None:

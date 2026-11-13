@@ -1,13 +1,22 @@
 # document_structure Detailed Design
 
+## PROFILE-05 publication coordination (2026-11-13, locally implemented)
+
+Public file store save and save_and_load must acquire the same document .lock as repository lifecycle writes and profile snapshots. Only a private serialization primitive may write without reacquiring it. Repository mutations already hold this lock and keep their existing atomic writer; they must not nest public store save. save_and_load returns readback before unlocking so Prepare cannot adopt a competing incarnation.
+
+`scripts/test_profile_prepare_publication.py` passes 18/18 file/real PostgreSQL cases; external publication races change from 2 failures to 2 passes. Original six 6/6, persistence 32/32, runtime 24/24, atomic artifacts 18/18, generated-source 23/23, PREP 142/142 and SQL support 16/16 pass; seven scripts pass. See `/tmp/profile05-fix-2c1ece0c/final-report.txt`. Local validation only; latest SHA requires external review.
+
 ## PROFILE audit integration (2026-11-13)
 
 PROFILE-01 supporting port: StructuredDocumentStore exposes a short profile publication
 snapshot context using the same per-document file lock as repository lifecycle writes.
 It loads the latest document or explicit absence without saving or generating. Profile
 owns validation/publication; this port does not make profile hierarchy authority.
-Unlocked low-level file store saves remain an internal primitive, not a lifecycle-
-coordinated caller API.
+Public save now holds that same lock; save_and_load reads back before release.
+Repository mutations keep their existing locked atomic writer and never reenter
+public save. Learning lifecycle journal application/recovery already takes the
+repository document lock. The private store serialization helper is called only
+inside its public locked writers.
 
 Validation: profile persistence 32/32 file/real SQL methods, original six assertions
 6/6, PREP runtime 24/24, exact-index 10/10 and 142 related regressions pass.
