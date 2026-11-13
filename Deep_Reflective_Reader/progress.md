@@ -440,7 +440,7 @@ It is used to:
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
 | `config/` | package | `config/module-checklist.md` | 10 | 9 | CONFIG-01/02/03 locally verified; historical unchecked items retained; external review pending (2026-11-12 recount; sample item excluded) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 61 | 0 | OCR-KEEP owner 5/5; no unchecked items |
+| `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
 | `db/` | package + design module | `db/module-checklist.md` | 62 | 4 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 25 | 0 | Generic Accepted Sources Delivered |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 95 | 18 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |

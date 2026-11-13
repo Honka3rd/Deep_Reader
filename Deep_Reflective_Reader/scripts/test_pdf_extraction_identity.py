@@ -26,8 +26,7 @@ class IdentityTests(unittest.TestCase):
         self.document = _fake_document()
         self.document.parse_provenance["pdf_extraction"] = self.identity.record(self.document.raw_text)
         self.store = _StructuredStore(exists_value=True, document=self.document)
-        self.pipeline = object.__new__(DocumentPreparationPipeline)
-        self.pipeline.structured_document_store = self.store
+        self.pipeline = _build_pipeline(loader=_TextLoader(), store=self.store)
 
     def assets(self, identity=None):
         assets = PreparedDocumentAssets("fixture", None, None, False, False, False, False,

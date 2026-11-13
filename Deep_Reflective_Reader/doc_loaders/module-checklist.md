@@ -1,5 +1,20 @@
 # doc_loaders Checklist
 
+## Source Boundary Audit (2026-11-13)
+
+- [x] DOCLOAD-01: Enforce logical-name and raw-root boundaries at every PDF read entry.
+  Acceptance: Traversal, absolute and external symlink rejection before generation/save; safe names, custom roots and PDF/TXT identities remain compatible.
+  Evidence: `scripts/test_loader_source_boundaries.py`: every PDF public read rejects unsafe names/links before parsing; real factory/pipeline rejects before profile/build/save; safe names, suffixes and internal symlinks pass.
+  Timestamp: 2026-11-13
+- [x] DOCLOAD-02: Revalidate the logical TXT source at cache reuse and save.
+  Acceptance: Retarget, removal, replacement and external links reject stale results; persisted content/notes stay unchanged; valid warm reuse performs no extraction/OCR/profile work.
+  Evidence: `scripts/test_loader_source_boundaries.py`: capture/build/cache mutation matrix and zero-work warm hit pass; existing document and note metadata unchanged. Session checks logical target, captured stat revision and content hash.
+  Timestamp: 2026-11-13
+- [x] DOCLOAD-03: Repair selective Auto acceptance and identity fixtures; locate Outline failure.
+  Acceptance: Same-session text/page evidence, typed failure and source-preserving warm reuse; original assertions retained; downstream blockers explicitly reported.
+  Evidence: 214 PDF + 116 support tests pass, zero skips; five standalone scripts pass. Outline baseline/diagnosis shows required Front Matter coverage; retained named chapter assertions plus exact cover/full text checks pass. 53 related tests pass (overlapping); two immutable backup books and actual 13-page Fast/Auto cold/warm pass. Full real-engine OCR not rerun (host pdftoppm unavailable). Evidence: `/tmp/docload-fix-e71d3f6/`; external review pending.
+  Timestamp: 2026-11-13
+
 ## Registry-Aligned OCR Languages (2026-10-27)
 
 - [x] OCR-LANG-01: Derive OCR capabilities/defaults from the system language registry.

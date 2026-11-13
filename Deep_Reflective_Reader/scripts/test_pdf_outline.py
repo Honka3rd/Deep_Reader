@@ -50,10 +50,19 @@ def main() -> None:
     assert document.parse_provenance["outline_projection"]["normalized_chapter_level"] == 1
     assert document.parse_provenance["outline_projection"]["root_wrapper_skipped"]
     assert len(document.chapters) >= 29
-    # Recovering the cover preserves the preceding front-matter anchor instead
-    # of relying on its old empty-page offset collision with the following page.
-    assert [chapter.title for chapter in document.chapters[:3]] == ["各版本前自序", "第一章", "第二章"]
-    assert document.chapters[0].sections
+    # validate_projection preserves the recovered cover prefix as an implicit
+    # FRONT_MATTER section; hierarchy gives that section its own chapter. Keep
+    # both exact source coverage and the original named-chapter order assertions.
+    front, *named_chapters = document.chapters
+    assert len(named_chapters) >= 29
+    assert front.title == "Front Matter" and front.chapter_role == "front_matter"
+    assert len(front.sections) == 1 and front.sections[0].title is None
+    assert front.sections[0].char_start == 0
+    assert front.sections[0].char_end == boundaries[1].char_start
+    assert front.sections[0].content == "Recovered cover fixture\n"
+    assert [chapter.title for chapter in named_chapters[:3]] == ["各版本前自序", "第一章", "第二章"]
+    assert named_chapters[0].sections
+    assert "".join(section.content for chapter in document.chapters for section in chapter.sections) == raw_text
     test_outline_level_zero_is_normalized_to_chapters()
     print("pdf outline checks passed")
 

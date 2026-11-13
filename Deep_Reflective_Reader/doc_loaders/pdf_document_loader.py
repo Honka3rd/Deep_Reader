@@ -142,7 +142,7 @@ class PdfDocumentLoader(AbstractDocumentLoader):
                     raise ValueError("review_geometry_invalid")
                 output = io.BytesIO()
                 image.crop(tuple(bbox)).save(output,format="PNG")
-            if hashlib.sha256(path.read_bytes()).hexdigest()!=source_sha256:
+            if hashlib.sha256(self.source_path(doc_name).read_bytes()).hexdigest()!=source_sha256:
                 raise ValueError("review_source_changed")
             return output.getvalue()
 
@@ -184,6 +184,7 @@ class PdfDocumentLoader(AbstractDocumentLoader):
                  ocr_spans=ocr_spans)
 
         return SourceSession(identity=normalize_pdf_identity(identity), source_path=path, extract=extract,
+            source_resolver=lambda: self.source_path(doc_name),
             status=lambda state: {"requested_pdf_extraction_mode": selected,
                 "effective_pdf_extraction_mode": selected if state != "pending" else None,
                 "pdf_extraction_identity": identity,
@@ -1470,12 +1471,8 @@ Args:
         return texts, metrics
 
     def _resolve_file_path(self, doc_name: str) -> Path:
-        normalized_name = (
-            doc_name
-            if doc_name.lower().endswith(".pdf")
-            else f"{doc_name}.pdf"
-        )
-        return self.base_dir / normalized_name
+        from .raw_data_paths import resolve_raw_source_path
+        return resolve_raw_source_path(self.base_dir, doc_name, ".pdf")
 
     def _env_flag(self, name: str, *, default: bool = False) -> bool:
         value = os.environ.get(name, "").strip().casefold()

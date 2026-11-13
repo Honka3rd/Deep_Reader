@@ -968,6 +968,37 @@ use a tmpfs at /source/data for legacy test profile locks and PYTHONPATH contain
 settings were corrected by isolation, not by changing production persistence.
 No live Library document or profile was deleted/replaced during this task.
 
+## DOCLOAD-03 Acceptance Contract Correction (2026-11-13)
+
+Selective acceptance explicitly requests Auto. It validates the artifact from the
+production session, verifies memoization and exact source/page spans, handles
+PdfExtractionError with its typed reason (retaining the legacy requires-OCR report
+code only for that actual chained cause), and forbids extraction/profile/process
+work on warm reuse while allowing capture/verification. The harness measures the
+public layout provider itself because generic handoff bypasses the old pipeline
+logging wrapper; this retains the existing layout-stage assertion without adding
+extra layout work. Source and temporary copy hashes must both remain unchanged.
+Identity tests use the existing fully initialized pipeline fixture. The adjacent
+content-read fixture also supplies `resolve_document_name(name) -> name` on its
+repository mock; otherwise the current config receives a Mock instead of a string.
+The same failure is reproduced in an isolated e71d3f6 checkout before correction;
+all source/status/version assertions are retained, with no application changes.
+
+Outline diagnosis at e71d3f6: loader bookmarks correctly map 各版本前自序 to page 1,
+第一章 to page 4 and 第二章 to page 11. The recovered cover occupies [0,24), and
+outline projection starts at 24. `heading_acceptance.validate_projection` retains
+that nonempty prefix as FRONT_MATTER; `DocumentHierarchyBuilder` names its chapter
+Front Matter. Thus the historical first-three-chapters assertion omits a required
+coverage chapter. The fixture now additionally requires the exact recovered cover
+and its span, exact full-text hierarchy coverage, and the unchanged named-chapter
+order. No downstream parser/loader extraction behavior or assertions are relaxed.
+Evidence: baseline script failure and outline-diagnosis.json under the task's
+external evidence directory `/tmp/docload-fix-e71d3f6/`. All 214 PDF + 116
+support tests and five standalone scripts now pass without skips. The 53-case
+related run also passes (overlapping coverage). Actual backup books and 13-page
+Fast/Auto source preservation/warm reuse pass; real-engine OCR was not rerun
+because host pdftoppm is unavailable. No deployment, live model or database writes.
+
 ## Loader Boundary Governance (2026-10-21)
 
 **[Code-Confirmed]** LOADER-04 accepted. Final Docker runs: 180 PDF tests pass;
@@ -1526,8 +1557,11 @@ directory. A store adapter ignores production storage targets and confines all
 structure writes to one temporary JSON file. Source SHA-256 is checked unchanged.
 Successful preparation asserts ordered exact page spans, hierarchy-only JSON,
 raw-text persistence parity and one save. Native-only cases additionally compare
-the complete text with independent native extraction. Warm reuse poisons raw-loader
-selection and profile generation, asserts zero external processes and verifies
+the complete text with independent native extraction. DOCLOAD-03 updates this
+harness to explicitly select Auto and inspect the production SourceSession/
+SourceArtifact instead of intercepting the legacy combined loader method. Warm
+reuse permits source capture/verification but poisons extraction and profile
+generation, asserts zero external processes and verifies
 the saved bytes are unchanged. Rejected cases assert no structure was saved and
 report warm reuse as unavailable, not a fictitious cache success.
 **[Test-Confirmed]**

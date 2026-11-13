@@ -4,7 +4,7 @@ import hashlib
 from .extraction_identity import ExtractionIdentity, ExtractionResult
 
 from .abstract_document_loader import AbstractDocumentLoader
-from .raw_data_paths import resolve_raw_data_dir
+from .raw_data_paths import resolve_raw_data_dir, resolve_raw_source_path
 
 
 class TextDocumentLoader(AbstractDocumentLoader):
@@ -30,14 +30,7 @@ Returns:
         return self.extract(doc_name).canonical_text
 
     def source_path(self, doc_name: str) -> Path:
-        normalized_name = (
-            doc_name
-            if doc_name.lower().endswith(".txt")
-            else f"{doc_name}.txt"
-        )
-        file_path = (self.base_dir / normalized_name).resolve()
-        if file_path.parent != self.base_dir.resolve():
-            raise ValueError("source_identity_invalid")
+        file_path = resolve_raw_source_path(self.base_dir, doc_name, ".txt")
 
         if not file_path.exists():
             raise FileNotFoundError(f"{file_path} not found")
@@ -67,6 +60,7 @@ Returns:
         path = self.source_path(doc_name)
         source = path.read_bytes()
         return SourceSession(identity=self._identity(source), source_path=path,
+            source_resolver=lambda: self.source_path(doc_name),
             extract=lambda: SourceArtifact(self.extract(doc_name, source_bytes=source)),
             status=lambda state: {"requested_pdf_extraction_mode": mode,
                                   "pdf_extraction_provenance": "not_applicable"})

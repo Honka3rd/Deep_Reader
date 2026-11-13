@@ -26,6 +26,7 @@ class ContentReadRecovery(unittest.TestCase):
         c, _ = _build_coordinator(document)
         holder = {'document': document}
         repository = Mock()
+        repository.resolve_document_name.side_effect = lambda name: name
         repository.load_document.side_effect = lambda name: holder['document']
         def mutate(name, mutation):
             artifacts, result = mutation(holder['document'])

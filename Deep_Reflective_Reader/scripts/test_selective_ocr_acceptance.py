@@ -40,6 +40,8 @@ class SelectiveOcrAcceptanceTests(unittest.TestCase):
         writer.write(self.path)
         with patch("subprocess.run", side_effect=AssertionError("disabled subprocess")):
             report = accept(self.path, ocr=False, expected=False)
+        self.assertEqual(report["settings"]["mode"], "auto")
+        self.assertEqual(report["cold"]["typed_failure"], "engine_unavailable")
         self.assertIsNone(report["warm"])
         self.assertEqual(report["cold"]["save_calls_total"], 0)
         self.assertIn("load_raw_text_requires_ocr:sample", report["cold"]["errors"])

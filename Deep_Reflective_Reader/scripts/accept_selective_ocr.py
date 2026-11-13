@@ -24,9 +24,11 @@ from pypdf import PdfReader, PdfWriter
 
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
 from doc_loaders.pdf_document_loader import PdfDocumentLoader
+from doc_loaders.pdf_extraction_contract import PdfExtractionError
+from doc_loaders.document_load_errors import RawTextRequiresOcrError
 from document_structure.structured_document_builder import StructuredDocumentBuilder
 from document_structure.structured_document_store import StructuredDocumentStore
-from logging_config import request_id_context
+from logging_config import request_id_context, log_stage
 from test_pdf_page_inspection import page_fixture
 from test_prepare_structured_reuse_before_raw_load import _build_pipeline
 
@@ -90,18 +92,31 @@ def capture_stages():
 def measure(pipeline, store, phase):
     token = request_id_context.set(f"ocr-08-{phase}")
     runner = subprocess.run
+    layout = PdfDocumentLoader.load_page_layout_evidence
+
+    @log_stage(logging.getLogger("doc_loaders.pdf_document_loader"), "pdf_layout_evidence")
+    def measured_layout(loader, *args, **kwargs):
+        return layout(loader, *args, **kwargs)
+
     started = time.perf_counter()
     try:
         with capture_stages() as logs, patch(
             "doc_loaders.pdf_document_loader.subprocess.run", wraps=runner,
-        ) as processes:
+        ) as processes, patch.object(PdfDocumentLoader, "load_page_layout_evidence", measured_layout):
             with redirect_stdout(sys.stderr):
-                assets = pipeline.prepare("sample", mode="base")
+                failure = None
+                try:
+                    assets = pipeline.prepare("sample", mode="base", pdf_extraction_mode="auto")
+                except PdfExtractionError as error:
+                    assets = None
+                    failure = error
         elapsed = (time.perf_counter() - started) * 1000
         assert sum(logs.processes.values()) == processes.call_count
         result = {
-            "ready": assets.structured_document_ready,
-            "errors": assets.errors,
+            "ready": assets is not None and assets.structured_document_ready,
+            "errors": assets.errors if assets is not None else [failure.reason.value] + (
+                ["load_raw_text_requires_ocr:sample"] if isinstance(failure.__cause__, RawTextRequiresOcrError) else []),
+            "typed_failure": failure.reason.value if failure else None,
             "elapsed_ms": round(elapsed, 1),
             "stages_ms": {key: round(value, 1) for key, value in logs.stages.items()},
             "process_calls": dict(logs.processes),
@@ -135,16 +150,19 @@ def accept(source, *, page=None, language="eng+chi_sim+chi_tra", ocr=True,
         pipeline.loader_factory = DocumentLoaderFactory(root)
         pipeline.loader_factory.pdf_loader = loader
         pipeline.structured_document_builder = StructuredDocumentBuilder()
-        raw_load = loader.load_with_page_boundary_evidence
         evidence = {}
 
-        def validate_boundaries(doc_name):
-            raw, boundaries = raw_load(doc_name)
+        def validate_boundaries(session):
+            artifact = session.extract()
+            assert session.extract() is artifact
+            raw = artifact.result.canonical_text
+            boundaries = artifact.page_boundaries
             previous_end = 0
-            assert boundaries.source_sha256 == fixture_hash
-            assert len(boundaries.boundaries) == len(PdfReader(target).pages)
+            assert session.identity.source_sha256 == fixture_hash
+            assert artifact.result.identity == session.identity
+            assert len(boundaries) == len(PdfReader(target).pages)
             reference_reader = PdfReader(target)
-            for index, boundary in enumerate(boundaries.boundaries):
+            for index, boundary in enumerate(boundaries):
                 assert boundary.page_index == index
                 assert boundary.char_start >= previous_end
                 assert raw[boundary.char_start:boundary.char_end] == boundary.text
@@ -153,16 +171,20 @@ def accept(source, *, page=None, language="eng+chi_sim+chi_tra", ocr=True,
                     assert boundary.text == (reference_reader.pages[index].extract_text() or "")
                 previous_end = boundary.char_end
             assert previous_end == len(raw)
-            evidence.update(page_count=boundaries.page_count, raw_chars=len(raw),
+            evidence.update(page_count=len(boundaries), raw_chars=len(raw),
                             boundaries="exact_ordered_spans",
                             text_sha256=hashlib.sha256(raw.encode()).hexdigest())
             if expected_text is not None:
                 assert expected_text in " ".join(raw.split()), "known transcript missing"
             return raw, boundaries
 
-        with patch.object(loader, "load_with_page_boundary_evidence", side_effect=validate_boundaries):
+        with patch.object(loader, "extract", wraps=loader.extract) as extraction:
             assets, cold = measure(pipeline, store, "cold")
-        ready = assets.structured_document_ready
+            ready = cold["ready"]
+            if ready:
+                validate_boundaries(assets.source_session)
+                assert assets.raw_text == assets.source_session.extract().result.canonical_text
+            extraction.assert_called_once()
         if expected is not None:
             assert ready == expected, cold
         warm = None
@@ -185,20 +207,22 @@ def accept(source, *, page=None, language="eng+chi_sim+chi_tra", ocr=True,
             evidence["layout"] = document.parse_provenance.get("layout_evidence")
             evidence["parser"] = document.parse_provenance.get("effective_parser_mode")
             before = store.path.read_bytes()
-            with patch.object(pipeline.loader_factory, "get", side_effect=AssertionError("warm raw load")), \
+            with patch.object(loader, "extract", side_effect=AssertionError("warm extraction")), \
                     patch.object(pipeline.profile_builder, "build", side_effect=AssertionError("warm profile")):
                 reused, warm = measure(pipeline, store, "warm")
             assert reused.structured_document_ready and reused.raw_text is None
+            assert "source_capture" in warm["stages_ms"] and "source_extract" not in warm["stages_ms"]
             assert not warm["process_calls"] and store.save_calls == 1
             assert before == store.path.read_bytes()
         else:
             assert not store.path.exists() and store.save_calls == 0
-            assert assets.errors
+            assert cold["errors"]
             evidence["quality_check"] = "rejected_no_persistence"
+        assert hashlib.sha256(target.read_bytes()).hexdigest() == fixture_hash
         assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
         return {"source": source.name, "source_sha256": source_hash,
                 "page_excerpt": page, "fixture_sha256": fixture_hash,
-                "settings": {"ocr": ocr, "language": loader.ocr_language,
+                "settings": {"mode": "auto", "ocr": ocr, "language": loader.ocr_language,
                              "dpi": loader.pdf_render_dpi},
                 "cold": cold, "warm": warm, "evidence": evidence}
 

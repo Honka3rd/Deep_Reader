@@ -1,5 +1,52 @@
 # doc_loaders Detailed Design
 
+## DOCLOAD-01–03 Source Boundary Audit (2026-11-13)
+
+Implemented correction: PDF and TXT source resolution validates the shared logical
+name contract before reading, then enforces containment within the configured raw
+root after symlink resolution. Preserve Chinese, safe legacy punctuation, explicit
+PDF/TXT identities, custom roots and safe internal symlinks. All PDF source reads
+share this boundary, including inspection, outline, layout and review rendering;
+rejection precedes extraction/generation/persistence.
+
+SourceSession retains the logical path rather than only a dereferenced target.
+Before cache reuse or structured save, re-resolve this path, recheck containment
+and compare captured revision/content. Retargeting, removal or replacement must
+not validate a detached old target. Verification is read-only, without extraction,
+OCR or profile generation. This synchronous pre-save guard is not an atomic
+filesystem/database transaction or a lock against external writers.
+
+Selective acceptance explicitly selects Auto and inspects the same SourceSession/
+SourceArtifact used by preparation. Warm acceptance permits capture/verification
+but forbids extraction, OCR, profile generation and additional saves. Identity
+fixtures initialize the complete pipeline. Diagnose the Outline title failure
+without weakening existing assertions; report a downstream blocker separately
+if ownership lies outside this module.
+
+Evidence: baseline reproduced 214 PDF cases (two failures) and 108 support cases
+(three failures), plus the separate Outline assertion. After correction, 214 PDF
+and 116 support cases (including eight source-boundary tests) pass with zero skips;
+all five standalone scripts pass. A separate 53-case related run passes (overlaps
+source/accepted-snapshot suites; do not sum as distinct coverage). Synthetic tests
+cover every PDF read entry, early preparation rejection, TXT retarget/removal/
+replacement/external links during capture/build/cache reuse, preserved stored text
+and note metadata, plus unchanged warm reuse without extraction/profile/processes.
+
+Outline was a fixture expectation conflict: source-preserving heading validation
+adds Front Matter for the recovered cover. The test retains its named-chapter order
+and adds exact cover span/content and whole-hierarchy coverage checks; no downstream
+production changes. Identity and content-read repository fixtures now honor current
+initialization/name-resolution contracts. See scripts DOCLOAD-03 design for diagnosis.
+
+Immutable backup TXT/PDF books pass exact canonical digests, one cold extraction,
+zero warm extraction/profile calls, and unchanged source/profile hashes. The actual
+13-page PDF hash 87d7685e1b95d8842fc749e15b908b631d4cc5def5afcf7a9a02d7011e9ecc83
+passes Fast/Auto with 19168/19169 characters, exact spans and zero render/OCR;
+selective Auto cold/warm preparation also passes. Evidence directory:
+`/tmp/docload-fix-e71d3f6/`. Full real-engine OCR was not rerun: host pdftoppm is
+unavailable. No live LLM, HTTP, PostgreSQL, deployment or push acceptance claimed.
+External review of the new candidate remains pending.
+
 ## Registry-Aligned OCR Languages (2026-10-27)
 
 **[Maintainer-Provided; Code-Confirmed]** The system language
