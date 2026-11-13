@@ -5,6 +5,8 @@ Requires DEEP_READER_TEST_POSTGRES_DSN. No existing document rows are modified.
 """
 
 import os
+from contextlib import chdir
+from tempfile import TemporaryDirectory
 from pathlib import Path
 import sys
 from uuid import uuid4
@@ -20,6 +22,11 @@ from db.postgres_structured_document_store import PostgresStructuredDocumentStor
 
 
 def main() -> None:
+    with TemporaryDirectory() as directory, chdir(directory):
+        _check_deletion()
+
+
+def _check_deletion() -> None:
     dsn = os.environ["DEEP_READER_TEST_POSTGRES_DSN"]
     schema = "delete_test_" + uuid4().hex
     migrations = Path(__file__).resolve().parents[1] / "db" / "migrations"
@@ -49,6 +56,12 @@ def main() -> None:
                 """)
             store = PostgresStructuredDocumentStore(scoped_dsn, namespace="delete-test")
             repository = PostgresStructuredDocumentArtifactRepository(store)
+            # No source evidence: the qualified name must not delete bare Book.
+            assert repository.delete_document("Book.txt") is False
+            with psycopg.connect(scoped_dsn) as connection:
+                assert connection.execute("SELECT id FROM documents ORDER BY id").fetchall() == [(1,), (2,), (3,)]
+            Path('data/raw').mkdir(parents=True)
+            Path('data/raw/Book.txt').write_text('Disposable source identity evidence')
             assert repository.delete_document("Book.txt") is True
             assert repository.delete_document("Book") is False
             assert [item.doc_name for item in repository.list_documents()] == ["Other Book"]

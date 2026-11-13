@@ -1,5 +1,19 @@
 # db Checklist
 
+## DB audit correction (2026-11-13)
+
+- [x] DB-01: Preserve non-owned SQL metadata during ordinary saves without reviving cleared artifacts.
+  Evidence: `scripts/test_db_metadata_preservation.py`: 11/11 real SQL tests; metadata/notes and supported snapshot projection retained; Clear/hard reparse, NULL, ID reallocation, parallel writes and rollback verified. External original reproduction now passes. `/tmp/db-fix-79240386/final-report.txt`; local verification only, external review pending.
+  Timestamp: 2026-11-13
+
+- [x] DB-02: Use validated rename source paths consistently across rows and snapshots.
+  Evidence: `scripts/test_db_rename_source_location.py`: 9/9 actual HTTP/real SQL tests with source/hash/row/snapshot and notes/preferences/learning/replay checks. Existing 120 rename cases pass. `/tmp/db-fix-79240386/final-report.txt`; external review pending.
+  Timestamp: 2026-11-13
+
+- [x] DB-03: Align parity/delete fixtures with incarnation and source-evidenced alias contracts.
+  Evidence: Parity suite 49/49 including old-epoch missing-file negative case; deletion script retains cascade/namespace assertions and adds unproven-alias rejection. Ten existing groups: 310 pass/3 private opt-in skips/0 errors, 313 executions; four storage checks pass. `/tmp/db-fix-79240386/final-report.txt`; no production fence weakened.
+  Timestamp: 2026-11-13
+
 ## PROFILE-05 follow-up (2026-11-13)
 
 - [x] PROFILE-05: Coordinate formal Prepare structure publication with profile validation/replacement and preserve own-write readback.

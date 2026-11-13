@@ -441,7 +441,7 @@ It is used to:
 | `config/` | package | `config/module-checklist.md` | 11 | 9 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
-| `db/` | package + design module | `db/module-checklist.md` | 66 | 4 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `db/` | package + design module | `db/module-checklist.md` | 69 | 4 | DB-01–03 locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 100 | 18 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -828,8 +828,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `db/module-checklist.md`
 - Detailed Design: `db/module-detailed-design.md`
-- Status: `PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained`
-- Completed item count: `66` (direct checklist count, excluding the template example).
+- Status: `DB-01–03 locally verified; external review pending; unrelated checklist items retained`
+- Completed item count: `69` (direct checklist count, excluding the template example).
 - Unresolved checklist count: `4` (templates excluded)
 - Unchecked item count: `4` (historical items; ENH-REV-02 complete).
 - 2026-10-21: ENH-REV-02 implements locked three-way classification, no-op without
@@ -844,6 +844,15 @@ No unresolved confirmation items identified in module checklist.
   disposable PostgreSQL tests passed. Migration is not deployed to user schemas;
   PREP-03 accepts the guarded public route and version-aware file-profile projection;
   file hierarchy enhancement remains unsupported. Production deployment is separate.
+
+- 2026-11-13 DB audit: ordinary SQL saves preserve unowned row metadata, while owned
+  clears/hard reparse retain their semantics; rename uses lifecycle-validated source
+  paths in rows and snapshots. Parity/deletion fixtures now follow explicit identity
+  initialization and evidenced aliases. New SQL/HTTP tests 20/20; external reproduction
+  2/2; existing 313 executions = 310 pass/3 private opt-in skips; 120 rename, 18 atomic,
+  23 generated-source, 18 publication tests and four storage checks pass. Groups may
+  overlap. Evidence: `/tmp/db-fix-79240386/final-report.txt`. External db review pending;
+  no deployment/push or next-module work. No live model, private-book or UI acceptance.
 
 #### Completed Work
 

@@ -218,6 +218,8 @@ class PostgresStructuredDocumentStore:
                         self._validate_metadata_write(connection, document, document_id,
                                                       structure_version, existing_row)
                         document = self._preserve_navigation_labels(connection, document, document_id)
+                        # DTOs do not carry every legacy/extension field in the row.
+                        metadata_payload = {**(existing_row["metadata_payload"] or {}), **metadata_payload}
                         event_type = None
                         invalidated_artifact_count = None
                         invalidated_content_block_count = None
@@ -297,7 +299,7 @@ class PostgresStructuredDocumentStore:
                     DO UPDATE SET
                         structured_document_payload = EXCLUDED.structured_document_payload,
                         schema_version = EXCLUDED.schema_version,
-                        metadata_payload = EXCLUDED.metadata_payload,
+                        metadata_payload = COALESCE(structured_document_snapshots.metadata_payload, '{}'::jsonb) || EXCLUDED.metadata_payload,
                         created_at = NOW()
                     """,
                     (
@@ -322,7 +324,7 @@ class PostgresStructuredDocumentStore:
                         DO UPDATE SET
                             source_location = EXCLUDED.source_location,
                             original_filename = EXCLUDED.original_filename,
-                            metadata_payload = EXCLUDED.metadata_payload
+                            metadata_payload = COALESCE(raw_source_metadata.metadata_payload, '{}'::jsonb) || EXCLUDED.metadata_payload
                         """,
                         (
                             document_id,
@@ -544,21 +546,22 @@ class PostgresStructuredDocumentStore:
             renamed = advance_rename_epoch(renamed)
             metadata["parse_provenance"] = renamed.parse_provenance
             metadata["title"] = renamed.title
+            metadata["source_path"] = renamed.source_path
             metadata["document_task_artifacts"] = (renamed.document_task_artifacts.to_dict()
                                                     if renamed.document_task_artifacts else None)
             source = connection.execute("SELECT source_location FROM raw_source_metadata WHERE document_id=%s",
                                         (row["id"],)).fetchone()
-            if source:
-                old_path = Path(source["source_location"])
-                new_path = str(old_path.with_name(new_name + old_path.suffix))
-                metadata["source_path"] = new_path
+            if source and renamed.source_path:
+                # The lifecycle owner has already resolved and validated the move.
+                new_path = renamed.source_path
                 connection.execute("UPDATE raw_source_metadata SET source_location=%s, original_filename=%s WHERE document_id=%s",
                                    (new_path, Path(new_path).name, row["id"]))
             connection.execute("UPDATE documents SET document_name=%s, metadata_payload=%s, updated_at=NOW() WHERE id=%s",
                                (new_name, Jsonb(metadata), row["id"]))
             connection.execute("UPDATE structured_document_snapshots SET structured_document_payload="
-                "jsonb_set(jsonb_set(jsonb_set(structured_document_payload, '{document_id}', %s), '{title}', %s), '{parse_provenance}', %s) WHERE document_id=%s",
-                (Jsonb(new_name), Jsonb(renamed.title), Jsonb(renamed.parse_provenance), row["id"]))
+                "structured_document_payload || %s WHERE document_id=%s",
+                (Jsonb(dict(document_id=new_name, title=renamed.title,
+                            source_path=renamed.source_path, parse_provenance=renamed.parse_provenance)), row["id"]))
             return True
 
     def save_ocr_run(
@@ -1331,7 +1334,7 @@ class PostgresStructuredDocumentStore:
                         title = %s,
                         level = %s,
                         chapter_role = %s,
-                        metadata_payload = %s
+                        metadata_payload = (COALESCE(metadata_payload, '{}'::jsonb) - 'task_artifacts') || %s
                     WHERE id = %s
                       AND document_id = %s
                     RETURNING id
@@ -1407,7 +1410,7 @@ class PostgresStructuredDocumentStore:
                             section_role = %s,
                             section_kind = %s,
                             is_implicit_section = %s,
-                            metadata_payload = %s
+                            metadata_payload = (COALESCE(metadata_payload, '{}'::jsonb) - ARRAY['section_index', 'task_artifacts']) || %s
                         WHERE id = %s
                           AND document_id = %s
                         RETURNING id
@@ -1466,7 +1469,7 @@ class PostgresStructuredDocumentStore:
                                 content_payload = EXCLUDED.content_payload,
                                 source_section_ids_payload = EXCLUDED.source_section_ids_payload,
                                 is_fallback_generated = EXCLUDED.is_fallback_generated,
-                                metadata_payload = EXCLUDED.metadata_payload
+                                metadata_payload = (COALESCE(task_units.metadata_payload, '{}'::jsonb) - ARRAY['task_artifacts', 'content_blocks']) || EXCLUDED.metadata_payload
                             RETURNING id
                         """,
                         insert_params=(
@@ -1490,7 +1493,7 @@ class PostgresStructuredDocumentStore:
                                 content_payload = %s,
                                 source_section_ids_payload = %s,
                                 is_fallback_generated = %s,
-                                metadata_payload = %s
+                                metadata_payload = (COALESCE(metadata_payload, '{}'::jsonb) - ARRAY['task_artifacts', 'content_blocks']) || %s
                             WHERE id = %s
                               AND document_id = %s
                             RETURNING id
@@ -1509,8 +1512,8 @@ class PostgresStructuredDocumentStore:
                     if str(task_unit_id) != task_unit.unit_id and task_unit.content_blocks:
                         task_unit_metadata["content_blocks"] = [block.to_dict() for block in
                             task_unit.with_unit_id(str(task_unit_id)).content_blocks]
-                        connection.execute("UPDATE task_units SET metadata_payload=%s WHERE id=%s AND document_id=%s",
-                                           (Jsonb(task_unit_metadata), task_unit_id, document_id))
+                        connection.execute("UPDATE task_units SET metadata_payload=jsonb_set(metadata_payload, '{content_blocks}', %s) WHERE id=%s AND document_id=%s",
+                                           (Jsonb(task_unit_metadata["content_blocks"]), task_unit_id, document_id))
                     kept_task_unit_ids.append(task_unit_id)
                     persisted_units.append(replace(
                         task_unit.with_unit_id(str(task_unit_id)),

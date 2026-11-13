@@ -460,7 +460,7 @@ class LearningPostgresTests(unittest.TestCase):
             # fixture's legacy epoch, so both adapters receive identical source identity.
             with patch('document_structure.structured_document_artifact_repository.uuid4') as allocator:
                 allocator.return_value.hex = self.block.source.document_epoch
-                docs.save_document(self.docs.load_document('book'))
+                docs.save_reparsed_document(self.docs.load_document('book'))
             file_tests.configure(prefs)
             self.assertEqual(file_repo.read_sources('book'), self.repo.read_sources('book'))
             results=[]
@@ -474,6 +474,15 @@ class LearningPostgresTests(unittest.TestCase):
                 results.append((first,coalesced,complete,repo.read_checkpoints('book','first'),
                                 repo.lookup_command('book','also'),repo.read_batch('book',(self.key,))))
             self.assertEqual(*results)
+
+    def test_old_epoch_ordinary_save_cannot_initialize_missing_file_document(self):
+        import tempfile
+        from document_structure.reading_content import ReadingContentConflict
+        with tempfile.TemporaryDirectory() as root:
+            docs, _, _ = file_tests.repositories(root, self.namespace)
+            with self.assertRaisesRegex(ReadingContentConflict, 'reading_document_missing_reload_required'):
+                docs.save_document(self.docs.load_document('book'))
+            self.assertFalse(docs.contains_document('book'))
 
     def test_paid_results_backup_downgrade_reupgrade_restore(self):
         with self.isolated_schema() as dsn:

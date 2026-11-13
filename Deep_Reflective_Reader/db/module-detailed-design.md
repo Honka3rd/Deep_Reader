@@ -1,5 +1,46 @@
 # db Detailed Design
 
+## DB-01–03 audit remediation (2026-11-13, locally verified)
+
+Ordinary hierarchy/metadata saves merge against current SQL row JSONB inside the
+existing document lock/transaction. Document and chapter extension fields survive;
+section owns section_index/task_artifacts, task-unit owns task_artifacts/content_blocks.
+Treat SQL NULL metadata as an empty object. Replace owned keys explicitly, including
+removing absent artifacts/blocks, so
+retention cannot resurrect cleared generated or reading state. Raw-source and snapshot
+adapter metadata retain unrelated keys. Hard reparse still deletes/replaces hierarchy
+and derived rows; incarnation/source/annotation guards remain unchanged. DTO-unrepresented
+section/unit extensions stay in relational metadata, not a second hierarchy authority;
+the snapshot mirrors the supported DTO projection with allocated IDs.
+
+Rename consumes source_path from the validated lifecycle transform. It does not append
+extensions or invent a new location for SQL-only/missing-source documents. Raw source
+location/original filename, document metadata and snapshot source_path agree in the same
+transaction. File movement/receipt recovery retain the existing application owner.
+
+Fixtures initialize imported SQL snapshots via explicit reparse, retaining fixed identity
+and parity assertions; qualified legacy aliases require actual source evidence. Add
+negative missing-file ordinary-save and unproven-alias deletion tests rather than weaken
+production fences. Acceptance: real SQL metadata retention/clear/concurrency/rollback,
+HTTP rename identity/path/hash/lifecycle/replay/recovery matrix and existing regressions.
+Remain in db until external approval; no deployment, push or next-module work.
+
+Validation: the external reproduction changes from two methods/three failed assertions
+to 2/2 passes. New real SQL regressions pass 20/20: metadata 11 (same/different section,
+chapter/unit summary+quiz, layout/document metadata, explicit Clear, NULL, ID reallocation,
+rollback and hard reparse) and HTTP source-location 9 (PDF/TXT, bare/qualified names,
+uppercase suffixes, Chinese/legacy names, notes/preferences/learning, receipt reuse and
+SQL rollback/recovery). Running those tests against only the baseline SQL owner yields
+49 failed assertions/subtests and zero errors; the workspace remains on the fix.
+The 10 existing suites execute 313 tests: 310 pass, 3 opt-in skips, zero failures/errors.
+The skips are two inherited private source readbacks and one immutable-backup test.
+Additional suites: HTTP rename 120/120, atomic hierarchy 18/18, generated-source fences
+23/23 and Prepare/profile publication 18/18. Four storage scripts/checks pass, including
+SQLite hierarchy, PostgreSQL migration shape/relational constraints and corrected delete.
+Groups overlap through inherited fixtures; counts are executions, not unique scenarios.
+Evidence/commands: `/tmp/db-fix-79240386/final-report.txt`; disposable SQL schemas and
+synthetic source bytes only. No live LLM/OCR, private-book, UI or deployment acceptance.
+
 ## PROFILE-05 publication coordination (2026-11-13, locally implemented)
 
 Prepare uses save_and_load on one owner connection/transaction, acquiring documents ROW EXCLUSIVE before row locks and returning its own readback before commit. The profile SHARE boundary blocks these writes, including initial insertion. An explicit outer transaction encloses save (which may use a nested savepoint) and readback; returning only after its commit avoids an intervening writer. Direct save uses the same table-before-row order. Model work remains outside transactions; SQL and the profile file are not an atomic cross-resource transaction.
@@ -738,9 +779,11 @@ back; physical raw/FAISS files are handled separately by the explicit lifecycle 
 This is document deletion, separate from hard-reparse replacement semantics.
 **[Code-Confirmed]**
 
-`scripts/test_postgres_document_delete.py` applies both migrations in a unique temporary
-schema and verifies all owned rows disappear, missing retries return false, and another
-namespace's same-name document plus another same-namespace document survive.
+`scripts/test_postgres_document_delete.py` applies all reviewed migrations in a unique
+temporary schema and uses an isolated raw directory. Without source evidence a qualified
+alias cannot delete the bare document; with evidence, deletion removes all owned rows,
+missing retries return false, and another namespace's same-name document plus another
+same-namespace document survive.
 **[Test-Confirmed]**
 
 ## 6. DB-Era Identity Strategy
