@@ -1,5 +1,31 @@
 # app Detailed Design
 
+## STRUCT-04 legacy generation integration (2026-11-13, implemented)
+
+Section/chapter summary and quiz generation capture the accepted repository snapshot
+before provider calls, resolve the task unit from its effective reading projection,
+and pass source binding with the result. Cache checks require the same binding and
+effective-source hash in addition to existing language/prompt/options checks.
+Source conflicts return failure; never return a successfully generated but rejected
+artifact as persisted success. Provider work stays outside repository transactions.
+
+Validation: the 23-method generation suite, 18 atomic cases, 43 lifecycle cases and
+120 HTTP rename cases pass across the applicable file/real SQL owners. Existing
+535-test and PREP/manual support results are recorded in the document_structure
+design and `/tmp/struct-fix-2c897af/`. No schema migration, read-time identity
+backfill, deployment or push; latest review SHA still needs external approval.
+
+## STRUCT-03 conditional manual commit (2026-11-13)
+
+Implemented correction: manual orchestration obtains preparation-owned accepted evidence,
+builds a complete draft and calls the conditional manual replacement repository port.
+Missing accepted commit evidence returns readiness; stale source/version/incarnation
+returns conflict. The app does not supply extraction provenance or use unconditional
+save_reparsed_document for this route. Source verification runs again at publication
+under the storage owner's lock/transaction. Existing page/char validation remains.
+Validation: eight coordinator source-evidence cases, ten existing validate/route cases and the 16-method real file/SQL integrity suite pass. Source changes at the publication boundary return 409; injected persistence failures return 500 without success. Evidence: `/tmp/struct-fix-2c897af/`; whole-audit external review is pending.
+
+
 ## MAIN-06 pending file identity (2026-11-11, implemented)
 
 Pending recovery must fence delete/reupload even when raw bytes are identical. A
@@ -1393,7 +1419,7 @@ Root-cause boundary:
 
 1. Manual commit is a hard reparse mutation and should use a parser-level hierarchy replacement save. **[From HLD] + [Code-Confirmed]**
 2. PostgreSQL artifact/task-layout saves intentionally preserve the current structure version and should not clear hierarchy rows. **[Code-Confirmed]**
-3. Manual reparse calls the explicit `save_reparsed_document(...)` repository boundary, which PostgreSQL maps to `replace_existing_hierarchy=True`. **[Code-Confirmed]**
+3. Manual reparse calls `commit_manual_structure(...)` with a preparation-owned verifier; PostgreSQL validates and saves with `replace_existing_hierarchy=True` on one locked connection. **[Code-Confirmed]**
 4. Validation/source/draft failures must continue to preserve the current structured hierarchy and derived resources. **[From HLD] + [Code-Confirmed]**
 5. Successful manual reparse must remain explicit, transactional, hierarchy-first, and separate from task-layout read/projection. **[From HLD] + [Code-Confirmed]**
 

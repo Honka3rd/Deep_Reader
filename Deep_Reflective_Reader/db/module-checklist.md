@@ -1,5 +1,25 @@
 # db Checklist
 
+## STRUCT-04 supporting integration (2026-11-13)
+
+- [x] STRUCT-04 support: Validate generated artifacts on the locked connection and advance rename generation identity in metadata/snapshot atomically. File/real SQL source matrix and all 120 HTTP rename cases pass; existing rollback and lifecycle behavior retained.
+  Evidence: `/tmp/struct-fix-2c897af/`; locally verified for document_structure audit dependencies only; external review pending.
+  Timestamp: 2026-11-13
+
+## STRUCT-03 manual replacement support (2026-11-13)
+
+- [x] Conditional manual replacement validates accepted source on the locked SQL connection, preserves trusted source evidence, advances hierarchy version/epoch and rolls back failures. Eight SQL integrity methods / 28 matrix subcases and existing repository replacement regressions pass; no schema migration.
+  Evidence: `/tmp/struct-fix-2c897af/`; unit locally verified, whole document_structure audit/external review pending.
+  Timestamp: 2026-11-13
+
+## STRUCT-01 audit correction (2026-11-13)
+
+- [x] STRUCT-01 support: Serialize latest read, target validation, owned-field merge and save.
+  Evidence: `test_atomic_hierarchy_artifacts.py`: 18/18 pass, both baseline concurrency cases fail. Existing 535 executions: 529 pass/6 opt-in skips/0 failures/0 errors; original two task-layout fixture errors corrected without weakening assertions. `/tmp/struct-fix-2c897af/`. Unit locally verified; whole audit/external review pending.
+  Timestamp: 2026-11-13
+
+## Earlier lifecycle corrections
+
 - [x] MAIN-01/05/06 follow-up: verify incarnation fences and explicit rename command identity.
   Evidence: `scripts/test_main_rename_audit.py` (90 file/real PostgreSQL HTTP cases, including six TCP cases) and the related 361-test regression run pass without skips; two final incarnation/byte-preservation checks also pass. Nine route/schema scripts pass after updating rename request fixtures. UI type/build, 21 controller groups, lifecycle service retry checks and 1280px/390px rename flows pass. Local evidence: `/tmp/audit-main-ac544288/`. External review pending; no deployment/push.
   Timestamp: 2026-11-11

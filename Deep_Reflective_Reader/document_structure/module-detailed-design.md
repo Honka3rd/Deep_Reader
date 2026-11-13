@@ -1,5 +1,90 @@
 # document_structure Detailed Design
 
+## STRUCT-04 generation binding (2026-11-13, implemented)
+
+Generated summary/quiz writes carry a server-created snapshot binding in artifact
+metadata: document identity/incarnation, structure and reading revisions, rename
+generation epoch, target identity and exact effective hierarchy digest. Capture
+before provider work; validate against latest state inside the existing mutation
+lock/SQL transaction. Same-text no-ops retain validity; changed text, Undo, reparse,
+rename (including round trips) and reimport reject old writers. Non-null generated
+fields in combined writes obey the same rule. Legacy unbound artifacts remain
+readable but are not valid caches or authorized new writes; no read-time repair.
+Effective projected text is the provider source, never a persisted hierarchy.
+Rename rotates a separate artifact generation epoch inside its existing durable
+boundary without replacing learning/source epochs. Ordinary saves cannot rewind it.
+
+Validation: `test_generated_artifact_source.py` passes 23 methods across file and
+real PostgreSQL (including the four real coordinator entrypoints, same-text/Keep/
+Clear, Undo/reparse/reimport, rename round trips, concurrent late/new writers and
+file journal recovery). The two original late-summary assertions change from red
+to green. Atomic artifacts remain 18/18; the original 535 executions are 529 pass,
+zero failures/errors and six unchanged private-source opt-in skips. The two old
+summary/quiz cache scripts now use hierarchy/epoch/current-layout fixtures and pass
+all original assertions; merge-only artifact updates are not used to clear fixture
+state. Lifecycle tests pass 43/43; all 120 real HTTP rename cases (including TCP)
+pass. Evidence and suite-level overlap accounting: `/tmp/struct-fix-2c897af/`.
+Two full immutable-backup copies preserve canonical text/index slices and reject
+late results; deterministic providers are not live LLM or OCR semantic acceptance.
+Local verification only; external approval of the new review SHA is still required.
+
+## STRUCT-02/03 manual reparse correction (2026-11-13)
+
+Implemented current contract (supersedes the historical manual override notes below):
+manual drafts preserve every canonical character through ordered, non-overlapping
+sections. Unlisted chapter introductions and section gaps become implicit sections;
+text outside explicit chapter ranges becomes implicit chapters. Validate complete
+coverage before any persistence, for both character and validated page anchors.
+
+Manual commit requires server-owned accepted-source evidence. Its conditional
+repository port loads and validates the current incarnation, structure version,
+reading revision and logical source identity under the file lock or SQL transaction.
+It retains only accepted extraction/page/OCR evidence and source metadata, not old
+reading overlays or interaction artifacts. A new hierarchy advances its version
+and incarnation. Stale or missing evidence fails closed; unaccepted sources need
+explicit preparation before commit, while preview remains non-mutating. No client
+provenance is accepted. Same canonical text retains the existing valid QA index.
+
+Validation: `test_manual_structure_integrity.py` passes 16 methods / 56 matrix
+subcases across file and real PostgreSQL. Covers char/page gaps, TXT and accepted
+PDF Fast/Auto/OCR, zero-generation QA/manual/page reads, source replacement/deletion,
+version/incarnation/reading conflicts, forged draft provenance and incomplete drafts,
+and publication/persistence failures with old-data preservation and successful retry.
+The four original external manual assertions change from failing to passing. Two
+immutable-backup book copies preserve 652001/147401 characters and reuse 1527/298
+exact FAISS record slices after manual reparse. Evidence: `/tmp/struct-fix-2c897af/`.
+PDF mode/OCR provenance cases use deterministic accepted evidence, not live OCR.
+STRUCT-01–04 are now locally verified; external review of the new SHA is pending.
+
+
+## STRUCT-01 atomic artifact updates (2026-11-13)
+
+Implemented unit correction: dedicated section/chapter/task-unit artifact, task-layout and
+metadata operations acquire the current document inside one owner write boundary,
+validate targets, merge only supplied fields and persist before releasing it.
+File uses the existing per-document lock and final atomic replacement; PostgreSQL
+uses the store's row lock and the same connection for read/merge/save. Model calls
+and layout computation stay outside this boundary. Combined artifact updates merge
+non-null kinds; explicit clearing remains with content/reparse/annotation owners.
+Layout replacement retains current artifacts for surviving identical unit identities
+and content; it cannot restore stale artifact payloads supplied by a layout worker.
+The final file rename is the publication point; SQL errors before transaction commit
+roll back all participating writes. This does not add a cross-resource transaction.
+Acceptance covers concurrent same/different sections, chapter/unit kinds, metadata/
+layout, persisted return values, and real file/SQL failures. STRUCT-02/03 manual replacement and STRUCT-04 source binding supplement this
+boundary; atomic latest-state merging alone does not validate a delayed source.
+
+Validation: `scripts/test_atomic_hierarchy_artifacts.py` passes 18 file/real
+PostgreSQL cases. The same paused-read concurrency assertions fail on both baseline
+adapters and pass after the correction. 29 existing suites execute 535 tests:
+529 pass, zero failures/errors, six private-source opt-in skips. The two task-layout
+fixtures now explicitly prepare before reading and use the current resolver version;
+all original hierarchy/artifact/cache assertions remain. The legacy summary/quiz cache scripts originally failed on both baseline and
+unit-1 code due to root-sections-only fixtures. STRUCT-04 modernizes those fixtures
+and current merge semantics, preserving all original assertions; both now pass. Evidence: `/tmp/struct-fix-2c897af/`.
+This completes only the local STRUCT-01 unit, not external approval of STRUCT-01–04.
+
+
 ## CONFIG-01 explicit identities (2026-11-12)
 
 File repository reads use the common lossless name resolver. Exact qualified names

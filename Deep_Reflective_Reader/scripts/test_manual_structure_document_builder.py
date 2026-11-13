@@ -89,7 +89,7 @@ def test_builds_hierarchy_only_structured_document_from_char_ranges() -> None:
     _assert(document.structure_nodes == [], "structure_nodes must not be populated")
     _assert(len(document.chapters) == 2, "two chapters should be built")
     _assert(
-        [section.title for section in document.chapters[0].sections]
+        [section.title for section in document.chapters[0].sections if not section.is_implicit_section]
         == ["Section One", "Section Two"],
         "chapter one sections should preserve manual order",
     )
@@ -101,6 +101,10 @@ def test_builds_hierarchy_only_structured_document_from_char_ranges() -> None:
         document.chapters[1].sections[0].content == raw_text[chapter_two_start:],
         "open final chapter range should extend to raw text end",
     )
+    _assert(document.chapters[0].sections[0].content == "Chapter One\n",
+            "implicit chapter introduction must preserve source text")
+    _assert("".join(s.content for c in document.chapters for s in c.sections) == raw_text,
+            "all canonical text must survive the manual draft")
     payload = document.to_dict()
     _assert("sections" not in payload, "default serialization must omit root sections")
     _assert(
@@ -224,19 +228,17 @@ def test_builds_hierarchy_from_page_ranges_with_page_boundaries() -> None:
     _assert(document is not None, "valid page_range draft should include a document")
     _assert(document.sections == [], "page_range draft must not populate root sections")
     _assert(document.structure_nodes == [], "page_range draft must not populate structure_nodes")
-    _assert(len(document.chapters) == 2, "two chapters should be built")
-    _assert(
-        document.chapters[0].sections[0].content == page_1,
-        "section one should be sliced through page boundary offsets",
-    )
-    _assert(
-        document.chapters[0].sections[1].content == page_2,
-        "section two should be sliced through page boundary offsets",
-    )
-    _assert(
-        document.chapters[1].sections[0].content == page_3,
-        "open final page_range should extend to raw text end",
-    )
+    chapters = [c for c in document.chapters if not c.metadata.get("implicit")]
+    _assert(len(chapters) == 2, "two explicit chapters should be built")
+    sections = [s for s in chapters[0].sections if not s.is_implicit_section]
+    _assert(sections[0].content == page_1,
+            "section one should be sliced through page boundary offsets")
+    _assert(sections[1].content == page_2,
+            "section two should be sliced through page boundary offsets")
+    _assert(chapters[1].sections[0].content == page_3,
+            "open final page_range should extend to raw text end")
+    _assert("".join(s.content for c in document.chapters for s in c.sections) == raw_text,
+            "implicit gaps must preserve exact page separators")
     _assert(
         document.parse_provenance["manual_structure"]["anchor_type"] == "page_range",
         "manual provenance should record page_range source anchors",

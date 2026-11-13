@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
@@ -16,7 +16,8 @@ from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
 )
 from document_structure.section_role import SectionRole
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import StructuredDocument, StructuredSection, StructuredChapter
+from scripts.artifact_generation_fixtures import bound, bound_fields
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
@@ -248,7 +249,12 @@ def _build_base_document() -> StructuredDocument:
         source_path=None,
         language="zh",
         raw_text=raw_text,
-        sections=[section0, section1],
+        sections=[],
+        chapters=[StructuredChapter(chapter_id=f"chapter-{i}", title=section.title,
+            level=1, chapter_role="main_body", sections=[replace(section,
+            parent_chapter_id=f"chapter-{i}", task_units=[replace(unit,
+                parent_section_id=section.section_id) for unit in section.task_units])])
+            for i, section in enumerate([section0, section1])],
         document_task_artifacts=None,
     )
 
@@ -265,7 +271,7 @@ def _seed_valid_task_layout_metadata(
             "source_hash": source_hash,
             "task_unit_split_mode": "semantic_safe",
             "semantic_top_k_candidates": 3,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     repository.update_document_artifacts(
@@ -280,10 +286,7 @@ def test_quiz_persistence_cache_flow() -> None:
         store = StructuredDocumentStore()
         repository = StructuredDocumentArtifactRepository(store=store, base_dir=temp_dir)
         base_document = _build_base_document()
-        (temp_path / "quiz-doc.structured.json").write_text(
-            base_document.to_json(),
-            encoding="utf-8",
-        )
+        repository.save_document(base_document, "quiz-doc")
         _seed_valid_task_layout_metadata(repository=repository, doc_name="quiz-doc")
 
         fake_quiz_service = _FakeQuizService()
@@ -391,7 +394,7 @@ def test_quiz_persistence_cache_flow() -> None:
         repository.update_section_quiz_artifact(
             doc_name="quiz-doc",
             section_id="section-0",
-            quiz=bad_hash_quiz,
+            quiz=bound(bad_hash_quiz, repository.load_document("quiz-doc"), "section", "section-0"),
         )
         quiz_4 = coordinator.generate_section_quiz(
             doc_name="quiz-doc",
@@ -440,7 +443,7 @@ def test_quiz_persistence_cache_flow() -> None:
         repository.update_section_quiz_artifact(
             doc_name="quiz-doc",
             section_id="section-0",
-            quiz=malformed_quiz,
+            quiz=bound(malformed_quiz, repository.load_document("quiz-doc"), "section", "section-0"),
         )
         before_malformed_calls = fake_quiz_service.calls
         malformed_result = coordinator.generate_section_quiz(
@@ -568,13 +571,8 @@ def test_quiz_persistence_cache_flow() -> None:
             summary=legacy_entry.summary,
             quiz=None,
         )
-        repository.update_document_artifacts(
-            doc_name="quiz-doc",
-            artifacts=DocumentTaskArtifacts(
-                chapter_artifacts=before_legacy_chapters,
-                metadata=dict(before_legacy_artifacts.metadata),
-            ),
-        )
+        repository.save_document(replace(before_legacy_doc, document_task_artifacts=replace(
+            before_legacy_artifacts, chapter_artifacts=before_legacy_chapters)), "quiz-doc")
 
         legacy_wrong = QuizArtifact(
             items=[
@@ -601,7 +599,7 @@ def test_quiz_persistence_cache_flow() -> None:
         repository.update_section_quiz_artifact(
             doc_name="quiz-doc",
             section_id="section-0",
-            quiz=legacy_wrong,
+            quiz=bound(legacy_wrong, repository.load_document("quiz-doc"), "section", "section-0"),
         )
         calls_before_legacy = fake_quiz_service.calls
         legacy_result = coordinator.generate_chapter_quiz(
@@ -650,7 +648,7 @@ def test_quiz_persistence_cache_flow() -> None:
         repository.update_document_artifacts(
             doc_name="quiz-doc",
             artifacts=DocumentTaskArtifacts(
-                chapter_artifacts=chapter_map,
+                chapter_artifacts={key: bound_fields(value, chapter_doc_before_summary, "chapter", key.removeprefix("chapter_id::")) for key, value in chapter_map.items()},
                 metadata=dict(existing_doc_artifacts.metadata),
             ),
         )

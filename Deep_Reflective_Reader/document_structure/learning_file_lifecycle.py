@@ -151,6 +151,8 @@ class FileLearningDocumentLifecycle:
                 from document_structure.learning_lifecycle import effective_sources
                 require(effective_sources(before) == effective_sources(renamed)
                         and before.parse_provenance == renamed.parse_provenance, 'learning_rename_source_changed')
+                from document_structure.generated_artifact_source import advance_rename_epoch
+                renamed = advance_rename_epoch(renamed)
                 payloads['destination'] = self.documents.lifecycle_payload(renamed)
                 if paths['learning'].exists():
                     state = self.learning.lifecycle_state(document_id)

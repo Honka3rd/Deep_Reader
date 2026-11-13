@@ -1,5 +1,31 @@
 # document_preparation Detailed Design
 
+## STRUCT-04 initial incarnation dependency (2026-11-13, implemented)
+
+Explicit structured publication assigns an incarnation when the new document lacks
+one, so subsequent generated writes can prove which accepted document they consumed.
+Runtime reads never backfill legacy missing identities. Existing source guards,
+index publication and zero-generation warm QA contracts remain mandatory.
+
+Validation: PREP runtime/index/snapshot and manual support run: 95/95 pass,
+including 18 shared atomic cases. The 16-method manual integrity suite and 64
+PDF/page/layout read regressions pass. Warm reads retain zero generation/write-back.
+Evidence: `/tmp/struct-fix-2c897af/`; external review of the new SHA is pending.
+
+## STRUCT-03 manual source handoff (2026-11-13)
+
+Implemented correction: accepted manual evidence carries a server-only commit guard
+alongside canonical text and optional pages. The guard captures logical source
+file identity, accepted extraction, canonical digest, document version/incarnation
+and reading revision. It can validate a repository-supplied locked snapshot without
+opening another SQL transaction. Read handoff remains read-only. Legacy/unprepared
+preview evidence cannot authorize a manual replacement; explicit preparation is
+required first. No extractor/settings fallback or profile generation is introduced.
+Page evidence reads reject missing/invalid accepted identity before resolving a loader; this restores the existing no-legacy-source-read assertion. Readiness test reseeding must use explicit reparse, preserving the incarnation fence.
+
+Validation: the 16-method file/real SQL manual suite and PREP runtime (24), exact-index (10), accepted snapshot (13) regressions pass. Another 64 PDF execution/mode, page evidence, layout readiness and loader-boundary tests pass. The extra baseline failure and two fixture errors are reproduced against 2c897af before correction. Two full backup copies retain exact text/index coordinates and zero warm generation. Evidence: `/tmp/struct-fix-2c897af/`. PREP-01–05 remain mandatory; whole-audit external review is pending.
+
+
 ## PREP-05 exact canonical index reuse (2026-11-13)
 
 Implemented audit correction: index reuse must bind the complete accepted canonical text,

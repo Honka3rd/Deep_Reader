@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from scripts.artifact_generation_fixtures import bound, bound_fields
+
 import json
 import tempfile
 from dataclasses import replace
@@ -45,7 +47,7 @@ def _build_hierarchy_document(
         replace(section, parent_chapter_id=chapter_id)
         for section in sections
     ]
-    return StructuredDocument(
+    return StructuredDocument(parse_provenance={"interaction_epoch": "artifact-fixture-incarnation"},
         document_id=document_id,
         title=title,
         source_path=None,
@@ -251,7 +253,7 @@ def test_repository_atomic_save_smoke() -> None:
         updated_document = repository.update_section_artifacts(
             doc_name="artifact-doc",
             section_id="section-0",
-            artifacts=artifacts,
+            artifacts=bound_fields(artifacts, repository.load_document("artifact-doc"), "section", "section-0"),
         )
         updated_sections = get_effective_sections(updated_document)
         _assert(
@@ -382,9 +384,9 @@ def test_repository_update_task_unit_artifacts() -> None:
         repository.update_task_unit_artifacts(
             doc_name="artifact-doc",
             task_unit_id="task-unit-1",
-            artifacts=TaskArtifacts(
+            artifacts=bound_fields(TaskArtifacts(
                 summary=SummaryArtifact(content="unit-1 summary"),
-            ),
+            ), repository.load_document("artifact-doc"), "task_unit", "task-unit-1"),
         )
 
         reloaded = repository.load_document("artifact-doc")

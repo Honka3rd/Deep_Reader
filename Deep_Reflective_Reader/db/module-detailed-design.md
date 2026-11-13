@@ -1,5 +1,51 @@
 # db Detailed Design
 
+## STRUCT-04 generation fences (2026-11-13, implemented)
+
+Dedicated artifact callbacks validate generation bindings against the current row
+inside STRUCT-01's transaction. Rename advances artifact_generation_epoch in both
+metadata and snapshot payload in its existing transaction, after checking transform
+source invariants. Historical source/learning epochs and receipts remain intact.
+No schema migration or read repair is needed.
+
+Validation: the 23-method generation suite, 18 atomic cases, 43 lifecycle cases and
+120 HTTP rename cases pass across the applicable file/real SQL owners. Existing
+535-test and PREP/manual support results are recorded in the document_structure
+design and `/tmp/struct-fix-2c897af/`. No schema migration, read-time identity
+backfill, deployment or push; latest review SHA still needs external approval.
+
+## STRUCT-03 conditional manual replacement (2026-11-13)
+
+Implemented correction: the manual repository port locks the current document row and
+loads, validates, replaces and verifies readback on the same owner connection.
+Source/version/incarnation checks run before replacement and again before commit;
+failure rolls back hierarchy, metadata and derived rows. Replacement remains a hard
+reparse with a new structure version/epoch; source evidence is selectively retained,
+not old interactions. The file adapter uses its corresponding per-document lock.
+Validation: eight real PostgreSQL integrity methods (28 matrix subcases), the two original SQL manual reproductions and existing duplicate-chapter-order/repository boundary regressions pass. Failures after actual SQL replacement roll back the old hierarchy; source changes before commit also roll back. Evidence: `/tmp/struct-fix-2c897af/`; no schema migration. Whole-audit external review is pending.
+
+
+## STRUCT-01 transactional artifact updates (2026-11-13)
+
+Implemented supporting store port: acquire documents ROW EXCLUSIVE then target FOR UPDATE,
+load the latest hierarchy using that connection, apply the domain mutation and invoke
+save(replace_existing_hierarchy=False) with the same connection. Reload the returned
+persisted hierarchy before commit so SQL-assigned IDs agree with storage. Any callback,
+save or readback failure rolls back; no filesystem lock or second write connection.
+Existing incarnation/version, annotation preservation and source-transition guards
+remain active. Generation runs before this transaction, never inside it.
+
+Validation: `scripts/test_atomic_hierarchy_artifacts.py` passes 18 file/real
+PostgreSQL cases. The same paused-read concurrency assertions fail on both baseline
+adapters and pass after the correction. 29 existing suites execute 535 tests:
+529 pass, zero failures/errors, six private-source opt-in skips. The two task-layout
+fixtures now explicitly prepare before reading and use the current resolver version;
+all original hierarchy/artifact/cache assertions remain. The legacy summary/quiz cache scripts originally failed on both baseline and
+unit-1 code due to root-sections-only fixtures. STRUCT-04 modernizes those fixtures
+and current merge semantics, preserving all original assertions; both now pass. Evidence: `/tmp/struct-fix-2c897af/`.
+This completes only the local STRUCT-01 unit, not external approval of STRUCT-01–04.
+
+
 ## CONFIG-01 qualified identities (2026-11-12)
 
 SQL document names retain source suffixes. The active repository resolves legacy
@@ -910,7 +956,7 @@ Timestamp updates follow the same explicit-write principle. `documents.updated_a
 
 The PostgreSQL store has separate semantics for parser-level replacement saves and artifact/task-layout metadata saves. Replacement saves should clear current hierarchy and derived rows in the transaction, advance `documents.current_structure_version`, and append a `hard_reparse` parse event. Non-replacement repository saves should preserve the current version and existing hierarchy identity for artifact/task-layout updates. **[Code-Confirmed]**
 
-The manual `manual_structure` reparse path uses an explicit `save_reparsed_document(...)` repository boundary so existing PostgreSQL documents are saved with replacement semantics instead of the non-replacement artifact/task-layout save boundary. This avoids inserting a validated manual draft over existing hierarchy rows protected by uniqueness constraints such as `uq_chapters_document_order(document_id, chapter_order)`. **[Code-Confirmed]**
+The manual `manual_structure` reparse path uses the conditional `commit_manual_structure(...)` repository boundary with an accepted-source verifier so existing PostgreSQL documents are saved with replacement semantics instead of the non-replacement artifact/task-layout save boundary. This avoids inserting a validated manual draft over existing hierarchy rows protected by uniqueness constraints such as `uq_chapters_document_order(document_id, chapter_order)`. **[Code-Confirmed]**
 
 Original confirmed failure example:
 

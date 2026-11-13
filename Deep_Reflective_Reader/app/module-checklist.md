@@ -1,5 +1,17 @@
 # app Checklist
 
+## STRUCT-04 supporting integration (2026-11-13)
+
+- [x] STRUCT-04: Capture generation source before providers, consume effective reading text, reject stale persistence and validate section/chapter/unit caches. Four actual coordinator entrypoints pass across file/real SQL; original summary/quiz cache assertions retained.
+  Evidence: `/tmp/struct-fix-2c897af/`; locally verified for document_structure audit dependencies only; external review pending.
+  Timestamp: 2026-11-13
+
+## STRUCT-03 conditional manual commit support (2026-11-13)
+
+- [x] Use the conditional manual repository port with preparation-owned source proof. Preserve validation responses; return 409 for stale commit evidence and 500 for persistence failure without success. Eight coordinator source-evidence tests, ten validate/route cases and the 16-method real storage suite pass.
+  Evidence: `/tmp/struct-fix-2c897af/`; unit locally verified, whole document_structure audit/external review pending.
+  Timestamp: 2026-11-13
+
 - [x] MAIN-06 pending recovery: reject same-byte reimports using durable file generations and move-stage identity.
   Evidence: `scripts/test_main_rename_audit.py`: 120 file/real PostgreSQL rename cases including 10 TCP cases; before/after-move same-byte reimport and simulated inode/stat reuse leave replacement/journal unchanged. All existing normal recovery stages plus new stage-write/ack cases pass. Related regression: 393 tests, no skips; nine route/schema scripts and compile/diff checks pass. Red/green evidence: `/tmp/audit-main-b6d5df24/`; external review pending.
   Timestamp: 2026-11-11
@@ -344,18 +356,21 @@ New future tasks for this module must be added here first as unchecked items:
 - [x] Gate manual structure reparse commit with source evidence checks
   Evidence needed: coordinator-level path rejects missing source evidence and stale source hashes before any hierarchy persistence.
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
-  Notes: This is a pre-commit gate only. It reads canonical raw text for evidence and returns 404 for missing source and 409 for stale source hash without committing a `StructuredDocument`.
+  Notes: Checks missing source/stale client hash before building. Conditional commit then revalidates server-owned accepted source/version/epoch/reading revision under the storage lock/transaction; stale commit evidence returns 409.
+  Timestamp: 2026-11-13
 - [x] Orchestrate explicit manual structure reparse commit
   Evidence needed: coordinator-level path commits a validated manual structure as a normal `StructuredDocument` hierarchy and preserves existing structured artifacts on failure.
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
-  Notes: `commit_manual_structure_reparse(...)` now validates projection, source evidence, source hash, and raw-text-backed draft anchors before saving through `document_artifact_repository.save_document(...)`. Projection/source/draft failures do not call save; repository save failures return 500 without success. The mutation path remains explicit and separate from `/documents/task-layout`.
+  Notes: `commit_manual_structure_reparse(...)` validates projection, accepted evidence, source hash and complete canonical coverage, then calls `commit_manual_structure(...)`. No generic save fallback is permitted. Source/draft failures retain the existing hierarchy; persistence failures return 500 without success. This explicit mutation remains separate from `/documents/task-layout`.
+  Timestamp: 2026-11-13
 - [x] Orchestrate page-backed manual-structure validation and commit
   Evidence needed: manual commit path accepts schema-valid `page_range`, loads source page evidence, rejects missing/stale/ambiguous page evidence before save, and commits only after document_structure materializes a valid hierarchy draft.
   Evidence: `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/document_structure/manual_structure_document_builder.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
   Notes: `char_range` remains fallback. Page-backed failures preserve the current structured artifact and must not silently fallback to common parser.
 - [x] Route manual_structure commit through an explicit PostgreSQL hierarchy replacement boundary
   Evidence: `Deep_Reflective_Reader/document_structure/document_artifact_repository.py`; `Deep_Reflective_Reader/db/postgres_structured_document_artifact_repository.py`; `Deep_Reflective_Reader/app/section_task_coordinator.py`; `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`; `.venv` validation of manual structure commit source evidence tests; `.venv` validation of manual structure route tests; `.venv` `py_compile` for changed Python files.
-  Notes: `commit_manual_structure_reparse(...)` now calls `save_reparsed_document(...)`. The default repository implementation delegates to `save_document(...)` for file-backed compatibility, while the PostgreSQL repository override calls `PostgresStructuredDocumentStore.save(..., replace_existing_hierarchy=True)`. Regular PostgreSQL `save_document(...)` remains non-replacement for task-layout/artifact updates. Validation/source/draft failures still occur before persistence.
+  Notes: `commit_manual_structure(...)` is mandatory for this route; unsupported repositories fail explicitly. PostgreSQL validates, replaces and verifies on the same locked connection using `replace_existing_hierarchy=True`; file uses its per-document lock and verifies before atomic replace. Regular artifact/task-layout writes remain non-replacement.
+  Timestamp: 2026-11-13
 - [x] Add regression coverage for existing-document manual_structure PostgreSQL replacement
   Evidence: `Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_duplicate_chapter_order.py`; rebuilt Docker API container validation with `docker compose exec -T api python scripts/test_postgres_manual_reparse_duplicate_chapter_order.py`; `Deep_Reflective_Reader/scripts/test_postgres_manual_reparse_repository_boundary.py`.
   Notes: Regression covers an existing PostgreSQL document whose current hierarchy already has `chapter_order=0`, then commits a manual-style replacement hierarchy starting again at order `0`. It verifies hierarchy-first readback, old row replacement, structure-version advancement, hard-reparse event persistence, and rollback/no partial write on forced failure. Separate repository-boundary regression confirms artifact/task-layout non-reparse saves preserve non-replacement semantics.

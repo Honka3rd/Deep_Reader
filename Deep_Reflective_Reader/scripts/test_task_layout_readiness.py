@@ -47,7 +47,8 @@ class ReadinessTests(unittest.TestCase):
         self.options = {"doc_name": "cache-doc", "task_unit_split_mode": "progressive"}
 
     def prepare(self):
-        self.repository.save_document(_build_base_document(), doc_name="cache-doc")
+        # Each setup is an explicit fresh hierarchy, including matrix iterations.
+        self.repository.save_reparsed_document(_build_base_document(), doc_name="cache-doc")
         self.coordinator.ensure_document_task_layout(**self.options)
 
     def read_without_side_effects(self, *, reason=None, **overrides):

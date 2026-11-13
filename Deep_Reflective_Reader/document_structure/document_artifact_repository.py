@@ -18,6 +18,9 @@ def preserve_explicit_annotations(current, incoming):
     if incoming.parse_provenance.get("interaction_epoch") != current.parse_provenance.get("interaction_epoch"):
         from document_structure.reading_content import ReadingContentConflict
         raise ReadingContentConflict("reading_document_incarnation_changed_reload_required")
+    if incoming.parse_provenance.get("artifact_generation_epoch") != current.parse_provenance.get("artifact_generation_epoch"):
+        from document_structure.reading_content import ReadingContentConflict
+        raise ReadingContentConflict("artifact_generation_epoch_changed")
     current_revision = current.parse_provenance.get("reading_content", {}).get("revision", 0)
     incoming_revision = incoming.parse_provenance.get("reading_content", {}).get("revision", 0)
     if current_revision != incoming_revision:
@@ -125,6 +128,14 @@ class DocumentArtifactRepository(ABC):
     def save_document(self, document: StructuredDocument, doc_name: str | None = None) -> None:
         """Persist one structured document payload."""
         raise NotImplementedError
+
+    def commit_manual_structure(self, document, *, doc_name, validate_current):
+        """Conditionally replace hierarchy under the backend's source lock/transaction.
+
+        validate_current is a server-owned accepted-source verifier, never client data.
+        Implementations must verify again at publication; no unconditional fallback.
+        """
+        raise NotImplementedError("conditional manual replacement not supported")
 
     def save_reparsed_document(
         self,

@@ -326,6 +326,42 @@ class PostgresStructuredDocumentStore:
                         ),
                     )
 
+    def commit_manual_structure(self, target, *, document, validate_current):
+        from document_structure.manual_structure_commit import prepare_manual_replacement
+
+        resolved = self._resolve_target(target)
+        psycopg, dict_row, _ = self._load_psycopg()
+        with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+            connection.execute("LOCK TABLE documents IN ROW EXCLUSIVE MODE")
+            row = connection.execute(
+                "SELECT id FROM documents WHERE namespace=%s AND document_name=%s FOR UPDATE",
+                (resolved.namespace, resolved.document_name)).fetchone()
+            if row is None:
+                raise FileNotFoundError("document_missing")
+            current = self.load_enhancement_snapshot(resolved, _connection=connection).document
+            replacement = prepare_manual_replacement(current, document, validate_current)
+            self.save(replacement, resolved, replace_existing_hierarchy=True, _connection=connection)
+            saved = self.load_enhancement_snapshot(resolved, _connection=connection).document
+            validate_current(current)
+            return saved
+
+    def mutate_hierarchy(self, target, mutation):
+        """Serialize current-state artifact/layout merges in one SQL transaction."""
+        resolved = self._resolve_target(target)
+        psycopg, dict_row, _ = self._load_psycopg()
+        with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+            connection.execute("LOCK TABLE documents IN ROW EXCLUSIVE MODE")
+            row = connection.execute(
+                "SELECT id FROM documents WHERE namespace=%s AND document_name=%s FOR UPDATE",
+                (resolved.namespace, resolved.document_name),
+            ).fetchone()
+            if row is None:
+                raise FileNotFoundError("document_missing")
+            current = self.load_enhancement_snapshot(resolved, _connection=connection).document
+            updated = mutation(current)
+            self.save(updated, resolved, replace_existing_hierarchy=False, _connection=connection)
+            return self.load_enhancement_snapshot(resolved, _connection=connection).document
+
     def mutate_reading_content(self, target, mutation):
         resolved = self._resolve_target(target)
         psycopg,dict_row,Jsonb = self._load_psycopg()
@@ -470,6 +506,9 @@ class PostgresStructuredDocumentStore:
                 raise ValueError('learning_rename_source_changed')
             learning_lifecycle.rename(connection, row['id'], preferences, resolved.document_name, new_name)
             metadata = dict(row["metadata_payload"] or {})
+            from document_structure.generated_artifact_source import advance_rename_epoch
+            renamed = advance_rename_epoch(renamed)
+            metadata["parse_provenance"] = renamed.parse_provenance
             metadata["title"] = renamed.title
             metadata["document_task_artifacts"] = (renamed.document_task_artifacts.to_dict()
                                                     if renamed.document_task_artifacts else None)
@@ -484,8 +523,8 @@ class PostgresStructuredDocumentStore:
             connection.execute("UPDATE documents SET document_name=%s, metadata_payload=%s, updated_at=NOW() WHERE id=%s",
                                (new_name, Jsonb(metadata), row["id"]))
             connection.execute("UPDATE structured_document_snapshots SET structured_document_payload="
-                "jsonb_set(jsonb_set(structured_document_payload, '{document_id}', %s), '{title}', %s) WHERE document_id=%s",
-                (Jsonb(new_name), Jsonb(renamed.title), row["id"]))
+                "jsonb_set(jsonb_set(jsonb_set(structured_document_payload, '{document_id}', %s), '{title}', %s), '{parse_provenance}', %s) WHERE document_id=%s",
+                (Jsonb(new_name), Jsonb(renamed.title), Jsonb(renamed.parse_provenance), row["id"]))
             return True
 
     def save_ocr_run(

@@ -1,5 +1,25 @@
 # document_structure Checklist
 
+## STRUCT-01 audit correction (2026-11-13)
+
+- [x] STRUCT-01: Serialize latest read, target validation, owned-field merge and save.
+  Evidence: `test_atomic_hierarchy_artifacts.py`: 18/18 pass, both baseline concurrency cases fail. Existing 535 executions: 529 pass/6 opt-in skips/0 failures/0 errors; original two task-layout fixture errors corrected without weakening assertions. `/tmp/struct-fix-2c897af/`. Unit locally verified; whole audit/external review pending.
+  Timestamp: 2026-11-13
+
+- [x] STRUCT-02: Preserve complete canonical coverage during manual structure draft/commit.
+  Evidence: `test_manual_structure_integrity.py` char/page gap matrices reconstruct full canonical text after file/real SQL roundtrip; original external manual coverage cases now pass. Two full backup copies retain exact text and index coordinates. Unit locally verified; external review pending. `/tmp/struct-fix-2c897af/`.
+  Timestamp: 2026-11-13
+
+- [x] STRUCT-03: Carry and revalidate server-owned accepted source evidence during manual hierarchy commit.
+  Evidence: 16 integrity methods / 56 matrix subcases cover same-commit source/version/epoch/reading guards, TXT and accepted PDF Fast/Auto/OCR, file/SQL QA/manual/page reads with zero generation, forged/incomplete drafts, rollback and retry. Original four manual assertions pass; PREP runtime/index/snapshot regressions remain green. Unit locally verified; external review pending. `/tmp/struct-fix-2c897af/`.
+  Timestamp: 2026-11-13
+
+- [x] STRUCT-04: Bind generated artifact writes and caches to the consumed effective source and generation epoch.
+  Evidence: 23 generation methods pass for file/real SQL, including four coordinator paths, no-op/Keep/Clear, late/new races, Undo/reparse/reimport, rename round trips and durable recovery. Two external delayed-summary cases now pass; 18 atomic cases, original 535 executions (529 pass/6 opt-in skips), 43 lifecycle and 120 HTTP rename cases pass. Both obsolete summary/quiz cache scripts retain original assertions and pass with current fixtures. Two backup copies validate late rejection and fresh reuse. `/tmp/struct-fix-2c897af/`. Local verification only; external review pending.
+  Timestamp: 2026-11-13
+
+## Earlier lifecycle corrections
+
 - [x] MAIN-01/05/06 follow-up: verify incarnation fences and explicit rename command identity.
   Evidence: `scripts/test_main_rename_audit.py` (90 file/real PostgreSQL HTTP cases, including six TCP cases) and the related 361-test regression run pass without skips; two final incarnation/byte-preservation checks also pass. Nine route/schema scripts pass after updating rename request fixtures. UI type/build, 21 controller groups, lifecycle service retry checks and 1280px/390px rename flows pass. Local evidence: `/tmp/audit-main-ac544288/`. External review pending; no deployment/push.
   Timestamp: 2026-11-11
@@ -8,6 +28,8 @@
 - [x] MAIN-01–03 dependency: expose scoped identity and matching explicit rename recovery without weakening lifecycle fences.
   Evidence: `scripts/test_main_rename_audit.py` final 64 file/real PostgreSQL HTTP cases pass, including actual TCP routes, preflight conflicts, per-stage failures, recovery/retry, references/tombstones and late writers. Relevant regression run: 333 tests pass, no skips; upload streaming and logging included. Nine existing route/schema scripts pass; UI type/build and 21 controller groups pass. Private before/after logs: `/tmp/audit-main-0497d65/`. No deployment/push; external review pending.
   Timestamp: 2026-11-11
+
+
 
 ## Shared sentence translation (2026-11-09)
 

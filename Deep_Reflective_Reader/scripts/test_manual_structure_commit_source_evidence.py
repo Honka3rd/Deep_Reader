@@ -73,6 +73,7 @@ class _FakePreparationPipeline:
             language="en",
             page_boundaries=list(self.loader.page_boundaries),
             errors=[],
+            validate_current=lambda current: raw_text,
         )
 
 
@@ -81,7 +82,7 @@ class _FakeRepository:
         self.error = error
         self.save_calls: list[tuple[object, str | None]] = []
         self.save_document_calls: list[tuple[object, str | None]] = []
-        self.save_reparsed_document_calls: list[tuple[object, str | None]] = []
+        self.commit_manual_structure_calls: list[tuple[object, str | None]] = []
 
     def save_document(self, document, doc_name=None):  # noqa: ANN001
         self.save_document_calls.append((document, doc_name))
@@ -89,8 +90,9 @@ class _FakeRepository:
         if self.error is not None:
             raise self.error
 
-    def save_reparsed_document(self, document, doc_name=None):  # noqa: ANN001
-        self.save_reparsed_document_calls.append((document, doc_name))
+    def commit_manual_structure(self, document, *, doc_name, validate_current):  # noqa: ANN001
+        assert validate_current(None) == document.raw_text
+        self.commit_manual_structure_calls.append((document, doc_name))
         self.save_calls.append((document, doc_name))
         if self.error is not None:
             raise self.error
@@ -284,7 +286,7 @@ def test_matching_source_hash_commits_manual_structure_document() -> None:
     _assert(result.success, f"unexpected failure: {result.error}")
     _assert(result.status_code == 200, f"unexpected status: {result.status_code}")
     _assert(result.error is None, f"unexpected error: {result.error}")
-    _assert(result.section_count == 1, f"unexpected section count: {result.section_count}")
+    _assert(result.section_count == 2, f"unexpected section count: {result.section_count}")
     _assert(loader.load_calls == ["Book.txt"], "valid commit path should load source evidence")
     _assert(len(repository.save_calls) == 1, "valid commit path should save exactly once")
     _assert(
@@ -292,14 +294,19 @@ def test_matching_source_hash_commits_manual_structure_document() -> None:
         "manual commit must not use generic artifact save boundary",
     )
     _assert(
-        len(repository.save_reparsed_document_calls) == 1,
+        len(repository.commit_manual_structure_calls) == 1,
         "manual commit should use reparse replacement save boundary",
     )
     saved_document, saved_doc_name = repository.save_calls[0]
     _assert(saved_doc_name == "Book.txt", "manual commit should save by normalized doc name")
     _assert(saved_document.sections == [], "manual commit must not persist root sections")
     _assert(saved_document.structure_nodes == [], "manual commit must not persist structure_nodes")
-    _assert(len(saved_document.chapters) == 1, "manual commit should save draft chapters")
+    _assert(len([c for c in saved_document.chapters if not c.metadata.get("implicit")]) == 1,
+            "manual commit should preserve the explicit chapter")
+    _assert(saved_document.chapters[0].sections[0].content == raw_text[:100],
+            "explicit range must retain its exact slice")
+    _assert("".join(s.content for c in saved_document.chapters for s in c.sections) == raw_text,
+            "unlisted trailing text must survive commit")
     _assert(saved_document.language == "en", "manual commit should preserve evidence language")
     _assert(
         saved_document.parse_provenance["manual_structure"]["source_hash"]
@@ -342,17 +349,19 @@ def test_page_range_commit_uses_preparation_page_boundaries() -> None:
     _assert(result.status_code == 200, f"unexpected status: {result.status_code}")
     _assert(len(repository.save_calls) == 1, "page_range commit should save once")
     _assert(
-        len(repository.save_reparsed_document_calls) == 1,
+        len(repository.commit_manual_structure_calls) == 1,
         "page_range commit should use reparse replacement save boundary",
     )
     saved_document, _ = repository.save_calls[0]
     _assert(saved_document.sections == [], "page_range commit must not persist root sections")
     _assert(saved_document.structure_nodes == [], "page_range commit must not persist structure_nodes")
     _assert(
-        [section.content for section in saved_document.chapters[0].sections]
+        [section.content for section in saved_document.chapters[0].sections if not section.is_implicit_section]
         == [page_1, page_2],
         "page_range commit should slice section content from page boundaries",
     )
+    _assert("".join(s.content for c in saved_document.chapters for s in c.sections) == raw_text,
+            "page separators must survive commit")
     _assert(
         saved_document.parse_provenance["manual_structure"]["anchor_type"]
         == "page_range",

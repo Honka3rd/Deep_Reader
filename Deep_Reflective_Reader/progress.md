@@ -436,14 +436,14 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 54 | 11 | MAIN-06 pending identity recovery verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `app/` | package | `app/module-checklist.md` | 56 | 11 | STRUCT-03/04 orchestration locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
 | `config/` | package | `config/module-checklist.md` | 10 | 9 | CONFIG-01/02/03 locally verified; historical unchecked items retained; external review pending (2026-11-12 recount; sample item excluded) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
-| `db/` | package + design module | `db/module-checklist.md` | 62 | 4 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
-| `document_preparation/` | package | `document_preparation/module-checklist.md` | 33 | 13 | PREP-01–05 locally verified; external review pending |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 95 | 18 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `db/` | package + design module | `db/module-checklist.md` | 64 | 4 | STRUCT-01/03/04 transaction and lifecycle support locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
+| `document_preparation/` | package | `document_preparation/module-checklist.md` | 35 | 13 | STRUCT-03/04 source handoff and PREP-01–05 locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 98 | 18 | STRUCT-01–04 locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |

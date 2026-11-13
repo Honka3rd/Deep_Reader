@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from doc_loaders.pdf_page_evidence import PdfPageTextBoundary
 from document_structure.manual_structure_projection import (
@@ -104,6 +104,11 @@ def build_manual_structure_document_draft(
             },
         },
     )
+    try:
+        validate_manual_coverage(document, raw_text)
+    except ValueError as error:
+        return ManualStructureDocumentDraftResult(valid=False, issues=[
+            ManualStructureIssue(code="incomplete_canonical_coverage", message=str(error))])
     return ManualStructureDocumentDraftResult(valid=True, document=document)
 
 
@@ -245,6 +250,7 @@ def _build_chapters(
 ) -> list[StructuredChapter]:
     chapters: list[StructuredChapter] = []
     section_index = 0
+    cursor = 0
     for chapter_index, chapter in enumerate(preview_chapters):
         chapter_end = _resolve_entry_end(
             explicit_end=_resolve_anchor_explicit_end(
@@ -258,7 +264,11 @@ def _build_chapters(
             ),
             default_end=len(raw_text),
         )
+        chapter_start = _resolve_anchor_start(anchor=chapter.anchor, page_boundaries=page_boundaries)
+        if cursor < chapter_start:
+            chapters.append(_implicit_chapter(raw_text, cursor, chapter_start))
         sections: list[StructuredSection] = []
+        section_cursor = chapter_start
         for local_section_index, section in enumerate(chapter.sections):
             section_start = _resolve_anchor_start(
                 anchor=section.anchor,
@@ -278,6 +288,9 @@ def _build_chapters(
             )
             if section_start is None or section_end is None:
                 continue
+            if section_cursor < section_start:
+                sections.append(_implicit_section(raw_text, section_cursor, section_start,
+                                                  chapter.chapter_id, chapter.title))
             sections.append(
                 StructuredSection(
                     section_id=section.section_id,
@@ -297,6 +310,11 @@ def _build_chapters(
                 )
             )
             section_index += 1
+            section_cursor = section_end
+        if section_cursor < chapter_end:
+            sections.append(_implicit_section(raw_text, section_cursor, chapter_end,
+                                              chapter.chapter_id, chapter.title))
+        cursor = chapter_end
         chapters.append(
             StructuredChapter(
                 chapter_id=chapter.chapter_id,
@@ -311,7 +329,47 @@ def _build_chapters(
                 },
             )
         )
-    return chapters
+    if cursor < len(raw_text):
+        chapters.append(_implicit_chapter(raw_text, cursor, len(raw_text)))
+    index = 0
+    ordered = []
+    for chapter in chapters:
+        sections = [replace(section, section_index=index + offset)
+                    for offset, section in enumerate(chapter.sections)]
+        index += len(sections)
+        ordered.append(replace(chapter, sections=sections))
+    return ordered
+
+
+def _implicit_section(text, start, end, chapter_id, title):
+    return StructuredSection(
+        section_id=f"manual_gap_{start}_{end}", section_index=0, title=title,
+        level=2, content=text[start:end], char_start=start, char_end=end,
+        container_title=title, section_role=SectionRole.MAIN_BODY,
+        parent_chapter_id=chapter_id, section_kind="manual_structure_gap",
+        is_implicit_section=True)
+
+
+def _implicit_chapter(text, start, end):
+    chapter_id = f"manual_gap_chapter_{start}_{end}"
+    title = "Unassigned text"
+    return StructuredChapter(chapter_id=chapter_id, title=title, level=1,
+        chapter_role=None, sections=[_implicit_section(text, start, end, chapter_id, title)],
+        metadata={"source": "manual_structure", "implicit": True})
+
+
+def validate_manual_coverage(document, canonical_text):
+    """Reject gaps, overlap, reordering, normalization and missing tails."""
+    cursor = 0
+    for chapter in document.chapters:
+        for section in chapter.sections:
+            if (section.char_start != cursor or type(section.char_end) is not int
+                    or not cursor < section.char_end <= len(canonical_text)
+                    or section.content != canonical_text[cursor:section.char_end]):
+                raise ValueError("manual structure must cover canonical text exactly")
+            cursor = section.char_end
+    if cursor != len(canonical_text) or not cursor:
+        raise ValueError("manual structure must preserve the complete canonical text")
 
 
 def _resolve_entry_end(

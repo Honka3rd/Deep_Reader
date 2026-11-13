@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
@@ -16,7 +16,8 @@ from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
 )
 from document_structure.section_role import SectionRole
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import StructuredDocument, StructuredSection, StructuredChapter
+from scripts.artifact_generation_fixtures import bound, bound_fields
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
@@ -228,14 +229,19 @@ def _build_base_document() -> StructuredDocument:
         source_path=None,
         language="zh",
         raw_text=raw_text,
-        sections=[section0, section1],
+        sections=[],
+        chapters=[StructuredChapter(chapter_id=f"chapter-{i}", title=section.title,
+            level=1, chapter_role="main_body", sections=[replace(section,
+            parent_chapter_id=f"chapter-{i}", task_units=[replace(unit,
+                parent_section_id=section.section_id) for unit in section.task_units])])
+            for i, section in enumerate([section0, section1])],
         document_task_artifacts=DocumentTaskArtifacts(
             metadata={
                 "task_layout": {
                     "source_hash": source_hash,
                     "task_unit_split_mode": "semantic_safe",
                     "semantic_top_k_candidates": 3,
-                    "resolver_version": "task_unit_resolver_v2",
+                    "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
                 }
             }
         ),
@@ -248,10 +254,7 @@ def test_summary_persistence_cache_flow() -> None:
         store = StructuredDocumentStore()
         repository = StructuredDocumentArtifactRepository(store=store, base_dir=temp_dir)
         base_document = _build_base_document()
-        (temp_path / "summary-doc.structured.json").write_text(
-            base_document.to_json(),
-            encoding="utf-8",
-        )
+        repository.save_document(base_document, "summary-doc")
 
         fake_summary_service = _FakeSummaryService()
         fake_resolver = _FakeTaskUnitResolver()
@@ -342,7 +345,7 @@ def test_summary_persistence_cache_flow() -> None:
         repository.update_section_summary_artifact(
             doc_name="summary-doc",
             section_id="section-0",
-            summary=bad_hash_summary,
+            summary=bound(bad_hash_summary, repository.load_document("summary-doc"), "section", "section-0"),
         )
         result_4 = coordinator.summarize_section(
             doc_name="summary-doc",
@@ -479,20 +482,15 @@ def test_summary_persistence_cache_flow() -> None:
         repository.update_section_summary_artifact(
             doc_name="summary-doc",
             section_id="section-0",
-            summary=legacy_wrong,
+            summary=bound(legacy_wrong, repository.load_document("summary-doc"), "section", "section-0"),
         )
         # remove document-level chapter artifact to ensure fallback cannot hit correct cache
         legacy_doc = repository.load_document("summary-doc")
         existing_artifacts = legacy_doc.document_task_artifacts or DocumentTaskArtifacts()
         patched_map = dict(existing_artifacts.chapter_artifacts)
         patched_map.pop(chapter_key, None)
-        repository.update_document_artifacts(
-            doc_name="summary-doc",
-            artifacts=DocumentTaskArtifacts(
-                chapter_artifacts=patched_map,
-                metadata=dict(existing_artifacts.metadata),
-            ),
-        )
+        repository.save_document(replace(legacy_doc, document_task_artifacts=replace(
+            existing_artifacts, chapter_artifacts=patched_map)), "summary-doc")
         calls_before_legacy_retry = fake_summary_service.calls
         chapter_after_legacy = coordinator.summarize_chapter(
             doc_name="summary-doc",

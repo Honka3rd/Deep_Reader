@@ -1,5 +1,17 @@
 # document_preparation Checklist
 
+## STRUCT-04 supporting integration (2026-11-13)
+
+- [x] STRUCT-04 dependency: Give explicitly published new hierarchy an incarnation without read-time backfill. PREP runtime/index/snapshot, 16-method manual integrity and 64 read-contract checks pass; initial prepare and warm zero-generation behavior remain intact.
+  Evidence: `/tmp/struct-fix-2c897af/`; locally verified for document_structure audit dependencies only; external review pending.
+  Timestamp: 2026-11-13
+
+## STRUCT-03 manual source guard support (2026-11-13)
+
+- [x] Expose a server-only accepted-source verifier for repository-supplied locked snapshots. Manual commit requires accepted evidence; no read-time extraction/profile/index repair. PREP runtime 24, index identity 10 and snapshot 13 regressions plus the 16-method manual integrity suite pass. Another 64 read-contract tests pass; missing accepted page identity short-circuits before loader resolution, and layout fixture resets use explicit reparse.
+  Evidence: `/tmp/struct-fix-2c897af/`; unit locally verified, whole document_structure audit/external review pending.
+  Timestamp: 2026-11-13
+
 ## PREP-05 audit correction (2026-11-13)
 
 - [x] PREP-05: Exact canonical index reuse, legacy readiness and warm zero-generation across file/PostgreSQL.

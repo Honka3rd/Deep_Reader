@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from scripts.artifact_generation_fixtures import bound, bound_fields
+
 import json
 import tempfile
 from dataclasses import dataclass
@@ -214,6 +216,8 @@ class _FakeEnhancedParseEvaluator:
 
 def _write_document(temp_dir: str, document: StructuredDocument) -> StructuredDocumentArtifactRepository:
     path = Path(temp_dir) / f"{document.document_id}.structured.json"
+    from dataclasses import replace
+    document = replace(document, parse_provenance={**document.parse_provenance, "interaction_epoch": "hierarchy-fixture-incarnation"})
     path.write_text(document.to_json(), encoding="utf-8")
     return StructuredDocumentArtifactRepository(base_dir=temp_dir)
 
@@ -224,7 +228,7 @@ def test_section_summary_writes_hierarchy_only() -> None:
         repository.update_section_summary_artifact(
             doc_name="hier-artifact-doc",
             section_id="section-1",
-            summary=SummaryArtifact(content="section-summary"),
+            summary=bound(SummaryArtifact(content="section-summary"), repository.load_document("hier-artifact-doc"), "section", "section-1"),
         )
         reloaded = repository.load_document("hier-artifact-doc")
         hierarchy_section = reloaded.chapters[0].sections[0]
@@ -246,12 +250,12 @@ def test_section_quiz_writes_hierarchy_only_preserving_summary() -> None:
         repository.update_section_summary_artifact(
             doc_name="hier-artifact-doc",
             section_id="section-1",
-            summary=SummaryArtifact(content="section-summary"),
+            summary=bound(SummaryArtifact(content="section-summary"), repository.load_document("hier-artifact-doc"), "section", "section-1"),
         )
         repository.update_section_quiz_artifact(
             doc_name="hier-artifact-doc",
             section_id="section-1",
-            quiz=QuizArtifact(items=[{"question_id": "q1", "question_text": "Q", "answer_text": "A"}]),
+            quiz=bound(QuizArtifact(items=[{"question_id": "q1", "question_text": "Q", "answer_text": "A"}]), repository.load_document("hier-artifact-doc"), "section", "section-1"),
         )
         reloaded = repository.load_document("hier-artifact-doc")
         section = reloaded.chapters[0].sections[0]
@@ -266,7 +270,7 @@ def test_update_section_artifacts_hierarchy_only_and_front_matter_preserved() ->
         repository.update_section_artifacts(
             doc_name="hier-artifact-doc",
             section_id="section-1",
-            artifacts=TaskArtifacts(summary=SummaryArtifact(content="replaced-summary")),
+            artifacts=bound_fields(TaskArtifacts(summary=SummaryArtifact(content="replaced-summary")), repository.load_document("hier-artifact-doc"), "section", "section-1"),
         )
         reloaded = repository.load_document("hier-artifact-doc")
         _assert(
@@ -290,7 +294,7 @@ def test_task_unit_artifacts_writes_hierarchy_only() -> None:
         repository.update_task_unit_artifacts(
             doc_name="hier-artifact-doc",
             task_unit_id="task-unit-1",
-            artifacts=TaskArtifacts(summary=SummaryArtifact(content="unit-summary")),
+            artifacts=bound_fields(TaskArtifacts(summary=SummaryArtifact(content="unit-summary")), repository.load_document("hier-artifact-doc"), "task_unit", "task-unit-1"),
         )
         reloaded = repository.load_document("hier-artifact-doc")
         hierarchy_unit = reloaded.chapters[0].sections[0].task_units[0]
@@ -442,7 +446,7 @@ def test_task_layout_availability_sees_updated_section_artifact() -> None:
         repository.update_section_summary_artifact(
             doc_name="hier-artifact-doc",
             section_id="section-1",
-            summary=SummaryArtifact(content="layout-visible-summary"),
+            summary=bound(SummaryArtifact(content="layout-visible-summary"), repository.load_document("hier-artifact-doc"), "section", "section-1"),
         )
         coordinator = SectionTaskCoordinator(
             document_preparation_pipeline=_FakePreparationPipeline(repository),
@@ -453,6 +457,7 @@ def test_task_layout_availability_sees_updated_section_artifact() -> None:
             task_unit_resolver=_FakeTaskUnitResolver(),
             enhanced_parse_trigger_evaluator=_FakeEnhancedParseEvaluator(),
         )
+        coordinator.ensure_document_task_layout(doc_name="hier-artifact-doc")
         layout = coordinator.get_document_task_layout(doc_name="hier-artifact-doc")
         _assert(layout.chapters, "layout should expose hierarchy chapters")
         section_layout = layout.chapters[0].sections[0]

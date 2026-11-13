@@ -1,9 +1,11 @@
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from uuid import uuid4
 import hashlib
 import json
 import logging
 from contextlib import nullcontext
+from typing import Callable
 
 from logging_config import log_stage
 
@@ -60,6 +62,8 @@ class ManualStructureSourceEvidence:
     language: str | None = None
     page_boundaries: list[PdfPageTextBoundary] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    # Server-only capability, never accepted from or serialized into public DTOs.
+    validate_current: Callable[[StructuredDocument], str] | None = field(default=None, repr=False, compare=False)
 
 
 class DocumentPreparationPipeline:
@@ -464,6 +468,8 @@ class DocumentPreparationPipeline:
             timing["outcome"] = "unavailable"
             try:
                 from document_preparation.accepted_source_guard import resolve_snapshot
+                # No source resolution is needed when accepted identity is absent.
+                read_extraction_record(document.parse_provenance)
                 loader = self.loader_factory.get(doc_name)
                 if not callable(getattr(loader, "source_path", None)):
                     timing["reason"] = "source_verification_unavailable"
@@ -528,9 +534,26 @@ class DocumentPreparationPipeline:
             if self.structured_document_store.exists(config):
                 document = self.structured_document_store.load(config)
                 if "extraction" in document.parse_provenance or "pdf_extraction" in document.parse_provenance:
-                    from document_preparation.accepted_source_guard import resolve_snapshot
-                    snapshot = resolve_snapshot(document, normalized_doc_name,
-                                                loader.source_path(normalized_doc_name))
+                    from document_preparation.accepted_source_guard import AcceptedSourceGuard
+                    from document_preparation.accepted_source_snapshot import SourceNotReady
+                    guard = AcceptedSourceGuard(document=document, doc_name=normalized_doc_name,
+                        source_path=lambda: loader.source_path(normalized_doc_name),
+                        current_document=lambda: self.structured_document_store.load(config))
+                    snapshot = guard.snapshot
+                    reading_revision = document.parse_provenance.get("reading_content", {}).get("revision", 0)
+
+                    def validate_current(current):
+                        try:
+                            accepted = guard.verify_document(current)
+                        except SourceNotReady:
+                            raise
+                        except (OSError, ValueError) as error:
+                            raise SourceNotReady("source_unavailable") from error
+                        if accepted.cleanup_context != snapshot.cleanup_context:
+                            raise SourceNotReady("accepted_page_or_ocr_evidence_changed")
+                        if current.parse_provenance.get("reading_content", {}).get("revision", 0) != reading_revision:
+                            raise SourceNotReady("reading_revision_changed")
+                        return accepted.canonical_text
                     identity = snapshot.extraction_identity
                     raw_text = snapshot.canonical_text
                     spans = document.parse_provenance.get("source_page_spans", document.parse_provenance.get("pdf_page_spans", []))
@@ -554,6 +577,7 @@ class DocumentPreparationPipeline:
                         raw_text=raw_text,
                         source_hash=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
                         language=document.language, page_boundaries=boundaries,
+                        validate_current=validate_current,
                     )
                 raise ValueError("Accepted extraction identity is unavailable; prepare explicitly.")
         raw_text = loader.load(normalized_doc_name)
@@ -1048,6 +1072,9 @@ class DocumentPreparationPipeline:
         storage_config: StructuredDocumentStorageConfig,
     ) -> None:
         """Atomically replace structured artifact to prevent half-written corruption."""
+        if not document.parse_provenance.get("interaction_epoch"):
+            document = replace(document, parse_provenance={
+                **document.parse_provenance, "interaction_epoch": uuid4().hex})
         with log_stage(logger, "structured_save", storage=type(self.structured_document_store).__name__):
             self.structured_document_store.save(document=document, target=storage_config)
         # Read-back validation before reporting structured readiness.

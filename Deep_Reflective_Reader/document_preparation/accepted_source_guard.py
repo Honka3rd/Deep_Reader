@@ -33,10 +33,13 @@ class AcceptedSourceGuard:
         self.verify_source()
 
     def verify_source(self):
+        self.verify_document(self.current_document())
+
+    def verify_document(self, document):
+        """Validate a caller-owned consistent snapshot without another storage read."""
         path = Path(self.source_path())
         if source_revision(path) != self.revision:
             raise SourceNotReady("source_changed")
-        document = self.current_document()
         current = resolve_snapshot(document, self.doc_name, path)
         if (current.document_id != self.snapshot.document_id
                 or document.parse_provenance.get("interaction_epoch") != self.incarnation
@@ -45,3 +48,4 @@ class AcceptedSourceGuard:
                 or current.text_sha256 != self.snapshot.text_sha256
                 or source_revision(Path(self.source_path())) != self.revision):
             raise SourceNotReady("accepted_source_changed")
+        return current

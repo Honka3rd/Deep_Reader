@@ -151,7 +151,8 @@ def _layout_metadata(document: StructuredDocument) -> dict[str, dict[str, str | 
             "source_hash": SectionTaskCoordinator._compute_source_hash(document),
             "task_unit_split_mode": "semantic_safe",
             "semantic_top_k_candidates": 3,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
+            "reading_revision": 0,
         }
     }
 
@@ -374,6 +375,10 @@ def test_hierarchy_write_sync() -> None:
             encoding="utf-8",
         )
 
+        coordinator.ensure_document_task_layout(
+            doc_name="hier-sync-doc", task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=3,
+        )
         first_layout = coordinator.get_document_task_layout(
             doc_name="hier-sync-doc",
             refresh_task_units=False,
@@ -399,9 +404,13 @@ def test_hierarchy_write_sync() -> None:
         )
 
         # refresh should rewrite hierarchy
+        coordinator.ensure_document_task_layout(
+            doc_name="hier-sync-doc", refresh_task_units=True,
+            task_unit_split_mode="semantic_safe", semantic_top_k_candidates=3,
+        )
         refreshed_layout = coordinator.get_document_task_layout(
             doc_name="hier-sync-doc",
-            refresh_task_units=True,
+            refresh_task_units=False,
             task_unit_split_mode="semantic_safe",
             semantic_top_k_candidates=3,
         )
@@ -468,6 +477,10 @@ def test_hierarchy_write_sync() -> None:
             encoding="utf-8",
         )
         before_repair_calls = resolver.calls
+        coordinator.ensure_document_task_layout(
+            doc_name="hier-sync-doc", task_unit_split_mode="semantic_safe",
+            semantic_top_k_candidates=3,
+        )
         coordinator.get_document_task_layout(
             doc_name="hier-sync-doc",
             refresh_task_units=False,

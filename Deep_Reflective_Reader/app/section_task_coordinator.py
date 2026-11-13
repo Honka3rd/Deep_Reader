@@ -5,6 +5,12 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
+from document_structure.generated_artifact_source import (
+    BINDING_KEY, capture_generation_source, generation_source_matches,
+    effective_section_hash, effective_target,
+)
+from document_structure.reading_content import project_document
+
 from logging_config import log_stage
 from section_tasks.interaction_policy_identity import server_request, stale_projection
 from app.task_layout_readiness import TaskLayoutNotReadyError
@@ -1154,8 +1160,10 @@ class SectionTaskCoordinator:
                 resolve_options=resolve_options,
                 refresh_task_units=False,
             )
+            layout_document = layout_document.document
+            generation_source = capture_generation_source(layout_document, "section", target_section.section_id)
             resolved_task_unit = self._resolve_task_unit_for_section_id_from_persisted_layout(
-                document=layout_document,
+                document=project_document(layout_document),
                 section_id=section_id,
             )
             summary_result = self.chapter_summary_service.summarize_task_unit(
@@ -1176,6 +1184,7 @@ class SectionTaskCoordinator:
                 prompt_version=self._SECTION_SUMMARY_PROMPT_VERSION,
                 scope="section",
                 source_task_unit_id=resolved_task_unit.task_unit.unit_id,
+                generation_source=generation_source,
                 chapter_title=None,
             )
             self.document_artifact_repository.update_section_summary_artifact(
@@ -1289,8 +1298,10 @@ class SectionTaskCoordinator:
                 resolve_options=resolve_options,
                 refresh_task_units=False,
             )
+            layout_document = layout_document.document
+            generation_source = capture_generation_source(layout_document, "chapter", target_chapter.chapter_id)
             resolved_task_unit = self._resolve_task_unit_for_section_id_from_persisted_layout(
-                document=layout_document,
+                document=project_document(layout_document),
                 section_id=target_section.section_id,
             )
             summary_result = self.chapter_summary_service.summarize_task_unit(
@@ -1311,6 +1322,7 @@ class SectionTaskCoordinator:
                 prompt_version=self._CHAPTER_SUMMARY_PROMPT_VERSION,
                 scope="chapter",
                 source_task_unit_id=resolved_task_unit.task_unit.unit_id,
+                generation_source=generation_source,
                 chapter_title=resolved_chapter_title,
                 chapter_id=target_chapter.chapter_id,
                 chapter_key=chapter_key,
@@ -1384,8 +1396,10 @@ class SectionTaskCoordinator:
                 resolve_options=resolve_options,
                 refresh_task_units=False,
             )
+            layout_document = layout_document.document
+            generation_source = capture_generation_source(layout_document, "section", target_section.section_id)
             resolved_task_unit = self._resolve_task_unit_for_section_id_from_persisted_layout(
-                document=layout_document,
+                document=project_document(layout_document),
                 section_id=section_id,
             )
             quiz_result = self.chapter_quiz_service.generate_task_unit_quiz(
@@ -1406,6 +1420,7 @@ class SectionTaskCoordinator:
                 prompt_version=self._SECTION_QUIZ_PROMPT_VERSION,
                 scope="section",
                 source_task_unit_id=resolved_task_unit.task_unit.unit_id,
+                generation_source=generation_source,
                 chapter_title=None,
             )
             self.document_artifact_repository.update_section_quiz_artifact(
@@ -1514,8 +1529,10 @@ class SectionTaskCoordinator:
                 resolve_options=resolve_options,
                 refresh_task_units=False,
             )
+            layout_document = layout_document.document
+            generation_source = capture_generation_source(layout_document, "chapter", target_chapter.chapter_id)
             resolved_task_unit = self._resolve_task_unit_for_section_id_from_persisted_layout(
-                document=layout_document,
+                document=project_document(layout_document),
                 section_id=target_section.section_id,
             )
             quiz_result = self.chapter_quiz_service.generate_task_unit_quiz(
@@ -1537,6 +1554,7 @@ class SectionTaskCoordinator:
                 prompt_version=self._CHAPTER_QUIZ_PROMPT_VERSION,
                 scope="chapter",
                 source_task_unit_id=resolved_task_unit.task_unit.unit_id,
+                generation_source=generation_source,
                 chapter_title=resolved_chapter_title,
                 chapter_id=target_chapter.chapter_id,
                 chapter_key=chapter_key,
@@ -2816,11 +2834,20 @@ class SectionTaskCoordinator:
         section_count = (
             sum(len(chapter.sections) for chapter in draft_document.chapters)
         )
+        if source_evidence.validate_current is None:
+            return ManualStructureCommitResult.source_unavailable(
+                doc_name=normalized_doc_name, status_code=422,
+                error="manual_structure requires accepted source evidence; prepare explicitly")
+        from document_preparation.accepted_source_snapshot import SourceNotReady
         try:
-            self.document_artifact_repository.save_reparsed_document(
-                draft_document,
-                doc_name=normalized_doc_name,
+            self.document_artifact_repository.commit_manual_structure(
+                draft_document, doc_name=normalized_doc_name,
+                validate_current=source_evidence.validate_current,
             )
+        except (SourceNotReady, FileNotFoundError) as error:
+            return ManualStructureCommitResult.source_unavailable(
+                doc_name=normalized_doc_name, status_code=409,
+                error=f"manual_structure source changed; reload required: {error}")
         except Exception as error:
             return ManualStructureCommitResult.commit_failed(
                 doc_name=normalized_doc_name,
@@ -3510,14 +3537,17 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         chapter_key: str | None = None,
         legacy_chapter_key: str | None = None,
+        generation_source: dict | None = None,
     ) -> SummaryArtifact:
         """Build persisted summary artifact payload."""
         normalized_content = content.strip()
-        metadata: dict[str, str | int | None] = {
+        metadata: dict[str, Any] = {
             "summary_scope": scope,
             "source_section_id": target_section.section_id,
             "source_task_unit_id": source_task_unit_id,
         }
+        metadata[BINDING_KEY] = generation_source or capture_generation_source(
+            document, scope, chapter_id if scope == "chapter" else target_section.section_id)
         if chapter_title is not None:
             metadata["chapter_title"] = chapter_title
         if chapter_id is not None:
@@ -3534,7 +3564,7 @@ class SectionTaskCoordinator:
                 document_profile=document_profile,
             ),
             generated_at=datetime.now(timezone.utc).isoformat(),
-            source_hash=self._compute_section_source_hash(target_section),
+            source_hash=effective_section_hash(document, target_section.section_id),
             prompt_version=prompt_version,
             task_unit_split_mode=resolve_options.split_mode.value,
             semantic_top_k_candidates=resolve_options.semantic_top_k_candidates,
@@ -3582,7 +3612,7 @@ class SectionTaskCoordinator:
         summary = artifacts.summary
         if not summary.content.strip():
             return ArtifactValidityResult.invalid("empty_content")
-        if summary.source_hash != self._compute_section_source_hash(section):
+        if summary.source_hash != effective_section_hash(document, section.section_id):
             return ArtifactValidityResult.invalid("source_hash_mismatch")
 
         expected_language = self._resolve_summary_language(
@@ -3612,6 +3642,8 @@ class SectionTaskCoordinator:
                 expected_chapter_title or ""
             ):
                 return ArtifactValidityResult.invalid("chapter_title_mismatch")
+        if not generation_source_matches(document, summary, "section", section.section_id):
+            return ArtifactValidityResult.invalid("generation_source_mismatch")
         return ArtifactValidityResult.valid()
 
     def _build_quiz_artifact(
@@ -3629,14 +3661,17 @@ class SectionTaskCoordinator:
         chapter_id: str | None = None,
         chapter_key: str | None = None,
         legacy_chapter_key: str | None = None,
+        generation_source: dict | None = None,
     ) -> QuizArtifact:
         """Build persisted quiz artifact payload."""
-        metadata: dict[str, str | int | None] = {
+        metadata: dict[str, Any] = {
             "quiz_scope": scope,
             "section_id": target_section.section_id,
             "source_section_id": target_section.section_id,
             "source_task_unit_id": source_task_unit_id,
         }
+        metadata[BINDING_KEY] = generation_source or capture_generation_source(
+            document, scope, chapter_id if scope == "chapter" else target_section.section_id)
         if chapter_title is not None:
             metadata["chapter_title"] = chapter_title
         if chapter_id is not None:
@@ -3699,7 +3734,7 @@ class SectionTaskCoordinator:
         parsed_questions = self._quiz_questions_from_artifact(quiz)
         if parsed_questions is None:
             return ArtifactValidityResult.invalid("malformed_quiz_items"), None
-        if quiz.source_hash != self._compute_section_source_hash(section):
+        if quiz.source_hash != effective_section_hash(document, section.section_id):
             return ArtifactValidityResult.invalid("source_hash_mismatch"), None
         expected_language = self._resolve_summary_language(
             document=document,
@@ -3728,6 +3763,8 @@ class SectionTaskCoordinator:
                 expected_chapter_title or ""
             ):
                 return ArtifactValidityResult.invalid("chapter_title_mismatch"), None
+        if not generation_source_matches(document, quiz, "section", section.section_id):
+            return ArtifactValidityResult.invalid("generation_source_mismatch"), None
         return ArtifactValidityResult.valid(), parsed_questions
 
     @staticmethod
@@ -3758,7 +3795,7 @@ class SectionTaskCoordinator:
         document_profile: DocumentProfile | None,
         resolve_options: TaskUnitResolveOptions,
         prompt_version: str,
-        metadata: dict[str, str | int | None],
+        metadata: dict[str, Any],
     ) -> QuizArtifact:
         """Convert quiz question DTO list into persisted quiz artifact payload."""
         items = [
@@ -3776,7 +3813,7 @@ class SectionTaskCoordinator:
                 document_profile=document_profile,
             ),
             generated_at=datetime.now(timezone.utc).isoformat(),
-            source_hash=self._compute_section_source_hash(target_section),
+            source_hash=effective_section_hash(document, target_section.section_id),
             prompt_version=prompt_version,
             quiz_schema_version=self._QUIZ_SCHEMA_VERSION,
             task_unit_split_mode=resolve_options.split_mode.value,
@@ -3914,7 +3951,7 @@ class SectionTaskCoordinator:
         resolved_source_section = metadata_source_section or source_section
         if resolved_source_section is None:
             return ArtifactValidityResult.invalid("source_section_not_found")
-        if summary.source_hash != self._compute_section_source_hash(resolved_source_section):
+        if summary.source_hash != effective_section_hash(document, resolved_source_section.section_id):
             return ArtifactValidityResult.invalid("source_hash_mismatch")
 
         expected_language = self._resolve_summary_language(
@@ -3945,6 +3982,8 @@ class SectionTaskCoordinator:
             return ArtifactValidityResult.invalid("chapter_key_mismatch")
         if metadata_source_section_id and metadata_source_section_id != resolved_source_section.section_id:
             return ArtifactValidityResult.invalid("section_id_mismatch")
+        if not generation_source_matches(document, summary, "chapter", chapter_id):
+            return ArtifactValidityResult.invalid("generation_source_mismatch")
         return ArtifactValidityResult.valid()
 
     @staticmethod
@@ -4028,7 +4067,7 @@ class SectionTaskCoordinator:
         resolved_source_section = metadata_source_section or source_section
         if resolved_source_section is None:
             return ArtifactValidityResult.invalid("source_section_not_found"), None
-        if quiz.source_hash != self._compute_section_source_hash(resolved_source_section):
+        if quiz.source_hash != effective_section_hash(document, resolved_source_section.section_id):
             return ArtifactValidityResult.invalid("source_hash_mismatch"), None
         expected_language = self._resolve_summary_language(
             document=document,
@@ -4059,6 +4098,8 @@ class SectionTaskCoordinator:
             return ArtifactValidityResult.invalid("chapter_key_mismatch"), None
         if metadata_source_section_id and metadata_source_section_id != resolved_source_section.section_id:
             return ArtifactValidityResult.invalid("section_id_mismatch"), None
+        if not generation_source_matches(document, quiz, "chapter", chapter_id):
+            return ArtifactValidityResult.invalid("generation_source_mismatch"), None
         return ArtifactValidityResult.valid(), parsed
 
     @staticmethod
@@ -4086,7 +4127,7 @@ class SectionTaskCoordinator:
         summary = artifacts.summary
         if not summary.content.strip():
             return ArtifactValidityResult.invalid("empty_content")
-        source_hash = hashlib.sha256(task_unit.content.encode("utf-8")).hexdigest()
+        source_hash = hashlib.sha256(effective_target(document, "task_unit", task_unit.unit_id).content.encode("utf-8")).hexdigest()
         if summary.source_hash != source_hash:
             return ArtifactValidityResult.invalid("source_hash_mismatch")
         expected_language = self._resolve_summary_language(
@@ -4104,6 +4145,8 @@ class SectionTaskCoordinator:
             return ArtifactValidityResult.invalid("semantic_top_k_mismatch")
         if summary.prompt_version != prompt_version:
             return ArtifactValidityResult.invalid("prompt_version_mismatch")
+        if not generation_source_matches(document, summary, "task_unit", task_unit.unit_id):
+            return ArtifactValidityResult.invalid("generation_source_mismatch")
         return ArtifactValidityResult.valid()
 
     def _validate_task_unit_quiz_artifact(
@@ -4123,7 +4166,7 @@ class SectionTaskCoordinator:
         parsed_questions = self._quiz_questions_from_artifact(quiz)
         if parsed_questions is None:
             return ArtifactValidityResult.invalid("malformed_quiz_items"), None
-        source_hash = hashlib.sha256(task_unit.content.encode("utf-8")).hexdigest()
+        source_hash = hashlib.sha256(effective_target(document, "task_unit", task_unit.unit_id).content.encode("utf-8")).hexdigest()
         if quiz.source_hash != source_hash:
             return ArtifactValidityResult.invalid("source_hash_mismatch"), None
         expected_language = self._resolve_summary_language(
@@ -4143,6 +4186,8 @@ class SectionTaskCoordinator:
             return ArtifactValidityResult.invalid("prompt_version_mismatch"), None
         if quiz.quiz_schema_version != self._QUIZ_SCHEMA_VERSION:
             return ArtifactValidityResult.invalid("quiz_schema_version_mismatch"), None
+        if not generation_source_matches(document, quiz, "task_unit", task_unit.unit_id):
+            return ArtifactValidityResult.invalid("generation_source_mismatch"), None
         return ArtifactValidityResult.valid(), parsed_questions
 
     @staticmethod
