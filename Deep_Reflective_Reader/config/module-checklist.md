@@ -1,5 +1,12 @@
 # config Checklist
 
+## App source resolution support (2026-11-14)
+
+- [x] APP-02 support: share exact qualified and unambiguous legacy raw-source resolution with boundary protection and no read-time mutation.
+  Acceptance: PDF/TXT, uppercase/Chinese, coexistence, missing/ambiguous names and symlinks; app HTTP/state/commit integration; existing CONFIG identity and read-only regressions.
+  Evidence: 14/14 app source-resolution methods, 35/35 CONFIG regression methods, original external APP-02 assertion and two immutable-book file/SQL source-read checks pass. `/tmp/app-fix-5b3291a3/unit-2-report.txt`; integration locally verified, external app review pending.
+  Timestamp: 2026-11-14
+
 ## Profile audit support (2026-11-13)
 
 - [x] PROFILE-01 support: pure assembly of source/lifecycle and active-store publication guard.

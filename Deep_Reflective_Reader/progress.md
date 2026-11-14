@@ -1,5 +1,57 @@
 # Deep Reflective Reader Progress
 
+## App Audit Final Local Review (2026-11-14)
+
+APP-01–04 are locally implemented and validated across the three authorized units;
+the new local review SHA still requires external approval. Final focused rerun:
+layout publication 31/31, raw-source resolution 14/14, session publication 32/32.
+Original eighteen app suites: 327 executions, 321 pass/six private-source opt-in
+skips/zero failures or errors; seven formerly failing suites also pass isolated
+reruns. Twelve related interaction suites pass 96/96. Counts can share inherited
+cases and are not a unique-case total. Two full immutable backup copies pass file
+and PostgreSQL answer-before-provider/timeout/retry with unchanged hierarchy,
+versions and backup hashes. Deterministic providers do not prove live LLM semantics.
+Evidence and per-finding red/green attribution: `/tmp/app-fix-5b3291a3/final-report.txt`.
+Direct owner recount: app 60 checked/11 unchecked; section_tasks 104 checked/0
+unchecked (before this supporting item it was 103/0, so the old 97/0 aggregate was
+stale). Only APP-03/04 and their support item changed completion status; historical
+unresolved tasks remain. Scripts support adds one verified regression item: 69 checked/
+1 unchecked; the pre-existing DOCLOAD deployment fixture gate remains open (the old
+68/0 aggregate omitted it). No source edits during checklist/progress synchronization.
+No deployment/push/next module; submit the cumulative local SHA for external review.
+Timestamp: 2026-11-14
+
+## App Audit Unit 2 (2026-11-14)
+
+APP-02 and config raw-source resolution support are locally verified. APP-01 remains
+covered by the 31-case publication rerun. APP-03 and the remaining eight APP-04
+fixture failures await unit 3 authorization. New source-resolution suite: 14/14;
+original external APP-02 assertion: 1/1; adjacent suites: 350 executions, 342 pass,
+eight private-source opt-in skips, zero failures/errors. Inherited cases can overlap.
+Two complete immutable backup copies pass file/real SQL source reads, HTTP preflight
+and replacement rejection with zero provider calls and unchanged stored snapshots
+and backup manifests. These do not substitute for skipped cleanup scenarios.
+Evidence, red/green commands and limits: `/tmp/app-fix-5b3291a3/unit-2-report.txt`.
+Direct owner recount: app 58 checked/13 unchecked; config 12 checked/9 unchecked
+(template excluded). The unit-1 document_structure count included its literal
+completed-task template; corrected current aggregate is 101 checked/18 unchecked,
+without changing any task status. No source files changed during synchronization.
+No final review commit, deployment or push; full app acceptance/external review pending.
+Timestamp: 2026-11-14
+
+## App Audit Unit 1 (2026-11-13)
+
+APP-01 and its document_structure publication support are locally verified; APP-02,
+APP-03 and the remaining eight APP-04 fixture failures are pending. Current evidence:
+180 formal test executions pass with zero skips (groups may share inherited cases),
+one original external APP-01 reproduction passes, and two complete immutable backup
+copies retain exact source/readback. Five baseline regression selections fail as
+expected. Evidence: `/tmp/app-fix-5b3291a3/unit-1-report.txt`.
+No final review commit, deployment or push; next unit awaits developer confirmation.
+Direct owner recount: app 57 checked/14 unchecked; document_structure 102 checked/18
+unchecked. Historical unresolved work remains; this is not external app approval.
+Timestamp: 2026-11-13
+
 ## Scripts Learning Backend Acceptance (2026-10-29)
 
 Scripts-owned learning tasks: **2/2 system tasks complete**.
@@ -436,14 +488,14 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 56 | 11 | STRUCT-03/04 orchestration locally verified; latest review SHA requires external approval; 2026-11-13 recount excludes templates |
+| `app/` | package | `app/module-checklist.md` | 60 | 11 | APP-01–04 locally verified; cumulative external review pending; historical unresolved items retained (2026-11-14 direct recount) |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
-| `config/` | package | `config/module-checklist.md` | 11 | 9 | PROFILE publication support locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `config/` | package | `config/module-checklist.md` | 12 | 9 | APP-02 raw-source support locally verified; app external review pending; unrelated checklist items retained (2026-11-14 recount excludes templates) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
 | `db/` | package + design module | `db/module-checklist.md` | 69 | 4 | DB-01–03 locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 100 | 18 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 101 | 18 | APP-01 publication support locally verified; app external review pending; template excluded from corrected 2026-11-14 recount |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -453,8 +505,8 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
-| `scripts/` | package | `scripts/module-checklist.md` | 68 | 0 | LLRN-20/22 system acceptance verified (recounted 2026-10-29) |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 97 | 0 | TRUI-01 complete; quality caveat retained |
+| `scripts/` | package | `scripts/module-checklist.md` | 69 | 1 | App regression support locally verified; existing DOCLOAD deployment fixture gate retained; direct 2026-11-14 recount |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 104 | 0 | APP-03 session publication support locally verified; app review pending; prior aggregate corrected by direct 2026-11-14 recount; quality caveat retained |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 38 | 3 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
@@ -529,10 +581,12 @@ Evidence and dependencies are in owner designs/checklists.
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `Persisted Block Translation Action Delivered`
-- Completed item count: `50` (direct owner recount including TRUI-04).
-- Needs confirmation count: `0`
-- Unchecked item count: `11` (historical items; TRUI-04 accepted).
+- Status: `APP-01 locally verified; APP-02/03/remaining APP-04 pending; external review pending`
+- Completed item count: `57` (direct owner recount, 2026-11-13).
+- Needs confirmation count: `14`
+- Unchecked item count: `14` (11 historical items plus APP-02/03/04).
+- Unit 1 evidence: 180 passing executions/zero skips, original external APP-01 and
+  two immutable full-book checks; `/tmp/app-fix-5b3291a3/unit-1-report.txt`.
 - 2026-10-21 ENH-REV-03: typed outcome/cleanup/layout flags, conditional preflight,
   result lookup/replay and transient provider retry. 124 tests: 123 pass, one private
   opt-in skip. Process-local registry explicitly returns unknown after restart/expiry;
@@ -922,8 +976,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `document_structure/module-checklist.md`
 - Detailed Design: `document_structure/module-detailed-design.md`
-- Status: `PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained`
-- Completed item count: `100` (direct owner recount including TRUI-02/03).
+- Status: `APP-01 publication support locally verified; app external review pending; unrelated checklist items retained`
+- Completed item count: `102` (direct owner recount, 2026-11-13; corrects stale aggregate).
 - Unresolved checklist count: `18` (templates excluded)
 - Unchecked item count: `18` (historical items; TRUI-02/03 accepted).
 - 2026-10-21 ENH-REF: final real-model implementation passes twice on the reported

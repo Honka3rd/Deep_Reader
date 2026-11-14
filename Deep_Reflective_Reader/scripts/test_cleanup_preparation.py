@@ -193,7 +193,8 @@ class CleanupPreparationTests(unittest.TestCase):
         document, _, _ = self.fixture.snapshot()
         self.fixture.change("delete", block_id=self.fixture.service.read("book")["blocks"][0]["block_id"])
         with self.assertRaisesRegex(ReadingContentConflict, "reading_revision_changed"):
-            self.fixture.repo.update_task_layout("book", {}, {"reading_revision": 0})
+            from scripts.artifact_generation_fixtures import bound_layout
+            self.fixture.repo.update_task_layout("book", {}, bound_layout(document, {"reading_revision": 0}))
         changed = replace(document, chapters=[replace(c, sections=[replace(s, task_units=[])
             for s in c.sections]) for c in document.chapters])
         with self.assertRaisesRegex(ReadingContentConflict, "reading_revision_changed"):

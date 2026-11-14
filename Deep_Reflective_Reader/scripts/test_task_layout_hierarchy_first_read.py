@@ -7,8 +7,10 @@ import json
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from unittest.mock import patch
 
 from app.section_task_coordinator import SectionTaskCoordinator
+from app.task_layout_readiness import TaskLayoutNotReadyError
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.enhanced_parse_trigger_evaluator import (
     EnhancedParseTriggerDecision,
@@ -208,7 +210,7 @@ def _build_hierarchy_first_doc() -> StructuredDocument:
             "source_hash": SectionTaskCoordinator._compute_source_hash(doc),
             "task_unit_split_mode": "semantic_safe",
             "semantic_top_k_candidates": 3,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     return StructuredDocument(
@@ -259,7 +261,7 @@ def _build_legacy_only_doc() -> StructuredDocument:
             "source_hash": SectionTaskCoordinator._compute_source_hash(doc),
             "task_unit_split_mode": "semantic_safe",
             "semantic_top_k_candidates": 3,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     return StructuredDocument(
@@ -330,7 +332,7 @@ def _build_hierarchy_cache_invalid_doc() -> StructuredDocument:
             "source_hash": SectionTaskCoordinator._compute_source_hash(doc),
             "task_unit_split_mode": "semantic_safe",
             "semantic_top_k_candidates": 3,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     return StructuredDocument(
@@ -406,7 +408,7 @@ def _build_hierarchy_inconsistent_doc(
             "source_hash": SectionTaskCoordinator._compute_source_hash(doc),
             "task_unit_split_mode": "semantic_safe",
             "semantic_top_k_candidates": 3,
-            "resolver_version": "task_unit_resolver_v2",
+            "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
         }
     }
     return StructuredDocument(
@@ -531,10 +533,7 @@ def test_task_layout_hierarchy_first_read() -> None:
 
         # A. hierarchy-first read
         hierarchy_doc = _build_hierarchy_first_doc()
-        Path(temp_dir, "hierarchy-doc.structured.json").write_text(
-            hierarchy_doc.to_json(),
-            encoding="utf-8",
-        )
+        repository.save_document(hierarchy_doc, "hierarchy-doc")
         hierarchy_layout = coordinator.get_document_task_layout(
             doc_name="hierarchy-doc",
             task_unit_split_mode="semantic_safe",
@@ -573,27 +572,35 @@ def test_task_layout_hierarchy_first_read() -> None:
             raise AssertionError(
                 "expected failure when runtime receives legacy sections-only document"
             )
-        except ValueError as error:
+        except TaskLayoutNotReadyError as error:
             _assert(
-                "requires explicit migration" in str(error),
+                error.reason == "invalid_structure" and "requires explicit migration" in str(error.__cause__),
                 "legacy sections-only document should fail-fast with migration guidance",
             )
 
         # C. cache validity checks effective(hierarchy) sections
         invalid_doc = _build_hierarchy_cache_invalid_doc()
-        Path(temp_dir, "cache-invalid-doc.structured.json").write_text(
-            invalid_doc.to_json(),
-            encoding="utf-8",
-        )
+        repository.save_reparsed_document(invalid_doc, "cache-invalid-doc")
         before_calls = resolver.calls
-        coordinator.get_document_task_layout(
+        before_bytes = Path(temp_dir, "cache-invalid-doc.structured.json").read_bytes()
+        with patch.object(coordinator.document_preparation_pipeline, "prepare_and_load", side_effect=AssertionError("read prepared")), patch.object(repository, "update_task_layout", side_effect=AssertionError("read wrote")):
+            try:
+                coordinator.get_document_task_layout(
+                    doc_name="cache-invalid-doc", task_unit_split_mode="semantic_safe", semantic_top_k_candidates=3)
+                raise AssertionError("unprepared hierarchy must be reported not-ready")
+            except TaskLayoutNotReadyError as error:
+                _assert(error.reason == "missing_task_units", "hierarchy units must determine readiness")
+        _assert(resolver.calls == before_calls, "ordinary read must not resolve missing task units")
+        _assert(Path(temp_dir, "cache-invalid-doc.structured.json").read_bytes() == before_bytes,
+                "ordinary read must retain the unprepared hierarchy")
+        coordinator.ensure_document_task_layout(
             doc_name="cache-invalid-doc",
             task_unit_split_mode="semantic_safe",
             semantic_top_k_candidates=3,
         )
         _assert(
             resolver.calls == before_calls + 1,
-            "missing task_units on hierarchy sections should invalidate cache and trigger resolver",
+            "explicit preparation of missing hierarchy units should trigger resolver exactly once",
         )
 
         # D. hierarchy inconsistency fails fast when no legacy root sections exist
@@ -611,10 +618,11 @@ def test_task_layout_hierarchy_first_read() -> None:
             raise AssertionError(
                 "expected failure when hierarchy is inconsistent and no legacy sections exist"
             )
-        except ValueError as error:
+        except TaskLayoutNotReadyError as error:
             _assert(
-                "severe hierarchy inconsistency" in str(error)
-                and "legacy sections fallback disabled" in str(error),
+                error.reason == "invalid_hierarchy"
+                and "severe hierarchy inconsistency" in str(error.__cause__)
+                and "legacy sections fallback disabled" in str(error.__cause__),
                 "should fail-fast with severe inconsistency + fallback-disabled message",
             )
 
@@ -635,10 +643,11 @@ def test_task_layout_hierarchy_first_read() -> None:
             raise AssertionError(
                 "expected failure when hierarchy is inconsistent even if legacy root sections exist"
             )
-        except ValueError as error:
+        except TaskLayoutNotReadyError as error:
             _assert(
-                "severe hierarchy inconsistency" in str(error)
-                and "legacy sections fallback disabled" in str(error),
+                error.reason == "invalid_hierarchy"
+                and "severe hierarchy inconsistency" in str(error.__cause__)
+                and "legacy sections fallback disabled" in str(error.__cause__),
                 "should not fallback to root sections when hierarchy is severely inconsistent",
             )
 

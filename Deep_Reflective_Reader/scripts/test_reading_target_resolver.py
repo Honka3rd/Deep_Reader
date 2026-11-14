@@ -649,6 +649,9 @@ def test_coordinator_orchestrates_reading_target_resolution_once() -> None:
     pipeline = _FakePreparationPipeline(document)
     coordinator = SectionTaskCoordinator.__new__(SectionTaskCoordinator)
     coordinator.document_preparation_pipeline = pipeline
+    from unittest.mock import Mock
+    coordinator.document_artifact_repository = Mock()
+    coordinator.document_artifact_repository.load_document.return_value = document
     coordinator.reading_target_resolver = ReadingTargetResolver()
 
     resolved = coordinator.resolve_reading_target(
@@ -659,10 +662,12 @@ def test_coordinator_orchestrates_reading_target_resolution_once() -> None:
         task_unit_id="unit-1",
     )
 
+    coordinator.document_artifact_repository.load_document.assert_called_once_with("fixture.pdf")
+    coordinator.document_artifact_repository.save_document.assert_not_called()
     _assert(resolved.target_id == "unit-1", "coordinator should return resolved target")
     _assert(
-        pipeline.calls == [("fixture.pdf", PreparationMode.BASE)],
-        "coordinator should load the hierarchy once in base mode",
+        pipeline.calls == [],
+        "target resolution must not prepare",
     )
 
 

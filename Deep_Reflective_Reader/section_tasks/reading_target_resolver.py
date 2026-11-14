@@ -43,6 +43,8 @@ class ResolvedReadingTarget:
     content_block: TaskUnitContentBlock | None = None
     reading_revision: int = 0
     source_needs_review: bool = False
+    document_incarnation: str | None = None
+    artifact_generation_epoch: str | None = None
 
 
 class ReadingTargetResolver:
@@ -86,7 +88,9 @@ class ReadingTargetResolver:
         from document_structure.reading_content import project_document, needs_review, state_for
         resolved = self._resolve(document=project_document(document) if apply_edits else document, **kwargs)
         return replace(resolved, reading_revision=state_for(document).get("revision",0),
-                       source_needs_review=needs_review(document))
+                       source_needs_review=needs_review(document),
+                       document_incarnation=document.parse_provenance.get("interaction_epoch"),
+                       artifact_generation_epoch=document.parse_provenance.get("artifact_generation_epoch"))
 
     def _resolve(
         self,

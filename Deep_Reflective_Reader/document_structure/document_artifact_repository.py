@@ -228,8 +228,15 @@ class DocumentArtifactRepository(ABC):
         doc_name: str,
         task_units_by_section_id: dict[str, list[TaskUnit]],
         task_layout_metadata: dict[str, str | int | None],
+        *,
+        repair_unit_ids: bool = False,
     ) -> StructuredDocument:
-        """Bulk update section task units + task-layout metadata with one atomic save."""
+        """Validate captured publication_source under lock, then merge units/metadata.
+
+        The caller captures server-owned task_layout_source evidence before computing
+        units. Missing/stale evidence must reject before any persistence.
+        ID repair requires identical ordered unit source; artifacts come from current storage.
+        """
         raise NotImplementedError
 
     @abstractmethod

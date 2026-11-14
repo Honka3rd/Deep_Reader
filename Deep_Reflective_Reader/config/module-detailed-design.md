@@ -1,5 +1,24 @@
 # config Detailed Design
 
+## APP-02 raw source resolution support (2026-11-14, locally verified)
+
+StorageNamespaceHelper owns a pure raw-source selection port: validate the logical
+document name, choose exact qualified PDF/TXT entries, or require one supported raw
+candidate for a legacy bare name. Extension spelling remains part of identity;
+uppercase suffixes are supported without inventing lowercase fallback. Reuse the
+existing stem/raw_names/path-boundary rules. Reject absent, ambiguous or external
+symlink targets without touching directories or data. Return a validated source path;
+accepted extraction evidence and publication source/lifecycle checks remain caller
+responsibilities, not config policy. App uses this port at preflight and commit;
+it never selects from persisted source_path. File backend capabilities are unchanged.
+
+Validation: 14/14 app source-resolution methods include real file and SQL evidence,
+qualified HTTP enhancement/cleanup commit and source-retarget rejection; existing
+CONFIG identity/pure-read suite passes 35/35. The original external APP-02 assertion
+and two immutable-book copy source-read checks pass. Full adjacent results and
+eight private-source opt-in skips: `/tmp/app-fix-5b3291a3/unit-2-report.txt`.
+Supporting integration only; full app review remains pending.
+
 ## PROFILE audit integration (2026-11-13)
 
 PROFILE-01 supporting assembly: assemble profile publication guards with the existing
@@ -196,7 +215,7 @@ not invalidation semantics. Container wiring and real API/DB acceptance pass.
 1. 提供統一 app policy（retrieval/profile/scope/task-unit/recommendation）。 **[Code-Confirmed]**
 2. 組裝跨模組依賴圖。 **[Code-Confirmed]**
 3. 提供 token budget capability clamp/fallback。 **[Code-Confirmed]**
-4. 提供 artifact namespace/path normalization 與 legacy 檔名遷移。 **[Code-Confirmed]**
+4. 提供 artifact namespace/path normalization 與無歧義舊名稱的唯讀解析；實體遷移由明確生命週期操作處理。 **[Code-Confirmed]**
 
 ## 5. Non-Responsibilities
 

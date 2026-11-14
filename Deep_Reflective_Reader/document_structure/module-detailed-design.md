@@ -1,5 +1,37 @@
 # document_structure Detailed Design
 
+## APP-01 layout publication support (2026-11-13, locally implemented)
+
+Task-layout writes require a server-created source token captured before computation.
+The token includes canonical/effective hierarchy, source/provenance, incarnation,
+rename/reading/structure revisions, while excluding generated artifact payloads.
+The shared repository mutation validates it under the existing file lock or SQL
+owner transaction before merging units/metadata. Missing or changed evidence rejects
+without writes; computation stays outside storage locks. Explicit duplicate-ID repair
+uses the same guarded layout path. Layout may retain current artifacts for unchanged
+units, never supplied stale artifacts. When every unit in the submitted layout has
+the same ordered source/coordinates apart from generated IDs and derived parent IDs, retain its current
+identity and artifacts. Explicit duplicate-ID repair instead validates that exact
+ordered equivalence and changes IDs while taking artifacts from the locked snapshot.
+It cannot change content or import caller artifacts. Ordinary cache reads do not require migration
+of legacy tokens or perform writes. File/real SQL tests cover races, rollback and reads.
+
+Source evidence includes complete canonical/effective text, unit block coordinates,
+source provenance, incarnation and reading/structure/rename revisions. No-op receipts,
+annotation audit data, generated artifacts and advisory chapter metadata are excluded.
+Unknown incarnations require explicit reparse before layout publication; valid old
+cache reads remain read-only. SQL validation runs on the owner connection after its
+row lock, and file validation after the document lock; no extra transaction or lock
+order is introduced. Resolver/provider work stays outside these boundaries.
+
+Evidence: `scripts/test_task_layout_publication.py` 31/31 file/real SQL cases,
+101 adjacent tests, 12 layout-fixture tests and 36 content/page/profile/hierarchy
+tests pass without skips. Five baseline regression selections fail; the original
+APP-01 case now rejects without changing the new document. Two full backup copies
+retain exact source/readback and reject late same-text reparse results. Details in
+`/tmp/app-fix-5b3291a3/unit-1-report.txt`; full app audit and external review pending.
+
+
 ## PROFILE-05 publication coordination (2026-11-13, locally implemented)
 
 Public file store save and save_and_load must acquire the same document .lock as repository lifecycle writes and profile snapshots. Only a private serialization primitive may write without reacquiring it. Repository mutations already hold this lock and keep their existing atomic writer; they must not nest public store save. save_and_load returns readback before unlocking so Prepare cannot adopt a competing incarnation.

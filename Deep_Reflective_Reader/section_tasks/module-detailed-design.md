@@ -1,5 +1,45 @@
 # section_tasks Detailed Design
 
+## APP-03 session publication support (2026-11-14, locally verified)
+
+Critical-thinking source policy includes server-resolved document incarnation and
+rename generation, alongside exact effective target hash and reading/structure
+revisions. Capture these on the same repository snapshot as target resolution;
+validate them against the locked current document at session publication. Reads
+remain pure, and legacy sessions lacking this evidence are readable but stale for
+new writes. No epoch backfill or relaxed file/SQL lifecycle guard.
+
+The document-backed session adapter supports conditional transitions from an exact
+expected artifact. Assign a fresh session revision for each saved transition and
+compare the previous persisted session inside mutate_document_artifacts. This
+prevents late evaluation, concurrent answer writes and same-answer ABA replacement.
+Creating a question cannot overwrite an existing session. Store failures are
+reconciled by exact readback of the proposed revision before success; ambiguous or
+failed readback produces a safe unconfirmed-save error, without provider dispatch.
+The app persists submitted state before evaluation; the service never owns locks.
+Provider exceptions yield evaluation_provider_failed; invalid output yields
+evaluation_invalid_output. Both preserve question/answer for explicit retry.
+BaseException interruption propagates, leaving the already submitted answer durable.
+
+Acceptance: file/real SQL session CAS/source/lifecycle/rollback/ack tests, HTTP
+transport and retry, and original service/adapter/interaction regression assertions.
+Supporting integration only; no next-module audit or deployment authorization.
+
+Implemented by target snapshot identity fields, critical-thinking policy metadata,
+safe service failure codes and conditional session adapter writes. Session revision
+is an opaque server-issued token, never a client authority field. Source validation
+uses the repository-owned structure version for all target levels (the resolver's
+content-block version argument alone is not a document-level readback projection).
+Unknown save readback failures raise CriticalThinkingSaveUnconfirmed (safe HTTP 500);
+source/session conflicts are safe HTTP 409. Ordinary reads never backfill identity.
+Validation: 32 file/real SQL session publication cases and 96 related interaction
+executions pass without skips; 327 app executions have 321 passes/six explicit private
+opt-in skips/zero failures or errors. Four complete-book/backend combinations verify
+durable answers before timeout and successful retry without hierarchy/version changes.
+Legacy read fixtures install old persisted payloads explicitly; new unbound session
+writes remain rejected. Evidence: `/tmp/app-fix-5b3291a3/final-report.txt`.
+Full app review pending; no live LLM/OCR semantic or deployment claim.
+
 ## Shared sentence translation across reading modes (2026-11-09)
 
 Implemented under maintainer authorization. Ordinary reading retains its

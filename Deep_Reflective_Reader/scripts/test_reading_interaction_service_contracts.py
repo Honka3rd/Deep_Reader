@@ -162,7 +162,7 @@ def test_rejects_invalid_success_shape_and_invalid_type_or_status() -> None:
     _expect_value_error(
         lambda: ReadingInteractionRequest(
             target=_target(),
-            interaction_type="summary",
+            interaction_type="unsupported_fixture",
         ),
         "unsupported reading interaction type",
     )

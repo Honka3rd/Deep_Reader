@@ -23,6 +23,14 @@ from shared.common_artifact_model import CommonArtifact
 from shared.task_artifacts import DocumentTaskArtifacts
 
 
+class CriticalThinkingConflict(ValueError):
+    """The persisted session or its source changed before publication."""
+
+
+class CriticalThinkingSaveUnconfirmed(RuntimeError):
+    """Storage could not confirm this session revision; do not report acceptance."""
+
+
 @dataclass(frozen=True)
 class DocumentCriticalThinkingSessionStoreResult:
     """Saved critical-thinking session result."""
@@ -160,6 +168,7 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
     def save_critical_thinking_session(
         self,
         artifact: ReadingInteractionArtifact,
+        *, expected_session: ReadingInteractionArtifact | None = None,
     ) -> DocumentCriticalThinkingSessionStoreResult:
         self._validate_artifact_type(
             artifact,
@@ -168,6 +177,7 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
         session_id = self._session_id_from_artifact(artifact)
         metadata = dict(artifact.metadata)
         metadata["session_id"] = session_id
+        metadata["session_revision"] = uuid4().hex
         artifact_to_save = ReadingInteractionArtifact(
             interaction_type=artifact.interaction_type,
             status=artifact.status,
@@ -182,14 +192,59 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
             metadata=metadata,
             reason=artifact.reason,
         )
-        self._save_common_artifact(
-            artifact=artifact_to_save,
-            artifact_id=session_id,
-        )
+        try:
+            self._save_common_artifact(
+                artifact=artifact_to_save, artifact_id=session_id,
+                expected_session=expected_session,
+            )
+        except CriticalThinkingConflict:
+            raise
+        except Exception:
+            # A commit acknowledgement can fail after persistence. Only exact
+            # readback of this revision authorizes success/provider dispatch.
+            try:
+                document = self._document_artifact_repository.load_document(
+                    self._doc_name_from_artifact(artifact_to_save))
+                self._validate_session_source(document, artifact_to_save)
+                confirmed = self._session_from_document(document, session_id) == artifact_to_save
+            except Exception:
+                confirmed = False
+            if not confirmed:
+                raise CriticalThinkingSaveUnconfirmed("critical_thinking_save_unconfirmed") from None
         return DocumentCriticalThinkingSessionStoreResult(
             session_id=session_id,
             artifact=artifact_to_save,
         )
+
+    @classmethod
+    def _session_from_document(cls, document, session_id):
+        metadata = document.document_task_artifacts.metadata if document.document_task_artifacts else {}
+        payload = cls._read_interaction_metadata(metadata).get("critical_thinking_session", {}).get(session_id)
+        return (common_artifact_to_reading_interaction_artifact(CommonArtifact.from_dict(payload))
+                if isinstance(payload, dict) else None)
+
+    @staticmethod
+    def _validate_session_source(document, artifact):
+        from section_tasks.reading_target_resolver import ReadingTargetResolver
+        from section_tasks.interaction_policy_identity import effective_policy
+        try:
+            target = ReadingTargetResolver().resolve(
+                document=document, target_level=artifact.target_level,
+                chapter_id=artifact.chapter_id, section_id=artifact.section_id,
+                task_unit_id=artifact.task_unit_id, content_block_id=artifact.content_block_id,
+                source_structure_version=document.parse_provenance.get("storage_structure_version"))
+            target = replace(target, source_structure_version=document.parse_provenance.get("storage_structure_version"))
+            current = effective_policy(ReadingInteractionRequest(
+                target=target, interaction_type="critical_thinking_session"))
+            supplied = artifact.metadata.get("interaction_policy", {})
+            fields = ("target", "source_sha256", "source_structure_version", "reading_revision",
+                      "source_needs_review", "document_incarnation", "artifact_generation_epoch")
+            valid = bool(current["document_incarnation"]) and all(
+                supplied.get(key) == current.get(key) for key in fields)
+        except (ValueError, KeyError, TypeError):
+            valid = False
+        if not valid:
+            raise CriticalThinkingConflict("stale_critical_thinking_source")
 
     def _save_current_artifact(
         self,
@@ -232,6 +287,7 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
         *,
         artifact: ReadingInteractionArtifact,
         artifact_id: str,
+        expected_session: ReadingInteractionArtifact | None = None,
     ) -> None:
         common_artifact = reading_interaction_artifact_to_common_artifact(
             artifact,
@@ -239,6 +295,14 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
         )
         doc_name = self._doc_name_from_artifact(artifact)
         def mutation(document):
+            if artifact.interaction_type == "critical_thinking_session":
+                self._validate_session_source(document, artifact)
+                current = self._session_from_document(document, artifact_id)
+                if current != expected_session:
+                    raise CriticalThinkingConflict("stale_critical_thinking_session")
+                if expected_session is None and artifact.status not in {
+                        "question_generated", "generation_failed", "insufficient_content", "stale_target"}:
+                    raise CriticalThinkingConflict("critical_thinking_session_requires_question")
             version = common_artifact.source_structure_version
             if version is not None and document.parse_provenance.get("storage_structure_version") != version:
                 raise ValueError("stale_interaction_write")

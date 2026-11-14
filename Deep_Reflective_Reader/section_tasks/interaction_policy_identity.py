@@ -46,6 +46,9 @@ def effective_policy(request: ReadingInteractionRequest) -> dict[str, object]:
         policy["source_structure_version"] = target.source_structure_version
     if target.reading_revision or target.source_needs_review:
         policy.update(reading_revision=target.reading_revision, source_needs_review=target.source_needs_review)
+    if request.interaction_type == "critical_thinking_session":
+        policy.update(document_incarnation=target.document_incarnation,
+                      artifact_generation_epoch=target.artifact_generation_epoch)
     return policy
 
 

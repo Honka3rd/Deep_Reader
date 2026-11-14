@@ -1,5 +1,12 @@
 # scripts Checklist
 
+## App audit regression support (2026-11-14)
+
+- [x] Preserve app source/session publication regressions and reconcile current hierarchy/read-only fixtures.
+  Acceptance: real file/SQL/HTTP races and failures, source/answer preservation, short mutations, fixture intent retained and explicit opt-in skip accounting.
+  Evidence: focused 77/77; original app 327 executions with 321 passes/six private-source opt-in skips/zero failures or errors; related interaction 96/96. Seven formerly failing suites pass isolated reruns. Two complete immutable books pass source/session checks on file/SQL with unchanged backups and no live provider calls. `/tmp/app-fix-5b3291a3/final-report.txt`; support only, app external review pending.
+  Timestamp: 2026-11-14
+
 ## DOCLOAD deployment fixture follow-up (2026-11-13)
 
 - [ ] Align synthetic Outline fixtures and disabled-OCR tests with current contracts.

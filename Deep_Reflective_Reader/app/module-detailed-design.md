@@ -1,5 +1,148 @@
 # app Detailed Design
 
+## APP-01–04 remediation (2026-11-13)
+
+### Unit 3 answer durability and fixture reconciliation (2026-11-14, locally verified)
+
+Submit-answer first conditionally saves answer_submitted for the loaded session,
+then evaluates outside the repository mutation, then conditionally publishes the
+result for that exact saved session revision. Retry evaluates the stored submitted
+or failed answer and uses the same compare-and-save contract. Concurrent changes
+must conflict instead of overwriting another answer/result; source/incarnation,
+rename epoch and effective target identity remain valid at publication. Interruption
+leaves the accepted answer readable for explicit retry. No automatic provider retry.
+Transport/provider errors and malformed output become safe evaluation_failed codes,
+never private exception strings. Unknown persistence acknowledgements must read
+back the exact proposed session before returning success or dispatching evaluation;
+otherwise fail closed without claiming acceptance. Legacy sessions remain readable;
+missing source identity cannot authorize a new mutation. No read-time migration.
+
+APP-04 remaining fixtures must supply current persisted hierarchy through repository
+reads, assert zero preparation/provider/write on ordinary reads, and test filesystem
+mutation at public boundaries rather than patching removed migration methods.
+Acceptance includes real file/SQL and HTTP timeout/connection/malformed/reload/retry,
+parallel submissions, source/lifecycle races, interrupted/save-failure paths, and
+provider-time persisted-answer/no-long-transaction evidence. Complete cumulative
+app regression and explicit skip accounting precede the final local review commit.
+
+Implementation: the app saves answer_submitted before evaluation, using the exact
+previous artifact as a condition; the session adapter validates source and session
+revision inside mutate_document_artifacts. Evaluation and retries stay outside the
+mutation. Unknown saves return a safe storage failure unless exact readback confirms
+the proposed revision. HTTP publication conflicts return 409; unconfirmed storage
+returns 500 without exposing provider/storage exception text or dispatching evaluation.
+
+Evidence: `/tmp/app-fix-5b3291a3/final-report.txt`. New session publication suite:
+32/32 file/real SQL methods, including HTTP timeout/connection/malformed output,
+interrupted reload/retry, concurrent submit, stale result and unconfirmed save;
+rollback after real SQL UPDATE, file replace failure and lost acknowledgements.
+The original answer-loss reproduction now passes on both backends. Twelve related
+interaction suites pass 96/96. Original eighteen app suites run in separate Python
+processes: 327 executions, 321 pass, six unchanged private-source opt-in skips,
+zero failures/errors. All seven formerly failing fixture suites pass independently.
+The twelve original failures are reconciled; additionally discovered obsolete
+prompt/output/type/legacy-fixture assumptions are corrected with original business
+intent retained, not production guards relaxed. Two complete immutable backup copies
+pass answer-save/timeout/retry on file/SQL with unchanged hierarchy and versions;
+native extraction and deterministic providers do not establish model/OCR semantics.
+Full app external review remains pending; no deployment or push.
+
+### Unit 2 APP-02 source resolution (2026-11-14, locally verified)
+
+Use config's shared, read-only raw-source resolver for enhancement state (also
+standalone cleanup input) and the enhancement commit precheck. Qualified PDF/TXT
+names, including uppercase extensions and safe Chinese/legacy punctuation, select
+only the exact raw entry. Bare legacy identities require exactly one supported raw
+candidate; never select one of simultaneous PDF/TXT sources by guess. Validate
+names and the resolved raw-root boundary; persisted source_path is not authority.
+No mkdir, migration, loader instantiation, extraction or profile generation.
+
+Storage resolves the document first using the active repository's identity rules.
+Ambiguous aliases become explicit source readiness failures. Source selection is
+repeated after candidate generation, and the existing accepted-evidence/hash and
+conditional commit checks remain mandatory. A missing/ambiguous/out-of-root source
+at commit is source_changed, preserving current state. Consent and incarnation
+fences are unchanged. Raw-path resolution does not expand file enhancement support:
+the file adapter still lacks the production snapshot/lease port and remains gated.
+Standalone cleanup also rereads its injected accepted-input port after planning and
+before repository commit. The full consent fingerprint must still match; this
+reselects the current logical raw entry instead of trusting an earlier resolved
+symlink target. Source/identity failure is not_committed/source_changed; revised
+input is not_committed/reading_revision_changed. This short precheck supplements,
+not replaces, the repository's existing locked source/revision validation.
+
+Acceptance: file source/accepted-evidence and unsupported-HTTP checks; real SQL
+HTTP preflight, cleanup and enhancement execution/commit; qualified PDF/TXT,
+uppercase/Chinese, coexistence, unique/ambiguous legacy, renamed, missing/replaced,
+internal/external symlink cases; zero generation/save for rejected preflight,
+unchanged storage on rejected commit. No production data or paid provider calls.
+
+Evidence: `/tmp/app-fix-5b3291a3/unit-2-report.txt`. The new source-resolution
+suite passes 14/14 methods (including real SQL HTTP commits); the original external
+APP-02 assertion passes. Five selected baseline methods produced eleven expected
+subtest failures, with no fixture errors. A separate cleanup source-retarget test
+also failed before the post-planning check and now rejects without committing.
+Ten adjacent suites execute 350 tests: 342 pass, eight private-source opt-in skips,
+zero failures/errors. Inherited cases may overlap; these are execution counts.
+Two complete immutable backup copies (652001/147401 canonical characters) pass
+file accepted-source and real SQL HTTP readiness/reconstruction checks with zero
+provider calls; replacement is rejected, stored snapshots and backups unchanged.
+This source-read acceptance does not replace the eight skipped cleanup/private
+source scenarios or claim live LLM/OCR semantics, UI or deployment acceptance.
+
+Deliver in three independently validated units, with developer confirmation before
+starting the next: (1) APP-01 guarded layout publication and related APP-04 layout
+fixtures, (2) APP-02 shared source resolution across enhancement/cleanup/commit,
+(3) APP-03 durable answer acceptance and guarded evaluation, plus remaining APP-04
+read-only/migration fixtures. Final local review commit follows all units; external
+approval is required before any deployment/push. Existing db approval is unchanged.
+
+APP-01: capture server-owned source evidence before layout computation (including
+explicit duplicate-ID repair). It binds document identity/incarnation, rename epoch,
+structure/reading revisions, canonical and effective hierarchy text/coordinates and
+source provenance. Artifact-only updates are excluded so concurrent saved artifacts
+remain mergeable. Pass this evidence with layout metadata to the repository; compare
+against the current snapshot inside the existing file lock/SQL transaction, before
+any write. No provider/resolver work runs under this lock. Missing/stale evidence is
+a conflict with zero mutation, including same-ID/same-text reparse, delete/reimport,
+rename round trips, Edit/Undo and source changes. Retry is explicit preparation.
+A final readback remains a readiness check, not the publication guard. Existing
+valid legacy layout caches remain readable; no automatic migration/repair occurs.
+Explicit preparation of a legacy snapshot without incarnation evidence fails with
+`layout_incarnation_unknown_explicit_reparse_required`; reads never invent an epoch.
+The token is internal server evidence, not a client-provided authorization field.
+
+Acceptance: file/real SQL mutation and failure matrices, no pre-rejection changes,
+current artifacts retained, content endpoint readback, successful explicit retry,
+ordinary read zero preparation/provider/write. Related APP-04 fixtures must initialize
+persisted hierarchy/current resolver identity and use generation-bound artifact writes.
+All three units are locally implemented and cumulatively validated; external app
+review remains pending. Earlier unit reports retain their dated checkpoint status.
+`task_layout_source` owns source capture/validation, and `update_task_layout` checks
+it inside the existing backend mutation. Unchanged ordered unit sources retain
+stored IDs/artifacts (including SQL-assigned IDs). Duplicate-ID repair validates
+ordered source equivalence and copies artifacts from the locked snapshot, never
+from the proposed layout. Source checks precede all persistence.
+
+Evidence: `/tmp/app-fix-5b3291a3/unit-1-report.txt`. Five new regression selections
+fail against baseline production modules; all pass after the fix. The original
+APP-01 reproduction now rejects with `task_layout_source_changed` and preserves
+the new snapshot. Its diagnostic print alone was adjusted to handle no task units;
+the unchanged desired-behavior assertion passes. New file/real SQL publication suite:
+31/31; readiness/atomic/DB-metadata/cleanup/mapping support: 101/101; four corrected
+APP-04 layout suites: 12/12; content/page/profile/hierarchy support: 36/36. No skips.
+The adjacent hierarchy-write fixture now explicitly initializes an incarnation;
+its content, duplicate-ID and artifact assertions are retained. Full app regression
+results are recorded under unit 3 above.
+
+Two complete immutable backup copies (652001/147401 canonical characters) pass
+late same-text reparse rejection, unchanged new-snapshot bytes, explicit retry and
+exact body readback. Backup manifests/hashes remain unchanged. Real native extraction
+and disposable file storage, deterministic resolver, no live LLM/OCR semantic claim.
+Units 2 and 3 were developer-authorized. The final local review commit covers all
+three units; exact-SHA external approval is required before deployment or push.
+
+
 ## STRUCT-04 legacy generation integration (2026-11-13, implemented)
 
 Section/chapter summary and quiz generation capture the accepted repository snapshot

@@ -26,6 +26,28 @@ class StorageNamespaceHelper:
                 if p.is_file() and p.suffix.lower() in cls.DEFAULT_EXTENSIONS and p.stem == stem}
 
     @classmethod
+    def resolve_raw_source(cls, root, name):
+        """Select an exact qualified source or one unambiguous legacy source.
+
+        Pure selection only: callers still validate accepted extraction evidence
+        and recheck current source/lifecycle at publication. Never use stored paths.
+        """
+        name = document_name(name)
+        root = Path(root).resolve()
+        if cls.stem(name) != name:
+            path = root / name
+        else:
+            candidates = cls.raw_names(root, name)
+            if len(candidates) != 1:
+                raise ValueError('source_ambiguous' if candidates else 'source_missing')
+            path = root / next(iter(candidates))
+        resolved = path.resolve()
+        cls.checked_path(root, resolved)
+        if not resolved.is_file():
+            raise ValueError('source_missing')
+        return resolved
+
+    @classmethod
     def destination_conflicts(cls, name: str, *, raw_root: Path,
                               contains_document: Callable[[str], bool]) -> bool:
         """Pure occupancy check for a new upload/rename, never a receipt replay.

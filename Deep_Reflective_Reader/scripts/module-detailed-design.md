@@ -1,5 +1,37 @@
 # scripts Detailed Design
 
+## App audit regression support (2026-11-14)
+
+The app remediation owns its behavior/design; scripts owns reusable regression
+entrypoints: test_task_layout_publication (31 file/SQL methods),
+test_app_source_resolution (14 source/HTTP methods), and
+test_critical_thinking_publication (32 session/HTTP methods). No live providers;
+temporary files and disposable PostgreSQL schemas exercise real persistence.
+Provider-time callbacks verify durable answers and short mutation boundaries;
+explicit faults cover rollback, lost acknowledgements and stale publication.
+
+APP-04 fixtures now read explicitly initialized file hierarchy rather than call
+Prepare, initialize current resolver/epoch evidence, and save generated artifacts
+through guarded owners. Pure-read migration coverage guards mkdir/rename/replace
+and compares file snapshots. Session write assertions require submitted state before
+evaluation. Historical payload tests install old bytes as fixtures; they cannot use
+new protected session writes to manufacture legacy state. Current quiz prompt,
+valid analysis output and an actually unsupported interaction type replace obsolete
+fixture values while retaining the original delegation/cache/rejection assertions.
+
+Final app acceptance uses isolated Python processes per original suite to prevent
+logging-filter registration from polluting later tests: 327 executions, 321 passes,
+six existing private-source opt-in skips, zero failures/errors. The seven previously
+failing suites also pass isolated reruns; twelve adjacent interaction suites pass
+96/96. Focused rerun passes 77/77 (31+14+32); inherited cases may overlap, so groups
+are not summed as unique scenarios. Two complete immutable book copies retain
+canonical hashes and verify accepted sources, timeout/retry and unchanged hierarchy
+on file/SQL. These deterministic source/session checks do not replace the six skipped
+private cleanup scenarios or prove live LLM/OCR semantic quality.
+
+Commands, per-fixture attribution, red/green evidence and limits:
+`/tmp/app-fix-5b3291a3/final-report.txt`. No deployment, push or next-module audit.
+
 ## DOCLOAD deployment fixture follow-up (2026-11-13)
 
 Deployment acceptance of approved `8569fb1` exposed an obsolete synthetic Outline

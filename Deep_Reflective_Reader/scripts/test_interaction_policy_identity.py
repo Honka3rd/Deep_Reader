@@ -128,6 +128,21 @@ class InteractionPolicyIdentityTests(unittest.TestCase):
         self.assertFalse(self.calls)
         self.assertEqual(orchestrator.generate(req).status, "completed")
 
+    def install_legacy_session(self, artifact):
+        # Fixture representing bytes persisted by an older version, not an authorized new write.
+        from section_tasks.reading_interaction_common_artifact import reading_interaction_artifact_to_common_artifact
+        def mutation(document):
+            artifacts = document.document_task_artifacts
+            metadata = dict(artifacts.metadata)
+            interactions = dict(metadata['reading_interaction_artifacts'])
+            sessions = dict(interactions['critical_thinking_session'])
+            session_id = artifact.metadata['session_id']
+            sessions[session_id] = reading_interaction_artifact_to_common_artifact(artifact, artifact_id=session_id).to_dict()
+            interactions['critical_thinking_session'] = sessions
+            metadata['reading_interaction_artifacts'] = interactions
+            return replace(artifacts, metadata=metadata), None
+        self.repository.mutate_document_artifacts('book', mutation)
+
     def test_thinking_history_survives_stale_read_and_new_question(self):
         count = []
 
@@ -144,7 +159,7 @@ class InteractionPolicyIdentityTests(unittest.TestCase):
         stored = self.store.get_critical_thinking_session(req, generated.session_id)
         submitted = service.submit_answer(stored, "My reasoning must survive policy changes.")
         legacy = replace(submitted, metadata={k: v for k, v in submitted.metadata.items() if k != POLICY_METADATA_KEY})
-        self.store.save_critical_thinking_session(legacy)
+        self.install_legacy_session(legacy)
         before = self.snapshot()
         for extra in [{}, {"session_id": generated.session_id}]:
             result = coordinator.read_critical_thinking_session(**args, **extra)
@@ -196,7 +211,7 @@ class InteractionPolicyIdentityTests(unittest.TestCase):
             session_id = generated.json()["envelope"]["session_id"]
             req = self.request("critical_thinking_session")
             session = self.store.get_critical_thinking_session(req, session_id)
-            self.store.save_critical_thinking_session(replace(session,
+            self.install_legacy_session(replace(session,
                 status="answer_submitted", payload={**session.payload, "answer": "Keep my answer"},
                 metadata={k: v for k, v in session.metadata.items() if k != POLICY_METADATA_KEY}))
             before = self.snapshot()

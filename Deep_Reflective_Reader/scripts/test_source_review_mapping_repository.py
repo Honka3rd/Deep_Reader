@@ -59,7 +59,9 @@ class MappingRepositoryContract:
         self.assertEqual(self.mapping()["regions"]["r1"]["body_status"], "pending")
         section = self.repo.load_document("book").chapters[0].sections[0]
         unit = document_fixture().chapters[0].sections[0].task_units[0]
-        self.repo.update_task_layout("book", {section.section_id: [unit]}, {"reading_revision": 0})
+        from scripts.artifact_generation_fixtures import bound_layout
+        self.repo.update_task_layout("book", {section.section_id: [unit]},
+            bound_layout(self.repo.load_document("book"), {"reading_revision": 0}))
         self.assertEqual(self.mapping()["regions"]["r1"]["body_status"], "linked")
         current = self.repo.load_document("book")
         self.assertEqual(self.mapping()["regions"]["r1"]["block_ids"],

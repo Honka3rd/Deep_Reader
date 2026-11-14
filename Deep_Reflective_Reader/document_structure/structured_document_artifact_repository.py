@@ -661,25 +661,44 @@ class StructuredDocumentArtifactRepository(DocumentArtifactRepository):
         doc_name: str,
         task_units_by_section_id: dict[str, list[TaskUnit]],
         task_layout_metadata: dict[str, str | int | None],
+        *,
+        repair_unit_ids: bool = False,
     ) -> StructuredDocument:
         """Bulk update section task units and task-layout metadata in one save."""
         def mutation(document):
+            from document_structure.task_layout_source import require_layout_source, same_unit_source
             from document_structure.reading_content import state_for, ReadingContentConflict
             if task_layout_metadata.get("reading_revision", 0) != state_for(document).get("revision", 0):
                 raise ReadingContentConflict("reading_revision_changed")
+            require_layout_source(document, task_layout_metadata)
             sections = get_effective_sections(document)
             if set(task_units_by_section_id) - {section.section_id for section in sections}:
                 raise ValueError("unknown_task_layout_section")
+            same_layout = all(
+                len(task_units_by_section_id.get(section.section_id, section.task_units)) == len(section.task_units)
+                and all(same_unit_source(current, proposed) for current, proposed in zip(
+                    section.task_units, task_units_by_section_id.get(section.section_id, section.task_units)))
+                for section in sections)
+            if repair_unit_ids and not same_layout:
+                raise ReadingContentConflict("task_layout_repair_source_changed")
             updated_effective_sections = []
             for section in sections:
                 section_units = task_units_by_section_id.get(section.section_id, section.task_units)
+                if repair_unit_ids:
+                    merged_units = [replace(current.with_unit_id(proposed.unit_id),
+                                            parent_section_id=section.section_id)
+                                    for current, proposed in zip(section.task_units, section_units)]
+                elif same_layout:
+                    # SQL allocates persisted IDs. A resolver's temporary IDs must
+                    # not discard saved artifacts for an unchanged ordered layout.
+                    merged_units = section.task_units
+                else:
+                    merged_units = self._layout_units_preserving_artifacts(section,
+                        task_units=section_units, section_id=section.section_id)
                 updated_effective_sections.append(
                     replace(
                         section,
-                        task_units=self._layout_units_preserving_artifacts(section,
-                            task_units=section_units,
-                            section_id=section.section_id,
-                        ),
+                        task_units=merged_units,
                     )
                 )
             updated_sections_by_id = {

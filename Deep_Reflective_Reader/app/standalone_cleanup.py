@@ -343,6 +343,15 @@ class StandaloneCleanupService:
                 return self._terminal(binding, "cleanup_policy_changed")
         except CleanupUnavailable as error:
             return self._terminal(binding, str(error))
+        # Re-select the logical source after remote planning: a previously
+        # resolved symlink target can remain valid after the raw entry changes.
+        # Storage still performs its own locked source/revision checks.
+        try:
+            current = self._read(binding.document_id)
+        except (SourceNotReady, CleanupInputUnavailable, CleanupUnavailable, FileNotFoundError):
+            return self._terminal(binding, "source_changed")
+        if not binding.matches(current):
+            return self._terminal(binding, "reading_revision_changed")
         entry.result = self._state(binding, "committing", "unknown")
         try:
             self.repository.commit_cleanup(command)

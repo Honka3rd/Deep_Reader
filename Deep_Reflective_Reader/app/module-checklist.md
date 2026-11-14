@@ -1,5 +1,28 @@
 # app Checklist
 
+## App audit remediation (2026-11-13)
+
+- [x] APP-01: Bind explicit layout publication and duplicate-ID repair to the captured source under the storage mutation boundary.
+  Acceptance: file/real SQL late/reparse/reimport/rename/Edit/Undo races, rollback, preserved artifacts and content endpoint readback; read-only layout fixtures.
+  Evidence: 31 publication cases, 101 adjacent regressions, 12 layout-fixture cases and 36 content/page/profile/hierarchy cases pass, zero skips. Five baseline regression selections fail; original external APP-01 now rejects without modifying the new snapshot. Two complete immutable backup copies retain exact source/body and reject late same-text reparse. `/tmp/app-fix-5b3291a3/unit-1-report.txt`. Unit locally verified; complete app audit/review remains pending.
+  Timestamp: 2026-11-13
+
+- [x] APP-02: Resolve enhancement/cleanup sources and commit rechecks through qualified/exact and evidence-backed legacy identity rules.
+  Acceptance: actual SQL HTTP preflight/cleanup/execute/commit for PDF/TXT/Chinese/uppercase/coexistence, missing/replaced/symlink sources; file accepted-source resolution and unsupported-runtime gate; no generation/save on rejected preflight or save on commit conflict. Preserve existing file snapshot/lease availability contract.
+  Evidence: 14/14 source-resolution methods and original external APP-02 assertion pass. Baseline selected five methods fail with eleven subtest assertions; separate cleanup late-retarget red/green proves rejection before commit. Adjacent suites: 342 pass/eight private-source opt-in skips/zero failures or errors. Two complete immutable backup copies pass file/SQL read-only source acceptance. `/tmp/app-fix-5b3291a3/unit-2-report.txt`; locally verified, full app audit/external review pending.
+  Timestamp: 2026-11-14
+
+- [x] APP-03: Persist accepted answers before remote evaluation and conditionally publish evaluation for the same session/answer/source.
+  Acceptance: file/real SQL/HTTP transport/malformed output/reload/retry/concurrent/source-change cases, safe failure responses and unknown-save reconciliation.
+  Evidence: 32/32 file/real SQL session methods pass, including actual HTTP conflicts/faults, provider-time durable answer/unlocked mutation, SQL rollback/file atomic failure, exact acknowledgement readback and legacy read-only rejection. Original external timeout reproduction passes on both backends; two complete immutable books pass four backend combinations. `/tmp/app-fix-5b3291a3/final-report.txt`; locally verified, external app review pending.
+  Timestamp: 2026-11-14
+
+- [x] APP-04: Correct all twelve outdated fixture failures without relaxing current read/source/hierarchy/alias contracts.
+  Acceptance: isolated seven-suite reruns and related regression groups; exact failures/skips recorded.
+  Evidence: seven originally failing suites pass in isolated processes; all eighteen original app suites execute 327 cases, 321 pass/six private-source opt-in skips/zero failures or errors. Actual persisted file hierarchy replaces object repositories; reads forbid preparation, layout artifacts use current guarded writes, migration checks guard filesystem mutation and snapshots. Separate answer-submitted persistence assertions replace obsolete one-save counts. Valid semantic output/current server prompt and supported-type fixtures retain original intent. Twelve adjacent interaction suites pass 96/96; legacy fixtures simulate old bytes rather than bypass new-write guards. `/tmp/app-fix-5b3291a3/final-report.txt`.
+  Timestamp: 2026-11-14
+
+
 ## STRUCT-04 supporting integration (2026-11-13)
 
 - [x] STRUCT-04: Capture generation source before providers, consume effective reading text, reject stale persistence and validate section/chapter/unit caches. Four actual coordinator entrypoints pass across file/real SQL; original summary/quiz cache assertions retained.

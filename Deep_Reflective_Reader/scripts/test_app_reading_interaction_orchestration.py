@@ -6,9 +6,12 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 import sys
+import tempfile
+from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from section_tasks.interaction_policy_identity import policy_metadata
+from document_structure.structured_document_artifact_repository import StructuredDocumentArtifactRepository
+from section_tasks.interaction_policy_identity import policy_metadata, prompt_version
 
 from app.section_task_coordinator import (  # noqa: E402
     CriticalThinkingSessionStoreResult,
@@ -234,8 +237,11 @@ class FakeCriticalThinkingSessionStore:
     def save_critical_thinking_session(
         self,
         artifact: ReadingInteractionArtifact,
+        *, expected_session: ReadingInteractionArtifact | None = None,
     ) -> CriticalThinkingSessionStoreResult:
         self.save_calls.append(artifact)
+        if expected_session is not None:
+            _assert(self.sessions.get(self._active_session_id) == expected_session, "session compare-and-save")
         session_id = self._active_session_id
         if session_id is None:
             session_id = f"session-{self._next_id}"
@@ -271,9 +277,15 @@ def _coordinator(
     critical_store: FakeCriticalThinkingSessionStore | None = None,
     document_profile_store: FakeDocumentProfileStore | None = None,
 ) -> SectionTaskCoordinator:
-    return SectionTaskCoordinator(
-        document_preparation_pipeline=preparation_pipeline or FakePreparationPipeline(),
-        document_artifact_repository=object(),
+    prep = preparation_pipeline or FakePreparationPipeline()
+    prep.prepare_and_load = Mock(side_effect=AssertionError("ordinary interaction must not prepare"))
+    directory = tempfile.TemporaryDirectory()
+    repository = StructuredDocumentArtifactRepository(base_dir=directory.name)
+    repository.save_reparsed_document(_document(), "book.json")
+    repository.load_document = Mock(wraps=repository.load_document)
+    coordinator = SectionTaskCoordinator(
+        document_preparation_pipeline=prep,
+        document_artifact_repository=repository,
         document_profile_store=document_profile_store or FakeDocumentProfileStore(),
         chapter_summary_service=object(),
         chapter_quiz_service=object(),
@@ -284,6 +296,8 @@ def _coordinator(
         critical_thinking_session_service=critical_service,
         critical_thinking_session_store=critical_store,
     )
+    coordinator._fixture_directory = directory
+    return coordinator
 
 
 def test_analysis_methods_resolve_once_and_delegate() -> None:
@@ -312,7 +326,7 @@ def test_analysis_methods_resolve_once_and_delegate() -> None:
         task_unit_id="unit-1",
     )
 
-    _assert(len(prep.calls) == 3, "each analysis app method should resolve once")
+    _assert(not prep.calls and coordinator.document_artifact_repository.load_document.call_count == 3, "each analysis app method should resolve once")
     _assert(len(analysis.read_requests) == 1, "analysis read should delegate read")
     _assert(len(analysis.generate_requests) == 2, "generate/refresh should delegate generate")
     _assert(analysis.generate_requests[0].refresh is False, "generate should not refresh")
@@ -348,13 +362,13 @@ def test_quiz_methods_resolve_once_and_delegate() -> None:
         prompt_instruction_version="quiz_prompt_v1",
     )
 
-    _assert(len(prep.calls) == 3, "each quiz app method should resolve once")
+    _assert(not prep.calls and coordinator.document_artifact_repository.load_document.call_count == 3, "each quiz app method should resolve once")
     _assert(len(quiz.read_requests) == 1, "quiz read should delegate read")
     _assert(len(quiz.generate_requests) == 2, "quiz generate/refresh should delegate")
     _assert(quiz.generate_requests[1].refresh is True, "quiz refresh should set refresh")
     _assert(read_response.status == "not_generated", "quiz read response should map")
     _assert(generate_response.interaction_type == "quiz", "quiz response should map type")
-    _assert(refresh_response.metadata["prompt_instruction_version"] == "quiz_interaction_prompt_v2", "server prompt version overrides client metadata")
+    _assert(refresh_response.metadata["prompt_instruction_version"] == prompt_version("quiz"), "server prompt version overrides client metadata")
 
 
 def test_critical_thinking_methods_resolve_once_and_delegate() -> None:
@@ -403,10 +417,10 @@ def test_critical_thinking_methods_resolve_once_and_delegate() -> None:
         session_id=generated.session_id or "",
     )
 
-    _assert(len(prep.calls) == 6, "each critical-thinking method should resolve once")
+    _assert(not prep.calls and coordinator.document_artifact_repository.load_document.call_count == 6, "each critical-thinking method should resolve once")
     _assert(missing.status == "not_generated", "session-less read should not generate")
     _assert(len(service.generate_requests) == 1, "question generation should delegate")
-    _assert(len(store.save_calls) == 3, "generate, submit/evaluate, retry should save")
+    _assert([a.status for a in store.save_calls] == ["question_generated", "answer_submitted", "completed", "completed"], "submitted state must be saved separately before evaluation")
     _assert(read_existing.status == "question_generated", "read should load persisted session")
     _assert(
         read_current.status == "question_generated",

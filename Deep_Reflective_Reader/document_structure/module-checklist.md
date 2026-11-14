@@ -1,5 +1,13 @@
 # document_structure Checklist
 
+## App layout support (2026-11-13)
+
+- [x] APP-01 support: Validate layout source evidence inside the existing atomic hierarchy mutation before changing units or metadata.
+  Acceptance: file/real SQL source/lifecycle races, rollback, current artifact retention and read-only behavior; no lock during layout computation.
+  Evidence: 31/31 publication tests include formal coordinator computation, source/epoch/coordinate changes, both rollback owners, latest artifacts and content HTTP readback. Adjacent 101/101, layout fixtures 12/12 and content/page/profile/hierarchy 36/36 pass; zero skips. Five baseline failures and the original external reproduction are fixed; two immutable full-book copies pass exact readback. `/tmp/app-fix-5b3291a3/unit-1-report.txt`. Locally verified supporting integration only; app review remains pending.
+  Timestamp: 2026-11-13
+
+
 ## PROFILE-05 follow-up (2026-11-13)
 
 - [x] PROFILE-05: Coordinate formal Prepare structure publication with profile validation/replacement and preserve own-write readback.

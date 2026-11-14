@@ -270,10 +270,7 @@ def test_task_layout_cache_flow() -> None:
             base_dir=temp_dir,
         )
         base_document = _build_base_document()
-        (temp_path / "cache-doc.structured.json").write_text(
-            base_document.to_json(),
-            encoding="utf-8",
-        )
+        repository.save_reparsed_document(base_document, "cache-doc")
 
         fake_resolver = _FakeTaskUnitResolver()
         coordinator = SectionTaskCoordinator(
@@ -301,25 +298,12 @@ def test_task_layout_cache_flow() -> None:
             "first call should persist non-empty section.task_units",
         )
 
-        # Add unit-level artifact manually and save back for cache-hit preservation check.
+        # Publish an artifact through its own generation-bound owner.
+        from scripts.artifact_generation_fixtures import bound
         section0_unit0 = _find_section(reloaded_after_first, "section-0").task_units[0]
-        updated_section0_units = list(_find_section(reloaded_after_first, "section-0").task_units)
-        updated_section0_units[0] = TaskUnit(
-            unit_id=section0_unit0.unit_id,
-            title=section0_unit0.title,
-            container_title=section0_unit0.container_title,
-            content=section0_unit0.content,
-            source_section_ids=list(section0_unit0.source_section_ids),
-            is_fallback_generated=section0_unit0.is_fallback_generated,
-            task_artifacts=TaskArtifacts(
-                summary=SummaryArtifact(content="manual persisted summary")
-            ),
-        )
-        repository.update_section_task_units(
-            doc_name="cache-doc",
-            section_id="section-0",
-            task_units=updated_section0_units,
-        )
+        repository.update_task_unit_artifacts("cache-doc", section0_unit0.unit_id, TaskArtifacts(
+            summary=bound(SummaryArtifact(content="manual persisted summary"),
+                          reloaded_after_first, "task_unit", section0_unit0.unit_id)))
 
         # B. second call reuses cache
         second_layout = coordinator.get_document_task_layout(
@@ -400,10 +384,7 @@ def test_task_layout_cache_hit_does_not_load_manual_source_evidence() -> None:
             base_dir=temp_dir,
         )
         base_document = _build_base_document()
-        (temp_path / "cache-doc.structured.json").write_text(
-            base_document.to_json(),
-            encoding="utf-8",
-        )
+        repository.save_reparsed_document(base_document, "cache-doc")
 
         fake_resolver = _FakeTaskUnitResolver()
         fake_pipeline = _FakePreparationPipeline(repository)
@@ -457,10 +438,7 @@ def test_task_layout_cache_hit_can_explicitly_load_anchor_page_evidence() -> Non
             base_dir=temp_dir,
         )
         base_document = _build_base_document()
-        (temp_path / "cache-doc.structured.json").write_text(
-            base_document.to_json(),
-            encoding="utf-8",
-        )
+        repository.save_reparsed_document(base_document, "cache-doc")
 
         fake_resolver = _FakeTaskUnitResolver()
         fake_pipeline = _FakePreparationPipeline(
@@ -598,6 +576,11 @@ def test_task_layout_cache_duplicate_id_repair() -> None:
                 metadata={"task_layout": task_layout_metadata}
             ),
         )
+        from dataclasses import replace
+        identity_repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
+        identity_repository.save_reparsed_document(_build_base_document(), "cache-doc")
+        identity = identity_repository.load_document("cache-doc").parse_provenance
+        duplicate_document = replace(duplicate_document, parse_provenance=identity)
         (temp_path / "cache-doc.structured.json").write_text(
             duplicate_document.to_json(),
             encoding="utf-8",

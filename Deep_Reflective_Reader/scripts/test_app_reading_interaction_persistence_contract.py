@@ -6,8 +6,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 import sys
+import tempfile
+from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from document_structure.structured_document_artifact_repository import StructuredDocumentArtifactRepository
 
 from app.section_task_coordinator import (  # noqa: E402
     CriticalThinkingSessionStoreResult,
@@ -186,8 +189,11 @@ class InMemoryCriticalThinkingSessionStore:
     def save_critical_thinking_session(
         self,
         artifact: ReadingInteractionArtifact,
+        *, expected_session: ReadingInteractionArtifact | None = None,
     ) -> CriticalThinkingSessionStoreResult:
         self.save_calls.append(artifact)
+        if expected_session is not None:
+            _assert(self.sessions.get(self._active_session_id) == expected_session, "session compare-and-save")
         session_id = self._active_session_id
         if session_id is None:
             session_id = f"session-{self._next_id}"
@@ -208,9 +214,15 @@ def _coordinator(
     critical_service: CriticalThinkingSessionService | None = None,
     critical_store: InMemoryCriticalThinkingSessionStore | None = None,
 ) -> SectionTaskCoordinator:
-    return SectionTaskCoordinator(
-        document_preparation_pipeline=preparation_pipeline or FakePreparationPipeline(),
-        document_artifact_repository=object(),
+    prep = preparation_pipeline or FakePreparationPipeline()
+    prep.prepare_and_load = Mock(side_effect=AssertionError("ordinary interaction must not prepare"))
+    directory = tempfile.TemporaryDirectory()
+    repository = StructuredDocumentArtifactRepository(base_dir=directory.name)
+    repository.save_reparsed_document(_document(section_content=prep._section_content, task_unit_content=prep._task_unit_content), "book.json")
+    repository.load_document = Mock(wraps=repository.load_document)
+    coordinator = SectionTaskCoordinator(
+        document_preparation_pipeline=prep,
+        document_artifact_repository=repository,
         document_profile_store=FakeDocumentProfileStore(),
         chapter_summary_service=object(),
         chapter_quiz_service=object(),
@@ -221,6 +233,8 @@ def _coordinator(
         critical_thinking_session_service=critical_service,
         critical_thinking_session_store=critical_store,
     )
+    coordinator._fixture_directory = directory
+    return coordinator
 
 
 def test_analysis_read_write_refresh_and_stale_contract() -> None:
@@ -229,9 +243,9 @@ def test_analysis_read_write_refresh_and_stale_contract() -> None:
     def generator(request: ReadingInteractionRequest) -> dict[str, str]:
         generator_calls.append(request.target.target_id)
         return {
-            "summary": f"summary-{len(generator_calls)}",
-            "reasoning": "reasoning",
-            "explanation": "explanation",
+            "summary": f"summary-{len(generator_calls)}: Assumptions shape which conclusions the evidence can support.",
+            "reasoning": "The section connects assumptions to conclusions, so an untested premise limits the inference.",
+            "explanation": "Checking the premise separates what the evidence establishes from what the reader supplies.",
         }
 
     store = InMemoryCurrentArtifactStore()
@@ -266,9 +280,9 @@ def test_analysis_read_write_refresh_and_stale_contract() -> None:
     _assert(missing.status == "not_generated", "read of missing analysis should be inert")
     _assert(generator_calls == ["section-1", "section-1"], "only explicit writes should generate")
     _assert(store.save_calls == 2, "generate and refresh should write validated results")
-    _assert(generated.payload["summary"] == "summary-1", "first generate should persist")
-    _assert(reused.payload["summary"] == "summary-1", "generate without refresh should reuse current artifact")
-    _assert(refreshed.payload["summary"] == "summary-2", "refresh should replace current artifact")
+    _assert(generated.payload["summary"] == "summary-1: Assumptions shape which conclusions the evidence can support.", "first generate should persist")
+    _assert(reused.payload["summary"] == "summary-1: Assumptions shape which conclusions the evidence can support.", "generate without refresh should reuse current artifact")
+    _assert(refreshed.payload["summary"] == "summary-2: Assumptions shape which conclusions the evidence can support.", "refresh should replace current artifact")
 
     stale_store = InMemoryCurrentArtifactStore()
     stale_coordinator = _coordinator(
@@ -363,6 +377,8 @@ def test_critical_thinking_failed_evaluation_is_saved_with_answer_for_retry() ->
         session: ReadingInteractionArtifact,
         instruction: str,
     ) -> dict[str, object]:
+        _assert(store.sessions[store._active_session_id].payload.get("answer") == session.payload["answer"], "provider must observe durable answer")
+        _assert(store.sessions[store._active_session_id].status in {"answer_submitted", "evaluation_failed"}, "provider runs after submitted save")
         attempts.append(1)
         if len(attempts) == 1:
             return {"feedback": ""}
@@ -416,7 +432,7 @@ def test_critical_thinking_failed_evaluation_is_saved_with_answer_for_retry() ->
     _assert(read_failed.status == "evaluation_failed", "read should load saved failed evaluation")
     _assert(retried.status == "completed", "retry should complete after valid evaluation")
     _assert(retried.session_id == generated.session_id, "retry should preserve session identity")
-    _assert(len(store.save_calls) == 3, "question, failed evaluation, and retry should be explicit writes")
+    _assert([a.status for a in store.save_calls] == ["question_generated", "answer_submitted", "evaluation_failed", "completed"], "submission must persist before failure and retry publication")
 
 
 def main() -> None:

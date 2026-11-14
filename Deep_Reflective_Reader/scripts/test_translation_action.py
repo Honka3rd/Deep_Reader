@@ -305,9 +305,12 @@ class TranslationActionTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200, response.text)
 
     def test_readonly_profile_configuration_does_not_create_or_migrate(self):
+        before = {str(p.relative_to(self.directory)): p.read_bytes() for p in self.directory.rglob("*") if p.is_file()}
         with patch.object(Path, "mkdir", side_effect=AssertionError("no mkdir")), \
-             patch.object(FaissStorageConfig, "_migrate_legacy_namespace_dir", side_effect=AssertionError("no migration")):
+             patch.object(Path, "rename", side_effect=AssertionError("no rename")), \
+             patch.object(Path, "replace", side_effect=AssertionError("no replace")):
             self.assertEqual(self.client.post("/documents/reading-interactions/translate/read", json=self.target).status_code, 200)
+        self.assertEqual({str(p.relative_to(self.directory)): p.read_bytes() for p in self.directory.rglob("*") if p.is_file()}, before)
 
 
 if __name__ == "__main__":

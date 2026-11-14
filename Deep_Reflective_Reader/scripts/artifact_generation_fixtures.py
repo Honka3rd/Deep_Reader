@@ -12,3 +12,8 @@ def bound_fields(artifacts, document, level, target_id):
     return replace(artifacts, summary=(bound(artifacts.summary, document, level, target_id)
         if artifacts.summary else None), quiz=(bound(artifacts.quiz, document, level, target_id)
         if artifacts.quiz else None))
+
+
+def bound_layout(document, metadata):
+    from document_structure.task_layout_source import LAYOUT_SOURCE_KEY, capture_layout_source
+    return {**metadata, LAYOUT_SOURCE_KEY: capture_layout_source(document)}

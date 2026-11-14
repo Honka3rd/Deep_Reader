@@ -411,6 +411,7 @@ class _CriticalThinkingSessionStore(Protocol):
     def save_critical_thinking_session(
         self,
         artifact: ReadingInteractionArtifact,
+        *, expected_session: ReadingInteractionArtifact | None = None,
     ) -> CriticalThinkingSessionStoreResult:
         ...
 
@@ -868,9 +869,12 @@ class SectionTaskCoordinator:
         )
         service = self._require_critical_thinking_session_service()
         submitted = service.submit_answer(session, answer)
-        evaluated = service.evaluate_answer(submitted)
+        accepted = self._require_critical_thinking_session_store().save_critical_thinking_session(
+            submitted, expected_session=session,
+        )
+        evaluated = service.evaluate_answer(accepted.artifact)
         saved = self._require_critical_thinking_session_store().save_critical_thinking_session(
-            evaluated
+            evaluated, expected_session=accepted.artifact,
         )
         return self._build_reading_interaction_response(
             request=request,
@@ -915,7 +919,7 @@ class SectionTaskCoordinator:
             session
         )
         saved = self._require_critical_thinking_session_store().save_critical_thinking_session(
-            artifact
+            artifact, expected_session=session,
         )
         return self._build_reading_interaction_response(
             request=request,
@@ -1092,6 +1096,9 @@ class SectionTaskCoordinator:
         )
         if session is None:
             raise ValueError(f"critical-thinking session not found: '{session_id}'")
+        from section_tasks.interaction_policy_identity import policy_matches
+        if not policy_matches(session, request):
+            raise ValueError("stale_critical_thinking_session")
         return session
 
     @staticmethod
@@ -2535,10 +2542,21 @@ class SectionTaskCoordinator:
         return self.document_preparation_pipeline.inspect_enhancement_capacity(
             snapshot=state.source, toc_hint=toc_hint, enhancement_intent=enhancement_intent)
 
+    def _resolve_enhancement_source(self, name):
+        from config.storage_namespace_helper import StorageNamespaceHelper
+        from document_preparation.accepted_source_snapshot import SourceNotReady
+        try:
+            return StorageNamespaceHelper.resolve_raw_source(
+                self.document_preparation_pipeline.loader_factory.base_dir, name)
+        except ValueError as error:
+            reason = str(error) if str(error) in {"source_missing", "source_ambiguous"} else "source_identity_invalid"
+            raise SourceNotReady(reason) from None
+        except (OSError, RuntimeError):
+            raise SourceNotReady("source_unreadable") from None
+
     def read_enhancement_state(self, doc_name: str):
         from app.enhancement_preflight import EnhancementConflict, EnhancementState
         from document_preparation.accepted_source_snapshot import resolve_accepted_source_snapshot, SourceNotReady
-        from pathlib import Path
 
         reader = getattr(self.document_artifact_repository, "load_enhancement_snapshot", None)
         if reader is None:
@@ -2547,19 +2565,14 @@ class SectionTaskCoordinator:
             stored = reader(doc_name)
         except FileNotFoundError as error:
             raise SourceNotReady("document_missing") from error
+        except ValueError as error:
+            if str(error) == "source_ambiguous":
+                raise SourceNotReady("source_ambiguous") from None
+            raise
         name = stored.document.document_id
-        if not name or Path(name).name != name or name in {".", ".."}:
-            raise SourceNotReady("source_identity_invalid")
         # Resolve under the configured intake root; never trust a persisted path
         # or instantiate a loader/config that could migrate data on a read.
-        root = Path(self.document_preparation_pipeline.loader_factory.base_dir).resolve()
-        candidates = [root / f"{name}{suffix}" for suffix in (".pdf", ".txt")]
-        present = [path for path in candidates if path.is_file()]
-        if len(present) != 1:
-            raise SourceNotReady("source_ambiguous" if present else "source_missing")
-        source_path = present[0].resolve()
-        if source_path.parent != root:
-            raise SourceNotReady("source_identity_invalid")
+        source_path = self._resolve_enhancement_source(name)
         source = resolve_accepted_source_snapshot(
             document=stored.document, namespace=stored.namespace,
             expected_document_id=name, structure_version=stored.structure_version,
@@ -2652,7 +2665,7 @@ class SectionTaskCoordinator:
             from db.postgres_structured_document_store import EnhancementCommitConflict
             from document_preparation.structure_enhancement_candidate import EnhancementCandidateRejected
             from document_structure.reading_content import ReadingContentConflict
-            from pathlib import Path
+            from document_preparation.accepted_source_snapshot import SourceNotReady
             request = dict(doc_name=normalized_doc_name, toc_hint=toc_hint or "auto",
                            enhancement_intent=enhancement_intent, discard_interactions=discard_interactions,
                            confirmation_token=confirmation_token, allow_ocr_cleanup=allow_ocr_cleanup)
@@ -2670,14 +2683,13 @@ class SectionTaskCoordinator:
                         cleanup_args = dict(cleanup=prepared.application, operation={
                             "id": EnhancementOperations._key(request),
                             "cleanup": prepared.outcome.model_dump(mode="json") if prepared.outcome else None})
-                    root = Path(self.document_preparation_pipeline.loader_factory.base_dir).resolve()
-                    paths = [root / f"{state.source.document_id}{suffix}" for suffix in (".pdf", ".txt")]
-                    present = [path for path in paths if path.is_file() and path.resolve().parent == root]
-                    if len(present) != 1:
-                        raise EnhancementConflict("source_changed")
+                    try:
+                        source_path = self._resolve_enhancement_source(state.source.document_id)
+                    except SourceNotReady:
+                        raise EnhancementConflict("source_changed") from None
                     committed = self.document_artifact_repository.commit_enhancement(
                         normalized_doc_name, candidate=candidate,
-                        interaction_revision=state.interaction_revision, source_path=present[0], **cleanup_args)
+                        interaction_revision=state.interaction_revision, source_path=source_path, **cleanup_args)
                 if allow_ocr_cleanup:
                     return self.read_committed_enhancement(request)
                 return ReparseDocumentStructureResult.ok(
@@ -3288,15 +3300,22 @@ class SectionTaskCoordinator:
                 document=structured_document
             )
             if duplicate_ids:
+                from document_structure.task_layout_source import capture_layout_source, LAYOUT_SOURCE_KEY
+                source_token = capture_layout_source(structured_document)
                 repaired_document = self.task_unit_id_normalizer.normalize_document_task_unit_ids(
                     document=structured_document
                 )
                 with log_stage(logging.getLogger(__name__), "task_layout.repository_repair"):
                     if before_write is not None:
                         before_write()
-                    self.document_artifact_repository.save_document(
-                        repaired_document,
+                    repaired_document = self.document_artifact_repository.update_task_layout(
                         doc_name=doc_name,
+                        task_units_by_section_id={section.section_id: section.task_units
+                            for chapter in repaired_document.chapters for section in chapter.sections},
+                        task_layout_metadata={**self._build_task_layout_metadata(
+                            document=structured_document, resolve_options=resolve_options),
+                            LAYOUT_SOURCE_KEY: source_token},
+                        repair_unit_ids=True,
                     )
                 print(
                     "SectionTaskCoordinator#task_layout_cache_repair_duplicate_task_unit_ids:",
@@ -3318,6 +3337,8 @@ class SectionTaskCoordinator:
                 cache_hit=True,
             )
 
+        from document_structure.task_layout_source import capture_layout_source, LAYOUT_SOURCE_KEY
+        source_token = capture_layout_source(structured_document)
         task_layout_document = replace(
             structured_document,
             sections=self._resolve_task_layout_sections(
@@ -3356,6 +3377,7 @@ class SectionTaskCoordinator:
             document=structured_document,
             resolve_options=resolve_options,
         )
+        task_layout_metadata[LAYOUT_SOURCE_KEY] = source_token
         with log_stage(logging.getLogger(__name__), "task_layout.repository_update"):
             if before_write is not None:
                 before_write()

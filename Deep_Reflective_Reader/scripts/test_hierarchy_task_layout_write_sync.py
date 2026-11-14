@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
@@ -370,10 +370,7 @@ def test_hierarchy_write_sync() -> None:
 
         # A/B/C/F/G: cache miss write + refresh + hierarchy-first cache-hit + consistency + no schema change
         base_doc = _build_hierarchy_doc(include_front_matter=True, with_task_units=False)
-        Path(temp_dir, "hier-sync-doc.structured.json").write_text(
-            base_doc.to_json(),
-            encoding="utf-8",
-        )
+        repo.save_reparsed_document(base_doc, "hier-sync-doc")
 
         coordinator.ensure_document_task_layout(
             doc_name="hier-sync-doc", task_unit_split_mode="semantic_safe",
@@ -471,7 +468,8 @@ def test_hierarchy_write_sync() -> None:
         _assert(not severe, f"post-save document should not have severe hierarchy warnings: {severe}")
 
         # E: cache-hit duplicate-id repair is hierarchy-aware
-        duplicate_doc = _build_duplicate_id_doc()
+        duplicate_doc = replace(_build_duplicate_id_doc(),
+            parse_provenance=repo.load_document("hier-sync-doc").parse_provenance)
         Path(temp_dir, "hier-sync-doc.structured.json").write_text(
             duplicate_doc.to_json(),
             encoding="utf-8",

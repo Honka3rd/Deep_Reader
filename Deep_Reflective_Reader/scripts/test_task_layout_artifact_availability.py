@@ -6,14 +6,15 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from unittest.mock import patch
 from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.enhanced_parse_trigger_evaluator import EnhancedParseTriggerDecision
 from document_structure.section_role import SectionRole
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import StructuredDocument, StructuredSection, StructuredChapter
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
@@ -132,7 +133,8 @@ def _build_document() -> StructuredDocument:
         source_path=None,
         language="zh",
         raw_text=raw_text,
-        sections=[section_0],
+        chapters=[StructuredChapter(chapter_id="chapter-0", title="第一章", level=1,
+                    chapter_role=None, sections=[replace(section_0, parent_chapter_id="chapter-0")])],
         document_task_artifacts=DocumentTaskArtifacts(
             chapter_artifacts={
                 "chapter::第一章": TaskArtifacts(
@@ -145,7 +147,7 @@ def _build_document() -> StructuredDocument:
                     "source_hash": source_hash,
                     "task_unit_split_mode": "semantic_safe",
                     "semantic_top_k_candidates": 3,
-                    "resolver_version": "task_unit_resolver_v2",
+                    "resolver_version": SectionTaskCoordinator._TASK_LAYOUT_RESOLVER_VERSION,
                 }
             },
         ),
@@ -156,7 +158,21 @@ def test_task_layout_artifact_availability() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repo = StructuredDocumentArtifactRepository(store=StructuredDocumentStore(), base_dir=temp_dir)
         doc = _build_document()
-        Path(temp_dir, "layout-doc.structured.json").write_text(doc.to_json(), encoding="utf-8")
+        from scripts.artifact_generation_fixtures import bound_fields, bound_layout
+        repo.save_reparsed_document(doc, "layout-doc")
+        persisted = repo.load_document("layout-doc")
+        section = doc.chapters[0].sections[0]
+        repo.update_task_layout("layout-doc", {section.section_id: section.task_units},
+            bound_layout(persisted, doc.document_task_artifacts.metadata["task_layout"]))
+        persisted = repo.load_document("layout-doc")
+        repo.update_section_artifacts("layout-doc", section.section_id,
+            bound_fields(section.task_artifacts, persisted, "section", section.section_id))
+        unit = section.task_units[0]
+        repo.update_task_unit_artifacts("layout-doc", unit.unit_id,
+            bound_fields(unit.task_artifacts, persisted, "task_unit", unit.unit_id))
+        chapter = doc.document_task_artifacts.chapter_artifacts["chapter::第一章"]
+        repo.update_document_artifacts("layout-doc", DocumentTaskArtifacts(chapter_artifacts={
+            "chapter_id::chapter-0": bound_fields(chapter, persisted, "chapter", "chapter-0")}))
 
         coordinator = SectionTaskCoordinator(
             document_preparation_pipeline=_FakePreparationPipeline(repo),
@@ -169,11 +185,16 @@ def test_task_layout_artifact_availability() -> None:
             semantic_top_k_candidates_max=20,
         )
 
-        layout = coordinator.get_document_task_layout(
-            doc_name="layout-doc",
-            task_unit_split_mode="semantic_safe",
-            semantic_top_k_candidates=3,
-        )
+        before = Path(temp_dir, "layout-doc.structured.json").read_bytes()
+        with (patch.object(coordinator.document_preparation_pipeline, "prepare_and_load", side_effect=AssertionError("read prepared")),
+              patch.object(repo, "save_document", side_effect=AssertionError("read saved")),
+              patch.object(repo, "update_task_layout", side_effect=AssertionError("read wrote layout"))):
+            layout = coordinator.get_document_task_layout(
+                doc_name="layout-doc",
+                task_unit_split_mode="semantic_safe",
+                semantic_top_k_candidates=3,
+            )
+        _assert(Path(temp_dir, "layout-doc.structured.json").read_bytes() == before, "read must preserve persisted bytes")
         _assert(layout.chapters, "layout should expose chapters tree")
         _assert(
             layout.chapters[0].sections[0].section_id == "section-0",

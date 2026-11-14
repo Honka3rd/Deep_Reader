@@ -31,6 +31,7 @@ from section_tasks.reading_interaction_service_contracts import (  # noqa: E402
     ReadingInteractionRequest,
 )
 from section_tasks.reading_target_resolver import ReadingTargetResolver  # noqa: E402
+from section_tasks.interaction_policy_identity import policy_metadata
 from shared.task_unit_model import TaskUnit  # noqa: E402
 
 
@@ -360,7 +361,7 @@ def test_content_block_current_artifacts_do_not_collide_with_parent_task_unit() 
 def test_document_backed_critical_thinking_sessions_preserve_session_id() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
-        repository.save_document(_document(), doc_name="book")
+        repository.save_reparsed_document(_document(), doc_name="book")
         target = ReadingTargetResolver().resolve(
             document=repository.load_document("book"),
             target_level="section",
@@ -378,7 +379,7 @@ def test_document_backed_critical_thinking_sessions_preserve_session_id() -> Non
             interaction_type="critical_thinking_session",
             status="question_generated",
             payload={"question": "What assumption should be challenged?"},
-            metadata={"context": {"doc_name": "book"}},
+            metadata={"context": {"doc_name": "book"}, **policy_metadata(request)},
         )
         saved = store.save_critical_thinking_session(generated)
         restored = store.get_critical_thinking_session(request, saved.session_id)
@@ -402,7 +403,7 @@ def test_document_backed_critical_thinking_sessions_preserve_session_id() -> Non
             },
             metadata=dict(saved.artifact.metadata),
         )
-        resaved = store.save_critical_thinking_session(completed)
+        resaved = store.save_critical_thinking_session(completed, expected_session=saved.artifact)
         restored_completed = store.get_critical_thinking_session(
             request,
             saved.session_id,
@@ -428,7 +429,7 @@ def test_document_backed_critical_thinking_sessions_preserve_session_id() -> Non
 def test_content_block_critical_thinking_sessions_do_not_match_parent_task_unit() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
-        repository.save_document(_document(), doc_name="book")
+        repository.save_reparsed_document(_document(), doc_name="book")
         document = repository.load_document("book")
         resolver = ReadingTargetResolver()
         task_unit_target = resolver.resolve(
@@ -460,7 +461,7 @@ def test_content_block_critical_thinking_sessions_do_not_match_parent_task_unit(
                 interaction_type="critical_thinking_session",
                 status="question_generated",
                 payload={"question": "Which block-level assumption matters?"},
-                metadata={"context": {"doc_name": "book"}},
+                metadata={"context": {"doc_name": "book"}, **policy_metadata(block_request)},
             )
         )
         restored_block_session = store.get_critical_thinking_session(
@@ -491,7 +492,7 @@ def test_content_block_critical_thinking_sessions_do_not_match_parent_task_unit(
 def test_document_backed_current_critical_thinking_session_matches_block_target() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repository = StructuredDocumentArtifactRepository(base_dir=temp_dir)
-        repository.save_document(_document(), doc_name="book")
+        repository.save_reparsed_document(_document(), doc_name="book")
         document = repository.load_document("book")
         resolver = ReadingTargetResolver()
         task_unit_target = resolver.resolve(
@@ -523,7 +524,7 @@ def test_document_backed_current_critical_thinking_session_matches_block_target(
                 interaction_type="critical_thinking_session",
                 status="question_generated",
                 payload={"question": "First block question?"},
-                metadata={"context": {"doc_name": "book"}},
+                metadata={"context": {"doc_name": "book"}, **policy_metadata(block_request)},
             )
         )
         second = store.save_critical_thinking_session(
@@ -532,7 +533,7 @@ def test_document_backed_current_critical_thinking_session_matches_block_target(
                 interaction_type="critical_thinking_session",
                 status="question_generated",
                 payload={"question": "Second block question?"},
-                metadata={"context": {"doc_name": "book"}},
+                metadata={"context": {"doc_name": "book"}, **policy_metadata(block_request)},
             )
         )
 

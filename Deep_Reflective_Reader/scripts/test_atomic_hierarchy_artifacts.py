@@ -11,7 +11,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from document_structure.structured_document_artifact_repository import StructuredDocumentArtifactRepository
-from scripts.artifact_generation_fixtures import bound
+from scripts.artifact_generation_fixtures import bound, bound_layout
 from shared.task_artifacts import SummaryArtifact, QuizArtifact, TaskArtifacts, DocumentTaskArtifacts
 from scripts.test_reading_interaction_artifact_store import _document
 from scripts import test_summary_note_postgres as pg_fixture
@@ -109,7 +109,7 @@ class AtomicArtifactsTests(unittest.TestCase):
 
     def test_layout_and_metadata(self):
         units = {s.section_id:s.task_units for c in self.initial.chapters for s in c.sections}
-        self.overlap(lambda: self.repo.update_task_layout('book', units, {'reading_revision':0, 'marker':'layout'}),
+        self.overlap(lambda: self.repo.update_task_layout('book', units, bound_layout(self.initial, {'reading_revision':0, 'marker':'layout'})),
                      lambda: self.repo.update_document_artifacts('book', DocumentTaskArtifacts(metadata={'marker':'metadata'})))
         metadata = self.repo.load_document('book').document_task_artifacts.metadata
         self.assertEqual(metadata['task_layout']['marker'], 'layout')
@@ -119,7 +119,7 @@ class AtomicArtifactsTests(unittest.TestCase):
         units = {s.section_id:[replace(u, task_artifacts=TaskArtifacts(summary=SummaryArtifact('stale')))
                               for u in s.task_units] for c in self.initial.chapters for s in c.sections}
         self.overlap(lambda: self.repo.update_task_unit_artifacts('book', self.uid, TaskArtifacts(summary=bound(SummaryArtifact('current'), self.initial, 'task_unit', self.uid))),
-                     lambda: self.repo.update_task_layout('book', units, {'reading_revision':0}))
+                     lambda: self.repo.update_task_layout('book', units, bound_layout(self.initial, {'reading_revision':0})))
         self.assertEqual(self.section().task_units[0].task_artifacts.summary.content, 'current')
         self.assertIsNone(self.section(1).task_units[0].task_artifacts)
 
@@ -148,7 +148,7 @@ class AtomicArtifactsTests(unittest.TestCase):
             lambda: self.repo.update_section_summary_artifact('book', 'absent', SummaryArtifact('invalid')),
             lambda: self.repo.update_chapter_summary_artifact('book', 'chapter_id::absent', SummaryArtifact('invalid')),
             lambda: self.repo.update_task_unit_artifacts('book', 'absent', TaskArtifacts(summary=SummaryArtifact('invalid'))),
-            lambda: self.repo.update_task_layout('book', {'absent': []}, {'reading_revision':0}),
+            lambda: self.repo.update_task_layout('book', {'absent': []}, bound_layout(self.initial, {'reading_revision':0})),
         ]
         for operation in operations:
             with self.assertRaises(ValueError):

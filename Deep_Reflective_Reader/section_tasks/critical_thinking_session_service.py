@@ -223,14 +223,20 @@ class CriticalThinkingSessionService:
                 session,
                 CRITICAL_THINKING_EVALUATION_INSTRUCTION,
             )
+        except Exception:
+            return self._artifact_from_session(
+                session=session, status="evaluation_failed", payload=base_payload,
+                reason="evaluation_provider_failed",
+            )
+        try:
             evaluation = self._parse_and_validate_evaluation(raw_output)
             validate_output_language(evaluation, session_language(session))
-        except ValueError as error:
+        except ValueError:
             return self._artifact_from_session(
                 session=session,
                 status="evaluation_failed",
                 payload=base_payload,
-                reason=str(error),
+                reason="evaluation_invalid_output",
             )
 
         return self._artifact_from_session(

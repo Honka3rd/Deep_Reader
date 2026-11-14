@@ -162,7 +162,7 @@ class LayoutLoggingTests(unittest.TestCase):
                     enhanced_parse_trigger_evaluator=_FakeEnhancedParseEvaluator(),
                 )
                 if state != "cold":
-                    pipeline.prepare_and_load("cache-doc", mode="base")
+                    repository.save_reparsed_document(_build_base_document(), "cache-doc")
                 if state == "layout-ready":
                     coordinator.ensure_document_task_layout("cache-doc")
                 resolver.calls = 0
