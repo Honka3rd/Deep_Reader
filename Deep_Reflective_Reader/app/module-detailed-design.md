@@ -1,5 +1,38 @@
 # app Detailed Design
 
+## APP-05 review correction (2026-11-14)
+
+The public content-block target contract permits absent source evidence. Keep
+caller evidence validation at target resolution distinct from document-version
+validation at session publication. The section_tasks adapter must re-resolve the
+current target in the mutation and compare the current document policy, without
+requiring optional block metadata merely because SQL has a document row version.
+The coordinator's pre-resolution version check also treats content-block evidence
+as block-local: validate it through the resolver, then project the document version
+for publication policy. Other target levels retain their document-version precheck.
+No app route or schema change is intended. Verify five-level HTTP flows, durable
+answers and stale/CAS rejection on file and real PostgreSQL before local review.
+Implemented in resolve_reading_target and the session adapter's locked validation.
+Verification: 15 target-publication methods pass on file/real SQL, including five
+HTTP levels, caller evidence, provider-time durable answers/short locks, interruption
+reload/retry, source/lifecycle changes and competing evaluation publication. The
+original external block HTTP reproduction now passes 2/2; original app reproductions
+pass 3/3. Preserved suites: 77/77 focused, 96/96 interaction and 327 app executions
+(321 pass, six unchanged private-data opt-in skips, zero failures/errors). Counts
+overlap and are not unique scenarios. Evidence: `/tmp/app05-fix-b8f5b94/report.txt`.
+APP-01–04 protections remain required; exact-SHA external app review is pending.
+
+Two complete immutable backups (652001/147401 canonical characters) were prepared
+in isolated storage. Explicit layout plus actual content HTTP supplied a readable
+block for each file/SQL run: four durable-answer/timeout/retry checks pass with
+unchanged hierarchy/version after layout and unchanged backup hashes. Providers
+are deterministic. One earlier PDF sample had 1514 content-response characters but
+only nine resolver characters and correctly failed the service length gate; it was
+excluded from session acceptance, not counted as passing mapping validation. This
+source-projection discrepancy is recorded for follow-up, not repaired or fully
+diagnosed within APP-05. Evidence: `real-books.json`, `real-books.log` and prior
+sample-failure logs under `/tmp/app05-fix-b8f5b94/`. No live model/OCR/UI/deployment claim.
+
 ## APP-01–04 remediation (2026-11-13)
 
 ### Unit 3 answer durability and fixture reconciliation (2026-11-14, locally verified)

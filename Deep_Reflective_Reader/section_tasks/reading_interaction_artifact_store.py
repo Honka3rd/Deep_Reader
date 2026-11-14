@@ -231,8 +231,10 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
             target = ReadingTargetResolver().resolve(
                 document=document, target_level=artifact.target_level,
                 chapter_id=artifact.chapter_id, section_id=artifact.section_id,
-                task_unit_id=artifact.task_unit_id, content_block_id=artifact.content_block_id,
-                source_structure_version=document.parse_provenance.get("storage_structure_version"))
+                task_unit_id=artifact.task_unit_id, content_block_id=artifact.content_block_id)
+            # Resolver version evidence belongs to the selected block metadata.
+            # Publication instead compares the locked document's storage version;
+            # ordinary segmented blocks need not carry their own version.
             target = replace(target, source_structure_version=document.parse_provenance.get("storage_structure_version"))
             current = effective_policy(ReadingInteractionRequest(
                 target=target, interaction_type="critical_thinking_session"))

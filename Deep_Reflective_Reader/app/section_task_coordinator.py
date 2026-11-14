@@ -532,7 +532,10 @@ class SectionTaskCoordinator:
         structured_document = self.document_artifact_repository.load_document(normalized_doc_name)
 
         stored_version = structured_document.parse_provenance.get("storage_structure_version")
-        if stored_version is not None:
+        # For blocks, caller evidence refers to selected block metadata and is
+        # validated by the resolver. The document version is captured separately
+        # below for locked publication policy validation.
+        if stored_version is not None and target_level.strip().lower() != "content_block":
             if source_structure_version is not None and source_structure_version != stored_version:
                 raise ValueError("stale_structure_version")
         resolved = self.reading_target_resolver.resolve(

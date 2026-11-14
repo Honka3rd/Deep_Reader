@@ -1,5 +1,31 @@
 # section_tasks Detailed Design
 
+## APP-05 document version versus optional block evidence (2026-11-14)
+
+Session publication resolves the current target under the
+existing repository mutation without supplying document storage_structure_version
+as optional content-block evidence. That resolver argument belongs only to caller
+evidence checked against selected block metadata (sections 19.1/19.2). Segmented
+blocks may legitimately omit it. After resolution, project the locked document's
+storage version into the session policy comparison, alongside effective source
+hash, incarnation, rename generation and reading revision. Preserve exact session
+CAS and all source guards; do not synthesize block metadata or mutate on reads.
+The app pre-resolution document-version check likewise excludes content-block
+evidence; its matching rule belongs to the resolver. Other target levels keep the
+existing supplied-document-version check. A custom block version can therefore
+differ from the SQL document row version without confusing their meanings.
+
+Acceptance: real file/PostgreSQL HTTP tests at all five target levels; omitted/null,
+matching and stale block evidence; durable answer/timeout/retry/readback, source
+replacement and competing results. Retain APP-01–04 regression evidence. External
+app approval remains pending. Verification: 15/15 target-publication methods,
+77/77 focused and 96/96 interaction executions pass; original app suites pass
+321/327 with six private-source opt-in skips and no failures/errors. The external
+block HTTP reproduction passes on both backends. Earlier production reproduced
+eight expected SQL assertions in ten selected test methods, with zero errors/skips;
+the custom version case also exposed the coordinator's pre-resolution conflation.
+Evidence: `/tmp/app05-fix-b8f5b94/report.txt`.
+
 ## APP-03 session publication support (2026-11-14, locally verified)
 
 Critical-thinking source policy includes server-resolved document incarnation and
@@ -28,8 +54,9 @@ Supporting integration only; no next-module audit or deployment authorization.
 Implemented by target snapshot identity fields, critical-thinking policy metadata,
 safe service failure codes and conditional session adapter writes. Session revision
 is an opaque server-issued token, never a client authority field. Source validation
-uses the repository-owned structure version for all target levels (the resolver's
-content-block version argument alone is not a document-level readback projection).
+uses the repository-owned structure version for all target levels after resolving
+the current target without inventing caller block evidence. Optional block evidence
+is checked separately at admission, as corrected in APP-05 above.
 Unknown save readback failures raise CriticalThinkingSaveUnconfirmed (safe HTTP 500);
 source/session conflicts are safe HTTP 409. Ordinary reads never backfill identity.
 Validation: 32 file/real SQL session publication cases and 96 related interaction

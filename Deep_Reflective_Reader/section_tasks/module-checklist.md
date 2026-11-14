@@ -2,6 +2,11 @@
 
 ## App audit support (2026-11-14)
 
+- [x] APP-05 support: separate optional block evidence from locked document-version policy validation.
+  Acceptance: unchanged segmented blocks work on file/real SQL; supplied stale evidence, stale source and competing sessions still reject without modifying the current result.
+  Evidence: 15/15 file/real SQL target methods, five-level HTTP flows, block lifecycle and competing result rejection; document policy version still differs from custom block evidence. Preserved 77/77 and 96/96 suites; external block HTTP 2/2. `/tmp/app05-fix-b8f5b94/report.txt`; local verification only, app review pending.
+  Timestamp: 2026-11-14
+
 - [x] APP-03 support: conditional session transitions, server-owned source identity and safe retryable evaluation failures.
   Acceptance: exact file/SQL locked compare-and-save; durable submitted answers before provider calls, safe errors and acknowledgement reconciliation; legacy read-only behavior and existing service contracts retained.
   Evidence: 32/32 publication cases, 96/96 adjacent interaction executions, original external timeout assertions on both backends and four complete-book/backend combinations pass. Full app regression: 321 pass/six private-source opt-in skips/zero failures or errors. `/tmp/app-fix-5b3291a3/final-report.txt`; supporting integration locally verified, external app review pending.

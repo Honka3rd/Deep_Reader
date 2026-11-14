@@ -2,6 +2,11 @@
 
 ## App audit regression support (2026-11-14)
 
+- [x] APP-05 regression: cover five HTTP target levels and optional block evidence across file/real PostgreSQL.
+  Acceptance: reproduce the unchanged-source SQL rejection, verify correction, durable retry and locked source/CAS guards; retain 77 focused, 96 adjacent and 327 app executions with explicit skips.
+  Evidence: test_critical_thinking_target_publication 15/15; ten initial methods reproduce eight SQL assertion failures without errors/skips. Final 77/77 focused, 96/96 interaction, app 321/327 with six existing private opt-in skips/zero failures or errors, external block HTTP 2/2 and original app 3/3. `/tmp/app05-fix-b8f5b94/report.txt`; external approval pending.
+  Timestamp: 2026-11-14
+
 - [x] Preserve app source/session publication regressions and reconcile current hierarchy/read-only fixtures.
   Acceptance: real file/SQL/HTTP races and failures, source/answer preservation, short mutations, fixture intent retained and explicit opt-in skip accounting.
   Evidence: focused 77/77; original app 327 executions with 321 passes/six private-source opt-in skips/zero failures or errors; related interaction 96/96. Seven formerly failing suites pass isolated reruns. Two complete immutable books pass source/session checks on file/SQL with unchanged backups and no live provider calls. `/tmp/app-fix-5b3291a3/final-report.txt`; support only, app external review pending.

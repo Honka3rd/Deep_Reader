@@ -2,6 +2,11 @@
 
 ## App audit remediation (2026-11-13)
 
+- [x] APP-05: Restore unchanged PostgreSQL content-block critical-thinking publication with optional client evidence.
+  Acceptance: real file/SQL HTTP five-level generate/submit/read/timeout/retry; source and competing-result publication guards retained; original app and interaction suites remain green with explicit skip accounting.
+  Evidence: external block HTTP red 1 pass/1 failure becomes 2/2; 15/15 new file/SQL target methods, 77/77 focused, 96/96 interaction, original external app 3/3 and app 321/327 with six private opt-in skips/zero failures or errors. Both admission and publication separate block evidence from document policy. `/tmp/app05-fix-b8f5b94/report.txt`; locally verified, new exact-SHA external review pending.
+  Timestamp: 2026-11-14
+
 - [x] APP-01: Bind explicit layout publication and duplicate-ID repair to the captured source under the storage mutation boundary.
   Acceptance: file/real SQL late/reparse/reimport/rename/Edit/Undo races, rollback, preserved artifacts and content endpoint readback; read-only layout fixtures.
   Evidence: 31 publication cases, 101 adjacent regressions, 12 layout-fixture cases and 36 content/page/profile/hierarchy cases pass, zero skips. Five baseline regression selections fail; original external APP-01 now rejects without modifying the new snapshot. Two complete immutable backup copies retain exact source/body and reject late same-text reparse. `/tmp/app-fix-5b3291a3/unit-1-report.txt`. Unit locally verified; complete app audit/review remains pending.

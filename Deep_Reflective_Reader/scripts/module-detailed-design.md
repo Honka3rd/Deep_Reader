@@ -2,6 +2,25 @@
 
 ## App audit regression support (2026-11-14)
 
+APP-05 extends HTTP coverage to all five target levels on real file/PostgreSQL
+storage, obtaining segmented block IDs from the actual content response. Tests must
+separate omitted/null caller evidence, evidence matching actual block metadata, and
+supplied evidence for absent/mismatching metadata. Exercise durable failed answers,
+retry and read-only readback plus late source/session conflicts. This is supporting
+app regression work, not a section_tasks module audit. The new entrypoint is
+test_critical_thinking_target_publication: 15 methods, zero failures/errors/skips,
+with all five levels exercised in subtests. Red evidence: ten initial methods
+produce eight expected SQL assertion failures with zero errors/skips. The original
+external block HTTP reproduction changes from one pass/one failure to 2/2 pass.
+The final preserved groups pass 77/77, 96/96 and 321/327 (six unchanged opt-in skips),
+with original external app reproductions 3/3. These groups may overlap. Exact
+commands, fixture-development corrections and limits: `/tmp/app05-fix-b8f5b94/report.txt`.
+Two complete immutable backups additionally pass four file/SQL block-session
+timeout/retry checks after explicit layout, with source and hierarchy preserved.
+The runner selects readable resolved source; an earlier PDF sample (1514 response
+characters versus nine resolver characters) was rejected as insufficient and is
+reported as an unresolved projection observation, not a passing mapping test.
+
 The app remediation owns its behavior/design; scripts owns reusable regression
 entrypoints: test_task_layout_publication (31 file/SQL methods),
 test_app_source_resolution (14 source/HTTP methods), and
