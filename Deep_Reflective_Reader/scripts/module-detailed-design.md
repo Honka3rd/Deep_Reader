@@ -1,9 +1,39 @@
 # scripts Detailed Design
 
+## APP-06 mapping regression scope (2026-11-14, locally verified)
+
+Add actual single/batch content and interaction HTTP tests on file/real PostgreSQL
+for omitted, explicit false and true segmented flags. Distinct paragraphs, short
+first paragraphs, heading removal and custom/legacy blocks must assert displayed
+text equals provider target text and saved policy source hash; current availability
+and readback must not borrow another projection's session. Exercise stale evidence,
+source/incarnation and competing result guards without weakening APP-01–05 suites.
+APP-05 target() originally omitted segmented, and its one-paragraph fixture masked
+the two projections. Its fifteen methods establish target/session publication,
+not multi-paragraph mapping. The original real-books runner also omitted segmented;
+selecting a different eligible sample proved durable session behavior only, not
+all-block mapping. Keep historical results with this limitation; new mapping
+acceptance must name projection mode and compare exact text before generation.
+
+Local verification: new mapping suite 20/20 file/real SQL methods (two expanded
+custom-block methods rerun 2/2); baseline archive runs two matrix methods with 24
+expected assertion failures and zero errors/skips. External mapping reproduction:
+four failures before, 2/2 methods / eight subcases pass after. APP-05 targets 15/15,
+focused 77/77, interaction 96/96, mapping/reading support 118/118; original app
+327 executions, 321 passed and six retained private-data opt-in skips. Original
+external block HTTP 2/2 and app reproductions 3/3. Groups overlap.
+Two complete immutable source backups (652001/147401 canonical characters) retain
+hashes. On each backend, all blocks from the first five nonempty task units match
+API/resolver text in default and segmented modes; single/batch first-unit responses
+match. Eight HTTP question/source-policy and durable timeout/retry sessions pass.
+This is bounded mapping acceptance, not every block of either book or live LLM/OCR
+semantics. Evidence/commands: `/tmp/app06-fix-eaae891/report.txt`. New exact-SHA app
+review is required; no deployment, push or next-module work in this correction.
+
 ## App audit regression support (2026-11-14)
 
 APP-05 extends HTTP coverage to all five target levels on real file/PostgreSQL
-storage, obtaining segmented block IDs from the actual content response. Tests must
+storage, obtaining default-projection IDs from a single-paragraph content response. Tests must
 separate omitted/null caller evidence, evidence matching actual block metadata, and
 supplied evidence for absent/mismatching metadata. Exercise durable failed answers,
 retry and read-only readback plus late source/session conflicts. This is supporting
@@ -19,7 +49,9 @@ Two complete immutable backups additionally pass four file/SQL block-session
 timeout/retry checks after explicit layout, with source and hierarchy preserved.
 The runner selects readable resolved source; an earlier PDF sample (1514 response
 characters versus nine resolver characters) was rejected as insufficient and is
-reported as an unresolved projection observation, not a passing mapping test.
+reported as a projection observation, not a passing mapping test. APP-06 confirms
+the collision and adds explicit bounded default/segmented mapping checks; the
+earlier session-only evidence is not retroactively relabeled as mapping coverage.
 
 The app remediation owns its behavior/design; scripts owns reusable regression
 entrypoints: test_task_layout_publication (31 file/SQL methods),

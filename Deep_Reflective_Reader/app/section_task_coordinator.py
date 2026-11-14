@@ -96,8 +96,7 @@ from section_tasks.task_unit_id_normalizer import TaskUnitIdNormalizer
 from section_tasks.task_unit_resolver import TaskUnitResolver
 from section_tasks.task_unit_split_mode import TaskUnitSplitMode
 from shared.task_artifacts import QuizArtifact, SummaryArtifact, TaskArtifacts
-from shared.task_unit_model import TaskUnitContentBlock, build_default_content_block_id
-from document_structure.text_normalization import normalize_ocr_text
+from shared.task_unit_model import TaskUnitContentBlock
 
 
 @dataclass(frozen=True)
@@ -1938,16 +1937,9 @@ class SectionTaskCoordinator:
                 f"task_unit_id '{task_unit.unit_id}' has empty content and cannot be rendered"
             )
 
-        content_blocks = task_unit.content_blocks if document.parse_provenance.get("reading_projected") else (
-            self._build_segmented_content_blocks_for_rendering(
-                task_unit=task_unit,
-                section=section,
-                chapter=chapter,
-            )
-            if segmented
-            else task_unit.to_content_blocks()
+        content_blocks = self.reading_target_resolver.content_blocks_for_rendering(
+            task_unit=task_unit, section=section, chapter=chapter, segmented=segmented,
         )
-        content_blocks = self._normalize_content_blocks_for_rendering(content_blocks)
         content_blocks = self._project_content_block_interaction_availability(
             document=document,
             doc_name=doc_name,
@@ -2107,6 +2099,8 @@ class SectionTaskCoordinator:
             task_unit_id=task_unit.unit_id,
             content_block_id=content_block.block_id,
         )
+        if target.content != content_block.content:
+            raise ValueError("content_block_projection_source_mismatch")
         target = replace(target, source_structure_version=document.parse_provenance.get("storage_structure_version"))
         return ReadingInteractionRequest(
             target=target,
@@ -2158,135 +2152,6 @@ class SectionTaskCoordinator:
             return None
         normalized = value.strip()
         return normalized or None
-
-    @staticmethod
-    def _normalize_content_blocks_for_rendering(
-        content_blocks: list[TaskUnitContentBlock],
-    ) -> list[TaskUnitContentBlock]:
-        """Return cleaned OCR display text while retaining raw span provenance."""
-        normalized_blocks: list[TaskUnitContentBlock] = []
-        for block in content_blocks:
-            normalized_content = normalize_ocr_text(block.content)
-            if normalized_content == block.content:
-                normalized_blocks.append(block)
-                continue
-            metadata = dict(block.metadata or {})
-            metadata["display_normalization"] = "ocr_whitespace_v1"
-            normalized_blocks.append(
-                replace(
-                    block,
-                    content=normalized_content,
-                    metadata=metadata,
-                )
-            )
-        return normalized_blocks
-
-    @classmethod
-    def _build_segmented_content_blocks_for_rendering(
-        cls,
-        *,
-        task_unit: TaskUnit,
-        section: StructuredSection,
-        chapter: StructuredChapter | None,
-    ) -> list[TaskUnitContentBlock]:
-        """Build segmented render blocks without duplicating leading hierarchy titles."""
-        content_blocks = task_unit.segment_content_blocks()
-        if not content_blocks:
-            return []
-
-        leading_titles = {
-            cls._normalize_render_heading(value)
-            for value in (section.title, chapter.title if chapter is not None else None)
-            if value
-        }
-        leading_titles.discard("")
-        if not leading_titles:
-            return content_blocks
-
-        adjusted_blocks: list[TaskUnitContentBlock] = []
-        for index, content_block in enumerate(content_blocks):
-            if index == 0:
-                content_block = cls._drop_leading_render_heading(
-                    task_unit_id=task_unit.unit_id,
-                    content_block=content_block,
-                    leading_titles=leading_titles,
-                )
-                if content_block is None:
-                    continue
-            adjusted_blocks.append(content_block)
-
-        return [
-            replace(
-                content_block,
-                block_id=build_default_content_block_id(
-                    task_unit_id=task_unit.unit_id,
-                    block_index=index,
-                ),
-                metadata=cls._reindex_content_block_metadata(
-                    metadata=content_block.metadata,
-                    task_unit_id=task_unit.unit_id,
-                    block_index=index,
-                ),
-            )
-            for index, content_block in enumerate(adjusted_blocks)
-        ]
-
-    @classmethod
-    def _drop_leading_render_heading(
-        cls,
-        *,
-        task_unit_id: str,
-        content_block: TaskUnitContentBlock,
-        leading_titles: set[str],
-    ) -> TaskUnitContentBlock | None:
-        """Remove a leading section/chapter title line from a segmented render block."""
-        lines = content_block.content.splitlines(keepends=True)
-        if len(lines) < 2:
-            return content_block
-
-        first_line = lines[0].strip()
-        if cls._normalize_render_heading(first_line) not in leading_titles:
-            return content_block
-
-        trimmed_content = "".join(lines[1:]).strip()
-        if not trimmed_content:
-            return None
-
-        metadata = None if content_block.metadata is None else dict(content_block.metadata)
-        if metadata is not None and isinstance(metadata.get("quote_span_start"), int):
-            metadata["quote_span_start"] = metadata["quote_span_start"] + len(lines[0])
-
-        return replace(
-            content_block,
-            block_id=build_default_content_block_id(
-                task_unit_id=task_unit_id,
-                block_index=0,
-            ),
-            content=trimmed_content,
-            metadata=metadata,
-        )
-
-    @staticmethod
-    def _reindex_content_block_metadata(
-        *,
-        metadata: dict | None,
-        task_unit_id: str,
-        block_index: int,
-    ) -> dict | None:
-        """Keep metadata content block id aligned after render-only block reindexing."""
-        if metadata is None:
-            return None
-        updated = dict(metadata)
-        updated["content_block_id"] = build_default_content_block_id(
-            task_unit_id=task_unit_id,
-            block_index=block_index,
-        )
-        return updated
-
-    @staticmethod
-    def _normalize_render_heading(value: str | None) -> str:
-        """Normalize heading text for render-only duplicate-title suppression."""
-        return " ".join((value or "").strip().lower().split())
 
     def _compute_current_task_unit_coverage(
         self,

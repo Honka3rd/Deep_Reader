@@ -1,5 +1,35 @@
 # app Detailed Design
 
+## APP-06 projection identity correction (2026-11-14, locally verified)
+
+Both default and segmented content endpoints remain supported read-only projections.
+The section_tasks resolver owns their common block projection: preserve existing
+segmented IDs and non-colliding custom IDs; when a stored/default block collides
+with a segmented ID but denotes different normalized text or explicit source
+evidence, expose it under a deterministic compatibility ID. Single/batch responses
+and target resolution consume that same projection. No persistence migration or
+change to hierarchy, layout, source epoch, session CAS or provider admission.
+Availability requires exact displayed/resolved text equality; a relocated block
+must not carry the original projection's artifact references or availability.
+Acceptance: file/real SQL HTTP omitted/false/true modes, heading/paragraph/custom
+blocks, exact provider text and saved policy hash, cross-projection isolation and
+retained stale/evidence/epoch/CAS guards. External app approval remains pending.
+
+Local verification: new mapping suite 20/20 file/real SQL methods (two expanded
+custom-block methods rerun 2/2); baseline archive runs two matrix methods with 24
+expected assertion failures and zero errors/skips. External mapping reproduction:
+four failures before, 2/2 methods / eight subcases pass after. APP-05 targets 15/15,
+focused 77/77, interaction 96/96, mapping/reading support 118/118; original app
+327 executions, 321 passed and six retained private-data opt-in skips. Original
+external block HTTP 2/2 and app reproductions 3/3. Groups overlap.
+Two complete immutable source backups (652001/147401 canonical characters) retain
+hashes. On each backend, all blocks from the first five nonempty task units match
+API/resolver text in default and segmented modes; single/batch first-unit responses
+match. Eight HTTP question/source-policy and durable timeout/retry sessions pass.
+This is bounded mapping acceptance, not every block of either book or live LLM/OCR
+semantics. Evidence/commands: `/tmp/app06-fix-eaae891/report.txt`. New exact-SHA app
+review is required; no deployment, push or next-module work in this correction.
+
 ## APP-05 review correction (2026-11-14)
 
 The public content-block target contract permits absent source evidence. Keep
@@ -27,11 +57,13 @@ in isolated storage. Explicit layout plus actual content HTTP supplied a readabl
 block for each file/SQL run: four durable-answer/timeout/retry checks pass with
 unchanged hierarchy/version after layout and unchanged backup hashes. Providers
 are deterministic. One earlier PDF sample had 1514 content-response characters but
-only nine resolver characters and correctly failed the service length gate; it was
+only nine resolver characters and failed the length gate on the wrong text scope; it was
 excluded from session acceptance, not counted as passing mapping validation. This
-source-projection discrepancy is recorded for follow-up, not repaired or fully
-diagnosed within APP-05. Evidence: `real-books.json`, `real-books.log` and prior
-sample-failure logs under `/tmp/app05-fix-b8f5b94/`. No live model/OCR/UI/deployment claim.
+source-projection discrepancy was not repaired or fully diagnosed within APP-05.
+APP-06 subsequently confirms the default/segmented ID collision and separately
+verifies the corrected 1514-character default sample without substituting its source
+(`/tmp/app06-fix-eaae891/real-books.json`). Historical evidence: `real-books.json`,
+`real-books.log` and sample-failure logs under `/tmp/app05-fix-b8f5b94/`. No live model/OCR/UI/deployment claim.
 
 ## APP-01–04 remediation (2026-11-13)
 
@@ -1703,7 +1735,7 @@ Git commit created. Scope is this recovery track, not all repository future task
 4. Missing, duplicate, or hierarchy-incompatible task-unit ids fail fast; the batch path does not fall back to title lookup, root `sections[]`, synthetic legacy hierarchy, or `structure_nodes`. **[Code-Confirmed] + [From HLD]**
 5. The batch path shares the same `segmented` semantics as the single task-unit content path; route/schema mapping controls raw-content inclusion. **[Code-Confirmed]**
 6. Batch content orchestration remains read-only: no task-layout mutation, no structured hierarchy mutation, no profile diagnostics write-back, no artifact writes, and no parser strategy decisions. **[Code-Confirmed] + [From HLD]**
-7. App orchestration attaches lightweight content-block interaction availability during task-unit content DTO assembly when configured interaction dependencies are present. The projection reads current analysis/quiz artifacts and latest matching critical-thinking sessions for canonical content-block targets, emits only slot metadata, and skips non-canonical segmented render blocks instead of treating them as persisted hierarchy or artifact truth. **[Code-Confirmed]**
+7. App orchestration attaches lightweight content-block interaction availability during task-unit content DTO assembly when configured interaction dependencies are present. The projection reads current analysis/quiz artifacts and latest matching critical-thinking sessions for canonical content-block targets, emits only slot metadata, and requires exact displayed/resolved text equality for the shared default/segmented identity instead of treating projections as persisted hierarchy or artifact truth. **[Code-Confirmed]**
 
 ## 21. Future Direction: Summary And Note Interaction Orchestration
 

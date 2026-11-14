@@ -30,7 +30,8 @@ class CriticalThinkingTargetPublicationTests(unittest.TestCase):
     repository = CriticalThinkingPublicationTests.repository
     coordinator = CriticalThinkingPublicationTests.coordinator
 
-    def target(self, client, level):
+    def target(self, client, level, *, segmented=False):
+        # Default single-paragraph targets test publication, not multi-paragraph mapping.
         document = self.repo.load_document('book')
         chapter = document.chapters[0]
         section = chapter.sections[0]
@@ -44,7 +45,7 @@ class CriticalThinkingTargetPublicationTests(unittest.TestCase):
             target['task_unit_id'] = unit.unit_id
         if level == 'content_block':
             response = client.post('/documents/book/task-units/content', json={
-                'task_unit_ids': [unit.unit_id], 'include_raw_content': True})
+                'task_unit_ids': [unit.unit_id], 'include_raw_content': True, 'segmented': segmented})
             self.assertEqual(response.status_code, 200, response.text)
             block = response.json()['contents'][0]['content_blocks'][0]
             self.assertIsNone((block.get('metadata') or {}).get('source_structure_version'))
@@ -118,7 +119,7 @@ class CriticalThinkingTargetPublicationTests(unittest.TestCase):
 
     def test_segmented_block_absent_null_and_unavailable_evidence(self):
         with patch.object(main, 'section_task_coordinator', self.co), TestClient(main.app) as client:
-            target = self.target(client, 'content_block')
+            target = self.target(client, 'content_block', segmented=True)
             for evidence in ({}, {'source_hash': None, 'source_structure_version': None}):
                 with self.subTest(evidence=evidence):
                     result = self.post(client, 'generate-question', {**target, **evidence})

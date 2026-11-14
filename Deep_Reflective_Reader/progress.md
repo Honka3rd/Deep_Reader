@@ -1,5 +1,31 @@
 # Deep Reflective Reader Progress
 
+## App APP-06 Local Review Correction (2026-11-14)
+
+External review verified APP-05 on eaae8918 but kept the app gate open for the
+pre-existing default/segmented block identity collision. APP-06 now gives differing
+compatibility sources separate read-projection IDs, shares rendering/resolution,
+and checks exact source before availability. Existing segmented/session identities,
+primary reading/edit streams and source/epoch/CAS protections remain intact.
+New mapping suite: 20/20 file/real SQL methods, with two expanded custom-block cases
+rerun 2/2. Archived baseline: 24 assertion failures in two matrix methods, zero
+errors/skips. External mapping: four failures before, eight subcases pass after.
+Preserved targets 15/15, focused 77/77, interaction 96/96, mapping/read support
+118/118; original app suites 321/327 with six unchanged private-data opt-in skips
+and zero failures/errors. External block HTTP 2/2 and original app methods 3/3.
+These execution groups overlap, not unique-case totals.
+Two complete immutable backups retain canonical hashes; all returned blocks in the
+first five nonempty units match in default/segmented modes on file/SQL, with eight
+exact-source question and durable timeout/retry checks. This bounded sample does
+not establish whole-book mapping, live LLM or OCR semantics. APP-05's historical
+one-paragraph/default and replacement-sample evidence is not relabeled as mapping
+acceptance. Commands and evidence: `/tmp/app06-fix-eaae891/report.txt`.
+Direct owner recount: app 62 checked/11 unchecked, section_tasks 106/0, scripts 71/1;
+only the three APP-06 items are newly completed. No source edits during this
+checklist/progress synchronization. New local review SHA still requires external
+app approval; no deployment, push or next-module work in this correction.
+Timestamp: 2026-11-14
+
 ## App APP-05 Local Review Correction (2026-11-14)
 
 Candidate b8f5b942 was not approved. APP-05 now separates optional content-block
@@ -509,7 +535,7 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 61 | 11 | APP-01–05 locally verified; new exact-SHA external review pending; historical unresolved items retained (2026-11-14 direct recount) |
+| `app/` | package | `app/module-checklist.md` | 62 | 11 | APP-01–06 locally verified; new exact-SHA external review pending; historical unresolved items retained (2026-11-14 direct recount) |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
 | `config/` | package | `config/module-checklist.md` | 12 | 9 | APP-02 raw-source support locally verified; app external review pending; unrelated checklist items retained (2026-11-14 recount excludes templates) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -526,8 +552,8 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
-| `scripts/` | package | `scripts/module-checklist.md` | 70 | 1 | APP-05 regression support locally verified; existing DOCLOAD deployment fixture gate retained; direct 2026-11-14 recount |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 105 | 0 | APP-03/05 session publication support locally verified; app review pending; direct 2026-11-14 recount; quality caveat retained |
+| `scripts/` | package | `scripts/module-checklist.md` | 71 | 1 | APP-06 mapping regression support locally verified; existing DOCLOAD deployment fixture gate retained; direct 2026-11-14 recount |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 106 | 0 | APP-03/05/06 source/session support locally verified; app review pending; direct 2026-11-14 recount; quality caveat retained |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 38 | 3 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
@@ -602,12 +628,13 @@ Evidence and dependencies are in owner designs/checklists.
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `APP-01–05 locally verified; new exact-SHA external review pending`
-- Completed item count: `61` (direct owner recount, 2026-11-14).
+- Status: `APP-01–06 locally verified; new exact-SHA external review pending`
+- Completed item count: `62` (direct owner recount, 2026-11-14).
 - Needs confirmation count: `11`
 - Unchecked item count: `11` (historical unresolved items retained).
-- Latest evidence: `/tmp/app05-fix-b8f5b94/report.txt`; 15/15 target, 77/77 focused,
-  96/96 interaction and app 321 pass/six private opt-in skips/zero failures/errors.
+- Latest evidence: `/tmp/app06-fix-eaae891/report.txt`; mapping 20/20 plus custom rerun 2/2,
+  targets 15/15, focused 77/77, interaction 96/96, reading support 118/118 and
+  app 321 pass/six private opt-in skips/zero failures/errors.
 - Unit 1 evidence: 180 passing executions/zero skips, original external APP-01 and
   two immutable full-book checks; `/tmp/app-fix-5b3291a3/unit-1-report.txt`.
 - 2026-10-21 ENH-REV-03: typed outcome/cleanup/layout flags, conditional preflight,
@@ -1316,8 +1343,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `App APP-05 regression support locally verified; external review pending`
-- Completed item count: `70` (direct owner recount, 2026-11-14).
+- Status: `App APP-06 mapping regression support locally verified; external review pending`
+- Completed item count: `71` (direct owner recount, 2026-11-14).
 - Needs confirmation count: `1`
 - Unchecked item count: `1` (existing DOCLOAD deployment fixture gate remains open).
 
@@ -1363,8 +1390,8 @@ DOCLOAD deployment fixture acceptance remains unresolved in the scripts checklis
 
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
-- Status: `APP-03/05 support locally verified; app review pending; literary quality caveat retained`
-- Completed item count: `105` (direct owner recount, 2026-11-14).
+- Status: `APP-03/05/06 support locally verified; app review pending; literary quality caveat retained`
+- Completed item count: `106` (direct owner recount, 2026-11-14).
 - Needs confirmation count: `0`
 - Unchecked item count: `0` (TRUI-01 accepted; technical delivery does not certify literary accuracy).
 - 2026-10-19 INTERACT-03 delivery: `3/3` of this module's new track complete.

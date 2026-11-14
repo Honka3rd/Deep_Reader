@@ -1,5 +1,12 @@
 # scripts Checklist
 
+## APP-06 correction (2026-11-14)
+
+- [x] APP-06 regression: Verify default/segmented exact-source mapping and retained guards.
+  Acceptance: file/real SQL single/batch HTTP exact source/hash, availability isolation, custom/heading/short paragraphs and retained lifecycle/CAS guards; original app regressions and explicit skips.
+  Evidence: external mapping red four assertions / green eight subcases; new mapping 20/20 plus expanded custom rerun 2/2; archive matrix red 24 assertions/zero errors. Preserved targets 15/15, focused 77/77, interaction 96/96, mapping support 118/118, app 321/327 with six opt-in skips. Two immutable backups: bounded first-five-unit mapping and eight file/SQL default/segmented session checks. `/tmp/app06-fix-eaae891/report.txt`; locally verified, external app gate remains open.
+  Timestamp: 2026-11-14
+
 ## App audit regression support (2026-11-14)
 
 - [x] APP-05 regression: cover five HTTP target levels and optional block evidence across file/real PostgreSQL.

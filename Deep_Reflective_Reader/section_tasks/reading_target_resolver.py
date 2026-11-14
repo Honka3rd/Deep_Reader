@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+import hashlib
 
 from document_structure.text_normalization import normalize_ocr_text
 from document_structure.structured_document import (
@@ -50,37 +51,94 @@ class ResolvedReadingTarget:
 class ReadingTargetResolver:
     """Resolve document/chapter/section/task-unit targets from hierarchy only."""
 
+    def content_blocks_for_rendering(
+        self,
+        task_unit: TaskUnit,
+        section: StructuredSection | None = None,
+        chapter: StructuredChapter | None = None,
+        *,
+        segmented: bool = False,
+    ) -> list[TaskUnitContentBlock]:
+        """Expose exactly the same source identities accepted by target resolution."""
+        default_blocks, segmented_blocks = self._content_block_projections(task_unit, section, chapter)
+        return segmented_blocks if segmented else default_blocks
+
+    def _content_block_projections(
+        self,
+        task_unit: TaskUnit,
+        section: StructuredSection | None,
+        chapter: StructuredChapter | None,
+    ) -> tuple[list[TaskUnitContentBlock], list[TaskUnitContentBlock]]:
+        explicit_blocks = self._normalize_content_blocks_for_target_validation(task_unit.to_content_blocks())
+        explicit_ids = [block.block_id for block in explicit_blocks]
+        seen: set[str] = set()
+        for block_id in explicit_ids:
+            if block_id in seen:
+                raise ValueError(f"duplicate_content_block_id:{block_id}")
+            seen.add(block_id)
+        if any((block.metadata or {}).get("reading_overlay") for block in explicit_blocks):
+            return explicit_blocks, explicit_blocks
+
+        render_blocks = self._build_segmented_content_blocks_for_target_validation(
+            task_unit=task_unit, section=section, chapter=chapter,
+        )
+        by_id = {block.block_id: block for block in render_blocks}
+        occupied_ids = seen | set(by_id)
+        default_blocks = []
+        for block in explicit_blocks:
+            render_block = by_id.get(block.block_id)
+            evidence = block.metadata or {}
+            render_evidence = (render_block.metadata or {}) if render_block is not None else {}
+            differs = render_block is not None and (
+                block.content != render_block.content or any(
+                    evidence.get(key) is not None and evidence[key] != render_evidence.get(key)
+                    for key in ("source_hash", "source_structure_version")
+                )
+            )
+            if differs:
+                # Preserve existing segmented/session identities. This alias is a
+                # read projection, never a migration of persisted blocks/artifacts.
+                suffix = hashlib.sha256(block.block_id.encode("utf-8")).hexdigest()
+                block_id = f"{task_unit.unit_id}:compat:{suffix}"
+                if block_id in occupied_ids:
+                    raise ValueError(f"duplicate_content_block_id:{block_id}")
+                occupied_ids.add(block_id)
+                metadata = None if block.metadata is None else dict(block.metadata)
+                if metadata is not None and "content_block_id" in metadata:
+                    metadata["content_block_id"] = block_id
+                block = replace(block, block_id=block_id, metadata=metadata,
+                                artifact_ids=None, artifact_target_refs=None,
+                                interaction_availability=None)
+            default_blocks.append(block)
+        return default_blocks, render_blocks
+
     def content_blocks_for_target_validation(
         self,
         task_unit: TaskUnit,
         section: StructuredSection | None = None,
         chapter: StructuredChapter | None = None,
+        *,
+        include_compatibility: bool = False,
     ) -> list[TaskUnitContentBlock]:
         """
         Return the deterministic read model for content-block target validation.
 
-        The source is the hierarchy-resolved task unit plus the same deterministic
-        segmented render projection used by the task-unit content endpoint. Explicit
-        custom `TaskUnit.content_blocks` remain accepted when their ids do not collide
-        with the segmented render ids. This keeps visible UI block ids addressable
-        without using UI row position/title text as authority.
+        Default/segmented projections share an ID only for the same source.
+        Compatibility aliases are addressable on explicit target lookup, but are
+        excluded from the primary reading/edit stream to avoid duplicating text.
+        No persisted data is changed.
         """
-        if any((b.metadata or {}).get("reading_overlay") for b in task_unit.content_blocks):
-            return list(task_unit.content_blocks)
-        render_blocks = self._build_segmented_content_blocks_for_target_validation(
-            task_unit=task_unit,
-            section=section,
-            chapter=chapter,
-        )
-        explicit_blocks = task_unit.to_content_blocks()
+        explicit_blocks, render_blocks = self._content_block_projections(task_unit, section, chapter)
         if not render_blocks:
             return explicit_blocks
 
         render_block_ids = {block.block_id for block in render_blocks}
+        original_ids = {block.block_id for block in task_unit.to_content_blocks()}
         non_colliding_explicit_blocks = [
             block
             for block in explicit_blocks
             if block.block_id not in render_block_ids
+            and (include_compatibility or block.block_id in original_ids)
         ]
         return [*render_blocks, *non_colliding_explicit_blocks]
 
@@ -489,6 +547,7 @@ class ReadingTargetResolver:
                 task_unit=task_unit,
                 section=section,
                 chapter=chapter,
+                include_compatibility=True,
             )
             if content_block.block_id == content_block_id
         ]

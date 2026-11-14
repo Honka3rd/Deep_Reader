@@ -1,5 +1,46 @@
 # section_tasks Detailed Design
 
+## APP-06 default/segmented identity (2026-11-14, locally verified)
+
+The resolver owns one read-only projection pair for content responses and target
+validation. Normalize default/custom text with the existing OCR display rule;
+segmented heading removal and `<unit>:content:<index>` IDs remain unchanged.
+A default/custom ID colliding with a segmented ID may be shared only when text
+matches and all explicit source_hash/source_structure_version evidence agrees.
+Otherwise expose `<unit>:compat:<sha256(original_block_id UTF-8)>` and resolve that
+ID to the full default/custom source. If an existing explicit ID already occupies
+that compatibility ID, reject ambiguity rather than select either block. Duplicate
+explicit IDs remain errors. Update advisory metadata.content_block_id when present;
+drop ambiguous artifact references/availability only on relocated blocks. Do not
+invent source versions, migrate stored IDs or move existing sessions on reads.
+
+Old `<unit>:content:<index>` identities continue to select segmented sources with
+existing source policy guards. Clients must use the current content response ID;
+a historical ambiguous default ID cannot prove which projection was intended.
+Matching single-paragraph/default identities retain their existing behavior. Custom
+non-colliding IDs remain valid and normalized identically for rendering/resolution.
+Compatibility aliases are excluded from the primary reading/edit stream;
+explicit target lookup alone adds them to the accepted target set. This avoids
+duplicating whole-unit text alongside paragraphs. Reading overlays retain their
+authoritative effective-block projection for both modes. Public optional-evidence
+and locked source/session publication contracts are unchanged. Acceptance covers exact API/provider/policy source equality and isolation,
+including omitted/false/true single/batch modes on file and real PostgreSQL.
+
+Local verification: new mapping suite 20/20 file/real SQL methods (two expanded
+custom-block methods rerun 2/2); baseline archive runs two matrix methods with 24
+expected assertion failures and zero errors/skips. External mapping reproduction:
+four failures before, 2/2 methods / eight subcases pass after. APP-05 targets 15/15,
+focused 77/77, interaction 96/96, mapping/reading support 118/118; original app
+327 executions, 321 passed and six retained private-data opt-in skips. Original
+external block HTTP 2/2 and app reproductions 3/3. Groups overlap.
+Two complete immutable source backups (652001/147401 canonical characters) retain
+hashes. On each backend, all blocks from the first five nonempty task units match
+API/resolver text in default and segmented modes; single/batch first-unit responses
+match. Eight HTTP question/source-policy and durable timeout/retry sessions pass.
+This is bounded mapping acceptance, not every block of either book or live LLM/OCR
+semantics. Evidence/commands: `/tmp/app06-fix-eaae891/report.txt`. New exact-SHA app
+review is required; no deployment, push or next-module work in this correction.
+
 ## APP-05 document version versus optional block evidence (2026-11-14)
 
 Session publication resolves the current target under the
@@ -1406,8 +1447,9 @@ Recommended backend task order:
    **[Code-Confirmed] + [Future Direction]**
 2. Content-block read-model activation: resolver validation reads the hierarchy-
    resolved task unit plus the same deterministic segmented render projection exposed
-   by the task-unit content endpoint. Explicit custom `TaskUnit.content_blocks` remain
-   accepted when their ids do not collide with segmented render ids. Resolver
+   by the task-unit content endpoint. Default/custom `TaskUnit.content_blocks` remain
+   accepted through the shared projection; differing collisions use the APP-06
+   compatibility identity while existing segmented IDs remain unchanged. Resolver
    validation does not read the relational `content_blocks` table directly or use UI
    row position/title text as authority. **[Code-Confirmed]**
 3. Source hash and stale block policy: define whether a client-observed
@@ -1434,8 +1476,8 @@ Recommended backend task order:
    stale block ids must fail fast with explicit reason codes. Current resolver support
    resolves `content_block` targets only through hierarchy-first task-unit ownership:
    `task_unit_id` is required, optional `chapter_id` / `section_id` must match the
-   hierarchy parent path, and `content_block_id` is looked up inside the segmented
-   task-unit content read model for that resolved task unit. Missing blocks,
+   hierarchy parent path, and `content_block_id` is looked up inside the shared segmented/default
+   target read model for that resolved task unit (APP-06 compatibility IDs included). Missing blocks,
    duplicate block ids within the accepted read model, parent mismatches, and supplied
    stale `source_hash` / `source_structure_version` evidence fail fast with explicit
    reasons. **[Code-Confirmed]**
@@ -1688,7 +1730,7 @@ Validation boundary remains fail-fast + explicit reason classification; it must 
 Current alignment behavior is intentionally conservative:
 
 1. Segmented `content_blocks[]` remain render projections, but their deterministic ids are accepted as interaction targets when reconstructed from the hierarchy-owned parent task unit. **[Code-Confirmed]**
-2. Reading-interaction artifact targets resolve through hierarchy-first task-unit ownership and the segmented task-unit content read model. Explicit custom `TaskUnit.content_blocks` remain accepted when their ids do not collide with segmented render ids. **[Code-Confirmed]**
+2. Reading-interaction artifact targets resolve through hierarchy-first task-unit ownership and the segmented task-unit content read model. Default/custom blocks are accepted through the shared APP-06 projection: differing collisions use compatibility IDs, while existing segmented IDs remain unchanged. **[Code-Confirmed]**
 3. A segmented id such as `<task_unit_id>:content:1` resolves to the matching segmented block text when the parent task unit deterministically produces that block; resolver still does not fallback to visible row index, title text, arbitrary block text, or UI state. **[Code-Confirmed]**
 4. Segmented endpoint responses may include resolver-backed `interaction_availability` slots for accepted block ids, but must not invent `artifact_target_refs`, placeholder artifacts, UI state, or artifact payloads. **[Code-Confirmed]**
 5. Future promotion to a persisted rich-content model may replace the deterministic runtime projection, but it must remain hierarchy-aware and must not mutate task-layout/profile state from a read projection. **[Future Direction]**
