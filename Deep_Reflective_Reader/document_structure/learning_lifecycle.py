@@ -19,7 +19,7 @@ def effective_sources(document):
         return {}
     blocks = state_for(document).get("blocks", {})
     return {block.block_id: (chapter.chapter_id, section.section_id, unit.unit_id, block.content)
-            for chapter, section, unit, block in original_blocks(project_document(document))
+            for chapter, section, unit, block in original_blocks(project_document(document), include_compatibility=True)
             if not blocks.get(block.block_id, {}).get("deleted")}
 
 

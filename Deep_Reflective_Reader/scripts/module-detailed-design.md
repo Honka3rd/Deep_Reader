@@ -1,5 +1,149 @@
 # scripts Detailed Design
 
+## TASK-05 legacy output validation (2026-11-15, locally verified)
+
+Add TASK-05 actual file/real PostgreSQL/public HTTP regression matrices for section/chapter summary and quiz: required field types, whitespace, duplicate IDs, provider failures, valid outputs, warm reuse, corrupt caches, preserved previous bytes and source/lifecycle rejection. Keep prior TASK/APP regressions and explicitly report retained private-data skips. Model responses are deterministic; no live semantic acceptance claim.
+
+Verification: New file/real SQL HTTP suite 22/22 (original 18-method red subset: 133 failed assertions, zero errors/skips); external five observational cases satisfy desired assertions after absence-safe diagnostic adaptation. Adjacent suites 114/114 after one fixture setup correction; TASK-04 20/20, prior focused 229 pass/one skip, app 529 pass/six skips, translation/storage 404/404. Two full immutable backups hash-verified; bounded first-2000-character section/chapter HTTP on both stores preserves valid outputs on rejected refresh. `/tmp/task05-fix-3f85191/report.txt`. Local verification only; exact-SHA external section_tasks review required.
+
+An additional adjacent fixture, `test_artifact_availability_validity`, initially
+failed before reaching its assertions: root-only sections, old resolver metadata
+and unbound artifacts no longer meet the persisted hierarchy contract. Initialize
+through explicit reparse/layout preparation and generation-bound artifact owners;
+change task-unit artifact writes to their owner entry point. Preserve all original
+validity/cache assertions and add stored-byte/no-preparation/no-provider/no-write
+read guards. The original external output-language and private splitting fixtures
+were reconciled in unit 1; their production protections remain unchanged.
+
+## TASK-04 explicit translation targets (2026-11-15, locally verified)
+
+Add real file/PostgreSQL HTTP regressions for single/batch content with omitted/false/true segmented modes, exact provider source/resource hash, saved/repeated read and cross-projection isolation. Verify primary enumeration, custom/heading projections, source/Undo/reparse rejection, alias lifecycle and failed publication; retain existing shared translation, learning and APP/TASK protections. Deterministic providers do not establish model semantic quality.
+
+Necessary source-projection correction: server-produced reading overlays already
+contain the accepted effective body. Do not apply OCR whitespace normalization to
+those blocks again; exact user whitespace, API content, translation hashes and
+same-text no-op behavior must agree. Preserve normalization of canonical/custom
+non-overlay inputs. Reconcile the reading-content SQL artifact fixture by capturing
+the current server document version before building generation policy; retain its
+old-result rejection and valid-current-write assertions.
+
+Verification: New exact-target suite 20/20 file/real SQL; original 12-method subset red 24 assertions/zero errors. External four default assertions red -> 2/2 methods green. Translation/storage 404/404; prior focused 229 pass/one skip; app 529 pass/six retained opt-in skips. Two hash-verified complete backups with bounded 2000-character HTTP samples pass. `/tmp/task04-fix-3f85191/report.txt`. Locally verified; section_tasks external gate remains open.
+The execution groups overlap and are not a unique-case total. The full immutable
+sources contain 652001/147401 characters; only their exact first 2000-character
+windows were exercised for this unit's translation HTTP mapping. Default effective
+blocks were 2000/1910 characters and first segmented blocks 264/9 characters; both
+stores used two deterministic calls per sample, with no repeated-read generation.
+This does not establish whole-book mapping, live LLM or OCR semantic quality.
+The existing overlay same-text regression failed before this unit on both stores;
+its unchanged assertions now pass. The SQL current-artifact fixture now projects
+the server document version before policy creation; stale-write assertions remain.
+File refresh storage failure retains recoverable partial state and its old saved
+result; SQL injected post-write failure rolls back and records failure. Neither
+read path automatically retries. No deployment, push or next-module work.
+
+## TASK-03 Summary/Note block evidence (2026-11-15, locally verified)
+
+For content-block Summary read/generate/refresh and Note read/save/delete, optional
+caller source_structure_version belongs to the selected block metadata, not the
+document storage version. Delegate missing/null/matching/stale evidence to the
+shared resolver; supplied evidence without matching block metadata remains stale.
+Other target levels keep their document-version admission check. Summary resolves
+from one repository snapshot then projects its server-owned document version into
+the generated artifact policy; publication revalidates source/lifecycle identity
+inside the existing owner mutation. Note validates block evidence while resolving
+canonical and effective views, retains canonical/overlay hash compatibility, and
+continues binding its source/editor token to current document version, incarnation,
+rename/reading identity, note revision and receipts under the mutation boundary.
+Do not invent block metadata, weaken stale checks, migrate on reads or prepare data.
+
+Acceptance: file/real PostgreSQL HTTP read/generate/reuse/refresh and note
+read/save/replay/delete with absent/null/valid distinct block version/stale evidence;
+no provider/save on rejected admission, exact source policy and note retention,
+canonical/overlay hashes, non-block guards and late source/version mutation rejection.
+Only TASK-03 and necessary app integration; TASK-04/05 remain gated.
+
+Local verification: new HTTP suite 14/14 file/real SQL methods. Red before the
+correction: eight failed assertions, zero errors/skips; original external block
+evidence: four failures -> 2/2 passing methods. Final focused: 230 executions,
+229 pass/one existing private-source opt-in skip; broader app: 535 executions,
+529 pass/six existing private-data opt-in skips, zero failures/errors. Groups overlap.
+Two complete immutable backup copies retain hashes; bounded real-source custom
+blocks (1263/1514 characters) with version 37 pass Summary reuse/refresh and Note
+save/replay/delete on both stores. Policy still carries server document version
+and exact selected text hash. Fixed outputs/token counter: no live LLM, capacity,
+all-block or semantic acceptance. Evidence: `/tmp/task03-fix-3f85191/report.txt`.
+TASK-04/05 and exact-SHA external review remain open; no commit/deploy/push.
+
+
+## TASK-02 current-session regression unit (2026-11-15, locally verified)
+
+Use real file/PostgreSQL repositories and actual critical-thinking/content HTTP
+routes. Reverse UUID lexical and publication order, reload the adapter, read both
+current and historical sessions, and update an older answer through timeout/retry.
+Verify current availability, target isolation, concurrent creation, publication
+rollback and legacy no-pointer single/ambiguous cases with zero writes on reads.
+Run the external TASK-02 reproducer before/after; retain unit 1 and app regressions.
+Providers are deterministic; no live LLM, UI or deployment acceptance claim.
+
+Local verification: new current-session suite 18/18 file/real PostgreSQL, including
+five HTTP target levels and single/batch availability. Before the correction, its
+original 16-method subset produced 12 failed assertions, zero errors/skips after
+harness corrections; final suite adds two five-level methods and expanded invalid
+reference cases. External TASK-02: SQL current-selection assertion fails before;
+file/SQL 2/2 pass after. Final focused regression: 216 executions, 215 pass, one
+existing private-source opt-in skip, zero failures/errors. Broader app regression:
+535 executions, 529 pass/six retained private-data opt-in skips, zero failures/errors.
+Groups overlap.
+Two complete immutable backup copies (652001/147401 canonical characters) pass
+file/SQL current/history/old-answer checks with deterministic providers. Canonical
+source and effective reading projection are reported separately, with unchanged
+backup hashes; this is not live LLM or all-block semantic acceptance.
+Evidence/commands: `/tmp/task02-fix-3f85191/report.txt`. TASK-03–05 and exact-SHA
+external review remain open; no commit, deployment or push at this unit boundary.
+
+## TASK-01 lifecycle regression unit (2026-11-14, locally verified)
+
+Independent reported fixture correction: evaluation language rejection uses the
+APP-03 safe `evaluation_invalid_output` code; retain answer, identity, metadata
+and single-provider-call assertions. The split-boundary fixture resolves from the backend root relative to its script,
+not the caller working directory. Its existing private book is read-only and
+hash-checked before/after; absent installations still fail the explicit prerequisite
+assertion rather than silently substituting data or skipping coverage.
+
+Use real file/PostgreSQL repositories and production services/coordinator for
+analysis/quiz/summary and Note. Exercise same-text reparse, delete/reimport, rename
+round trips, body Edit/Undo, same-text no-op, delayed old versus valid new output,
+editor save/delete and transaction rollback; compare complete persisted snapshots.
+Providers are deterministic and run outside mutation locks. Preserve old assertions
+when giving artifact fixtures the server-generated binding now required for writes.
+External TASK-01 reproductions must turn green; TASK-02 latest-session ordering is
+excluded from this unit rather than counted as fixed. Keep fixture drift and private
+source limitations separate from product findings. No live LLM/deployment claims.
+
+
+Local verification: `test_interaction_lifecycle_publication.py` passes 28/28
+file/real PostgreSQL methods, including threaded late/new publication and real
+storage rollback. The archived baseline runs the original 24-method matrix with
+68 expected assertion failures, zero errors/skips. External TASK-01 reproductions
+change from 10+3+3 failed assertions to 4+3+3 passing methods (groups overlap).
+Final focused: 198 executions, 197 pass/one private-source opt-in skip. Existing
+app group: 535 executions, 529 pass/six opt-in skips; interaction group: 179,
+178 pass/one opt-in skip. Two full immutable backup copies (652001/147401 canonical
+characters) pass lifecycle/retention checks on file and SQL with fixed outputs;
+no live LLM, tokenizer-budget or semantic-quality acceptance. Original source hashes
+remain unchanged. Evidence/commands: `/tmp/task01-fix-3f85191/report.txt`.
+TASK-02–05 and exact-SHA external review remain open. This is unit 1, not final
+module delivery; no commit, deployment or push at the unit confirmation boundary.
+
+Fixture evidence is separate: output-language suite 12/12; eight splitting modules
+execute 24 functions, all pass, including the existing private section-7 source.
+Four integration/CLI modules have zero discovery; they are not counted as passing
+integration flows. The private source file hash is unchanged. Archived new-test
+setup initially assumed old summaries already had interaction_policy (two fixture
+KeyErrors); corrected to construct legal absent metadata and reran the same red
+assertions with zero errors. Initial/new-test harness corrections are retained in
+/tmp evidence, not counted as product failures.
+
 ## APP-06 mapping regression scope (2026-11-14, locally verified)
 
 Add actual single/batch content and interaction HTTP tests on file/real PostgreSQL

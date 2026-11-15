@@ -1,5 +1,46 @@
 # scripts Checklist
 
+## TASK-05 supporting contract (2026-11-15)
+
+- [x] TASK-05: Validate legacy summary/quiz outputs without masking corruption or losing valid prior artifacts.
+  Acceptance: Strict complete-result validation, compatible read-only caches, actual file/SQL HTTP and retained source guards.
+  Evidence: New file/real SQL HTTP suite 22/22 (original 18-method red subset: 133 failed assertions, zero errors/skips); external five observational cases satisfy desired assertions after absence-safe diagnostic adaptation. Adjacent suites 114/114 after one fixture setup correction; TASK-04 20/20, prior focused 229 pass/one skip, app 529 pass/six skips, translation/storage 404/404. Two full immutable backups hash-verified; bounded first-2000-character section/chapter HTTP on both stores preserves valid outputs on rejected refresh. `/tmp/task05-fix-3f85191/report.txt`. Local verification only; exact-SHA external section_tasks review required.
+  Timestamp: 2026-11-15
+
+## Section tasks audit unit 4 (2026-11-15)
+
+- [x] TASK-04: Support exact explicit compatibility translation targets without duplicate enumeration.
+  Acceptance: file/real SQL HTTP exact source and saved reuse; source lifecycle/CAS protection, read-only behavior and unchanged primary pagination.
+  Evidence: New exact-target suite 20/20 file/real SQL; original 12-method subset red 24 assertions/zero errors. External four default assertions red -> 2/2 methods green. Translation/storage 404/404; prior focused 229 pass/one skip; app 529 pass/six retained opt-in skips. Two hash-verified complete backups with bounded 2000-character HTTP samples pass. `/tmp/task04-fix-3f85191/report.txt`. Locally verified; section_tasks external gate remains open.
+  Timestamp: 2026-11-15
+
+## Section tasks audit unit 3 (2026-11-15)
+
+- [x] TASK-03: Verify Summary/Note optional block evidence across file/real SQL HTTP workflows.
+  Acceptance: absent/null/valid distinct/stale evidence, no provider or persistence on rejection, positive complete workflows and preserved source/lifecycle/editor guards.
+  Evidence: New file/real SQL HTTP 14/14; eight baseline assertions red/zero errors; external four failures -> 2/2 green. Final focused 229 pass/one skip; app 529 pass/six skips; two immutable full-source copies with bounded block evidence pass, hashes unchanged. `/tmp/task03-fix-3f85191/report.txt`. Local unit verification only; section_tasks external gate remains open.
+  Timestamp: 2026-11-15
+
+## Section tasks audit unit 2 (2026-11-15)
+
+- [x] TASK-02: Verify durable current-session selection independently of JSON key ordering.
+  Acceptance: file/real SQL HTTP current/history/availability, old-answer retry, atomic creation/rollback, target isolation and legacy read-only behavior.
+  Evidence: New current-session suite 18/18 file/real SQL; original 16-method subset red 12 assertions/zero errors; external SQL failure -> 2/2 file/SQL green. Focused 215 pass/one private opt-in skip; app 529 pass/six retained skips; full backup current/history checks pass with unchanged hashes. `/tmp/task02-fix-3f85191/report.txt`. Unit 2 locally verified; external module review remains open.
+  Timestamp: 2026-11-15
+
+## Section tasks audit unit 1 (2026-11-14)
+
+- [x] TASK-01: Verify TASK-01 lifecycle matrices using real file and PostgreSQL persistence.
+  Acceptance: exact source/incarnation/rename/revision checks at locked publication; positive reuse/new generation, notes/receipt/CAS preservation, rollback and delayed result matrices.
+  Evidence: New lifecycle suite 28/28 file/SQL; archive matrix red 68 assertions/zero errors; external 10+3+3 assertions red -> 4+3+3 methods green. Final focused 197 pass/one skip; app 529 pass/six skips; interaction 178 pass/one skip; full immutable-source file/SQL checks. `/tmp/task01-fix-3f85191/report.txt`. Unit 1 locally verified, module external review remains open.
+  Timestamp: 2026-11-14
+
+
+- [x] Reconcile section_tasks audit fixtures without weakening product assertions.
+  Acceptance: Safe evaluation error classification preserves answer/identity/metadata/provider count; private section-7 fixture has cwd-independent location and retains all split assertions; source bytes unchanged.
+  Evidence: Output language 12/12; splitting 24/24 actual functions, zero-discovery integration entrypoints excluded. Private fixture hash unchanged; `/tmp/task01-fix-3f85191/split-fixture-after.json` and `report.txt`.
+  Timestamp: 2026-11-14
+
 ## APP-06 correction (2026-11-14)
 
 - [x] APP-06 regression: Verify default/segmented exact-source mapping and retained guards.

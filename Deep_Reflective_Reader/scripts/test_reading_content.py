@@ -101,7 +101,9 @@ class ReadingContentTests(unittest.TestCase):
         from section_tasks.reading_interaction_service_contracts import ReadingInteractionArtifact
         from section_tasks.interaction_policy_identity import policy_metadata
         def artifact():
-            target = ReadingTargetResolver().resolve(document=self.repo.load_document("book"), target_level="document")
+            document = self.repo.load_document("book")
+            target = replace(ReadingTargetResolver().resolve(document=document, target_level="document"),
+                source_structure_version=document.parse_provenance.get("storage_structure_version"))
             request = ReadingInteractionRequest(target=target, interaction_type="analysis", context_metadata={"doc_name":"book"})
             return ReadingInteractionArtifact.from_target(target=target, interaction_type="analysis", status="completed",
                 payload={"interpretation":"A supported interpretation"}, metadata={**policy_metadata(request), "context":{"doc_name":"book"}})

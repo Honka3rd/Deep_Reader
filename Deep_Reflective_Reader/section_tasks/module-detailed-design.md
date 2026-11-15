@@ -1,5 +1,159 @@
 # section_tasks Detailed Design
 
+## TASK-05 legacy output validation (2026-11-15, locally verified)
+
+Reject the entire legacy section/chapter summary or quiz result before success or publication when summary is not a nonblank string, any question field is not a nonblank string, or trimmed question IDs are duplicated. Keep the generation minimum of four questions. Do not stringify invalid values or filter invalid questions. Provider failures preserve previous artifacts. Existing source-bound publication remains mandatory and model work stays outside locks.
+
+Cache validation uses the same field/uniqueness rules, without imposing a new four-question minimum on otherwise valid legacy caches. Shared deserialization must not disguise corrupt payloads; availability remains read-only. Already stored ordinary strings (including "None" or numeric-looking text) are not evidence of corruption and remain eligible under existing source/version rules.
+
+Verification: New file/real SQL HTTP suite 22/22 (original 18-method red subset: 133 failed assertions, zero errors/skips); external five observational cases satisfy desired assertions after absence-safe diagnostic adaptation. Adjacent suites 114/114 after one fixture setup correction; TASK-04 20/20, prior focused 229 pass/one skip, app 529 pass/six skips, translation/storage 404/404. Two full immutable backups hash-verified; bounded first-2000-character section/chapter HTTP on both stores preserves valid outputs on rejected refresh. `/tmp/task05-fix-3f85191/report.txt`. Local verification only; exact-SHA external section_tasks review required.
+
+## TASK-04 explicit translation targets (2026-11-15, locally verified)
+
+Translation ownership resolves explicit default compatibility targets through the same effective target projection as content HTTP. Preserve segmented IDs and exact default/custom text; a compatibility ID never aliases a different paragraph. `translation_snapshot` and aligned-source lookup must agree on ownership and exact hash. Primary reading/learning enumeration stays unchanged; ordinary reads do not migrate or generate. Legacy paragraph data remains readable, while new results use the shared sentence resource/operation storage.
+
+Necessary source-projection correction: server-produced reading overlays already
+contain the accepted effective body. Do not apply OCR whitespace normalization to
+those blocks again; exact user whitespace, API content, translation hashes and
+same-text no-op behavior must agree. Preserve normalization of canonical/custom
+non-overlay inputs. Reconcile the reading-content SQL artifact fixture by capturing
+the current server document version before building generation policy; retain its
+old-result rejection and valid-current-write assertions.
+
+Verification: New exact-target suite 20/20 file/real SQL; original 12-method subset red 24 assertions/zero errors. External four default assertions red -> 2/2 methods green. Translation/storage 404/404; prior focused 229 pass/one skip; app 529 pass/six retained opt-in skips. Two hash-verified complete backups with bounded 2000-character HTTP samples pass. `/tmp/task04-fix-3f85191/report.txt`. Locally verified; section_tasks external gate remains open.
+The execution groups overlap and are not a unique-case total. The full immutable
+sources contain 652001/147401 characters; only their exact first 2000-character
+windows were exercised for this unit's translation HTTP mapping. Default effective
+blocks were 2000/1910 characters and first segmented blocks 264/9 characters; both
+stores used two deterministic calls per sample, with no repeated-read generation.
+This does not establish whole-book mapping, live LLM or OCR semantic quality.
+The existing overlay same-text regression failed before this unit on both stores;
+its unchanged assertions now pass. The SQL current-artifact fixture now projects
+the server document version before policy creation; stale-write assertions remain.
+File refresh storage failure retains recoverable partial state and its old saved
+result; SQL injected post-write failure rolls back and records failure. Neither
+read path automatically retries. No deployment, push or next-module work.
+
+## TASK-03 Summary/Note block evidence (2026-11-15, locally verified)
+
+For content-block Summary read/generate/refresh and Note read/save/delete, optional
+caller source_structure_version belongs to the selected block metadata, not the
+document storage version. Delegate missing/null/matching/stale evidence to the
+shared resolver; supplied evidence without matching block metadata remains stale.
+Other target levels keep their document-version admission check. Summary resolves
+from one repository snapshot then projects its server-owned document version into
+the generated artifact policy; publication revalidates source/lifecycle identity
+inside the existing owner mutation. Note validates block evidence while resolving
+canonical and effective views, retains canonical/overlay hash compatibility, and
+continues binding its source/editor token to current document version, incarnation,
+rename/reading identity, note revision and receipts under the mutation boundary.
+Do not invent block metadata, weaken stale checks, migrate on reads or prepare data.
+
+Acceptance: file/real PostgreSQL HTTP read/generate/reuse/refresh and note
+read/save/replay/delete with absent/null/valid distinct block version/stale evidence;
+no provider/save on rejected admission, exact source policy and note retention,
+canonical/overlay hashes, non-block guards and late source/version mutation rejection.
+Only TASK-03 and necessary app integration; TASK-04/05 remain gated.
+
+Local verification: new HTTP suite 14/14 file/real SQL methods. Red before the
+correction: eight failed assertions, zero errors/skips; original external block
+evidence: four failures -> 2/2 passing methods. Final focused: 230 executions,
+229 pass/one existing private-source opt-in skip; broader app: 535 executions,
+529 pass/six existing private-data opt-in skips, zero failures/errors. Groups overlap.
+Two complete immutable backup copies retain hashes; bounded real-source custom
+blocks (1263/1514 characters) with version 37 pass Summary reuse/refresh and Note
+save/replay/delete on both stores. Policy still carries server document version
+and exact selected text hash. Fixed outputs/token counter: no live LLM, capacity,
+all-block or semantic acceptance. Evidence: `/tmp/task03-fix-3f85191/report.txt`.
+TASK-04/05 and exact-SHA external review remain open; no commit/deploy/push.
+
+
+## TASK-02 current session selection (2026-11-15, locally verified)
+
+Persist a target-scoped current session reference in the existing
+`reading_interaction_artifacts` metadata under `_critical_thinking_current`.
+Key the reference by the complete target path, encoded as a JSON array; the value
+contains the session ID. This index is derived interaction state, not hierarchy.
+Publish the new session and reference together inside the existing per-document
+file lock / SQL row transaction, after source and session CAS validation. Only a
+new session advances current; submitted answers, evaluation, retry and other
+updates to historical sessions leave the reference unchanged. Concurrent new
+sessions follow successful publication order, not UUID order or provider start time.
+All provider work remains outside the mutation. Existing cleanup of interaction
+metadata removes the reference with its sessions; no independent lifecycle owner.
+
+Read current through the reference and verify the selected session's complete target.
+A missing/dangling/invalid reference never borrows another target's session. For
+legacy targets without a reference, exactly one matching session is unambiguous
+and may be read. Multiple legacy matches have no trustworthy creation timestamps:
+return no current selection (`not_generated` availability), retain all history for
+explicit session-ID reads, and let the next explicit new-question publication
+establish current. Updating old sessions does not backfill a guess. No read-time
+migration, timestamp inference, UUID sorting or persistence write.
+
+Acceptance: file and real PostgreSQL reload/current/availability with reversed UUID
+order, historical answer/timeout/retry, isolated targets, concurrent publication,
+failed writes/rollback, legacy ambiguity and no-write reads. Retain TASK-01 and
+APP-01–06 source/lifecycle/CAS protection.
+
+Local verification: new current-session suite 18/18 file/real PostgreSQL, including
+five HTTP target levels and single/batch availability. Before the correction, its
+original 16-method subset produced 12 failed assertions, zero errors/skips after
+harness corrections; final suite adds two five-level methods and expanded invalid
+reference cases. External TASK-02: SQL current-selection assertion fails before;
+file/SQL 2/2 pass after. Final focused regression: 216 executions, 215 pass, one
+existing private-source opt-in skip, zero failures/errors. Broader app regression:
+535 executions, 529 pass/six retained private-data opt-in skips, zero failures/errors.
+Groups overlap.
+Two complete immutable backup copies (652001/147401 canonical characters) pass
+file/SQL current/history/old-answer checks with deterministic providers. Canonical
+source and effective reading projection are reported separately, with unchanged
+backup hashes; this is not live LLM or all-block semantic acceptance.
+Evidence/commands: `/tmp/task02-fix-3f85191/report.txt`. TASK-03–05 and exact-SHA
+external review remain open; no commit, deployment or push at this unit boundary.
+
+
+## TASK-01 lifecycle publication correction (2026-11-14, locally verified)
+
+Capture source identity on the server-resolved target, before generation/editor
+opening. Analysis, quiz, public summary and critical-thinking publication must
+compare target path, exact effective text, document storage version, reading
+revision/review state, incarnation and rename generation against the current
+snapshot inside the existing repository mutation. Model calls remain outside locks.
+Summary must never adopt a newly loaded incarnation for an earlier target; parent
+preparation also validates the original target before resolving ancestors. Generated
+cache validity includes the same lifecycle identity. Legacy unbound output may be
+read as stale, never silently authorized or backfilled.
+Note editor tokens additionally bind rename generation and reading revision without
+changing retained note source identity or prose. Validate token, note revision and
+mutation receipt under the existing atomic boundary for save/delete. Same-text
+no-ops keep tokens valid; changed-body/Undo and lifecycle transitions reject old
+editors, while a fresh read can edit a retained note. Existing source/hash, canonical
+versus overlay semantics and session CAS stay intact. TASK-03 block evidence is a
+separate unit; no change to its admission rule in this unit.
+Acceptance: file/real PostgreSQL delayed-result/editor matrices, genuine writes and
+readback, normal reuse/new generation, no lock during providers, rollback and
+late/new-result preservation. Unit 1 is locally verified; developer confirmation is required before TASK-02.
+Already stored summary prose remains retained on rename but is stale until explicit
+current-generation regeneration. Editor tokens issued before this correction need
+a fresh read; no read-time migration or token backfill is performed.
+
+Local verification: `test_interaction_lifecycle_publication.py` passes 28/28
+file/real PostgreSQL methods, including threaded late/new publication and real
+storage rollback. The archived baseline runs the original 24-method matrix with
+68 expected assertion failures, zero errors/skips. External TASK-01 reproductions
+change from 10+3+3 failed assertions to 4+3+3 passing methods (groups overlap).
+Final focused: 198 executions, 197 pass/one private-source opt-in skip. Existing
+app group: 535 executions, 529 pass/six opt-in skips; interaction group: 179,
+178 pass/one opt-in skip. Two full immutable backup copies (652001/147401 canonical
+characters) pass lifecycle/retention checks on file and SQL with fixed outputs;
+no live LLM, tokenizer-budget or semantic-quality acceptance. Original source hashes
+remain unchanged. Evidence/commands: `/tmp/task01-fix-3f85191/report.txt`.
+TASK-02–05 and exact-SHA external review remain open. This is unit 1, not final
+module delivery; no commit, deployment or push at the unit confirmation boundary.
+
+
+
 ## APP-06 default/segmented identity (2026-11-14, locally verified)
 
 The resolver owns one read-only projection pair for content responses and target
@@ -2292,7 +2446,9 @@ and structural reparse advance a separate source epoch. Ordinary metadata writer
 preserve these two owned fields, preventing delayed legacy saves from erasing them.
 Confirmed structural replacement clears both; no-op/title-only/failure preserves
 them. Source/version/epoch guards reject delayed writes. Explicit rename rekeys
-new action identities and provenance without changing note text or summary prose.
+new action identities without changing note text or summary prose. Under TASK-01,
+stored summary policy is not reassigned to the new generation: retained prose is
+stale until explicit generation; fresh Note reads issue valid new editor tokens.
 
 Evidence: `test_summary_note_contracts.py`, `test_note_interaction_service.py`,
 `test_summary_interaction_service.py`, disposable PostgreSQL

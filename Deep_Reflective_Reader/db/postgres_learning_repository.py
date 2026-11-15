@@ -110,7 +110,7 @@ class PostgresLearningRepository(LearningRepositoryBehavior):
             row_id = self._identity(connection, document_id, lock=True)
             require(row_id is not None, 'learning_document_missing')
             document = self._document(connection, document_id)
-            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id)}
+            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id, include_compatibility=True)}
             state = learning_rows.load_state(connection, row_id, self.scope, document_id, **selection)
             before = {key: dict(value) if type(value) is dict else value for key, value in state.items()}
 
@@ -140,7 +140,7 @@ class PostgresLearningRepository(LearningRepositoryBehavior):
                 raise LearningStorageError('learning_claim_receipt_invalid')
             self._scope_key(document_id, op.binding.key)
             document = self._document(connection, document_id)
-            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id)}
+            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id, include_compatibility=True)}
             block = self._block(blocks, op.binding.key.resource.source)
             row = connection.execute('SELECT * FROM learning_sentences WHERE document_row_id=%s AND resource_id=%s',
                                      (row_id, op.binding.key.resource.resource_id)).fetchone()

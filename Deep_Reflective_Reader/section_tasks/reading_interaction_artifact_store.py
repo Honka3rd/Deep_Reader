@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import json
 from typing import Any
 from uuid import uuid4
 
@@ -43,6 +44,7 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
     """Persist current reading-interaction artifacts in document artifact metadata."""
 
     _METADATA_KEY = "reading_interaction_artifacts"
+    _CURRENT_SESSIONS_KEY = "_critical_thinking_current"
 
     @classmethod
     def from_snapshot(cls, document, doc_name: str):
@@ -155,15 +157,44 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
             "critical_thinking_session",
             {},
         )
+        # References are committed with new sessions under the same owner lock.
+        # Inspect raw references so corrupt entries cannot silently become legacy.
+        raw_metadata = document_artifacts.metadata.get(self._METADATA_KEY, {})
+        if not isinstance(raw_metadata, dict):
+            return None
+        references = raw_metadata.get(self._CURRENT_SESSIONS_KEY, {})
+        if not isinstance(references, dict):
+            return None
+        target_key = self._current_session_key(request.target)
+        if target_key in references:
+            reference = references[target_key]
+            session_id = reference.get("session_id") if isinstance(reference, dict) else None
+            if not isinstance(session_id, str) or not session_id:
+                return None
+            artifact = self._session_from_document(document, session_id)
+            return (artifact if artifact is not None
+                    and self._artifact_matches_request(artifact, request) else None)
+
+        # Legacy records have no trustworthy creation timestamps. One matching
+        # session is unambiguous; multiple sessions remain readable by explicit ID.
         matched_artifact: ReadingInteractionArtifact | None = None
         for artifact_payload in session_payloads.values():
-            if not isinstance(artifact_payload, dict):
-                continue
             common_artifact = CommonArtifact.from_dict(artifact_payload)
             artifact = common_artifact_to_reading_interaction_artifact(common_artifact)
             if self._artifact_matches_request(artifact, request):
+                if matched_artifact is not None:
+                    return None
                 matched_artifact = artifact
         return matched_artifact
+
+    @staticmethod
+    def _current_session_key(target) -> str:
+        """Collision-free full target path, scoped to the owning document metadata."""
+        return json.dumps([
+            target.document_id, target.target_level, target.target_id,
+            target.chapter_id, target.section_id, target.task_unit_id,
+            target.content_block_id,
+        ], ensure_ascii=False, separators=(",", ":"))
 
     def save_critical_thinking_session(
         self,
@@ -225,27 +256,8 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
 
     @staticmethod
     def _validate_session_source(document, artifact):
-        from section_tasks.reading_target_resolver import ReadingTargetResolver
-        from section_tasks.interaction_policy_identity import effective_policy
-        try:
-            target = ReadingTargetResolver().resolve(
-                document=document, target_level=artifact.target_level,
-                chapter_id=artifact.chapter_id, section_id=artifact.section_id,
-                task_unit_id=artifact.task_unit_id, content_block_id=artifact.content_block_id)
-            # Resolver version evidence belongs to the selected block metadata.
-            # Publication instead compares the locked document's storage version;
-            # ordinary segmented blocks need not carry their own version.
-            target = replace(target, source_structure_version=document.parse_provenance.get("storage_structure_version"))
-            current = effective_policy(ReadingInteractionRequest(
-                target=target, interaction_type="critical_thinking_session"))
-            supplied = artifact.metadata.get("interaction_policy", {})
-            fields = ("target", "source_sha256", "source_structure_version", "reading_revision",
-                      "source_needs_review", "document_incarnation", "artifact_generation_epoch")
-            valid = bool(current["document_incarnation"]) and all(
-                supplied.get(key) == current.get(key) for key in fields)
-        except (ValueError, KeyError, TypeError):
-            valid = False
-        if not valid:
+        from section_tasks.interaction_policy_identity import source_policy_matches
+        if not source_policy_matches(document, artifact, artifact.metadata.get("interaction_policy", {})):
             raise CriticalThinkingConflict("stale_critical_thinking_source")
 
     def _save_current_artifact(
@@ -305,6 +317,10 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
                 if expected_session is None and artifact.status not in {
                         "question_generated", "generation_failed", "insufficient_content", "stale_target"}:
                     raise CriticalThinkingConflict("critical_thinking_session_requires_question")
+            else:
+                from section_tasks.interaction_policy_identity import source_policy_matches
+                if not source_policy_matches(document, artifact, artifact.metadata.get("interaction_policy", {})):
+                    raise ValueError("stale_interaction_write")
             version = common_artifact.source_structure_version
             if version is not None and document.parse_provenance.get("storage_structure_version") != version:
                 raise ValueError("stale_interaction_write")
@@ -317,6 +333,12 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
             artifact_type_payload = dict(interaction_metadata.get(artifact.interaction_type, {}))
             artifact_type_payload[common_artifact.artifact_id or ""] = common_artifact.to_dict()
             interaction_metadata[artifact.interaction_type] = artifact_type_payload
+            if artifact.interaction_type == "critical_thinking_session" and expected_session is None:
+                # Only creation advances current. Answer/evaluation/retry of older
+                # sessions must never take the place of a newer question.
+                references = dict(interaction_metadata.get(self._CURRENT_SESSIONS_KEY, {}))
+                references[self._current_session_key(artifact)] = {"session_id": artifact_id}
+                interaction_metadata[self._CURRENT_SESSIONS_KEY] = references
             document_metadata[self._METADATA_KEY] = interaction_metadata
             return replace(document_artifacts, metadata=document_metadata), None
         self._document_artifact_repository.mutate_document_artifacts(doc_name, mutation)
@@ -346,7 +368,14 @@ class DocumentReadingInteractionArtifactStore(AnalysisInteractionArtifactStore):
         artifact_payload = interaction_metadata.get(artifact_type, {}).get(artifact_id)
         if not isinstance(artifact_payload, dict):
             return None
-        return CommonArtifact.from_dict(artifact_payload)
+        common = CommonArtifact.from_dict(artifact_payload)
+        from section_tasks.interaction_policy_identity import source_policy_matches
+        if common.status == "completed" and not source_policy_matches(
+                document, request.target, common.metadata.get("interaction_policy", {})):
+            # Project stale persisted output without modifying history. An earlier
+            # request cannot make a retained old-generation cache current again.
+            return replace(common, status="stale_target", payload={}, reason="interaction_policy_stale")
+        return common
 
     @staticmethod
     def _artifact_matches_request(

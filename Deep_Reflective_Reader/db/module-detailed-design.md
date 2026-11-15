@@ -1,5 +1,18 @@
 # db Detailed Design
 
+## TASK-04 explicit translation targets (2026-11-15, locally verified)
+
+PostgreSQL learning contexts and bounded checkpoint reads validate the same accepted explicit target set as the file adapter, including compatibility aliases. Keep bounded history selections, current-source/epoch checks, preference→document→learning locks and short transactions. No migration or additional aggregate storage; primary source pagination remains unchanged.
+
+Verification: `scripts/test_translation_compatibility_targets.py` passes 20/20
+file/real PostgreSQL methods, including source/Undo/reparse, rename, concurrent
+claims and failed refresh preservation. Translation/storage regression passes
+404/404. Primary pagination excludes aliases; explicit target lookup and publication
+validate exact source/hash. Full counts, red/green evidence, bounded real-source
+samples and limitations: `/tmp/task04-fix-3f85191/report.txt` and the section_tasks
+TASK-04 design. Supporting integration only; no full-module reapproval, deployment
+or push is claimed.
+
 ## DB-01–03 audit remediation (2026-11-13, locally verified)
 
 Ordinary hierarchy/metadata saves merge against current SQL row JSONB inside the

@@ -672,7 +672,9 @@ class ReadingTargetResolver:
     ) -> list[TaskUnitContentBlock]:
         normalized_blocks: list[TaskUnitContentBlock] = []
         for block in content_blocks:
-            normalized_content = normalize_ocr_text(block.content)
+            # Reading overlays are authoritative user text, not raw OCR input.
+            normalized_content = (block.content if (block.metadata or {}).get("reading_overlay")
+                                  else normalize_ocr_text(block.content))
             if normalized_content == block.content:
                 normalized_blocks.append(block)
                 continue

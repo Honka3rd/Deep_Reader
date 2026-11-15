@@ -106,7 +106,17 @@ class PostgresNotes(NoteServiceTests):
                 self.assertEqual(self.service.read("renamed", **self.target)["note"], note)
                 target = replace(target, document_id="renamed", target_id="renamed")
                 request = replace(request, target=target, context_metadata={"doc_name": "renamed", "document_language": "en"})
-                self.assertEqual(summaries.read(request).payload, summary.payload)
+                # An editor/generator target captured before rename is no longer
+                # authority, even though the already stored prose is retained.
+                self.assertEqual(summaries.read(request).status, "stale_target")
+                stored = self.repo.load_document("renamed")
+                persisted = next(iter(stored.document_task_artifacts.metadata["public_summary"].values()))
+                self.assertEqual(persisted["payload"], summary.payload)
+                current = replace(ReadingTargetResolver().resolve(document=stored, target_level="document"),
+                                  source_structure_version=stored.parse_provenance.get("storage_structure_version"))
+                fresh_request = replace(request, target=current)
+                self.assertEqual(summaries.read(fresh_request).status, "stale_target")
+                self.assertEqual(summaries.generate(fresh_request).status, "completed")
                 self.repo.save_reparsed_document(_document(), "occupied")
                 context = client.get('/documents/lifecycle/rename-context',params={'doc_name':'renamed'})
                 conflict = client.post("/documents/lifecycle/rename", json={

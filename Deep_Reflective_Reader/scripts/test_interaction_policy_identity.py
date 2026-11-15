@@ -26,7 +26,7 @@ class InteractionPolicyIdentityTests(unittest.TestCase):
         self.repository = StructuredDocumentArtifactRepository(base_dir=self.temp.name)
         self.repository.save_document(_document(), doc_name="book")
         self.store = DocumentReadingInteractionArtifactStore(self.repository)
-        self.target = ReadingTargetResolver().resolve(document=_document(), target_level="section", section_id="section-1")
+        self.target = ReadingTargetResolver().resolve(document=self.repository.load_document("book"), target_level="section", section_id="section-1")
         self.calls = []
 
     def request(self, kind="analysis"):
@@ -50,7 +50,22 @@ class InteractionPolicyIdentityTests(unittest.TestCase):
         return {str(path): path.read_bytes() for path in Path(self.temp.name).rglob("*") if path.is_file()}
 
     def save(self, artifact):
-        return getattr(self.store, f"save_{artifact.interaction_type}_artifact")(artifact)
+        # Install historical/corrupt bytes explicitly. New writes must not bypass
+        # the source guard merely to arrange a read-only compatibility scenario.
+        from shared.task_artifacts import DocumentTaskArtifacts
+        from section_tasks.reading_interaction_common_artifact import reading_interaction_artifact_to_common_artifact
+        artifact_id = self.store._artifact_id_for(artifact_type=artifact.interaction_type,
+            document_id=artifact.document_id, target_level=artifact.target_level,
+            target_id=artifact.target_id, content_block_id=artifact.content_block_id)
+        def mutation(document):
+            artifacts = document.document_task_artifacts or DocumentTaskArtifacts()
+            metadata = dict(artifacts.metadata)
+            interactions = dict(metadata.get('reading_interaction_artifacts', {}))
+            records = dict(interactions.get(artifact.interaction_type, {}))
+            records[artifact_id] = reading_interaction_artifact_to_common_artifact(artifact, artifact_id=artifact_id).to_dict()
+            interactions[artifact.interaction_type] = records
+            return replace(artifacts, metadata={**metadata, 'reading_interaction_artifacts': interactions}), None
+        self.repository.mutate_document_artifacts('book', mutation)
 
     def test_missing_identity_is_stale_until_explicit_generation(self):
         for kind in ["analysis", "quiz"]:
@@ -120,7 +135,9 @@ class InteractionPolicyIdentityTests(unittest.TestCase):
         req = self.request()
         orchestrator = self.orchestrator("analysis")
         tiny = replace(req, target=replace(req.target, content="abc"))
-        self.assertEqual(orchestrator.generate(tiny).status, "insufficient_content")
+        historical = AnalysisInteractionService(self.generate).generate(tiny)
+        self.assertEqual(historical.status, "insufficient_content")
+        self.save(historical)
         before = self.snapshot()
         self.assertEqual(orchestrator.read(req).status, "not_generated")
         self.assertEqual(orchestrator.read(tiny).status, "insufficient_content")

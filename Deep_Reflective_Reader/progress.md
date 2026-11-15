@@ -1,5 +1,136 @@
 # Deep Reflective Reader Progress
 
+## Section Tasks Audit Unit 5 / Local Review Delivery (2026-11-15)
+
+TASK-01 through TASK-05 are locally verified; the exact-SHA external section_tasks
+review gate remains open. TASK-05 rejects non-string/empty summary and quiz fields,
+duplicate question IDs and malformed whole outputs before saving. Recognizable
+corrupt caches cannot become valid through stringification or item filtering.
+Valid legacy one-question caches and ordinary strings remain compatible; reads do
+not repair storage. Failed refresh preserves previous valid artifacts, and existing
+source/incarnation/rename/revision/session guards remain in place.
+
+New file/real SQL HTTP suite 22/22; original 18-method subset red 133 assertions,
+zero errors/skips. External five observational cases now satisfy desired assertions
+with one absence-safe diagnostic adjustment (not five unittest failures).
+Adjacent suite final results 114/114: 113 initially pass, one obsolete hierarchy/layout
+fixture corrected and rerun with every original assertion plus read-only guards.
+Prior TASK-04 suite 20/20; focused 230 executions, 229 pass/one private-source opt-in
+skip; app 535 executions, 529 pass/six retained private-data skips; translation/storage
+404/404. Groups overlap and must not be summed as unique business scenarios.
+Two complete immutable backups (652001/147401 canonical characters) retain expected
+hashes. Exact first-2000-character samples pass section/chapter summary/quiz HTTP
+on file/SQL, including invalid refresh retention and zero-provider warm reuse.
+No live LLM, full-book/OCR semantics, UI, TCP or deployment acceptance claim.
+Evidence and detailed skip/fixture attribution: `/tmp/task05-fix-3f85191/report.txt`;
+cumulative deliverable: `/tmp/task05-fix-3f85191/review-report.txt`.
+
+Direct checklist recount excludes template examples: section_tasks 111 checked/0
+unchecked; app 64/11; scripts 77/1; shared 13/5. The prior shared aggregate (9/0) was
+outdated: recount includes its existing vocabulary/learning tasks and five unchanged
+future items. Only TASK-05 and its three supporting items changed status; no old
+unresolved task was promoted. db 70/4 and document_structure 102/18 remain unchanged.
+Local review commit follows validation; no deployment, push or next-module work.
+Timestamp: 2026-11-15
+
+## Section Tasks Audit Unit 4 (2026-11-15)
+
+TASK-04 locally verified. Explicit translation lookups accept compatibility aliases
+through the same effective source projection as content HTTP. Shared aligned reads,
+claim/dispatch/checkpoint/commit and lifecycle guards validate those exact sources;
+primary reading/learning pagination still excludes aliases. Overlay text retains
+exact user whitespace; no read-time generation, migration or profile mutation.
+New suite 20/20 file/real SQL; original 12-method subset red 24 assertions/zero errors;
+external four default failures -> 2/2 passing methods. Translation/storage regression
+404/404; prior focused 230 executions, 229 pass/one private-source opt-in skip; app
+535 executions, 529 pass/six retained private-data opt-in skips. No failures/errors;
+these groups overlap and are not a unique-case sum.
+The existing same-text overlay failures were independently reproduced before this
+unit and fixed without changing their assertions. One SQL reading-content fixture
+now captures server document version; source/epoch guards remain unchanged.
+Full immutable backup hashes (652001/147401 canonical characters) remain unchanged.
+Bounded first-2000-character source copies verify single/batch omitted/false/true
+HTTP mapping on both stores; effective default/first segmented lengths are
+2000/264 and 1910/9. Two deterministic translation calls per sample; reuse is free
+of provider calls. No whole-book mapping, live LLM/OCR semantics, UI or deployment
+acceptance claim. Evidence: `/tmp/task04-fix-3f85191/report.txt`.
+Direct owner recount (excluding template examples): section_tasks 110 checked/1
+unchecked; document_structure 102/18; db 70/4; scripts 76/1. The previous scripts
+aggregate included one literal completed-task template; excluding it and adding
+this unit leaves 76 actual checked items. Only TASK-04 and its
+supporting items changed status; unrelated unresolved work remains unchanged.
+TASK-05 awaits developer confirmation; the latest-SHA section_tasks review gate
+remains open. No final review commit, deployment, push or next-module work.
+Timestamp: 2026-11-15
+
+## Section Tasks Audit Unit 3 (2026-11-15)
+
+TASK-03 locally verified. Summary/Note content-block evidence is validated by the
+resolver; server document version remains in Summary publication policy and Note
+source/editor identity. Non-block admission and locked source/lifecycle/receipt
+protections remain unchanged. No read-time preparation, generation or mutation.
+New file/real SQL HTTP 14/14; prior eight failed assertions -> green, zero errors;
+external four failed assertions -> 2/2 passing methods. Final focused: 230 executions,
+229 pass/one private-source opt-in skip. Broader app: 535 executions, 529 pass/six
+retained private-data opt-in skips. Zero failures/errors; groups overlap.
+Two immutable full-source copies keep hashes; isolated custom version-37 blocks
+(1263/1514 characters) verify Summary reuse/refresh and Note save/replay/delete on
+both backends. Deterministic output/token counter: no live model, capacity, semantic,
+all-block mapping or deployment claim. TASK-01/02 and APP-01–06 regressions retained.
+Direct checklist counts: section_tasks 109 checked/2 unchecked; app 63/11 (supporting
+integration only); scripts 76/1. Unrelated unresolved items retain their status.
+TASK-04/05 and latest-SHA external review remain open. No commit/deployment/push or
+next-module work; TASK-04 awaits developer confirmation under the workflow.
+Evidence/commands: `/tmp/task03-fix-3f85191/report.txt`.
+Timestamp: 2026-11-15
+
+## Section Tasks Audit Unit 2 (2026-11-15)
+
+TASK-02 is locally verified: explicit current-session references publish atomically
+with new sessions; answering/retrying old sessions leaves current unchanged. Reads
+remain side-effect free. Legacy histories with multiple sessions and no current
+reference are accessible by explicit ID; no UUID/JSON-order guess or read migration.
+New file/real PostgreSQL suite 18/18; external TASK-02 red SQL assertion -> 2/2 green.
+Original 16-method new-test subset red 12 assertions, zero errors/skips after harness
+corrections. Focused regression: 216 executions, 215 pass, one private-source opt-in
+skip, no failures/errors. Broader app regression: 535 executions, 529 pass/six retained
+private-data opt-in skips, zero failures/errors; groups overlap. Two immutable
+complete backup copies retain hashes and
+pass current/history/old-answer checks on both stores with deterministic providers.
+Canonical/full-source evidence is distinct from the effective reading projection;
+no live LLM, OCR semantics, UI or deployment acceptance claimed.
+TASK-01 protection remains; TASK-03–05 and exact-SHA external review remain open.
+No new commit, deployment, push or next-module work. Unit 3 requires developer
+confirmation under the delivery workflow. Direct checklist recount: section_tasks
+108 checked/3 unchecked; scripts 75 checked/1 unchecked (unrelated DOCLOAD gate).
+Evidence/commands: `/tmp/task02-fix-3f85191/report.txt`.
+Timestamp: 2026-11-15
+
+## Section Tasks Audit Unit 1 (2026-11-14)
+
+Baseline: 3f85191c90c85d9f3dd9e3ab8804101e79c7dee9. TASK-01 is locally
+verified: shared source/lifecycle publication guards, summary admission/cache fences,
+and Note editor rename/reading identity. Existing source/epoch/session/receipt
+protection remains. TASK-02–05 are open and await sequential unit confirmation;
+prior app approval does not approve section_tasks. No local final review commit,
+deployment, push or next-module work at this unit boundary.
+New tests 28/28 file/real SQL; archived 24-method subset reproduces 68 assertions
+with zero errors/skips. External TASK-01 10+3+3 failed assertions -> 4+3+3 passing
+methods. Final focused 198 executions: 197 pass/one private-source opt-in skip;
+app regression 535: 529 pass/six retained opt-in skips; interactions 179: 178 pass/
+one opt-in skip. Groups overlap, not unique-case totals. Two full immutable-source
+copies pass file/SQL lifecycle checks; source hashes unchanged, fixed outputs only.
+Separate fixtures: safe evaluation classification 12/12; cwd-independent private
+split fixture allows all 24 discovered splitting functions to pass with unchanged
+source hash. Zero-discovery integration entrypoints are not claimed as passed.
+No live LLM/OCR semantic, UI or deployment acceptance in this unit.
+Direct checklist counts: section_tasks 107 checked/4 unchecked; scripts 74 checked/
+1 unchecked. The prior scripts aggregate was 71/1, but baseline owner count was
+72/1; this update adds two verified items without changing unrelated statuses.
+Evidence and exact commands: `/tmp/task01-fix-3f85191/report.txt`.
+Timestamp: 2026-11-14
+
+
 ## App APP-06 Local Review Correction (2026-11-14)
 
 External review verified APP-05 on eaae8918 but kept the app gate open for the
@@ -535,14 +666,14 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 62 | 11 | APP-01–06 locally verified; new exact-SHA external review pending; historical unresolved items retained (2026-11-14 direct recount) |
+| `app/` | package | `app/module-checklist.md` | 64 | 11 | TASK-03/05 support locally verified; section_tasks external review open; unrelated unresolved items retained (2026-11-15 recount) |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
 | `config/` | package | `config/module-checklist.md` | 12 | 9 | APP-02 raw-source support locally verified; app external review pending; unrelated checklist items retained (2026-11-14 recount excludes templates) |
 | `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
-| `db/` | package + design module | `db/module-checklist.md` | 69 | 4 | DB-01–03 locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
+| `db/` | package + design module | `db/module-checklist.md` | 70 | 4 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
-| `document_structure/` | package | `document_structure/module-checklist.md` | 101 | 18 | APP-01 publication support locally verified; app external review pending; template excluded from corrected 2026-11-14 recount |
+| `document_structure/` | package | `document_structure/module-checklist.md` | 102 | 18 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
@@ -552,10 +683,10 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
-| `scripts/` | package | `scripts/module-checklist.md` | 71 | 1 | APP-06 mapping regression support locally verified; existing DOCLOAD deployment fixture gate retained; direct 2026-11-14 recount |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 106 | 0 | APP-03/05/06 source/session support locally verified; app review pending; direct 2026-11-14 recount; quality caveat retained |
+| `scripts/` | package | `scripts/module-checklist.md` | 77 | 1 | TASK-01–05 locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 111 | 0 | TASK-01–05 locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `shared/` | package | `shared/module-checklist.md` | 9 | 0 | Completed Baseline Captured |
+| `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 38 | 3 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 5 | 0 | PREP runtime handoff locally verified |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 4 | 0 | PREP runtime facade locally verified |

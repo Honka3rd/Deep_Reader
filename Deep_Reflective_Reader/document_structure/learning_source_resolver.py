@@ -7,7 +7,8 @@ from section_tasks.learning_generation_policy import GenerationBinding
 from shared.learning_source import LearningSourceBinding, require, text_hash
 
 
-def learning_blocks(document, scope, document_id):
+def learning_blocks(document, scope, document_id, *, include_compatibility=False):
+    """Keep source pagination primary; validate explicitly addressed aliases on demand."""
     require(document.document_id == document_id and bool(document.chapters), "learning_document_invalid")
     require(not document.parse_provenance.get("reading_projected"), "learning_document_projected")
     # Reject ambiguous ownership, even when requested IDs happen to be unique.
@@ -23,7 +24,7 @@ def learning_blocks(document, scope, document_id):
     projected = project_document(document)
     state = state_for(document)
     blocks = []
-    for chapter, section, unit, block in original_blocks(projected):
+    for chapter, section, unit, block in original_blocks(projected, include_compatibility=include_compatibility):
         if state.get("blocks", {}).get(block.block_id, {}).get("deleted"):
             continue
         source = LearningSourceBinding(scope.namespace, document_id, chapter.chapter_id,

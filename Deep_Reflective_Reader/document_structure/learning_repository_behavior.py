@@ -70,7 +70,7 @@ class LearningRepositoryBehavior:
         for ident in block_ids:
             token(ident)
         with self._read_context(document_id, source_only=True) as (document, _):
-            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id)}
+            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id, include_compatibility=True)}
             require(all(ident in blocks for ident in block_ids), 'learning_block_missing')
             return tuple(blocks[ident] for ident in block_ids)
 
@@ -89,7 +89,7 @@ class LearningRepositoryBehavior:
         for reference in references:
             self._scope_ref(document_id, reference)
         with self._read_context(document_id, references=references) as (document, state):
-            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id)}
+            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id, include_compatibility=True)}
             result = []
             for reference in references:
                 block = blocks.get(reference.source.content_block_id)
@@ -108,7 +108,7 @@ class LearningRepositoryBehavior:
         for key in keys:
             self._scope_key(document_id, key)
         with self._read_context(document_id, keys=keys) as (document, state):
-            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id)}
+            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id, include_compatibility=True)}
             result = []
             for key in keys:
                 entry = state['entries'].get(key.cache_id, policy.CacheEntry(key))
@@ -146,7 +146,7 @@ class LearningRepositoryBehavior:
         self._page(0, limit)
         with self._read_context(document_id, translation_block=block_id,
                                 translation_after=after, translation_limit=limit) as (document, state):
-            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id)}
+            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id, include_compatibility=True)}
             require(block_id in blocks, 'learning_block_missing')
             block = blocks[block_id]
             entries = sorted((entry for ident, entry in state['entries'].items()
@@ -279,7 +279,7 @@ class LearningRepositoryBehavior:
         with self._read_context(document_id, operation_id=operation_id) as (document, state):
             require(operation_id in state['operations'], 'learning_operation_missing')
             op = state['operations'][operation_id]
-            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id)}
+            blocks = {b.source.content_block_id: b for b in learning_blocks(document, self.scope, document_id, include_compatibility=True)}
             block = self._block(blocks, op.binding.key.resource.source)
             sentences = state['sentences'][op.binding.key.resource.resource_id]
             sentences.validate_source(block.source, block.effective_text)

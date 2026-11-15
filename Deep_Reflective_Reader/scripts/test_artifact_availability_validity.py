@@ -6,14 +6,14 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app.section_task_coordinator import SectionTaskCoordinator
 from document_preparation.preparation_mode import PreparationMode
 from document_structure.enhanced_parse_trigger_evaluator import EnhancedParseTriggerDecision
 from document_structure.section_role import SectionRole
-from document_structure.structured_document import StructuredDocument, StructuredSection
+from document_structure.structured_document import StructuredDocument, StructuredSection, StructuredChapter
 from document_structure.structured_document_artifact_repository import (
     StructuredDocumentArtifactRepository,
 )
@@ -28,6 +28,9 @@ from shared.task_artifacts import (
     TaskArtifacts,
 )
 from shared.task_unit_model import TaskUnit
+from scripts.artifact_generation_fixtures import bound_fields
+from document_structure.document_hierarchy_index import get_effective_sections
+from unittest.mock import patch
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -96,12 +99,12 @@ class _FakeResolver:
         _ = (split_mode, semantic_top_k_candidates)
         self.calls += 1
         units = []
-        for index, section in enumerate(document.sections):
+        for index, section in enumerate(get_effective_sections(document)):
             if not section.content.strip():
                 continue
             units.append(
                 TaskUnit(
-                    unit_id=f"resolved-{index}",
+                    unit_id=f"task-unit-{index}",
                     title=section.title,
                     container_title=section.container_title,
                     content=section.content.strip(),
@@ -197,7 +200,7 @@ def _base_document() -> StructuredDocument:
         ),
     )
     chapter_artifacts = {
-        "chapter::第一章": TaskArtifacts(
+        "chapter_id::chapter-0": TaskArtifacts(
             summary=SummaryArtifact(
                 content="chapter-summary",
                 source_hash=section_hash,
@@ -208,7 +211,7 @@ def _base_document() -> StructuredDocument:
                 metadata={
                     "summary_scope": "chapter",
                     "chapter_title": "第一章",
-                    "chapter_key": "chapter::第一章",
+                    "chapter_key": "chapter_id::chapter-0",
                     "source_section_id": "section-0",
                     "source_task_unit_id": "task-unit-0",
                 },
@@ -224,7 +227,7 @@ def _base_document() -> StructuredDocument:
                 metadata={
                     "quiz_scope": "chapter",
                     "chapter_title": "第一章",
-                    "chapter_key": "chapter::第一章",
+                    "chapter_key": "chapter_id::chapter-0",
                     "source_section_id": "section-0",
                     "source_task_unit_id": "task-unit-0",
                 },
@@ -237,17 +240,11 @@ def _base_document() -> StructuredDocument:
         source_path=None,
         language="zh",
         raw_text=raw_text,
-        sections=[section],
+        chapters=[StructuredChapter(chapter_id="chapter-0", title="第一章", level=1, chapter_role=None,
+                    sections=[replace(section, parent_chapter_id="chapter-0")])],
         document_task_artifacts=DocumentTaskArtifacts(
             chapter_artifacts=chapter_artifacts,
-            metadata={
-                "task_layout": {
-                    "source_hash": _sha(raw_text),
-                    "task_unit_split_mode": "semantic_safe",
-                    "semantic_top_k_candidates": 3,
-                    "resolver_version": "task_unit_resolver_v2",
-                }
-            },
+            metadata={},
         ),
     )
 
@@ -279,12 +276,21 @@ def test_artifact_availability_validity() -> None:
         )
         def write_base_document() -> None:
             doc = _base_document()
-            Path(temp_dir, "validity-doc.structured.json").write_text(
-                doc.to_json(),
-                encoding="utf-8",
-            )
+            repo.save_reparsed_document(doc, "validity-doc")
+            coordinator.ensure_document_task_layout(doc_name="validity-doc",
+                task_unit_split_mode="semantic_safe", semantic_top_k_candidates=3)
+            current = repo.load_document("validity-doc")
+            section = doc.chapters[0].sections[0]
+            repo.update_section_artifacts("validity-doc", "section-0",
+                bound_fields(section.task_artifacts, current, "section", "section-0"))
+            repo.update_task_unit_artifacts("validity-doc", "task-unit-0",
+                bound_fields(section.task_units[0].task_artifacts, current, "task_unit", "task-unit-0"))
+            chapters = doc.document_task_artifacts.chapter_artifacts
+            for key, artifacts in chapters.items():
+                bounded = bound_fields(artifacts, current, "chapter", "chapter-0")
+                repo.update_chapter_summary_artifact("validity-doc", key, bounded.summary)
+                repo.update_chapter_quiz_artifact("validity-doc", key, bounded.quiz)
 
-        write_base_document()
         profile = DocumentProfile(
             topic="topic",
             summary="summary",
@@ -298,12 +304,28 @@ def test_artifact_availability_validity() -> None:
             summary_service=summary_service,
             resolver=resolver,
         )
+        write_base_document()
+        read_layout = coordinator.get_document_task_layout
+
+        def read_without_mutation(**options):
+            path = Path(temp_dir, "validity-doc.structured.json")
+            before = path.read_bytes()
+            with patch.object(repo, "_mutate_hierarchy", side_effect=AssertionError("read wrote")), \
+                 patch.object(coordinator.document_preparation_pipeline, "prepare_and_load", side_effect=AssertionError("read prepared")), \
+                 patch.object(resolver, "resolve_with_options", side_effect=AssertionError("read resolved")), \
+                 patch.object(summary_service, "summarize_task_unit", side_effect=AssertionError("read generated")):
+                result = read_layout(**options)
+            _assert(path.read_bytes() == before, "read must preserve stored bytes")
+            return result
+
+        coordinator.get_document_task_layout = read_without_mutation
+
         def resolve_chapter_key() -> str:
             current = repo.load_document("validity-doc")
             current_artifacts = current.document_task_artifacts or DocumentTaskArtifacts()
             if current_artifacts.chapter_artifacts:
-                if "chapter::第一章" in current_artifacts.chapter_artifacts:
-                    return "chapter::第一章"
+                if "chapter_id::chapter-0" in current_artifacts.chapter_artifacts:
+                    return "chapter_id::chapter-0"
                 return next(iter(current_artifacts.chapter_artifacts.keys()))
             chapter = coordinator._find_chapter_or_raise(
                 document=current,
@@ -352,7 +374,7 @@ def test_artifact_availability_validity() -> None:
         # B: section summary stale by source hash.
         write_base_document()
         stale = repo.load_document("validity-doc")
-        stale_summary = stale.sections[0].task_artifacts.summary
+        stale_summary = stale.chapters[0].sections[0].task_artifacts.summary
         assert stale_summary is not None
         stale_summary = SummaryArtifact(
             content=stale_summary.content,
@@ -375,6 +397,8 @@ def test_artifact_availability_validity() -> None:
 
         # C/I: split mode / top-k mismatch should mark stale, not missing.
         write_base_document()
+        coordinator.ensure_document_task_layout(doc_name="validity-doc",
+            task_unit_split_mode="semantic_safe", semantic_top_k_candidates=5)
         layout_topk_mismatch = coordinator.get_document_task_layout(
             doc_name="validity-doc",
             task_unit_split_mode="semantic_safe",
@@ -385,6 +409,7 @@ def test_artifact_availability_validity() -> None:
         _assert(av.quiz_cache_valid is False, "top-k mismatch should invalidate quiz cache")
         _assert(av.quiz_invalid_reason == "semantic_top_k_mismatch", "invalid reason should reflect top-k mismatch")
 
+        coordinator.ensure_document_task_layout(doc_name="validity-doc", task_unit_split_mode="progressive")
         layout_mode_mismatch = coordinator.get_document_task_layout(
             doc_name="validity-doc",
             task_unit_split_mode="progressive",
@@ -396,7 +421,7 @@ def test_artifact_availability_validity() -> None:
         # D: malformed section quiz items.
         write_base_document()
         malformed_doc = repo.load_document("validity-doc")
-        quiz = malformed_doc.sections[0].task_artifacts.quiz
+        quiz = malformed_doc.chapters[0].sections[0].task_artifacts.quiz
         assert quiz is not None
         malformed_quiz = QuizArtifact(
             items=[{"question_id": "q1", "question_text": "Q"}],
@@ -480,7 +505,7 @@ def test_artifact_availability_validity() -> None:
         # H: task-unit summary stale by source hash.
         write_base_document()
         task_unit_doc = repo.load_document("validity-doc")
-        task_unit = task_unit_doc.sections[0].task_units[0]
+        task_unit = task_unit_doc.chapters[0].sections[0].task_units[0]
         tu_summary = task_unit.task_artifacts.summary
         assert tu_summary is not None
         bad_tu_summary = SummaryArtifact(
@@ -504,7 +529,8 @@ def test_artifact_availability_validity() -> None:
                 quiz=(None if task_unit.task_artifacts is None else task_unit.task_artifacts.quiz),
             ),
         )]
-        repo.update_section_task_units("validity-doc", "section-0", updated_units)
+        repo.update_task_unit_artifacts("validity-doc", task_unit.unit_id,
+            updated_units[0].task_artifacts)
         task_unit_layout = coordinator.get_document_task_layout(
             doc_name="validity-doc",
             task_unit_split_mode="semantic_safe",
@@ -529,7 +555,7 @@ def test_artifact_availability_validity() -> None:
 
         # stale summary -> cache_hit false and regenerate
         stale_doc = repo.load_document("validity-doc")
-        stale_section_summary = stale_doc.sections[0].task_artifacts.summary
+        stale_section_summary = stale_doc.chapters[0].sections[0].task_artifacts.summary
         assert stale_section_summary is not None
         repo.update_section_summary_artifact(
             "validity-doc",

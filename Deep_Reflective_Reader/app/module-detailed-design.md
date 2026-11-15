@@ -1,5 +1,45 @@
 # app Detailed Design
 
+## TASK-05 legacy output validation (2026-11-15, locally verified)
+
+Legacy summary/quiz orchestration validates usable content before artifact construction and reuses strict question parsing for section/chapter/task-unit cache checks. Invalid refresh returns failure before repository mutation, preserving the previous valid result. Invalid persisted caches are unavailable; only an explicit generation request may replace them. Source bindings and the owner mutation boundary remain unchanged.
+
+Verification: New file/real SQL HTTP suite 22/22 (original 18-method red subset: 133 failed assertions, zero errors/skips); external five observational cases satisfy desired assertions after absence-safe diagnostic adaptation. Adjacent suites 114/114 after one fixture setup correction; TASK-04 20/20, prior focused 229 pass/one skip, app 529 pass/six skips, translation/storage 404/404. Two full immutable backups hash-verified; bounded first-2000-character section/chapter HTTP on both stores preserves valid outputs on rejected refresh. `/tmp/task05-fix-3f85191/report.txt`. Local verification only; exact-SHA external section_tasks review required.
+
+## TASK-03 Summary/Note block evidence (2026-11-15, locally verified)
+
+For content-block Summary read/generate/refresh and Note read/save/delete, optional
+caller source_structure_version belongs to the selected block metadata, not the
+document storage version. Delegate missing/null/matching/stale evidence to the
+shared resolver; supplied evidence without matching block metadata remains stale.
+Other target levels keep their document-version admission check. Summary resolves
+from one repository snapshot then projects its server-owned document version into
+the generated artifact policy; publication revalidates source/lifecycle identity
+inside the existing owner mutation. Note validates block evidence while resolving
+canonical and effective views, retains canonical/overlay hash compatibility, and
+continues binding its source/editor token to current document version, incarnation,
+rename/reading identity, note revision and receipts under the mutation boundary.
+Do not invent block metadata, weaken stale checks, migrate on reads or prepare data.
+
+Acceptance: file/real PostgreSQL HTTP read/generate/reuse/refresh and note
+read/save/replay/delete with absent/null/valid distinct block version/stale evidence;
+no provider/save on rejected admission, exact source policy and note retention,
+canonical/overlay hashes, non-block guards and late source/version mutation rejection.
+Only TASK-03 and necessary app integration; TASK-04/05 remain gated.
+
+Local verification: new HTTP suite 14/14 file/real SQL methods. Red before the
+correction: eight failed assertions, zero errors/skips; original external block
+evidence: four failures -> 2/2 passing methods. Final focused: 230 executions,
+229 pass/one existing private-source opt-in skip; broader app: 535 executions,
+529 pass/six existing private-data opt-in skips, zero failures/errors. Groups overlap.
+Two complete immutable backup copies retain hashes; bounded real-source custom
+blocks (1263/1514 characters) with version 37 pass Summary reuse/refresh and Note
+save/replay/delete on both stores. Policy still carries server document version
+and exact selected text hash. Fixed outputs/token counter: no live LLM, capacity,
+all-block or semantic acceptance. Evidence: `/tmp/task03-fix-3f85191/report.txt`.
+TASK-04/05 and exact-SHA external review remain open; no commit/deploy/push.
+
+
 ## APP-06 projection identity correction (2026-11-14, locally verified)
 
 Both default and segmented content endpoints remain supported read-only projections.
@@ -839,7 +879,8 @@ adoption. Log correlated stage/format/reason/timing without text or tokens/secre
 ## Summary And Note Orchestration (2026-10-21)
 
 SN-10/11 delivered. Summary read/generate/refresh uses repository hierarchy reads
-directly, validates supplied structure version, loads only an existing profile,
+directly, validates supplied content-block evidence through the resolver and other
+target structure versions against the document, loads only an existing profile,
 then delegates to the configured SummaryInteractionService. It deliberately does
 not reuse the older target helper that calls prepare_and_load. Note read/save/delete
 delegates to NoteInteractionService with the repository only: no LLM/profile or

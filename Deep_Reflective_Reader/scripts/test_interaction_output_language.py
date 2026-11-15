@@ -136,7 +136,7 @@ class InteractionOutputLanguageTests(unittest.TestCase):
         submitted = service.submit_answer(generated, EN)
         failed = service.evaluate_answer(submitted)
         self.assertEqual(failed.status, "evaluation_failed")
-        self.assertEqual(failed.reason, "output_language_mismatch")
+        self.assertEqual(failed.reason, "evaluation_invalid_output")
         self.assertEqual(failed.payload["answer"], EN)
         self.assertEqual(failed.target_id, generated.target_id)
         self.assertEqual(failed.document_id, generated.document_id)

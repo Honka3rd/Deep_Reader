@@ -27,9 +27,25 @@ def prompt_version(interaction_type: str) -> str:
     }[interaction_type]
 
 
-def effective_policy(request: ReadingInteractionRequest) -> dict[str, object]:
-    target = request.target
+def source_policy(target) -> dict[str, object]:
+    """Lifecycle/source evidence captured from a server-resolved target."""
     policy = {
+        "source_sha256": hashlib.sha256(target.content.encode("utf-8")).hexdigest(),
+        "target": [target.document_id, target.target_level, target.target_id,
+                   target.chapter_id, target.section_id, target.task_unit_id,
+                   target.content_block_id],
+        "document_incarnation": target.document_incarnation,
+        "artifact_generation_epoch": target.artifact_generation_epoch,
+    }
+    if target.source_structure_version is not None:
+        policy["source_structure_version"] = target.source_structure_version
+    if target.reading_revision or target.source_needs_review:
+        policy.update(reading_revision=target.reading_revision, source_needs_review=target.source_needs_review)
+    return policy
+
+
+def effective_policy(request: ReadingInteractionRequest) -> dict[str, object]:
+    return {
         "schema": "interaction_policy_v1",
         "interaction_type": request.interaction_type,
         "prompt": prompt_version(request.interaction_type),
@@ -37,19 +53,8 @@ def effective_policy(request: ReadingInteractionRequest) -> dict[str, object]:
         "language": request_language(request),
         "guard": SEMANTIC_GUARD_VERSION if request.interaction_type == "analysis" else "quantity-v1",
         "source_policy": SOURCE_VIEW_VERSION,
-        "source_sha256": hashlib.sha256(target.content.encode("utf-8")).hexdigest(),
-        "target": [target.document_id, target.target_level, target.target_id,
-                   target.chapter_id, target.section_id, target.task_unit_id,
-                   target.content_block_id],
+        **source_policy(request.target),
     }
-    if target.source_structure_version is not None:
-        policy["source_structure_version"] = target.source_structure_version
-    if target.reading_revision or target.source_needs_review:
-        policy.update(reading_revision=target.reading_revision, source_needs_review=target.source_needs_review)
-    if request.interaction_type == "critical_thinking_session":
-        policy.update(document_incarnation=target.document_incarnation,
-                      artifact_generation_epoch=target.artifact_generation_epoch)
-    return policy
 
 
 def policy_metadata(request: ReadingInteractionRequest) -> dict[str, object]:
@@ -71,3 +76,26 @@ def stale_projection(artifact: ReadingInteractionArtifact, request: ReadingInter
         return artifact
     payload = artifact.payload if artifact.interaction_type == "critical_thinking_session" else {}
     return replace(artifact, status="stale_target", reason="interaction_policy_stale", payload=payload)
+
+
+def source_policy_matches(document, target, policy: dict[str, object]) -> bool:
+    """Compare captured evidence with the caller's current locked/read-only snapshot.
+
+    The repository owns the publication boundary. Never supply document version as
+    optional block evidence, or adopt current lifecycle tokens for an old target.
+    """
+    from section_tasks.reading_target_resolver import ReadingTargetResolver
+    if not isinstance(policy, dict):
+        return False
+    try:
+        current = ReadingTargetResolver().resolve(
+            document=document, target_level=target.target_level,
+            chapter_id=target.chapter_id, section_id=target.section_id,
+            task_unit_id=target.task_unit_id, content_block_id=target.content_block_id)
+        current = replace(current, source_structure_version=document.parse_provenance.get("storage_structure_version"))
+        expected = source_policy(current)
+        fields = ("target", "source_sha256", "source_structure_version", "reading_revision",
+                  "source_needs_review", "document_incarnation", "artifact_generation_epoch")
+        return bool(current.document_incarnation) and all(policy.get(key) == expected.get(key) for key in fields)
+    except (ValueError, KeyError, TypeError):
+        return False

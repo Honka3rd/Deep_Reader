@@ -1,5 +1,34 @@
 # section_tasks Checklist
 
+## Section tasks audit unit 1 (2026-11-14)
+
+- [x] TASK-01: Reject stale generated interactions and Note editors across document lifecycle changes.
+  Acceptance: exact source/incarnation/rename/revision checks at locked publication; positive reuse/new generation, notes/receipt/CAS preservation, rollback and delayed result matrices.
+  Evidence: New lifecycle suite 28/28 file/SQL; archive matrix red 68 assertions/zero errors; external 10+3+3 assertions red -> 4+3+3 methods green. Final focused 197 pass/one skip; app 529 pass/six skips; interaction 178 pass/one skip; full immutable-source file/SQL checks. `/tmp/task01-fix-3f85191/report.txt`. Unit 1 locally verified, module external review remains open.
+  Timestamp: 2026-11-14
+
+
+- [x] TASK-02: Persist deterministic current critical-thinking session identity; JSON order is not chronology.
+  Acceptance: atomic target-scoped pointer, file/real SQL reload/current/availability, old-session update isolation, concurrency/rollback and read-only legacy ambiguity; retain source/session CAS.
+  Evidence: New current-session suite 18/18 file/real SQL; original 16-method subset red 12 assertions/zero errors; external SQL failure -> 2/2 file/SQL green. Focused 215 pass/one private opt-in skip; app 529 pass/six retained skips; full backup current/history checks pass with unchanged hashes. `/tmp/task02-fix-3f85191/report.txt`. Unit 2 locally verified; external module review remains open.
+  Timestamp: 2026-11-15
+
+- [x] TASK-03: Separate optional block evidence from server-owned document versions across Summary and Note.
+  Acceptance: file/real SQL HTTP absent/null/valid distinct/stale evidence across read/generate/refresh/save/delete; canonical/overlay note hashes, locked source identity, non-block guards and zero provider/write on rejected admission.
+  Evidence: New file/real SQL HTTP 14/14; eight baseline assertions red/zero errors; external four failures -> 2/2 green. Final focused 229 pass/one skip; app 529 pass/six skips; two immutable full-source copies with bounded block evidence pass, hashes unchanged. `/tmp/task03-fix-3f85191/report.txt`. Local unit verification only; section_tasks external gate remains open.
+  Timestamp: 2026-11-15
+
+- [x] TASK-04: Resolve supported default compatibility aliases through exact translation ownership without duplicating primary enumeration.
+  Acceptance: file/real PostgreSQL single/batch HTTP omitted/false/true modes; exact source/hash, repeated reads without generation, cross-projection isolation and unchanged primary enumeration; retain source/lifecycle/CAS fences.
+  Evidence: New exact-target suite 20/20 file/real SQL; original 12-method subset red 24 assertions/zero errors. External four default assertions red -> 2/2 methods green. Translation/storage 404/404; prior focused 229 pass/one skip; app 529 pass/six retained opt-in skips. Two hash-verified complete backups with bounded 2000-character HTTP samples pass. `/tmp/task04-fix-3f85191/report.txt`. Locally verified; section_tasks external gate remains open.
+  Timestamp: 2026-11-15
+
+- [x] TASK-05: Reject malformed legacy summary/quiz generation and identifiable corrupt caches while preserving valid saved outputs.
+  Acceptance: Required file/real PostgreSQL/public-flow positive and negative matrices from the 2026-11-14 external audit; prior protections preserved.
+  Evidence: New file/real SQL HTTP suite 22/22 (original 18-method red subset: 133 failed assertions, zero errors/skips); external five observational cases satisfy desired assertions after absence-safe diagnostic adaptation. Adjacent suites 114/114 after one fixture setup correction; TASK-04 20/20, prior focused 229 pass/one skip, app 529 pass/six skips, translation/storage 404/404. Two full immutable backups hash-verified; bounded first-2000-character section/chapter HTTP on both stores preserves valid outputs on rejected refresh. `/tmp/task05-fix-3f85191/report.txt`. Local verification only; exact-SHA external section_tasks review required.
+  Timestamp: 2026-11-15
+
+
 ## APP-06 correction (2026-11-14)
 
 - [x] APP-06 support: Unambiguous shared default/segmented target projections.

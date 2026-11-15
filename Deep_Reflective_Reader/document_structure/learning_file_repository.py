@@ -160,7 +160,7 @@ class FileLearningRepository(LearningRepositoryBehavior):
             with self._documents.locked_document(document_id) as document:
                 with self._lock(document_id):
                     blocks = {b.source.content_block_id: b
-                              for b in learning_blocks(document, self.scope, document_id)}
+                              for b in learning_blocks(document, self.scope, document_id, include_compatibility=True)}
                     yield workspace, book, blocks, self._load(document_id), lambda state: self._commit(document_id, state)
 
     def recover(self, document_id):

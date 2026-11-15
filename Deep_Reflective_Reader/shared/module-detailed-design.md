@@ -1,5 +1,11 @@
 # shared Detailed Design
 
+## TASK-05 legacy output validation (2026-11-15, locally verified)
+
+At the legacy artifact read boundary, non-string summary content maps to an unusable empty DTO payload, not str(value). Quiz items must be a list of dictionaries as a whole; malformed containers or mixed members map to an unusable empty payload instead of a filtered successful subset. Values inside dictionaries are preserved for strict consumer validation. No IO, migration, write-back or guessing whether existing ordinary strings were historically coerced. Valid legacy payloads retain their shape.
+
+Verification: New file/real SQL HTTP suite 22/22 (original 18-method red subset: 133 failed assertions, zero errors/skips); external five observational cases satisfy desired assertions after absence-safe diagnostic adaptation. Adjacent suites 114/114 after one fixture setup correction; TASK-04 20/20, prior focused 229 pass/one skip, app 529 pass/six skips, translation/storage 404/404. Two full immutable backups hash-verified; bounded first-2000-character section/chapter HTTP on both stores preserves valid outputs on rejected refresh. `/tmp/task05-fix-3f85191/report.txt`. Local verification only; exact-SHA external section_tasks review required.
+
 ## SCHEMA-03 name compatibility (2026-11-11, implemented)
 
 The shared validator preserves printable punctuation in logical titles while

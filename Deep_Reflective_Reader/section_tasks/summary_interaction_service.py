@@ -20,6 +20,9 @@ from section_tasks.reading_interaction_service_contracts import ReadingInteracti
 from section_tasks.reading_target_resolver import ReadingTargetResolver
 from section_tasks.summary_note_contracts import SUMMARY_SCHEMA_VERSION, SUMMARY_PROMPT_VERSION, SummaryPayload
 from shared.task_artifacts import DocumentTaskArtifacts
+from section_tasks.interaction_policy_identity import (
+    effective_policy, policy_metadata, policy_matches, source_policy_matches,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,7 @@ class SummaryInteractionService:
         return ReadingInteractionArtifact.from_target(
             target=request.target, interaction_type="summary", status=status,
             payload=payload, reason=reason, metadata={
+                **policy_metadata(request),
                 "output_schema_version": SUMMARY_SCHEMA_VERSION,
                 "prompt_instruction_version": SUMMARY_PROMPT_VERSION,
                 "source_hash": self._hash(request.target),
@@ -53,14 +57,13 @@ class SummaryInteractionService:
                 **({"source_structure_version": request.target.source_structure_version}
                    if request.target.source_structure_version is not None else {}), **extra})
 
-    def _load(self, request):
-        document = self.repository.load_document(request.context_metadata["doc_name"])
+    def _load(self, request, document):
         artifacts = document.document_task_artifacts
         data = artifacts.metadata.get("public_summary", {}).get(self._key(request.target)) if artifacts else None
         return ReadingInteractionArtifact(**data) if data else None
 
     def _fresh(self, artifact, request):
-        return artifact and artifact.status == "completed" and all(
+        return artifact and artifact.status == "completed" and policy_matches(artifact, request) and all(
             artifact.metadata.get(key) == value for key, value in {
                 "source_hash": self._hash(request.target),
                 "source_structure_version": request.target.source_structure_version,
@@ -69,9 +72,12 @@ class SummaryInteractionService:
             }.items())
 
     def read(self, request):
+        document = self.repository.load_document(request.context_metadata["doc_name"])
+        if not source_policy_matches(document, request.target, effective_policy(request)):
+            return self._artifact(request, "stale_target", reason="summary_target_stale")
         if request.target.source_needs_review:
             return self._artifact(request,"insufficient_content",reason="source_needs_review")
-        existing = self._load(request)
+        existing = self._load(request, document)
         if existing is None:
             return self._artifact(request, "not_generated")
         if not self._fresh(existing, request):
@@ -107,6 +113,8 @@ class SummaryInteractionService:
         if not parent_levels:
             return request
         document = self.repository.load_document(request.context_metadata["doc_name"])
+        if not source_policy_matches(document, target, effective_policy(request)):
+            raise ValueError("summary_target_stale")
         summaries = []
         for level in parent_levels:
             ancestor = self.resolver.resolve(
@@ -147,9 +155,9 @@ class SummaryInteractionService:
 
     def generate(self, request):
         document = self.repository.load_document(request.context_metadata["doc_name"])
-        request = replace(request, context_metadata={**request.context_metadata,
-                          "source_epoch": document.parse_provenance.get("interaction_epoch")})
-        existing = self._load(request)
+        if not source_policy_matches(document, request.target, effective_policy(request)):
+            return self._artifact(request, "stale_target", reason="summary_target_stale")
+        existing = self._load(request, document)
         if not request.refresh and self._fresh(existing, request):
             return existing
         preflight = self.validity.preflight(request)
@@ -183,13 +191,7 @@ class SummaryInteractionService:
     def _save(self, request, artifact):
         def mutation(document):
             target = request.target
-            current = self.resolver.resolve(document=document, target_level=target.target_level,
-                chapter_id=target.chapter_id, section_id=target.section_id,
-                task_unit_id=target.task_unit_id, content_block_id=target.content_block_id)
-            if (self._hash(current) != self._hash(target)
-                    or current.reading_revision != target.reading_revision
-                    or document.parse_provenance.get("storage_structure_version") != target.source_structure_version
-                    or document.parse_provenance.get("interaction_epoch") != request.context_metadata.get("source_epoch")):
+            if not source_policy_matches(document, target, artifact.metadata.get("interaction_policy", {})):
                 raise ValueError("summary_target_stale")
             artifacts = document.document_task_artifacts or DocumentTaskArtifacts()
             summaries = dict(artifacts.metadata.get("public_summary", {}))

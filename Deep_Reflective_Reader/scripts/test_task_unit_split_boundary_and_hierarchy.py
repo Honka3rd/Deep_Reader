@@ -150,7 +150,7 @@ def test_semantic_safe_ignores_line_wrap_boundary_when_sentence_end_exists() -> 
 
 
 def test_section_7_no_mid_sentence_cut() -> dict[str, object]:
-    structured_path = Path("data/structured/许三观卖血记.structured.json")
+    structured_path = Path(__file__).resolve().parents[1] / "data/structured/许三观卖血记.structured.json"
     _assert(structured_path.exists(), f"structured file not found: {structured_path}")
 
     payload = json.loads(structured_path.read_text(encoding="utf-8"))

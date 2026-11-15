@@ -50,7 +50,12 @@ class NewActionLifecycle(ConditionalCommitTests):
         with self.assertRaises(NoteConflict):
             self.notes.save("doc", target_level="document", text="late", mutation_id="late",
                             expected_revision=1, target_token=self.note["target_token"])
-        self.assertEqual(self.summaries.read(self.summary_request).status, "not_generated")
+        self.assertEqual(self.summaries.read(self.summary_request).status, "stale_target")
+        document = self.repository.load_document("doc")
+        target = replace(ReadingTargetResolver().resolve(document=document, target_level="document"),
+                         source_structure_version=document.parse_provenance.get("storage_structure_version"))
+        current_request = replace(self.summary_request, target=target)
+        self.assertEqual(self.summaries.read(current_request).status, "not_generated")
 
     def test_new_actions_failed_commit_retained(self):
         self.seed_new_actions()

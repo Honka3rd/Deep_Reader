@@ -27,7 +27,10 @@ class NoteInteractionService:
 
     def _state(self, document, target_options):
         supplied = target_options.get("source_structure_version")
-        if supplied is not None and supplied != document.parse_provenance.get("storage_structure_version"):
+        # Optional block evidence is checked by the resolver on both source views.
+        # Document version still binds the source/editor token below, under mutation.
+        if (target_options.get("target_level") != "content_block" and supplied is not None
+                and supplied != document.parse_provenance.get("storage_structure_version")):
             raise NoteConflict("note_target_stale")
         identity_options = dict(target_options)
         if target_options.get("target_level") == "content_block":
@@ -61,7 +64,11 @@ class NoteInteractionService:
             document.parse_provenance.get("interaction_epoch"), structure,
             self._identity(target), target.content,
         ], ensure_ascii=False).encode()).hexdigest()
-        token = hashlib.sha256((source + entry.get("epoch", "") + block_epoch).encode()).hexdigest()
+        # Editor validity is stricter than retained-note identity. Rename and
+        # changed-body/Undo invalidate old commands without discarding saved prose.
+        editor_state = [source, entry.get("epoch", ""), block_epoch,
+                        target.artifact_generation_epoch, target.reading_revision]
+        token = hashlib.sha256(json.dumps(editor_state).encode()).hexdigest()
         if entry.get("note") and entry.get("source") != source:
             raise NoteConflict("note_target_stale")
         return target, key, artifacts, notes, entry, source, token

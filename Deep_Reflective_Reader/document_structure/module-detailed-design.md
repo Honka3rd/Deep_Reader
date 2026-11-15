@@ -1,5 +1,26 @@
 # document_structure Detailed Design
 
+## TASK-04 explicit translation targets (2026-11-15, locally verified)
+
+Separate primary source enumeration from the accepted explicit-target set. `original_blocks` and `learning_blocks` default to the primary stream; an explicit compatibility option is used only for target-addressed reads, mutations and source lifecycle validation. `read_sources` retains the primary stream. File learning claim/dispatch/checkpoint/commit and saved reads validate exact target source under existing locks. Source transitions also track compatibility aliases so change/Undo cannot restore an old source binding; no aliases are persisted as duplicate content blocks.
+
+Necessary source-projection correction: server-produced reading overlays already
+contain the accepted effective body. Do not apply OCR whitespace normalization to
+those blocks again; exact user whitespace, API content, translation hashes and
+same-text no-op behavior must agree. Preserve normalization of canonical/custom
+non-overlay inputs. Reconcile the reading-content SQL artifact fixture by capturing
+the current server document version before building generation policy; retain its
+old-result rejection and valid-current-write assertions.
+
+Verification: `scripts/test_translation_compatibility_targets.py` passes 20/20
+file/real PostgreSQL methods, including source/Undo/reparse, rename, concurrent
+claims and failed refresh preservation. Translation/storage regression passes
+404/404. Primary pagination excludes aliases; explicit target lookup and publication
+validate exact source/hash. Full counts, red/green evidence, bounded real-source
+samples and limitations: `/tmp/task04-fix-3f85191/report.txt` and the section_tasks
+TASK-04 design. Supporting integration only; no full-module reapproval, deployment
+or push is claimed.
+
 ## APP-01 layout publication support (2026-11-13, locally implemented)
 
 Task-layout writes require a server-created source token captured before computation.

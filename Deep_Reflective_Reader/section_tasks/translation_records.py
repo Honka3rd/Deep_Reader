@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
 
-from document_structure.reading_content import digest, original_blocks, state_for
+from document_structure.reading_content import digest, original_blocks, project_document, state_for
 from language.language_profile_registry import LanguageProfileRegistry
 from section_tasks.reading_target_resolver import ReadingTargetResolver, ResolvedReadingTarget
 from section_tasks.translation_contracts import TranslationError, TranslationResult
@@ -43,7 +43,8 @@ class TranslationSnapshot:
 
 
 def translation_snapshot(document, block_id):
-    matches = [(c, s, u) for c, s, u, b in original_blocks(document) if b.block_id == block_id]
+    matches = [(c, s, u) for c, s, u, b in original_blocks(
+        project_document(document), include_compatibility=True) if b.block_id == block_id]
     if not matches:
         raise TranslationError("translation_target_missing")
     if len(matches) != 1:

@@ -173,21 +173,7 @@ class ChapterQuizService:
         if not isinstance(payload, list):
             raise ValueError("quiz_parse_failed: output must be a JSON array")
 
-        if len(payload) < 4:
-            raise ValueError(
-                f"quiz_validation_failed: expected at least 4 questions, got {len(payload)}"
-            )
-
-        quiz_questions: list[QuizQuestion] = []
-        for index, item in enumerate(payload):
-            if not isinstance(item, dict):
-                raise ValueError(
-                    "quiz_validation_failed: "
-                    f"item at index {index} is not an object"
-                )
-            quiz_questions.append(QuizQuestion.from_dict(item))
-
-        return quiz_questions
+        return QuizQuestion.from_items(payload, minimum=4)
 
     @staticmethod
     def _extract_json_array_text(raw_response: str) -> str:

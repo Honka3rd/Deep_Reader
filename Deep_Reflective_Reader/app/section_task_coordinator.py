@@ -470,7 +470,9 @@ class SectionTaskCoordinator:
         document = self.document_artifact_repository.load_document(doc_name)
         version = document.parse_provenance.get("storage_structure_version")
         supplied = kwargs.get("source_structure_version")
-        if supplied is not None and supplied != version:
+        # Content-block evidence belongs to the selected block, not the document
+        # row. Resolve it first, then bind publication to the server-owned version.
+        if kwargs.get("target_level") != "content_block" and supplied is not None and supplied != version:
             raise ValueError("stale_structure_version")
         target = replace(self.reading_target_resolver.resolve(document=document, **kwargs),
                          source_structure_version=version)
@@ -3430,6 +3432,8 @@ class SectionTaskCoordinator:
         generation_source: dict | None = None,
     ) -> SummaryArtifact:
         """Build persisted summary artifact payload."""
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("summary_validation_failed: expected non-empty string")
         normalized_content = content.strip()
         metadata: dict[str, Any] = {
             "summary_scope": scope,
@@ -3500,7 +3504,7 @@ class SectionTaskCoordinator:
         if artifacts is None or artifacts.summary is None:
             return ArtifactValidityResult.missing()
         summary = artifacts.summary
-        if not summary.content.strip():
+        if not isinstance(summary.content, str) or not summary.content.strip():
             return ArtifactValidityResult.invalid("empty_content")
         if summary.source_hash != effective_section_hash(document, section.section_id):
             return ArtifactValidityResult.invalid("source_hash_mismatch")
@@ -3662,19 +3666,10 @@ class SectionTaskCoordinator:
         quiz: QuizArtifact,
     ) -> list[QuizQuestion] | None:
         """Parse persisted quiz artifact into structured quiz questions."""
-        if not quiz.items:
-            return None
-        parsed_questions: list[QuizQuestion] = []
         try:
-            for item in quiz.items:
-                if not isinstance(item, dict):
-                    return None
-                parsed_questions.append(QuizQuestion.from_dict(item))
+            return QuizQuestion.from_items(quiz.items)
         except ValueError:
             return None
-        if not parsed_questions:
-            return None
-        return parsed_questions
 
     def _quiz_artifact_from_questions(
         self,
@@ -3696,6 +3691,7 @@ class SectionTaskCoordinator:
             }
             for question in questions
         ]
+        QuizQuestion.from_items(items)
         return QuizArtifact(
             items=items,
             language=self._resolve_summary_language(
@@ -3825,7 +3821,7 @@ class SectionTaskCoordinator:
         )
         if summary is None:
             return ArtifactValidityResult.missing()
-        if not summary.content.strip():
+        if not isinstance(summary.content, str) or not summary.content.strip():
             return ArtifactValidityResult.invalid("empty_content")
         metadata = dict(summary.metadata or {})
         metadata_source_section_id = (metadata.get("source_section_id") or "").strip()
@@ -4015,7 +4011,7 @@ class SectionTaskCoordinator:
         if artifacts is None or artifacts.summary is None:
             return ArtifactValidityResult.missing()
         summary = artifacts.summary
-        if not summary.content.strip():
+        if not isinstance(summary.content, str) or not summary.content.strip():
             return ArtifactValidityResult.invalid("empty_content")
         source_hash = hashlib.sha256(effective_target(document, "task_unit", task_unit.unit_id).content.encode("utf-8")).hexdigest()
         if summary.source_hash != source_hash:

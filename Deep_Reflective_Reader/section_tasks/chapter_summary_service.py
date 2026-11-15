@@ -79,9 +79,10 @@ class ChapterSummaryService:
             language_code=language_code,
         )
         try:
-            return SectionTaskResult.ok(
-                self.llm_provider.complete_text(prompt).strip()
-            )
+            content = self.llm_provider.complete_text(prompt)
+            if not isinstance(content, str) or not content.strip():
+                return SectionTaskResult.fail("summary_validation_failed: expected non-empty string")
+            return SectionTaskResult.ok(content.strip())
         except Exception as error:
             return SectionTaskResult.from_llm_error(error)
 

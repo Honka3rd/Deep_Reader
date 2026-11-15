@@ -76,11 +76,13 @@ def cleanup_audit_for(document, offset=0):
     return history_for(document, offset)
 
 
-def original_blocks(document):
+def original_blocks(document, *, include_compatibility=False):
+    """Primary stream by default; explicit target validation may include aliases."""
     from section_tasks.reading_target_resolver import ReadingTargetResolver
     resolver = ReadingTargetResolver()
     return [(c,s,u,b) for c in document.chapters for s in c.sections for u in s.task_units
-            for b in resolver.content_blocks_for_target_validation(u,s,c)]
+            for b in resolver.content_blocks_for_target_validation(
+                u, s, c, include_compatibility=include_compatibility)]
 
 
 def projection_source(document):

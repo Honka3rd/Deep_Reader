@@ -1,5 +1,12 @@
 # db Checklist
 
+## Section tasks audit unit 4 (2026-11-15)
+
+- [x] TASK-04: Support exact explicit compatibility translation targets without duplicate enumeration.
+  Acceptance: file/real SQL HTTP exact source and saved reuse; source lifecycle/CAS protection, read-only behavior and unchanged primary pagination.
+  Evidence: New exact-target suite 20/20 file/real SQL; original 12-method subset red 24 assertions/zero errors. External four default assertions red -> 2/2 methods green. Translation/storage 404/404; prior focused 229 pass/one skip; app 529 pass/six retained opt-in skips. Two hash-verified complete backups with bounded 2000-character HTTP samples pass. `/tmp/task04-fix-3f85191/report.txt`. Locally verified; section_tasks external gate remains open.
+  Timestamp: 2026-11-15
+
 ## DB audit correction (2026-11-13)
 
 - [x] DB-01: Preserve non-owned SQL metadata during ordinary saves without reviving cleared artifacts.

@@ -1,5 +1,19 @@
 # app Checklist
 
+## TASK-05 supporting contract (2026-11-15)
+
+- [x] TASK-05: Validate legacy summary/quiz outputs without masking corruption or losing valid prior artifacts.
+  Acceptance: Strict complete-result validation, compatible read-only caches, actual file/SQL HTTP and retained source guards.
+  Evidence: New file/real SQL HTTP suite 22/22 (original 18-method red subset: 133 failed assertions, zero errors/skips); external five observational cases satisfy desired assertions after absence-safe diagnostic adaptation. Adjacent suites 114/114 after one fixture setup correction; TASK-04 20/20, prior focused 229 pass/one skip, app 529 pass/six skips, translation/storage 404/404. Two full immutable backups hash-verified; bounded first-2000-character section/chapter HTTP on both stores preserves valid outputs on rejected refresh. `/tmp/task05-fix-3f85191/report.txt`. Local verification only; exact-SHA external section_tasks review required.
+  Timestamp: 2026-11-15
+
+## Section tasks audit unit 3 (2026-11-15)
+
+- [x] TASK-03 support: Delegate Summary content-block evidence to its resolver while retaining document publication policy.
+  Acceptance: absent/null/valid distinct/stale evidence, no provider or persistence on rejection, positive complete workflows and preserved source/lifecycle/editor guards.
+  Evidence: New file/real SQL HTTP 14/14; eight baseline assertions red/zero errors; external four failures -> 2/2 green. Final focused 229 pass/one skip; app 529 pass/six skips; two immutable full-source copies with bounded block evidence pass, hashes unchanged. `/tmp/task03-fix-3f85191/report.txt`. Local unit verification only; section_tasks external gate remains open.
+  Timestamp: 2026-11-15
+
 ## APP-06 correction (2026-11-14)
 
 - [x] APP-06: Unambiguous default/segmented source identity and mapping acceptance.

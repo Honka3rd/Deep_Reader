@@ -104,7 +104,7 @@ def test_document_backed_analysis_store_round_trips_current_artifact() -> None:
                 "reasoning": "Reasoning",
                 "explanation": "Explanation",
             },
-            metadata={"context": {"doc_name": "book"}},
+            metadata={"context": {"doc_name": "book"}, **policy_metadata(request)},
         )
         saved = store.save_analysis_artifact(artifact)
         restored = store.get_analysis_artifact(request)
@@ -156,7 +156,7 @@ def test_document_backed_quiz_store_round_trips_current_artifact() -> None:
                     }
                 ]
             },
-            metadata={"context": {"doc_name": "book"}},
+            metadata={"context": {"doc_name": "book"}, **policy_metadata(request)},
         )
         saved = store.save_quiz_artifact(artifact)
         restored = store.get_quiz_artifact(request)
@@ -274,7 +274,7 @@ def test_content_block_current_artifacts_do_not_collide_with_parent_task_unit() 
                     "reasoning": "Task reasoning",
                     "explanation": "Task explanation",
                 },
-                metadata={"context": {"doc_name": "book"}},
+                metadata={"context": {"doc_name": "book"}, **policy_metadata(task_unit_analysis_request)},
             )
         )
         saved_block_analysis = store.save_analysis_artifact(
@@ -287,7 +287,7 @@ def test_content_block_current_artifacts_do_not_collide_with_parent_task_unit() 
                     "reasoning": "Block reasoning",
                     "explanation": "Block explanation",
                 },
-                metadata={"context": {"doc_name": "book"}},
+                metadata={"context": {"doc_name": "book"}, **policy_metadata(block_analysis_request)},
             )
         )
         saved_task_quiz = store.save_quiz_artifact(
@@ -296,7 +296,7 @@ def test_content_block_current_artifacts_do_not_collide_with_parent_task_unit() 
                 interaction_type="quiz",
                 status="completed",
                 payload={"items": [{"type": "short_answer", "question": "Task?", "answer": "Task"}]},
-                metadata={"context": {"doc_name": "book"}},
+                metadata={"context": {"doc_name": "book"}, **policy_metadata(task_unit_quiz_request)},
             )
         )
         saved_block_quiz = store.save_quiz_artifact(
@@ -305,7 +305,7 @@ def test_content_block_current_artifacts_do_not_collide_with_parent_task_unit() 
                 interaction_type="quiz",
                 status="completed",
                 payload={"items": [{"type": "short_answer", "question": "Block?", "answer": "Block"}]},
-                metadata={"context": {"doc_name": "book"}},
+                metadata={"context": {"doc_name": "book"}, **policy_metadata(block_quiz_request)},
             )
         )
 

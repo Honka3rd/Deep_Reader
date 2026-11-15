@@ -34,7 +34,9 @@ class SummaryArtifact:
     def from_dict(cls, data: dict[str, Any]) -> "SummaryArtifact":
         """Deserialize summary artifact from dictionary."""
         return cls(
-            content=str(data.get("content", "")),
+            # Corrupt optional artifacts must not become apparently valid text.
+            # The empty DTO is unavailable to consumers; reads perform no repair.
+            content=data["content"] if isinstance(data.get("content"), str) else "",
             language=None if data.get("language") is None else str(data.get("language")),
             generated_at=(
                 None if data.get("generated_at") is None else str(data.get("generated_at"))
@@ -99,10 +101,10 @@ class QuizArtifact:
     def from_dict(cls, data: dict[str, Any]) -> "QuizArtifact":
         """Deserialize quiz artifact from dictionary."""
         raw_items = data.get("items", [])
-        items: list[dict[str, Any]] = []
-        for item in raw_items:
-            if isinstance(item, dict):
-                items.append(dict(item))
+        # Reject the whole malformed container, never silently filter bad rows.
+        items = ([dict(item) for item in raw_items]
+                 if isinstance(raw_items, list) and all(isinstance(item, dict) for item in raw_items)
+                 else [])
         return cls(
             items=items,
             language=None if data.get("language") is None else str(data.get("language")),

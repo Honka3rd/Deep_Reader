@@ -1,5 +1,12 @@
 # shared Checklist
 
+## TASK-05 supporting contract (2026-11-15)
+
+- [x] TASK-05: Validate legacy summary/quiz outputs without masking corruption or losing valid prior artifacts.
+  Acceptance: Strict complete-result validation, compatible read-only caches, actual file/SQL HTTP and retained source guards.
+  Evidence: New file/real SQL HTTP suite 22/22 (original 18-method red subset: 133 failed assertions, zero errors/skips); external five observational cases satisfy desired assertions after absence-safe diagnostic adaptation. Adjacent suites 114/114 after one fixture setup correction; TASK-04 20/20, prior focused 229 pass/one skip, app 529 pass/six skips, translation/storage 404/404. Two full immutable backups hash-verified; bounded first-2000-character section/chapter HTTP on both stores preserves valid outputs on rejected refresh. `/tmp/task05-fix-3f85191/report.txt`. Local verification only; exact-SHA external section_tasks review required.
+  Timestamp: 2026-11-15
+
 ## Vocabulary filtering and completion observation (2026-11-09)
 
 - [x] Add backward-compatible vocabulary assessment DTOs.
