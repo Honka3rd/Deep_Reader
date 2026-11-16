@@ -1,5 +1,19 @@
 # scripts Detailed Design
 
+## LEARN-02 expiry reply regression (2026-11-16, locally verified)
+
+Add real file/PostgreSQL application tests that block a deterministic provider after acknowledged dispatch, advance the injected server clock, explicitly reconcile expiry, then release the original successful response. Count durable checkpoints and provider calls. Cover both components, multi-batch lease stopping, source/settings and new-operation fences, competing checkpoint payloads, post-readback races and lost acknowledgement without provider replay. Preserve external baseline red/green and all LEARN-01 controls. These are deterministic scheduling/persistence tests, not live billing or process-crash acceptance.
+
+Verification (2026-11-16, runs completed before interruption): external unchanged lease matrix 2 failures/2 controls -> 4/4 pass; new expiry suite initial 20 methods/14 failed assertions/zero errors -> expanded 26/26 pass. Cumulative 12-suite run: 474/474 executions, zero failures/errors/skips, including LEARN-01 22, LEARN-02 26, production routes 56 and nine adjacent suites 370. External guard controls 8/8 and separated LEARN-01 recovery/retry matrix 4/4 remain green. Both immutable full-book backups retain expected hashes; bounded English/Chinese two-sentence samples across translation/hints and file/real PostgreSQL pass 8 expiry/reply flows, each with one provider call and one checkpoint. Evidence: `/tmp/learn02-fix-471db7b/report.txt`; deterministic providers, no live LLM/UI/TCP/deployment claim. Both learning findings are locally verified; exact-SHA external review is pending.
+
+
+## LEARN-01 recovery regression (2026-11-15, locally verified)
+
+Add a translation/hints × real file/PostgreSQL application matrix for partial provenance compatibility, offline completion, complete mixed-provenance retry, retained saved/history and CAS/lost-ack controls. Use real capacity planning and production repository writes with deterministic providers; no live billing/semantic claim. Capture baseline red and corrected green separately. Preserve original lifecycle/unknown controls and keep LEARN-02 evidence in its separate confirmed unit.
+
+Verification: 22/22 new file/real PostgreSQL recovery tests; initial 14-method red subset had 16 failed assertions, zero errors/skips. External four-method matrix: baseline 4 failures; corrected recovery-before-retry observation 4/4 pass (original audit runner counts calls after explicit retry; copied runner separates zero recovery calls from two authorized fresh retry calls). Adjacent policy/orchestration/services/storage/shared-translation/DI suites 370/370; HTTP routes 56/56; external guard controls 8/8. Two full immutable backups hash-verified; exact two-sentence English/Chinese excerpts across both stores/components pass 8 recovery/retry flows with deterministic providers. All executed groups have zero skips; counts may overlap. Evidence: `/tmp/learn01-fix-471db7b/report.txt`. Local unit verification only; LEARN-01 evidence was recorded before LEARN-02; external learning review remains open.
+
+
 ## TASK-05 legacy output validation (2026-11-15, locally verified)
 
 Add TASK-05 actual file/real PostgreSQL/public HTTP regression matrices for section/chapter summary and quiz: required field types, whitespace, duplicate IDs, provider failures, valid outputs, warm reuse, corrupt caches, preserved previous bytes and source/lifecycle rejection. Keep prior TASK/APP regressions and explicitly report retained private-data skips. Model responses are deterministic; no live semantic acceptance claim.

@@ -123,7 +123,8 @@ class GenerationOperation:
                 "learning_batch_already_complete")
         if self.failure_code is not None:
             require(self.failure_code in ("provider_rejected", "invalid_output", "worker_stopped",
-                "lease_expired", "provider_outcome_unknown", "binding_changed"),
+                "lease_expired", "provider_outcome_unknown", "binding_changed",
+                "recovery_incompatible", "assembly_invalid"),
                 "learning_failure_code_invalid")
         if self.state == "succeeded":
             require(type(self.result_revision) is int and self.result_revision == self.base_result_revision + 1
@@ -356,10 +357,15 @@ def finish_failure(entry: CacheEntry, *, operation_id: str, fence: int, now_ms: 
     op = _operation(entry, operation_id, fence, now_ms)
     require(type(outcome_known) is bool, "learning_outcome_invalid")
     require(op.state in (*_ACTIVE, "unknown"), "learning_failure_forbidden")
-    require((outcome_known and reason in ("provider_rejected", "invalid_output", "worker_stopped"))
+    require((outcome_known and reason in ("provider_rejected", "invalid_output", "worker_stopped",
+                "recovery_incompatible", "assembly_invalid"))
             or (not outcome_known and reason == "provider_outcome_unknown" and op.state == "running"),
             "learning_failure_evidence_invalid")
     require(reason != "worker_stopped" or op.state in ("claimed", "partial"),
+            "learning_failure_evidence_invalid")
+    require(reason not in ("recovery_incompatible", "assembly_invalid") or op.state == "partial",
+            "learning_failure_evidence_invalid")
+    require(reason != "assembly_invalid" or len(op.checkpoints) == len(op.plan.groups),
             "learning_failure_evidence_invalid")
     return _transition(entry, op, now_ms, state="failed" if outcome_known else "unknown",
                        failure_code=reason, outcome_uncertain=not outcome_known)

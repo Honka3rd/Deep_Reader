@@ -1,5 +1,25 @@
 # Deep Reflective Reader Progress
 
+## Learning Audit Final Local Review (2026-11-16)
+
+LEARN-01 and LEARN-02 are implemented and locally verified against baseline `471db7bc075fa0639b6f9bea96acf8b58613c37a`. LEARN-01 isolates incompatible generation provenance and permits explicit recovery/retry. LEARN-02 retains a validated same-worker response after expiry observation using one authoritative readback and one new guarded checkpoint CAS. Source/settings/fence/payload checks remain inside existing repository transactions; unknown acknowledgements never grant replay; an expired multi-batch operation cannot dispatch the next batch.
+
+Verification (2026-11-16, runs completed before interruption): external unchanged lease matrix 2 failures/2 controls -> 4/4 pass; new expiry suite initial 20 methods/14 failed assertions/zero errors -> expanded 26/26 pass. Cumulative 12-suite run: 474/474 executions, zero failures/errors/skips, including LEARN-01 22, LEARN-02 26, production routes 56 and nine adjacent suites 370. External guard controls 8/8 and separated LEARN-01 recovery/retry matrix 4/4 remain green. Both immutable full-book backups retain expected hashes; bounded English/Chinese two-sentence samples across translation/hints and file/real PostgreSQL pass 8 expiry/reply flows, each with one provider call and one checkpoint. Evidence: `/tmp/learn02-fix-471db7b/report.txt`; deterministic providers, no live LLM/UI/TCP/deployment claim. Both learning findings are locally verified; exact-SHA external review is pending.
+
+Documentation ownership: learning design/checklist owns application recovery and bounded reply reconciliation; section_tasks owns the LEARN-01 generation identity/failure policy; scripts owns both regression matrices. Progress rows below are synchronized from these checklists, excluding templates. No schema/transport/UI changes. Both units are complete; the next gate is one cumulative local review commit and external exact-SHA approval. No Docker, deployment, push or next module is authorized before that approval.
+
+The Unit 1 section below is its historical checkpoint, superseded by this final local-review status.
+
+
+## Learning Audit Unit 1 (2026-11-15)
+
+LEARN-01 is implemented and locally verified against baseline `471db7bc075fa0639b6f9bea96acf8b58613c37a`. Incomplete partial recovery checks provider/model/prompt before dispatch; known incompatible or unassemblable complete partials retain history/saved results and permit an explicit fresh retry. Compatible complete batches finish offline. Existing source/settings, revision/fence and unknown-outcome guards remain.
+
+Verification: 22/22 new file/real PostgreSQL recovery tests; initial 14-method red subset had 16 failed assertions, zero errors/skips. External four-method matrix: baseline 4 failures; corrected recovery-before-retry observation 4/4 pass (original audit runner counts calls after explicit retry; copied runner separates zero recovery calls from two authorized fresh retry calls). Adjacent policy/orchestration/services/storage/shared-translation/DI suites 370/370; HTTP routes 56/56; external guard controls 8/8. Two full immutable backups hash-verified; exact two-sentence English/Chinese excerpts across both stores/components pass 8 recovery/retry flows with deterministic providers. All executed groups have zero skips; counts may overlap. Evidence: `/tmp/learn01-fix-471db7b/report.txt`. Local unit verification only; LEARN-02 awaits next-unit confirmation, and external learning review remains open.
+
+Owned design/checklist updates: `learning/` records orchestration/failure recovery; `section_tasks/` records public generation identity and pure failure policy; `scripts/` records the real file/SQL regression matrix and evidence limits. No storage schema or transport/UI changes. No review commit yet: the requested LEARN-02 second unit still requires developer confirmation. No Docker, deployment, push or next-module work.
+
+
 ## Section Tasks Audit Unit 5 / Local Review Delivery (2026-11-15)
 
 TASK-01 through TASK-05 are locally verified; the exact-SHA external section_tasks
@@ -677,14 +697,14 @@ It is used to:
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `learning/` | application package | `learning/module-checklist.md` | 3 | 0 | Extraction locally verified; LLRN-13/completion evidence transferred; external review/Docker/push pending |
+| `learning/` | application package | `learning/module-checklist.md` | 5 | 0 | LEARN-01/02 locally verified; exact-SHA external learning review pending; unrelated items retained (2026-11-16 recount excludes templates) |
 | `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
 | `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
-| `scripts/` | package | `scripts/module-checklist.md` | 77 | 1 | TASK-01–05 locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 111 | 0 | TASK-01–05 locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
+| `scripts/` | package | `scripts/module-checklist.md` | 79 | 1 | LEARN-01/02 locally verified; exact-SHA external learning review pending; unrelated items retained (2026-11-16 recount excludes templates) |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 112 | 0 | LEARN-01/02 locally verified; exact-SHA external learning review pending; unrelated items retained (2026-11-16 recount excludes templates) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 38 | 3 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |

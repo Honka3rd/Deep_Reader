@@ -1,5 +1,6 @@
 """Backend-owned execution; durable dispatch CAS is the only provider permission."""
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 import logging
 from threading import BoundedSemaphore, Lock
 from time import monotonic
@@ -12,7 +13,7 @@ from section_tasks.learning_generation_policy import LearningAdmissionDenied
 from section_tasks.learning_assembly import assemble_checkpoints
 from section_tasks.learning_translation_service import LearningTranslationError
 from section_tasks.learning_hints_output import LearningHintsError
-from shared.learning_source import LearningContractError, integer
+from shared.learning_source import LearningContractError, integer, require
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,28 @@ class LearningWorker:
             validate_binding=self.context.validate_binding)
         return OperationSnapshot(entry.operation, entry.revision)
 
+    def _checkpoint(self, document_id, dispatched, batch):
+        """Reconcile only an expiry observation; never replay unknown commits."""
+        fields = dict(batch_index=len(dispatched.operation.checkpoints), batch=batch)
+        try:
+            return self.write(document_id, dispatched, 'checkpoint', **fields)
+        except LearningContractError as error:
+            if str(error) != 'learning_entry_revision_conflict':
+                raise
+        current = self.context.repository.inspect_operation(document_id, dispatched.operation.operation_id)
+        require(current is not None and dispatched.operation.state == 'running'
+                and current.entry_revision == dispatched.entry_revision + 1
+                and current.operation.updated_at_ms >= dispatched.operation.lease_until_ms,
+                'learning_checkpoint_reconciliation_conflict')
+        # Compare the entire operation, allowing exactly the changes made by
+        # expire_operation. A readback never adopts another owner or batch.
+        expected = replace(dispatched.operation, state='unknown', failure_code='lease_expired',
+                           updated_at_ms=current.operation.updated_at_ms)
+        require(current.operation == expected, 'learning_checkpoint_reconciliation_conflict')
+        # This new CAS revalidates source/settings/payload under the repository's
+        # existing lock/transaction. Another intervening write still wins.
+        return self.write(document_id, current, 'checkpoint', **fields)
+
     def _failure(self, document_id, snapshot, *, reason, known):
         # Best-effort observation. Losing CAS never overwrites another worker;
         # storage errors remain uncertain in durable state, not false success.
@@ -78,6 +101,13 @@ class LearningWorker:
             parts.extend(page)
         return tuple(parts)
 
+    def recovery_compatible(self, document_id, prepared, snapshot):
+        """Read durable provenance before any new dispatch, without adopting it."""
+        service = self.context.services[snapshot.operation.binding.key.component]
+        provenance = service.generation_provenance(prepared)
+        return all(batch.provenance == provenance
+                   for batch in self._batches(document_id, snapshot.operation))
+
     def _run(self, document_id, prepared, snapshot):
         started, outcome = monotonic(), 'stopped'
         try:
@@ -92,9 +122,18 @@ class LearningWorker:
                         stored, = self.context.repository.read_sentences(document_id, (key.resource,))
                         if stored.state != 'ready':
                             raise LearningContractError('learning_source_changed')
-                        result = assemble_checkpoints(op, stored.sentences, block.effective_text, batches)
+                        sentences, text = stored.sentences, block.effective_text
                     else:
-                        result = service.assemble(prepared, op, batches)
+                        sentences, text = prepared.sentences, prepared.effective_text
+                    try:
+                        # Complete durable output has its own identity; do not depend
+                        # on the current provider to finish or classify assembly.
+                        result = assemble_checkpoints(op, sentences, text, batches)
+                    except LearningContractError:
+                        snapshot = self.write(document_id, snapshot, 'fail',
+                            reason='assembly_invalid', outcome_known=True)
+                        outcome = 'assembly_invalid'
+                        return
                     snapshot = self.write(document_id, snapshot, 'commit', result=result)
                     outcome = 'succeeded'
                     return
@@ -114,8 +153,7 @@ class LearningWorker:
                     self._failure(document_id, snapshot, reason=reason, known=known)
                     outcome = 'failed' if known else 'unknown'
                     return
-                snapshot = self.write(document_id, snapshot, 'checkpoint',
-                    batch_index=len(snapshot.operation.checkpoints), batch=batch)
+                snapshot = self._checkpoint(document_id, snapshot, batch)
         except (LearningCommitUnknown, LearningStorageError):
             # Never replay a dispatch or paid call after an unconfirmed write.
             outcome = 'storage_unconfirmed'

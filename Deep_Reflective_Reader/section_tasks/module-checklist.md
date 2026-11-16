@@ -1,5 +1,13 @@
 # section_tasks Checklist
 
+## Learning audit (2026-11-15)
+
+- [x] LEARN-01: Guard partial recovery provenance and provide explicit recovery for unassemblable complete checkpoints.
+  Status: Locally verified; external learning review pending.
+  Acceptance: Changed generation identity performs zero recovery dispatch; valid complete checkpoints finish offline; explicit retry preserves history and old saved; real file/PostgreSQL controls.
+  Evidence: 22/22 new recovery tests, 370/370 adjacent executions, 56/56 routes, 8/8 external guards; corrected external matrix 4/4, two immutable-book excerpts/8 flows. `/tmp/learn01-fix-471db7b/report.txt`.
+  Timestamp: 2026-11-15
+
 ## Section tasks audit unit 1 (2026-11-14)
 
 - [x] TASK-01: Reject stale generated interactions and Note editors across document lifecycle changes.

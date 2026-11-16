@@ -1,5 +1,22 @@
 # scripts Checklist
 
+## Learning audit unit 2 (2026-11-15)
+
+- [x] LEARN-02: Verify conditional publication of late replies after expiry observation.
+  Status: Locally verified; exact-SHA external review pending.
+  Acceptance: File/real SQL both-component exact-once checkpoint, no extra provider dispatch, current-source/fence/CAS and unknown-ack controls.
+  Evidence: Expiry regression 26/26; cumulative 474/474; external expiry 4/4 and guards 8/8; two hash-verified book samples/8 file-SQL flows. `/tmp/learn02-fix-471db7b/report.txt`.
+  Timestamp: 2026-11-16
+
+
+## Learning audit (2026-11-15)
+
+- [x] LEARN-01: Guard partial recovery provenance and provide explicit recovery for unassemblable complete checkpoints.
+  Status: Locally verified; external learning review pending.
+  Acceptance: Changed generation identity performs zero recovery dispatch; valid complete checkpoints finish offline; explicit retry preserves history and old saved; real file/PostgreSQL controls.
+  Evidence: 22/22 new recovery tests, 370/370 adjacent executions, 56/56 routes, 8/8 external guards; corrected external matrix 4/4, two immutable-book excerpts/8 flows. `/tmp/learn01-fix-471db7b/report.txt`.
+  Timestamp: 2026-11-15
+
 ## TASK-05 supporting contract (2026-11-15)
 
 - [x] TASK-05: Validate legacy summary/quiz outputs without masking corruption or losing valid prior artifacts.

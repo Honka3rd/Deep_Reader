@@ -71,6 +71,11 @@ class LearningHintsService:
                     len(sentences.sentences), len(plan.groups), caps.max_output_tokens)
         return PreparedHints(key, sentences, effective_text, plan, caps, identity)
 
+    def generation_provenance(self, prepared):
+        """Identity captured by prepare; no provider/tokenizer IO for recovery checks."""
+        require(type(prepared) is PreparedHints, "learning_hints_request_invalid")
+        return GenerationProvenance(self._provider_name, prepared.capabilities.model_name, PROMPT_VERSION)
+
     def _validate(self, prepared, operation):
         require(type(prepared) is PreparedHints and type(operation) is GenerationOperation,
                 "learning_hints_request_invalid")
@@ -114,8 +119,7 @@ class LearningHintsService:
             logger.info('learning_hints operation=filter accepted=%d filtered=%d rejected=%d omitted_sentences=%d issues=%s',
                 assessment.accepted_count, assessment.filtered_count, assessment.rejected_count,
                 assessment.omitted_sentences, ','.join(f'{i.code}:{i.count}' for i in assessment.issues))
-            result = BatchPayload("hints", GenerationProvenance(
-                self._provider_name, caps.model_name, PROMPT_VERSION), items=items, assessment=assessment)
+            result = BatchPayload("hints", self.generation_provenance(prepared), items=items, assessment=assessment)
             result.validate(operation, len(operation.checkpoints), prepared.sentences, prepared.effective_text)
             outcome = "validated"
             return result
@@ -132,7 +136,7 @@ class LearningHintsService:
         require(operation.state == "partial" and len(operation.checkpoints) == len(prepared.plan.groups)
                 and type(batches) is tuple and len(batches) == len(prepared.plan.groups),
                 "learning_hints_incomplete")
-        provenance = GenerationProvenance(self._provider_name, prepared.capabilities.model_name, PROMPT_VERSION)
+        provenance = self.generation_provenance(prepared)
         for index, batch in enumerate(batches):
             require(type(batch) is BatchPayload and batch.provenance == provenance, "learning_provenance_mismatch")
             batch.validate(operation, index, prepared.sentences, prepared.effective_text)

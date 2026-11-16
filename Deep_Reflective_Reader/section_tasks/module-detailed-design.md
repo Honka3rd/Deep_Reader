@@ -1,5 +1,14 @@
 # section_tasks Detailed Design
 
+## LEARN-01 recovery support (2026-11-15, locally verified)
+
+Translation/hints services expose the provider/model/prompt identity for a prepared request without another provider call. Generation and assembly use that same identity. Model identity is not added to cache keys; compatible saved results keep existing cross-model reuse.
+
+Pure failure policy adds known `recovery_incompatible` (partial, no outstanding dispatch) and `assembly_invalid` (complete partial only). These transitions retain batches, receipts and saved results and require the existing revision/fence publication. They cannot turn running/unknown work into known failure or authorize automatic retry. Complete-payload provenance validation remains strict; learning owns orchestration and classification, storage owners retain existing transactions.
+
+Verification: 22/22 new file/real PostgreSQL recovery tests; initial 14-method red subset had 16 failed assertions, zero errors/skips. External four-method matrix: baseline 4 failures; corrected recovery-before-retry observation 4/4 pass (original audit runner counts calls after explicit retry; copied runner separates zero recovery calls from two authorized fresh retry calls). Adjacent policy/orchestration/services/storage/shared-translation/DI suites 370/370; HTTP routes 56/56; external guard controls 8/8. Two full immutable backups hash-verified; exact two-sentence English/Chinese excerpts across both stores/components pass 8 recovery/retry flows with deterministic providers. All executed groups have zero skips; counts may overlap. Evidence: `/tmp/learn01-fix-471db7b/report.txt`. Local unit verification only; LEARN-01 evidence was recorded before LEARN-02; external learning review remains open.
+
+
 ## TASK-05 legacy output validation (2026-11-15, locally verified)
 
 Reject the entire legacy section/chapter summary or quiz result before success or publication when summary is not a nonblank string, any question field is not a nonblank string, or trimmed question IDs are duplicated. Keep the generation minimum of four questions. Do not stringify invalid values or filter invalid questions. Provider failures preserve previous artifacts. Existing source-bound publication remains mandatory and model work stays outside locks.

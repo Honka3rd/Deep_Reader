@@ -189,6 +189,12 @@ class LearningService:
                 require(block.source == op.binding.key.resource.source, 'learning_source_changed')
                 require(prepared is not None and prepared.key == op.binding.key and prepared.plan == op.plan,
                         'learning_recovery_plan_changed')
+                if not self.worker.recovery_compatible(document_id, prepared, snapshot):
+                    updated = self.worker.write(document_id, snapshot, 'fail',
+                        reason='recovery_incompatible', outcome_known=True)
+                    self.worker.completion.notify(document_id, operation_id)
+                    return LearningSubmission(updated.operation.state, operation_id, operation_id,
+                                              reason=updated.operation.failure_code)
             self.worker.reserve()
             try:
                 self.worker.start(document_id, prepared, snapshot)

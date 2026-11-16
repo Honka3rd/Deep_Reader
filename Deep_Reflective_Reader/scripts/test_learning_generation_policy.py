@@ -104,6 +104,28 @@ class LearningGenerationPolicyTests(unittest.TestCase):
         return finish_failure(entry, reason='provider_outcome_unknown', outcome_known=False,
                               **self.args(entry, 30)).next_entry
 
+    def test_recovery_failure_requires_no_outstanding_dispatch(self):
+        for entry in (self.claimed(), self.running(), self.unknown()):
+            for reason in ('recovery_incompatible', 'assembly_invalid'):
+                with self.subTest(state=entry.operation.state, reason=reason):
+                    with self.assertRaisesRegex(LearningContractError, 'failure_evidence_invalid'):
+                        finish_failure(entry, reason=reason, outcome_known=True, **self.args(entry, 40))
+        partial = self.partial()
+        for reason in ('recovery_incompatible', 'assembly_invalid'):
+            result = finish_failure(partial, reason=reason, outcome_known=True, **self.args(partial, 40)).next_entry
+            self.assertEqual((result.operation.state, result.operation.failure_code), ('failed', reason))
+            self.assertEqual(result.operation.checkpoints, partial.operation.checkpoints)
+            self.assertFalse(result.operation.outcome_uncertain)
+
+    def test_assembly_failure_requires_complete_checkpoints(self):
+        self.plan = BatchPlan(tuple((sentence.sentence_id,) for sentence in self.sentences.sentences))
+        partial = self.partial()
+        with self.assertRaisesRegex(LearningContractError, 'failure_evidence_invalid'):
+            finish_failure(partial, reason='assembly_invalid', outcome_known=True, **self.args(partial, 40))
+        result = finish_failure(partial, reason='recovery_incompatible', outcome_known=True,
+                                **self.args(partial, 40)).next_entry
+        self.assertEqual(result.operation.state, 'failed')
+
     def test_translation_has_no_level_or_result_revision_or_model_dimension(self):
         self.assertEqual({f.name for f in fields(self.key)}, {'resource', 'source_language',
             'explanation_language', 'policy_version', 'prompt_version'})

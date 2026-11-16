@@ -1,5 +1,19 @@
 # learning Checklist
 
+## Learning audit (2026-11-15)
+
+- [x] LEARN-01: Guard partial recovery provenance and provide explicit recovery for unassemblable complete checkpoints.
+  Status: Locally verified; external learning review pending.
+  Acceptance: Changed generation identity performs zero recovery dispatch; valid complete checkpoints finish offline; explicit retry preserves history and old saved; real file/PostgreSQL controls.
+  Evidence: 22/22 new recovery tests, 370/370 adjacent executions, 56/56 routes, 8/8 external guards; corrected external matrix 4/4, two immutable-book excerpts/8 flows. `/tmp/learn01-fix-471db7b/report.txt`.
+  Timestamp: 2026-11-15
+
+- [x] LEARN-02: Reconcile late successful replies after expiry observation without replaying provider calls.
+  Status: Locally verified; exact-SHA external review pending.
+  Acceptance: Same operation/fence reply uses guarded CAS; source/settings/new fence/unknown-ack protections retained.
+  Evidence: Expiry regression 26/26; cumulative 474/474; external expiry 4/4 and guards 8/8; two hash-verified book samples/8 file-SQL flows. `/tmp/learn02-fix-471db7b/report.txt`.
+  Timestamp: 2026-11-16
+
 ## Module extraction (2026-11-10)
 
 - [x] LEARN-MOD-01: Extract the learning application module from app.
