@@ -491,7 +491,8 @@ class LearningOperationResponse(LearningTransportDTO):
     result_revision: PositiveRevision | None
     outcome_uncertain: bool
     failure_code: Literal['provider_rejected', 'invalid_output', 'provider_outcome_unknown',
-                          'worker_stopped', 'lease_expired', 'binding_changed'] | None
+                          'worker_stopped', 'lease_expired', 'binding_changed',
+                          'recovery_incompatible', 'assembly_invalid'] | None
 
     @model_validator(mode='after')
     def coherent(self):

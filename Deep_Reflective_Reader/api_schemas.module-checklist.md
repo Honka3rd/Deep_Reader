@@ -1,5 +1,14 @@
 # api_schemas.py Checklist
 
+## Learning public recovery audit (2026-11-17)
+
+- [x] LEARN-03: Preserve known recovery failures across the public contract.
+  Status: Locally verified; exact-SHA external learning review pending.
+  Acceptance: Both failure codes observable, strict invalid-response rejection, saved/history preserved, explicit retry only; real file/SQL HTTP and UI consumer evidence.
+  Evidence: Public recovery 4/4 file/SQL methods; external 28 failing assertions now pass; cumulative backend 534/534, typed payloads 16/16, controller 22/22, desktop/mobile display/lifecycle and type/build pass. `/tmp/learn03-fix-cafc4ab/report.txt`.
+  Timestamp: 2026-11-17
+
+
 - [x] SCHEMA-03: retain safe legacy document names without hiding or rewriting books.
   Acceptance: Upgrade fixtures with colon/question/angle-bracket titles remain listed and readable through HTTP; preserve exact body/notes, allow note editing and lifecycle rename/retry/delete on file and real PostgreSQL, and retain traversal/control/drive/symlink protections.
   Evidence: `scripts/test_legacy_document_names.py` has ten file/real PostgreSQL upgrade cases (including two TCP cases); all fail on exact baseline83c244f and pass after correction. Body and full note payloads survive reads and rename/replay; file reads preserve exact bytes. Combined 384-test regression passes without skips, including SCHEMA-01/02, source-review fixture and MAIN-01–06; 11 existing scripts pass. Evidence: `/tmp/audit-api-schemas-83c244f/`. External review pending.

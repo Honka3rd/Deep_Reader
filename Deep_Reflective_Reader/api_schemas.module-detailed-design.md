@@ -1,5 +1,12 @@
 # api_schemas.py Detailed Design
 
+## LEARN-03 public recovery contract (2026-11-17, locally verified)
+
+Extend the finite operation failure_code union with recovery_incompatible and assembly_invalid. All operation projections (read/wait/partial) accept these real durable states; submission.reason remains non-null only for denied. Unknown codes and malformed/coherence-invalid DTOs stay rejected. Command receipts retain original acceptance, not rewritten final outcomes.
+
+Verification: file/real PostgreSQL public recovery 4/4 methods across both components and failure codes; external 28 failing public assertions now pass in 4/4 methods. Cumulative backend 534/534 executions, zero skips; typed payloads 16/16, controller 22/22 groups, desktop/mobile display and lifecycle flows, TypeScript/build pass. No storage migration, automatic paid retry or source-policy relaxation. Evidence: `/tmp/learn03-fix-cafc4ab/report.txt`. Exact-SHA external learning review remains pending.
+
+
 ## SCHEMA-03 legacy name compatibility (2026-11-11, implemented)
 
 Safety is based on a logical leaf name, not a Windows filename punctuation list.

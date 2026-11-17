@@ -28,10 +28,12 @@ export interface Submission {
     | "unknown" | "missing" | "superseded" | "stale" | "failed" | "succeeded" | "resuming";
   operation: LearningHandle | null; replay: boolean; reason: string | null; result_revision: number | null;
 }
+const failureCodes = ["provider_rejected", "invalid_output", "provider_outcome_unknown", "worker_stopped",
+  "lease_expired", "binding_changed", "recovery_incompatible", "assembly_invalid"] as const;
 export interface Operation {
   handle: LearningHandle; state: OperationState | "missing"; durable_state: OperationState | null; component: LearningComponent | null;
   content_block_id: string | null; source_token: string | null; source_current: boolean; settings_current: boolean; owns_current_slot: boolean;
-  completed_batches: number; total_batches: number; result_revision: number | null; outcome_uncertain: boolean; failure_code: string | null;
+  completed_batches: number; total_batches: number; result_revision: number | null; outcome_uncertain: boolean; failure_code: typeof failureCodes[number] | null;
 }
 export interface CommandReceipt { doc_name: string; command_id: string; found: boolean; receipt: Submission | null }
 export interface PartialRead { handle: LearningHandle; component: LearningComponent; source_token: string; offset: number;
@@ -120,7 +122,7 @@ export function validSubmission(v: unknown): v is Submission {
 }
 export function validOperation(v: unknown): v is Operation {
   if (!obj(v) || !handle(v.handle) || ![...states, "missing"].includes(v.state) || ![v.source_current, v.settings_current, v.owns_current_slot, v.outcome_uncertain].every(x => typeof x === "boolean")
-    || !nat(v.completed_batches) || !nat(v.total_batches) || v.completed_batches > v.total_batches || (v.failure_code !== null && !["provider_rejected", "invalid_output", "provider_outcome_unknown", "worker_stopped", "lease_expired", "binding_changed"].includes(v.failure_code))) return false;
+    || !nat(v.completed_batches) || !nat(v.total_batches) || v.completed_batches > v.total_batches || (v.failure_code !== null && !failureCodes.includes(v.failure_code))) return false;
   if (v.state === "missing") return [v.durable_state, v.component, v.content_block_id, v.source_token, v.result_revision, v.failure_code].every(x => x === null)
     && !v.source_current && !v.settings_current && !v.owns_current_slot && !v.outcome_uncertain && v.total_batches === 0;
   return states.includes(v.durable_state) && component(v.component) && text(v.content_block_id) && token(v.source_token) && positive(v.total_batches)

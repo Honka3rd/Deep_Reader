@@ -193,8 +193,8 @@ class LearningService:
                     updated = self.worker.write(document_id, snapshot, 'fail',
                         reason='recovery_incompatible', outcome_known=True)
                     self.worker.completion.notify(document_id, operation_id)
-                    return LearningSubmission(updated.operation.state, operation_id, operation_id,
-                                              reason=updated.operation.failure_code)
+                    # Public reason is reserved for admission denial; status owns failure details.
+                    return LearningSubmission(updated.operation.state, operation_id, operation_id)
             self.worker.reserve()
             try:
                 self.worker.start(document_id, prepared, snapshot)

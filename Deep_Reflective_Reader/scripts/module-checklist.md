@@ -1,5 +1,14 @@
 # scripts Checklist
 
+## Learning public recovery audit (2026-11-17)
+
+- [x] LEARN-03: Preserve known recovery failures across the public contract.
+  Status: Locally verified; exact-SHA external learning review pending.
+  Acceptance: Both failure codes observable, strict invalid-response rejection, saved/history preserved, explicit retry only; real file/SQL HTTP and UI consumer evidence.
+  Evidence: Public recovery 4/4 file/SQL methods; external 28 failing assertions now pass; cumulative backend 534/534, typed payloads 16/16, controller 22/22, desktop/mobile display/lifecycle and type/build pass. `/tmp/learn03-fix-cafc4ab/report.txt`.
+  Timestamp: 2026-11-17
+
+
 ## Learning audit unit 2 (2026-11-15)
 
 - [x] LEARN-02: Verify conditional publication of late replies after expiry observation.

@@ -1,5 +1,12 @@
 # Deep_Reader_UI Detailed Design
 
+## LEARN-03 public recovery contract (2026-11-17, locally verified)
+
+The typed learning service accepts the two backend-defined known recovery failure codes while preserving submission reason/admission and source/settings/current-slot guards. Existing session recovery displays failed, retains saved/partial data and permits only explicit retry with a fresh command. Unknown-cost consent and zero automatic paid retry remain. UI is a projection of backend truth; no new backend behavior is defined here.
+
+Verification: file/real PostgreSQL public recovery 4/4 methods across both components and failure codes; external 28 failing public assertions now pass in 4/4 methods. Cumulative backend 534/534 executions, zero skips; typed payloads 16/16, controller 22/22 groups, desktop/mobile display and lifecycle flows, TypeScript/build pass. No storage migration, automatic paid retry or source-policy relaxation. Evidence: `/tmp/learn03-fix-cafc4ab/report.txt`. Exact-SHA external learning review remains pending.
+
+
 ## Rename command identity (2026-11-11, implemented)
 
 The lifecycle service reads backend rename context for a new explicit user command and submits a UUID plus its source token. It retains the exact command through transport/503 unknown outcomes; retry must not fetch a new token or UUID. A completed or definitively rejected command is released. A later user command, including after reimport, obtains new context. The UI does not infer source incarnation from names or hashes, and existing rename dialog presentation is retained. No background rename retries. Retention is service-instance/session memory; a page reload does not recover a lost command handle or silently resume a pending server journal. Dedicated Chromium service and desktop/mobile Library rename tests pass; the unrelated broad Library script remains blocked at reader entry before rename.

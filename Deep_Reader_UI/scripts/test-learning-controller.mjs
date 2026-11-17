@@ -8,7 +8,7 @@ try {
  const results = await page.evaluate(async () => {
   const { LearningPageSession } = await import("/src/features/learning-reader/session.ts");
   const { LearningSessionMemory, itemKey, pageSources, pageProgress, emptyPage, componentAction } = await import("/src/features/learning-reader/model.ts");
-  const { LearningService, LearningFailure, validRead, validOperation } = await import("/src/services/LearningService.ts");
+  const { LearningService, LearningFailure, validRead, validOperation, validSubmission } = await import("/src/services/LearningService.ts");
   const f = await import("/scripts/learning-controller-fixtures.mjs");
   const check = (v, message) => { if (!v) throw Error(message); };
   const pause = ms => new Promise(r => setTimeout(r, ms));
@@ -38,6 +38,39 @@ try {
    return { session, calls, ops, commands, memory, settings, state: () => state, item: (id = "b1", c = "translation") => state?.items[itemKey(id,c)],
     count: endpoint => calls.filter(c => c.endpoint === endpoint).length };
   }
+  await test("LEARN-03 known recovery failures remain observable and explicitly retryable", async () => {
+   for (const code of ["recovery_incompatible", "assembly_invalid"]) for (const component of ["translation", "hints"]) {
+    const b=f.block();f.save(b,"translation");f.save(b,"hints");
+    let op={...f.operation(b,component,"partial","original"),total_batches:2};f.attach(b,op);
+    const h=harness([b],{respond:(endpoint)=>{
+     if(["operations/read","operations/wait"].includes(endpoint)&&op)return {ok:true,status:200,payload:copy(op)};
+     if(endpoint==="operations/partial"&&op)return {ok:true,status:200,payload:{handle:op.handle,component,source_token:b.source_token,
+      offset:0,completed_batches:1,total_batches:2,next_offset:null,batches:[{component,batch_index:0,
+       ...(component==="translation"?{rows:[{sentence_id:"b1:s1",translated_text:"已保存的部分譯文。"}]}:{items:[]})}]}};
+     if(endpoint==="operations/reconcile"){
+      op={...op,state:"failed",durable_state:"failed",failure_code:code,outcome_uncertain:false};f.attach(b,op);
+      return {ok:true,status:200,payload:f.submission({doc_name:"Book",command_id:"original"},"failed",op.handle)};
+     }
+     if(endpoint==="generate")op=null;
+    }});
+    const item=()=>h.item("b1",component),key=itemKey("b1",component);
+    await h.session.start();await until(()=>item()?.phase==="partial"&&!item().busy);
+    check(h.count("generate")===0,"partial cannot generate automatically");
+    h.session.enqueue(key,"check");await until(()=>item()?.phase==="failed"&&!item().busy);
+    check(item().view.saved&&item().partial.batches.length===1,"old saved and checkpoint retained");
+    check(componentAction(item())==="retry"&&h.count("generate")===0,"known failure exposes retry without automatic dispatch");
+    check(validOperation(op),"new known code accepted");
+    for(const invalid of ["future_failure",{},true,5])check(!validOperation({...op,failure_code:invalid}),"unknown/malformed code rejected");
+    check(!validOperation({...op,outcome_uncertain:true}),"failed outcome coherence preserved");
+    const response=f.submission({doc_name:"Book",command_id:"original"},"failed",op.handle);
+    check(validSubmission(response)&&!validSubmission({...response,reason:code}),"reason remains exclusive to denied");
+    h.session.enqueue(key,"check");await until(()=>!item().busy);check(h.count("generate")===0,"repeated check has zero paid retry");
+    h.session.enqueue(key,"retry");await until(()=>item()?.phase==="ready"&&!item().busy);
+    const commands=h.calls.filter(c=>c.endpoint==="generate");check(commands.length===1,"one explicit retry");
+    check(commands[0].body.intent==="retry"&&commands[0].body.retry_operation.operation_id==="original"
+     &&commands[0].body.command_id!=="original"&&!commands[0].body.acknowledge_possible_duplicate_cost,"fresh command with known-cost retry");
+   }
+  });
   await test("R2 settings-stale work permits explicit current-settings retry with cost consent", async () => {
    for (const durable of ["running", "stale"]) {
     const b=f.block(); f.save(b,"hints");

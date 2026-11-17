@@ -1,5 +1,12 @@
 # learning Detailed Design
 
+## LEARN-03 public recovery contract (2026-11-17, locally verified)
+
+Keep submission.reason exclusive to admission denial. Known recovery failure returns outcome=failed with its operation handle and reason=null; operation status owns recovery_incompatible/assembly_invalid details. Do not turn a committed known failure into an unknown submission. Existing source/settings/fence/CAS and explicit paid retry rules are unchanged.
+
+Verification: file/real PostgreSQL public recovery 4/4 methods across both components and failure codes; external 28 failing public assertions now pass in 4/4 methods. Cumulative backend 534/534 executions, zero skips; typed payloads 16/16, controller 22/22 groups, desktop/mobile display and lifecycle flows, TypeScript/build pass. No storage migration, automatic paid retry or source-policy relaxation. Evidence: `/tmp/learn03-fix-cafc4ab/report.txt`. Exact-SHA external learning review remains pending.
+
+
 ## LEARN-02 late reply after expiry observation (2026-11-16, locally verified)
 
 After an acknowledged dispatch and validated local provider response, checkpoint CAS may lose only to an explicit expiry observation. On exactly `learning_entry_revision_conflict`, the worker reads `inspect_operation` once. It may issue one new checkpoint CAS only when the active entry revision advanced exactly once and the full operation equals the dispatched snapshot with only expiry's state/failure/update-time changes: running to unknown, lease_expired, unchanged operation/fence/binding/plan/checkpoint prefix and result revision. The observation timestamp must be at or after the original lease deadline. Any other transition, occupied batch, historical/superseded operation, storage failure or unknown acknowledgement is not permission to replay.

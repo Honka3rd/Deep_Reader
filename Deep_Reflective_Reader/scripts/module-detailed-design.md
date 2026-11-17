@@ -1,5 +1,12 @@
 # scripts Detailed Design
 
+## LEARN-03 public recovery contract (2026-11-17, locally verified)
+
+Add actual router + service + file/real PostgreSQL coverage for translation/hints and both new known failure codes. Verify first reconcile, read/wait/partial, command lookup, unchanged saved/checkpoints/receipts, zero recovery calls and explicit new-fence retry. UI-owned browser tests cover typed validators and the real learning session. Preserve existing LEARN-01/02 regression assertions.
+
+Verification: file/real PostgreSQL public recovery 4/4 methods across both components and failure codes; external 28 failing public assertions now pass in 4/4 methods. Cumulative backend 534/534 executions, zero skips; typed payloads 16/16, controller 22/22 groups, desktop/mobile display and lifecycle flows, TypeScript/build pass. No storage migration, automatic paid retry or source-policy relaxation. Evidence: `/tmp/learn03-fix-cafc4ab/report.txt`. Exact-SHA external learning review remains pending.
+
+
 ## LEARN-02 expiry reply regression (2026-11-16, locally verified)
 
 Add real file/PostgreSQL application tests that block a deterministic provider after acknowledged dispatch, advance the injected server clock, explicitly reconcile expiry, then release the original successful response. Count durable checkpoints and provider calls. Cover both components, multi-batch lease stopping, source/settings and new-operation fences, competing checkpoint payloads, post-readback races and lost acknowledgement without provider replay. Preserve external baseline red/green and all LEARN-01 controls. These are deterministic scheduling/persistence tests, not live billing or process-crash acceptance.

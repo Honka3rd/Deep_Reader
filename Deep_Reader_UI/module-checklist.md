@@ -1,5 +1,14 @@
 # Deep_Reader_UI Checklist
 
+## Learning public recovery audit (2026-11-17)
+
+- [x] LEARN-03: Preserve known recovery failures across the public contract.
+  Status: Locally verified; exact-SHA external learning review pending.
+  Acceptance: Both failure codes observable, strict invalid-response rejection, saved/history preserved, explicit retry only; real file/SQL HTTP and UI consumer evidence.
+  Evidence: Public recovery 4/4 file/SQL methods; external 28 failing assertions now pass; cumulative backend 534/534, typed payloads 16/16, controller 22/22, desktop/mobile display/lifecycle and type/build pass. `/tmp/learn03-fix-cafc4ab/report.txt`.
+  Timestamp: 2026-11-17
+
+
 - [x] MAIN-06 dependency: submit backend-bound rename command identity and retain unknown-outcome retries.
   Evidence: `test-rename-command-service.mjs` verifies duplicate dispatch, transport/503 retry, new command after completion/conflict; `test-rename-command-browser.mjs` passes at 1280px/390px with screenshots. `npm run build` and 21 controller groups pass. Existing broad Library workflow times out before reaching rename; it is not counted as passing.
   Timestamp: 2026-11-11

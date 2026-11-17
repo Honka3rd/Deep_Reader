@@ -110,6 +110,26 @@ try{for(const width of [1280,390]){
  assert.equal(gen().at(-1).body.expected_book_revision,version);
  assert.equal(gen().at(-1).body.retry_operation.operation_id,old.handle.operation_id);
  await page.screenshot({path:`/tmp/audit-e7073/learning-retry-${width}.png`,fullPage:true});
+ // LEARN-03: actual desktop/mobile actions accept both known recovery codes.
+ for(const code of ["recovery_incompatible","assembly_invalid"])for(const component of ["translation","hints"]){
+  const label=component==="translation"?"translation":"vocabulary",before=gen().length;
+  const failed={...f.operation(b1,component,"failed",`${code}-${component}`),failure_code:code};
+  ops.set(failed.handle.operation_id,failed);f.attach(b1,failed);
+  await changeMode("normal");await changeMode("language_learning");
+  const button=b(0).getByRole("button",{name:`Retry ${label}`,exact:true});
+  await button.waitFor();await until(async()=>await button.isEnabled());
+  assert.equal(gen().length,before,"known failure must not auto-retry");
+  assert.equal(await b(0).locator(".learning-translated-sentence").count(),2,"saved translation retained");
+  await button.scrollIntoViewIfNeeded();
+  await page.screenshot({path:`/tmp/learn03-fix-cafc4ab/${code}-${component}-${width}.png`,fullPage:true});
+  await button.focus();await page.keyboard.press("Enter");
+  const refresh=b(0).getByRole("button",{name:`Refresh ${label}`,exact:true});
+  await refresh.waitFor();await until(async()=>await refresh.isEnabled());
+  assert.equal(gen().length,before+1,"only explicit retry sends a new command");
+  assert.equal(gen().at(-1).body.retry_operation.operation_id,failed.handle.operation_id);
+  assert.notEqual(gen().at(-1).body.command_id,failed.handle.operation_id);
+  assert.equal(gen().at(-1).body.acknowledge_possible_duplicate_cost,false);
+ }
  const highlights=await page.evaluate(async ({book,b})=>{
   const {default:React}=await import("/node_modules/.vite/deps/react.js");
   const {default:Client}=await import("/node_modules/.vite/deps/react-dom_client.js");

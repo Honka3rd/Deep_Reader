@@ -1,5 +1,13 @@
 # Deep Reflective Reader Progress
 
+## Learning LEARN-03 Public Recovery Review (2026-11-17)
+
+LEARN-03 is locally verified against `cafc4ab025659356d3fb0e108847efdbecdfb97a`. Known recovery failures retain submission.reason=null; operation failure_code explicitly admits recovery_incompatible/assembly_invalid in API and typed UI. The existing explicit retry flow remains responsible for fresh commands; no new automatic dispatch, storage migration or source/fence-policy change. LEARN-01/02 internal protections are retained. Latest-SHA external approval is still required before deployment/push or another module.
+
+Evidence: original public router/file/real PostgreSQL reproduction goes from 4 methods/28 failed assertions to 4/4 passing methods. New public recovery suite 4/4 methods includes both components/codes, read/wait/partial, command lookup, saved/checkpoint/receipt retention and explicit new-fence retry. Cumulative 14 suites: 534/534 executions, zero failures/errors/skips; groups may overlap. Typed public payloads 16/16, UI controller 22/22 groups, desktop/mobile display and lifecycle flows, TypeScript/build pass. Initial hot-update server controller run had two existing lost-ack timeouts; unchanged tests pass after restarting the isolated Vite server, with both logs retained. No live model, new full-book/OCR, TCP or Docker acceptance claim. `/tmp/learn03-fix-cafc4ab/report.txt` records commands, red/green and limits.
+
+Owned design/checklist updates: learning (submission outcome), api_schemas (finite public codes), scripts (real HTTP storage regressions), UI (typed consumer and explicit retry evidence). This backend progress only aggregates learning 6/0, api_schemas 42/3 and scripts 80/1. The prior API table 38/3 and scripts detail 71/1 were stale; direct recount includes existing completed items without changing their status. UI counts are not aggregated here. Existing unresolved tasks remain unchanged. Earlier checkpoints below are historical.
+
 ## Learning Audit Final Local Review (2026-11-16)
 
 LEARN-01 and LEARN-02 are implemented and locally verified against baseline `471db7bc075fa0639b6f9bea96acf8b58613c37a`. LEARN-01 isolates incompatible generation provenance and permits explicit recovery/retry. LEARN-02 retains a validated same-worker response after expiry observation using one authoritative readback and one new guarded checkpoint CAS. Source/settings/fence/payload checks remain inside existing repository transactions; unknown acknowledgements never grant replay; an expired multi-batch operation cannot dispatch the next batch.
@@ -697,17 +705,17 @@ It is used to:
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `learning/` | application package | `learning/module-checklist.md` | 5 | 0 | LEARN-01/02 locally verified; exact-SHA external learning review pending; unrelated items retained (2026-11-16 recount excludes templates) |
+| `learning/` | application package | `learning/module-checklist.md` | 6 | 0 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
 | `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
 | `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
-| `scripts/` | package | `scripts/module-checklist.md` | 79 | 1 | LEARN-01/02 locally verified; exact-SHA external learning review pending; unrelated items retained (2026-11-16 recount excludes templates) |
+| `scripts/` | package | `scripts/module-checklist.md` | 80 | 1 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 112 | 0 | LEARN-01/02 locally verified; exact-SHA external learning review pending; unrelated items retained (2026-11-16 recount excludes templates) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
-| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 38 | 3 | MAIN-01/05/06 corrections locally verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 42 | 3 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 5 | 0 | PREP runtime handoff locally verified |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 4 | 0 | PREP runtime facade locally verified |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 4 | 0 | PREP-05 support locally verified; external review pending |
@@ -1494,8 +1502,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `App APP-06 mapping regression support locally verified; external review pending`
-- Completed item count: `71` (direct owner recount, 2026-11-14).
+- Status: `LEARN-03 support locally verified; exact-SHA learning review pending`
+- Completed item count: `80` (direct owner recount, 2026-11-17).
 - Needs confirmation count: `1`
 - Unchecked item count: `1` (existing DOCLOAD deployment fixture gate remains open).
 
@@ -1661,8 +1669,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `api_schemas.module-checklist.md`
 - Detailed Design: `api_schemas.module-detailed-design.md`
-- Status: `SCHEMA-01/02 accepted; SCHEMA-03 locally verified, external review pending`
-- Completed item count: `41`
+- Status: `LEARN-03 support locally verified; exact-SHA learning review pending`
+- Completed item count: `42` (direct owner recount, 2026-11-17).
 - Needs confirmation count: `3`
 
 #### Completed Work
