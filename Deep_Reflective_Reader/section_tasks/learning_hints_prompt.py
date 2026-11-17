@@ -5,7 +5,7 @@ from language.language_profile_registry import LanguageProfileRegistry
 from language.language_proficiency_registry import LanguageProficiencyRegistry
 
 PROMPT_VERSION = 'learning-hints-prompt-4'
-POLICY_VERSION = 'learning-hints-5'
+POLICY_VERSION = 'learning-hints-6'
 
 
 def build_prompt(key, sentences, text, group):

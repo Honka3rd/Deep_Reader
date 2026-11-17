@@ -1,5 +1,14 @@
 # section_tasks Detailed Design
 
+## LANG-03 hints script acceptance (2026-11-17, locally verified)
+
+Hints must consume the registry's explicit conservative compatibility predicate, not treat an expected mixed default as unconditional acceptance. A contradiction omits the sentence and records script_mismatch; its candidates remain validation-rejected, not normal foreign-language filters. Preserve mixed/null annotation exclusion, grounding, assessment accounting, source/settings/fence guards and failed-refresh preservation.
+
+Bump only hints policy to learning-hints-6; prompt stays learning-hints-prompt-4. Existing v5 records remain readable by their key but are not current v6 cache hits. Reads never regenerate or migrate; the existing explicit generation flow creates v6 results. Sentence resources and translation identities are unchanged. No new provider request, automatic retry or semantic-quality claim is introduced.
+
+Verification: New script boundary suite: baseline 10 methods / 7 failed assertions / zero errors or skips; fixed 10/10 including real file/PostgreSQL persistence. Cumulative 23 suites: 470/470 executions, zero skips (overlapping inherited scenarios are not unique business cases). External persistence probe and 11 controls pass with documented observation-only harness changes. Both immutable books retain hashes; bounded English negative / Chinese positive samples pass four file/SQL flows. `/tmp/lang-unit2-847f0d6/report.txt`. External exact-SHA language review remains pending.
+
+
 ## LEARN-01 recovery support (2026-11-15, locally verified)
 
 Translation/hints services expose the provider/model/prompt identity for a prepared request without another provider call. Generation and assembly use that same identity. Model identity is not added to cache keys; compatible saved results keep existing cross-model reuse.
@@ -418,7 +427,7 @@ observer without cancelling accepted work. Timeout/disconnect requires explicit
 status recovery, never an automatic new generation. Learning owns notification state;
 transport owns the wait endpoint; UI owns abort/stale-response guards.
 
-Policy is now `learning-hints-5`; prompt stays `learning-hints-prompt-4` and the
+Historical 2026-11-09 policy was `learning-hints-5` (superseded by LANG-03 v6 above); prompt stays `learning-hints-prompt-4` and the
 configured model is unchanged. The new key prevents reuse under the old rejection
 policy; old records remain stored. On the selected reading page, a missing v5 key
 follows the existing read-before-generate flow. No whole-book regeneration occurs.
@@ -610,7 +619,7 @@ Verification: 24 項新 service tests 與 149 項 policy/DTO/segmentation/file r
 
 ### Implemented ability-aware hints generation (LLRN-11)
 
-**[Code-Confirmed, 2026-10-29; technical foundation, semantic quality not accepted]** `LearningHintsService` 消費已解析的 effective block、`SentenceResource`、異語 language pair 與 `LearningProficiencyRef`。`learning_hints_prompt.py` 使用 `learning-hints-5` / `learning-hints-prompt-4`；每次解析目前 registry scheme/version/level，把實際 `reading_description`、label、scope note 及該 scheme 全部級別的 ID/order/描述放入 prompt，不只傳級別名稱。輸出 `BatchPayload(hints)` / `LearningHints`，附加可空 assessment；不新增 SQL migration 或翻譯依賴。
+**[Code-Confirmed, 2026-10-29; technical foundation, semantic quality not accepted]** `LearningHintsService` 消費已解析的 effective block、`SentenceResource`、異語 language pair 與 `LearningProficiencyRef`。`learning_hints_prompt.py` 目前使用 `learning-hints-6` / `learning-hints-prompt-4`（LANG-03）；每次解析目前 registry scheme/version/level，把實際 `reading_description`、label、scope note 及該 scheme 全部級別的 ID/order/描述放入 prompt，不只傳級別名稱。輸出 `BatchPayload(hints)` / `LearningHints`，附加可空 assessment；不新增 SQL migration 或翻譯依賴。
 
 - 一般段落一次請求；提示無最低/固定數量，provider wire 的 `completed` + 完整句子語言判定 + `candidates: []` 是有效結果；候選全部被規則排除也可保存空 hints，需 checkpoint/commit 後才 ready。`unavailable`、截斷或頂層格式錯誤仍失敗；缺少句子判定則記錄 omitted_sentences 並排除該句候選，不冒充完整評估的空結果。空白來源直接 no_content，不查模型容量。
 - `learning_generation_capacity.py` 抽取翻譯/提示實際共用的模型能力、離線精確 token 計數及句子分批政策；既有翻譯 prompt/output/key 不變。沿用模型配置的完整 output ceiling、256 transport framing reserve、最多 `2*N-1` preflight candidates；不估算字數或輸出膨脹、不手設單次文字上限。不可拆長句超限、tokenizer 不可用或模型/計數器改變會明確拒絕。輸出截斷不自動重試/拆批。

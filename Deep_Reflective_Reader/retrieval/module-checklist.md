@@ -1,5 +1,14 @@
 # retrieval Checklist
 
+## Language audit unit 1 (2026-11-17)
+
+- [x] LANG-01/02: Reject unknown detector authority and avoid content-bearing diagnostics.
+  Status: Locally verified; language external review pending.
+  Acceptance: Normalization/Prepare/retrieval and captured-log red/green; preserve accepted data and warm reuse, no automatic retry.
+  Evidence: New boundary suite 13/13 (real file/PostgreSQL); external detector 4/4 and normalization 3/3; adjacent/focused total 207/207, zero skips after documented runner cwd correction. Two full hash-verified book copies across file/SQL retain accepted assets under three invalid rebuild replies. `/tmp/lang-unit1-847f0d6/report.txt`. Unit 1 evidence retained; LANG-03 is separately verified in language/section_tasks. External language approval pending.
+  Timestamp: 2026-11-17
+
+
 ## PREP-05 audit correction (2026-11-13)
 
 - [x] PREP-05 support: Validate every record against the canonical source, including journal previous snapshots.

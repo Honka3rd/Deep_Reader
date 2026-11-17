@@ -36,10 +36,12 @@ Args:
 Returns:
     Parsed document with chunk nodes and detected document language."""
         document: Document = Document(text=text)
-        document_language: str = self.language_detector.detect(
+        document_language = self.language_detector.detect(
             text=text,
             config=config,
         )
+        if document_language is None:
+            raise ValueError("document_language_not_ready")
         nodes: List[BaseNode] = self.parser.get_nodes_from_documents([document])
 
         # Attach stable positional metadata for downstream persistence/use.

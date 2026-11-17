@@ -1,8 +1,22 @@
 # language Detailed Design
 
+## LANG-03 script compatibility boundary (2026-11-17, locally verified)
+
+`detect_script_system` remains advisory: Chinese neutral/mixed defaults do not prove that observed text is Chinese. Add a separate conservative compatibility predicate consumed by hints. For Chinese, zero Han (including Extension A), at least 40 Latin letters and at least eight Latin words is an obvious contradiction; shorter/uncertain text and Han with names remain compatible. Other languages retain existing script comparisons, including Japanese/Korean mixed compatibility. This is not universal language recognition or parser authority.
+
+Verification: New script boundary suite: baseline 10 methods / 7 failed assertions / zero errors or skips; fixed 10/10 including real file/PostgreSQL persistence. Cumulative 23 suites: 470/470 executions, zero skips (overlapping inherited scenarios are not unique business cases). External persistence probe and 11 controls pass with documented observation-only harness changes. Both immutable books retain hashes; bounded English negative / Chinese positive samples pass four file/SQL flows. `/tmp/lang-unit2-847f0d6/report.txt`. External exact-SHA language review remains pending.
+
+
+## LANG-01/02 detector boundary (2026-11-17, locally verified)
+
+Detector normalization maps blank, unknown, unrecognized, punctuation-only and non-string replies to UNKNOWN. DocumentLanguageDetector returns None for unknown evidence, never an invented en. Existing valid codes/aliases and read-only profile/records precedence remain. Diagnostics record only stage, a fixed reason and output character count; no model reply/input excerpt. One explicit detection makes at most one provider call. Prepare consumes None through existing missing-language readiness; no new profile or structure can be generated from it.
+
+Verification: New boundary suite 13/13 (real file/PostgreSQL); external detector 4/4 and normalization 3/3; adjacent/focused total 207/207, zero skips after documented runner cwd correction. Two full hash-verified book copies across file/SQL retain accepted assets under three invalid rebuild replies. `/tmp/lang-unit1-847f0d6/report.txt`. Unit 1 evidence is retained; LANG-03 is verified in its separate design section. External language approval remains pending.
+
+
 ## Language Learning Reading Mode Plan (2026-10-28)
 
-**[Code-Confirmed: LLRN-01 foundation only, 2026-10-28]** 已實作獨立 reading proficiency registry，完整模式、設定持久化、API、生成與 UI 尚待後續任務。[Canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。
+**[Code-Confirmed: LLRN-01 language-owned foundation]** 已實作獨立 reading proficiency registry。原 2026-10-28 的待接入狀態是歷史 checkpoint；設定、生成、API 與 UI 現由 reading_preferences、learning、section_tasks、api_schemas 與 Deep_Reader_UI 各 owner 設計/checklist 記錄，不在本模組重複判定交付或審計核准。[Canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)；[task dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)。
 
 ### Reading proficiency contract
 
@@ -89,7 +103,7 @@ P：產品自定義 beginner、elementary、intermediate、advanced、proficient
 | `language/language_code.py` | `LanguageCode` 與 resolver/infer heuristics | canonical language enum **[Code-Confirmed]** |
 | `language/document_language_detector.py` | 文件主語言檢測與快取讀取 | profile/records/LLM fallback **[Code-Confirmed]** |
 | `language/language_profile_registry.py` | 多語言 scope/local signals registry | `question/` 主要消費方 **[Code-Confirmed]** |
-| `language/language_proficiency_registry.py` | Registry-bound reading levels and strict selection/version validation | Pure LLRN-01 foundation; UI/API integration pending **[Code-Confirmed]** |
+| `language/language_proficiency_registry.py` | Registry-bound reading levels and strict selection/version validation | Pure LLRN-01 foundation; UI/API integration owned by their modules **[Code-Confirmed]** |
 | `language/language_script_registry.py` | script system detection registry | `profile/parser_metadata_extractor` 消費 **[Code-Confirmed]** |
 | `language/language_discourse_registry.py` | dialogue/discourse cue registry | 保守 speech hints policy **[Code-Confirmed]** |
 
@@ -139,9 +153,9 @@ P：產品自定義 beginner、elementary、intermediate、advanced、proficient
 
 ## 11. Current Risks
 
-1. risk：語言偵測 fallback 到 EN 可能誤判
-- why：下游 prompt/scope 可能偏移
-- guardrail：保留 warning log + explicit unknown handling
+1. risk：有效 code 仍可能是模型的語義誤判
+- why：確定性格式驗證不等於全語言語義辨識
+- guardrail：未知回覆不再預設 EN；返回 None/readiness，日誌只記固定原因及長度。保留既有 accepted 資料，不回溯猜測或改寫其語言；此修正不宣稱模型語義驗收。
 
 2. risk：registry 擴張時配置分散
 - why：不同 registry 可能語義漂移

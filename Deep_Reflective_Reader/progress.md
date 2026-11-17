@@ -1,5 +1,22 @@
 # Deep Reflective Reader Progress
 
+## Language Audit Final Local Review (2026-11-17)
+
+LANG-01/02 and LANG-03 are locally verified against `847f0d63d31862cb4b1f1ece8f39c0bd9ae2034c`. Unknown detector output cannot invent English authority or publish newly generated profile/structure; diagnostics contain fixed reasons/counts only. Hints now use explicit conservative script compatibility instead of interpreting Chinese mixed defaults as approval. Policy v6 isolates v5 cache records without deleting them, migrating on read or adding automatic retry. Source/settings/fence, assessment and failed-refresh contracts remain.
+
+Evidence: 23 suites, 470/470 executions, zero failures/errors/skips; groups may overlap. Unit 2 focused baseline 10 methods/7 failed assertions becomes 10/10 on file/real PostgreSQL. External detector/normalization and hints persistence/control observations are retained with red/green and harness diffs. Both complete immutable backups retain hashes; unit 1 full preparation preservation and unit 2 bounded English/Chinese sample publication/reuse have file/SQL evidence. Chinese effective reading projection differs from canonical sample under existing normalization; both hashes are recorded, not treated as identical coordinates. Deterministic providers only; no live model, full-book semantics/OCR, UI/build/TCP/Docker acceptance. Reports: `/tmp/lang-unit1-847f0d6/report.txt`, `/tmp/lang-unit2-847f0d6/report.txt`.
+
+Owner synchronization: language 7/0, retrieval 6/0, section_tasks 113/0, scripts 82/1 (checked/pending; templates excluded). Section_tasks detail 106 was stale against its existing 112-item aggregate; the recount adds one LANG-03 item, without changing historical completion dates. Scripts' existing unresolved deployment item is retained. New/changed checklist items carry 2026-11-17 timestamps. Local cumulative review commit is next; exact-SHA external approval is required before deployment, push or the next module. Unit 1 below is a historical checkpoint superseded by this section.
+
+## Language Audit Unit 1 (2026-11-17)
+
+LANG-01/02 locally verified against `847f0d63d31862cb4b1f1ece8f39c0bd9ae2034c`. Invalid detector replies return no evidence instead of fabricated English; punctuation/non-string normalization is total, diagnostics omit reply/source text, and retrieval stops before parsing without language. Prepare retains its existing missing-language readiness and read-only accepted-source/profile reuse. No hidden retry, migration or old-language reinterpretation.
+
+New boundary suite 13/13 file/real PostgreSQL; external detector 4/4 and normalization 3/3 now pass. Focused plus adjacent 207/207 executions, zero skips, after correcting the temporary runner cwd for one source-inspection test without changing its assertions. The initial runner error is retained. Two complete immutable backup copies (English 652001 / Chinese 147401 characters) retain hashes; actual preparation/profile/hierarchy publication on file and SQL preserves accepted data after unknown/punctuation/echo replies, with no new classification calls. Deterministic model outputs only, not live language accuracy or OCR/HTTP/UI/deployment acceptance. Evidence: `/tmp/lang-unit1-847f0d6/report.txt`.
+
+Language checklist recount is 6 checked/1 pending (LANG-03), retrieval 6/0 and scripts 81/1. Previous language aggregate 3/0 omitted two already-completed foundation tasks; counts now include them without changing their completion dates. Unrelated unresolved tasks remain. Documentation updates are owned by language, retrieval and scripts; supporting preparation/profile contracts were read and left unchanged. LANG-03 awaits developer confirmation for unit 2. No review commit yet; one cumulative review SHA follows the final unit, then external exact-SHA approval. No deployment/push or next module.
+
+
 ## Learning LEARN-03 Public Recovery Review (2026-11-17)
 
 LEARN-03 is locally verified against `cafc4ab025659356d3fb0e108847efdbecdfb97a`. Known recovery failures retain submission.reason=null; operation failure_code explicitly admits recovery_incompatible/assembly_invalid in API and typed UI. The existing explicit retry flow remains responsible for fresh commands; no new automatic dispatch, storage migration or source/fence-policy change. LEARN-01/02 internal protections are retained. Latest-SHA external approval is still required before deployment/push or another module.
@@ -704,15 +721,15 @@ It is used to:
 | `document_structure/` | package | `document_structure/module-checklist.md` | 102 | 18 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `language/` | package | `language/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `language/` | package | `language/module-checklist.md` | 7 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `learning/` | application package | `learning/module-checklist.md` | 6 | 0 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
 | `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
 | `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `retrieval/` | package | `retrieval/module-checklist.md` | 5 | 0 | PREP-04/05 locally verified; external review pending |
-| `scripts/` | package | `scripts/module-checklist.md` | 80 | 1 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
-| `section_tasks/` | package | `section_tasks/module-checklist.md` | 112 | 0 | LEARN-01/02 locally verified; exact-SHA external learning review pending; unrelated items retained (2026-11-16 recount excludes templates) |
+| `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
+| `scripts/` | package | `scripts/module-checklist.md` | 82 | 1 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
+| `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 42 | 3 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
@@ -1361,8 +1378,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `language/module-checklist.md`
 - Detailed Design: `language/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `Language audit support locally verified; exact-SHA external language review pending`
+- Completed item count: `7` (direct owner recount, 2026-11-17).
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -1373,7 +1390,7 @@ No unresolved confirmation items identified in module checklist.
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+No unresolved implementation items; external language review remains pending.
 
 ### `llm/`
 
@@ -1484,8 +1501,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `retrieval/module-checklist.md`
 - Detailed Design: `retrieval/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `Language audit support locally verified; exact-SHA external language review pending`
+- Completed item count: `6` (direct owner recount, 2026-11-17).
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -1502,8 +1519,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `LEARN-03 support locally verified; exact-SHA learning review pending`
-- Completed item count: `80` (direct owner recount, 2026-11-17).
+- Status: `Language audit support locally verified; exact-SHA external language review pending`
+- Completed item count: `82` (direct owner recount, 2026-11-17).
 - Needs confirmation count: `1`
 - Unchecked item count: `1` (existing DOCLOAD deployment fixture gate remains open).
 
@@ -1549,8 +1566,8 @@ DOCLOAD deployment fixture acceptance remains unresolved in the scripts checklis
 
 - Checklist: `section_tasks/module-checklist.md`
 - Detailed Design: `section_tasks/module-detailed-design.md`
-- Status: `APP-03/05/06 support locally verified; app review pending; literary quality caveat retained`
-- Completed item count: `106` (direct owner recount, 2026-11-14).
+- Status: `Language audit support locally verified; exact-SHA external language review pending`
+- Completed item count: `113` (direct owner recount, 2026-11-17).
 - Needs confirmation count: `0`
 - Unchecked item count: `0` (TRUI-01 accepted; technical delivery does not certify literary accuracy).
 - 2026-10-19 INTERACT-03 delivery: `3/3` of this module's new track complete.

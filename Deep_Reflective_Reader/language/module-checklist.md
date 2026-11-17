@@ -1,8 +1,23 @@
 # language Checklist
 
+## Language audit unit 1 (2026-11-17)
+
+- [x] LANG-01/02: Reject unknown detector authority and avoid content-bearing diagnostics.
+  Status: Locally verified; language external review pending.
+  Acceptance: Normalization/Prepare/retrieval and captured-log red/green; preserve accepted data and warm reuse, no automatic retry.
+  Evidence: New boundary suite 13/13 (real file/PostgreSQL); external detector 4/4 and normalization 3/3; adjacent/focused total 207/207, zero skips after documented runner cwd correction. Two full hash-verified book copies across file/SQL retain accepted assets under three invalid rebuild replies. `/tmp/lang-unit1-847f0d6/report.txt`. Unit 1 evidence retained; LANG-03 now locally verified, external language approval pending.
+  Timestamp: 2026-11-17
+
+
+- [x] LANG-03: Reject deterministic cross-script hints contradictions with versioned policy compatibility.
+  Status: Locally verified; external language review pending.
+  Acceptance: Real saved/reload/reuse evidence, conservative Chinese/Japanese controls, mixed/null exclusion, unchanged source/fence protection.
+  Evidence: New script boundary suite: baseline 10 methods / 7 failed assertions / zero errors or skips; fixed 10/10 including real file/PostgreSQL persistence. Cumulative 23 suites: 470/470 executions, zero skips (overlapping inherited scenarios are not unique business cases). External persistence probe and 11 controls pass with documented observation-only harness changes. Both immutable books retain hashes; bounded English negative / Chinese positive samples pass four file/SQL flows. `/tmp/lang-unit2-847f0d6/report.txt`. External exact-SHA language review remains pending.
+  Timestamp: 2026-11-17
+
 ## Language Learning Reading Mode Queue (2026-10-28)
 
-**LLRN-01 implemented and verified; language foundation only.** [Shared dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 language 的唯一 checklist；完整模式依賴仍待後續實作。
+**LLRN-01 implemented and verified; language foundation only.** [Shared dependency queue](../section_tasks/module-checklist.md#language-learning-reading-mode-queue-2026-10-28)；[canonical design](../section_tasks/module-detailed-design.md#language-learning-reading-mode-plan-2026-10-28)。本檔只持有 language 的唯一 checklist；2026-10-28 foundation evidence 為歷史範圍，當前模式整合與交付狀態以各依賴 owner 的 checklist 為準。
 
 ### LLRN-01
 

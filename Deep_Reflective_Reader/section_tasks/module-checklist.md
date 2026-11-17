@@ -1,5 +1,12 @@
 # section_tasks Checklist
 
+## LANG-03 support (2026-11-17)
+
+- [x] LANG-03: Apply versioned hints script compatibility without changing source or publication authority.
+  Status: Locally verified; external language review pending.
+  Evidence: New script boundary suite: baseline 10 methods / 7 failed assertions / zero errors or skips; fixed 10/10 including real file/PostgreSQL persistence. Cumulative 23 suites: 470/470 executions, zero skips (overlapping inherited scenarios are not unique business cases). External persistence probe and 11 controls pass with documented observation-only harness changes. Both immutable books retain hashes; bounded English negative / Chinese positive samples pass four file/SQL flows. `/tmp/lang-unit2-847f0d6/report.txt`. External exact-SHA language review remains pending.
+  Timestamp: 2026-11-17
+
 ## Learning audit (2026-11-15)
 
 - [x] LEARN-01: Guard partial recovery provenance and provide explicit recovery for unassemblable complete checkpoints.

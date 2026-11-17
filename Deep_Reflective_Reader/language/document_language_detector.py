@@ -18,7 +18,7 @@ Args:
 """
         self.llm_provider = llm_provider
 
-    def detect(self, text: str, config: FaissStorageConfig | None = None) -> str:
+    def detect(self, text: str, config: FaissStorageConfig | None = None) -> str | None:
         """Detect primary language for the given document text.
 
 Args:
@@ -26,7 +26,7 @@ Args:
     config: FaissStorageConfig describing filesystem artifact paths.
 
 Returns:
-    Normalized language code (for example: ``en``, ``zh``, ``ja``)."""
+    Normalized language code, or ``None`` when the reply supplies no valid evidence."""
         language = self._load_from_profile(config)
         if language:
             print(f"DocumentLanguageDetector#detect: loaded from profile -> {language}")
@@ -107,7 +107,7 @@ Returns:
             return None
         return normalized.value
 
-    def _detect_with_llm(self, text: str) -> str:
+    def _detect_with_llm(self, text: str) -> str | None:
         """Internal helper for detect with llm.
 
 Args:
@@ -125,12 +125,14 @@ Return only one short language code from this list: {supported_codes}.
 Document:
 {text[:4000]}
 """
-        result = self.llm_provider.complete_text(prompt).strip()
+        result = self.llm_provider.complete_text(prompt)
         normalized = LanguageProfileRegistry.normalize_detector_output(result)
         if normalized == LanguageCode.UNKNOWN:
             print(
                 "Warn:DocumentLanguageDetector#_detect_with_llm: "
-                f"unknown detector output={result!r}, fallback_to_en"
+                "outcome=unknown "
+                f"reason={'unrecognized_output' if isinstance(result, str) else 'invalid_output_type'} "
+                f"output_chars={len(result) if isinstance(result, str) else 0}"
             )
-            return LanguageCode.EN.value
+            return None
         return normalized.value

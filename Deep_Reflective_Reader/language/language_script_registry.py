@@ -8,6 +8,8 @@ from profile.document_profile import ScriptSystem
 
 
 _LATIN_CHAR_RE = re.compile(r"[A-Za-z]")
+_LATIN_WORD_RE = re.compile(r"[A-Za-z]+")
+_HAN_EVIDENCE_RE = re.compile(r"[\u3400-\u9fff\uf900-\ufaff\U00020000-\U000323af]")
 _CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
 _HIRAGANA_KATAKANA_RE = re.compile(r"[\u3040-\u30ff]")
 _HANGUL_RE = re.compile(r"[\uac00-\ud7af]")
@@ -86,6 +88,29 @@ class LanguageScriptRegistry:
         resolved = LanguageCodeResolver.resolve(language)
         return self._ENTRIES.get(resolved, self._ENTRIES[LanguageCode.UNKNOWN])
 
+    def is_script_compatible(self, *, text: str, language: LanguageCode | str) -> bool:
+        """Reject obvious contradictions, not uncertain language evidence.
+
+        Advisory defaults (especially Chinese MIXED) are not observed scripts.
+        Chinese names, neutral Han and short fragments remain conservative;
+        same-script foreign languages cannot be distinguished by this guard.
+        """
+        resolved = LanguageCodeResolver.resolve(language)
+        if resolved == LanguageCode.ZH:
+            return not (
+                _HAN_EVIDENCE_RE.search(text) is None
+                and len(_LATIN_CHAR_RE.findall(text)) >= 40
+                and len(_LATIN_WORD_RE.findall(text)) >= 8
+            )
+        expected = self.get_entry(resolved).default_script_system
+        detected = self.detect_script_system(text=text, language=resolved)
+        return (
+            expected == ScriptSystem.UNKNOWN
+            or detected in (ScriptSystem.UNKNOWN, expected)
+            or (expected in (ScriptSystem.JAPANESE, ScriptSystem.KOREAN)
+                and detected == ScriptSystem.MIXED)
+        )
+
     def detect_script_system(
         self,
         *,
@@ -162,4 +187,3 @@ class LanguageScriptRegistry:
             "devanagari": len(_DEVANAGARI_RE.findall(text)),
             "thai": len(_THAI_RE.findall(text)),
         }
-

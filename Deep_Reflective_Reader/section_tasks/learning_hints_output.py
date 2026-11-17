@@ -83,10 +83,7 @@ def _annotations(data, group, by_id, text, source_language, issues):
             else:
                 sentence = by_id[sid]
                 fragment = text[sentence.span.start:sentence.span.end]
-                expected = scripts.get_entry(source_language).default_script_system.value
-                detected = scripts.detect_script_system(text=fragment, language=source_language).value
-                if not (expected in ('mixed', 'unknown') or detected in ('unknown', expected)
-                        or (expected in ('japanese', 'korean') and detected == 'mixed')):
+                if not scripts.is_script_compatible(text=fragment, language=source_language):
                     reason = 'script_mismatch'
                 else:
                     eligible.add(sid)

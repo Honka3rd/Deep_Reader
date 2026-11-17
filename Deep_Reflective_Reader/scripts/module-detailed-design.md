@@ -1,5 +1,19 @@
 # scripts Detailed Design
 
+## LANG-03 script boundary regression (2026-11-17, locally verified)
+
+Add conservative Chinese/Japanese and mixed/null controls plus real file/PostgreSQL claim/dispatch/checkpoint/assemble/commit/reload tests. Verify empty-with-omissions reuse, failed-refresh preservation, old/new policy key isolation, unchanged source and provider counts. Keep prior language detector red/green and adjacent source/fence regressions; immutable real-book samples validate deterministic boundaries, not model semantics.
+
+Verification: New script boundary suite: baseline 10 methods / 7 failed assertions / zero errors or skips; fixed 10/10 including real file/PostgreSQL persistence. Cumulative 23 suites: 470/470 executions, zero skips (overlapping inherited scenarios are not unique business cases). External persistence probe and 11 controls pass with documented observation-only harness changes. Both immutable books retain hashes; bounded English negative / Chinese positive samples pass four file/SQL flows. `/tmp/lang-unit2-847f0d6/report.txt`. External exact-SHA language review remains pending.
+
+
+## LANG-01/02 detector boundary (2026-11-17, locally verified)
+
+Add normalization, detector and captured-log regression matrices; real profile builder/store through actual Prepare orchestration must not publish fabricated language. Test valid codes/aliases, persisted reuse, previous profile preservation on explicit reparse, zero new structure generation on failure and retrieval rejection before parsing. Keep warm-read/source/publication regressions and distinguish real storage from focused orchestration fixtures.
+
+Verification: New boundary suite 13/13 (real file/PostgreSQL); external detector 4/4 and normalization 3/3; adjacent/focused total 207/207, zero skips after documented runner cwd correction. Two full hash-verified book copies across file/SQL retain accepted assets under three invalid rebuild replies. `/tmp/lang-unit1-847f0d6/report.txt`. Unit 1 evidence is retained; LANG-03 is verified in its separate design section. External language approval remains pending.
+
+
 ## LEARN-03 public recovery contract (2026-11-17, locally verified)
 
 Add actual router + service + file/real PostgreSQL coverage for translation/hints and both new known failure codes. Verify first reconcile, read/wait/partial, command lookup, unchanged saved/checkpoints/receipts, zero recovery calls and explicit new-fence retry. UI-owned browser tests cover typed validators and the real learning session. Preserve existing LEARN-01/02 regression assertions.

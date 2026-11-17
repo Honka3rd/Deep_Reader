@@ -1,5 +1,12 @@
 # retrieval Detailed Design
 
+## LANG-01/02 detector boundary (2026-11-17, locally verified)
+
+NodeProvider rejects missing detector evidence before invoking the chunk parser or downstream embeddings/publication. It raises a fixed document_language_not_ready ValueError without source/output content. Valid canonical detector values and persisted language reuse retain current behavior. No runtime generation, index migration or relaxation of staged publication.
+
+Verification: New boundary suite 13/13 (real file/PostgreSQL); external detector 4/4 and normalization 3/3; adjacent/focused total 207/207, zero skips after documented runner cwd correction. Two full hash-verified book copies across file/SQL retain accepted assets under three invalid rebuild replies. `/tmp/lang-unit1-847f0d6/report.txt`. Unit 1 evidence retained; LANG-03 is separately verified in language/section_tasks. External language approval pending.
+
+
 ## PREP-05 coordinate-sensitive validation (2026-11-13)
 
 Implemented supporting correction: validated loads check versioned exact canonical

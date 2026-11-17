@@ -349,17 +349,19 @@ class LanguageProfileRegistry:
         return tuple(profile.code.value for profile in cls._PROFILES.values())
 
     @classmethod
-    def normalize_detector_output(cls, raw: str | None) -> LanguageCode:
+    def normalize_detector_output(cls, raw: object) -> LanguageCode:
         """Normalize detector output text to canonical language code enum."""
-        if raw is None:
+        if not isinstance(raw, str):
             return LanguageCode.UNKNOWN
 
         compact = raw.strip().lower()
         if not compact:
             return LanguageCode.UNKNOWN
 
-        compact = compact.replace(".", "")
-        compact = compact.split()[0]
+        tokens = compact.replace(".", "").split()
+        if not tokens:
+            return LanguageCode.UNKNOWN
+        compact = tokens[0]
         resolved = LanguageCodeResolver.resolve(compact)
         if resolved != LanguageCode.UNKNOWN:
             return resolved
