@@ -229,6 +229,23 @@ class LanguageProfileRegistry:
         LanguageCode.KO: ((), ("말고", "아니라", "이 아니라", "가 아니라")),
     }
 
+    # Explicit command forms only; quote-role interpretation belongs to question.
+    _QUOTED_EXTENT_COMMANDS = {
+        LanguageCode.EN: (
+            ("summarize", "summarize the", "summarise", "summarise the",
+             "please summarize", "please summarize the", "please summarise", "please summarise the"),
+            ("compare", "please compare"),
+            ("with", "with the", "to", "to the", "against", "against the"),
+        ),
+    }
+
+    @classmethod
+    def get_quoted_extent_commands(cls, language: LanguageCode) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        if language == LanguageCode.UNKNOWN:
+            return tuple(tuple(dict.fromkeys(cue for groups in cls._QUOTED_EXTENT_COMMANDS.values()
+                                            for cue in groups[index])) for index in (0, 1, 2))
+        return cls._QUOTED_EXTENT_COMMANDS.get(language, ((), (), ()))
+
     @classmethod
     def get_extent_exclusions(cls, language: LanguageCode) -> tuple[tuple[str, ...], tuple[str, ...]]:
         if language == LanguageCode.UNKNOWN:

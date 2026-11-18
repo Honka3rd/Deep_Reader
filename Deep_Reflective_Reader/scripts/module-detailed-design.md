@@ -1,5 +1,11 @@
 # scripts Detailed Design
 
+## QUESTION-07 paired quote-role acceptance (2026-11-18, locally verified)
+
+Add paired resolver and actual ContextOrchestrator checks for quoted/unquoted broad targets, local quoted-term explanations and exclusions. Verify source preservation, top_k/window/coverage and zero extra lexical dispatch. Retain all QUESTION-01–06 assertions and isolated mutable fixtures. Record baseline red and fixed green evidence independently.
+
+Verification: At exact 56bbadd baseline, external quoted-positive suite: 4 methods /2 failed sub-assertions, zero errors/skips; fixed 4/4. Expanded formal scope suite: 12 methods /23 baseline failures -> 12/12; cumulative 12 suites: 96/96, zero skips. QUESTION-05 extent and QUESTION-06 envelope 4/4 each; original QUESTION-01–04 probes 6/4/5/4 pass and current-contract smoke 11/11. Sixteen bounded immutable-book flows pass with full backup hashes unchanged. Overlapping groups are not unique-case totals. `/tmp/question-quoted-56bbadd/report.txt`. Exact-SHA external review remains pending.
+
 ## QUESTION-05/06 scope correction regression (2026-11-18, locally verified)
 
 Retain original negative/positive assertions and add scope plus actual context tests for requested versus quoted/excluded extents and complete wrapped JSON roots. Verify exact source text, top_k/window/coverage and single-call limits. Run mutable profile fixtures in temporary cwd; only the source-inspection-only cleanup suite may use backend cwd. Preserve historical logs and identify stale/overwritten summaries rather than claiming all old red JSON unchanged. Real-book checks use immutable copies and bounded deterministic samples.

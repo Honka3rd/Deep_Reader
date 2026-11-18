@@ -1,5 +1,11 @@
 # language Detailed Design
 
+## QUESTION-07 quote-role vocabulary (2026-11-18, locally verified)
+
+Provide finite English summarization command prefixes, comparison command starts and target connectors for quoted extent admission. Question owns role interpretation and exclusion checks. Existing nineteen-language extent tables and other language behavior remain unchanged; this is not universal quote-role understanding.
+
+Verification: At exact 56bbadd baseline, external quoted-positive suite: 4 methods /2 failed sub-assertions, zero errors/skips; fixed 4/4. Expanded formal scope suite: 12 methods /23 baseline failures -> 12/12; cumulative 12 suites: 96/96, zero skips. QUESTION-05 extent and QUESTION-06 envelope 4/4 each; original QUESTION-01–04 probes 6/4/5/4 pass and current-contract smoke 11/11. Sixteen bounded immutable-book flows pass with full backup hashes unchanged. Overlapping groups are not unique-case totals. `/tmp/question-quoted-56bbadd/report.txt`. Exact-SHA external review remains pending.
+
 ## QUESTION-05 requested-extent vocabulary (2026-11-18, locally verified)
 
 Extend explicit extent phrases with all/every chapter/section requests. Provide bounded prefix/postfix exclusion cues consumed by question; they are query interpretation data only, never language detection or document/parser authority. Preserve existing 19-language extent entries and Unicode matching. New range/exclusion support is enumerated for English, Chinese, French, Japanese and Korean; all 19 existing extent tables remain. Prefix exclusions must immediately precede a cue, postfix exclusions immediately follow it; this is not full clause/verb negation or a complete grammar for all languages.

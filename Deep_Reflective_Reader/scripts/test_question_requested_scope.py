@@ -27,6 +27,19 @@ EXTENTS = (
 )
 
 
+QUOTED_REQUESTS = (
+    ('Summarize the "whole book", including this paragraph.', 'global'),
+    ('Compare this paragraph with the "whole book".', 'global'),
+    ('Summarize the whole book, including this paragraph.', 'global'),
+    ('Compare this paragraph with the whole book.', 'global'),
+    ('What does "whole book" mean in this sentence?', 'local'),
+    ('Explain the phrase "entire document" in this paragraph.', 'local'),
+    ('Explain this sentence, not the whole book.', 'local'),
+    ('Explain this sentence, not the "whole book".', 'local'),
+    ('Compare this paragraph with this sentence, not with the "whole book".', 'local'),
+)
+
+
 def resolver(query, reply=None, score=0.0):
     provider = Provider(reply)
     embedder = Embedder(query, score)
@@ -62,6 +75,43 @@ class RequestedScopeTests(unittest.TestCase):
         self.assertEqual(len(provider.calls), scope_calls)
         self.assertEqual(result.mode.value, 'local_window_mode' if expected=='local' else 'retrieval_mode')
         return result, log
+
+    def test_quoted_request_roles_resolver(self):
+        for query, expected in QUOTED_REQUESTS:
+            for score in (0.0, .99):
+                with self.subTest(query=query, score=score):
+                    scope, provider, embedder = resolver(query, score=score)
+                    question = StandardizedQuestion(query, query, LanguageCode.EN, LanguageCode.EN)
+                    result = scope.resolve(question, session_active_chunk_index=10)
+                    self.assertEqual(result.scope.value, expected)
+                    self.assertEqual((question.original_query, question.standardized_query), (query, query))
+                    self.assertEqual((provider.calls, embedder.calls), ([], []))
+
+    def test_quoted_request_roles_context(self):
+        for query, expected in QUOTED_REQUESTS:
+            for score in (0.0, .99):
+                with self.subTest(query=query, score=score):
+                    self.assert_route(query, expected, score=score)
+
+    def test_quoted_roles_variants_and_mentions_do_not_grant_request_authority(self):
+        for left, right in (('"','"'), ("'","'"), ('“','”'), ('‘','’'), ('«','»'), ('「','」'), ('『','』')):
+            quoted = left + 'whole book' + right
+            for query, expected in (
+                (f'Summarize the {quoted}, including this paragraph.', 'global'),
+                (f'Please compare this paragraph with the {quoted}.', 'global'),
+                (f'Explain {quoted} in this sentence.', 'local'),
+                (f'Explain this sentence, not the {quoted}.', 'local'),
+                (f'Compare this paragraph with this sentence rather than with the {quoted}.', 'local'),
+                (f'Explain "compare" in this sentence with the {quoted}.', 'local'),
+            ):
+                with self.subTest(query=query):
+                    self.assert_route(query, expected)
+        for query in (
+            'Please summarize the "entire document", including this paragraph.',
+            'SUMMARIZE\tTHE\n"whole book", including this paragraph.',
+            'Compare this paragraph to the "whole book".',
+        ):
+            self.assert_route(query, 'global')
 
     def test_demonstrated_extent_resolver_both_directions(self):
         for query, expected in EXTENTS:

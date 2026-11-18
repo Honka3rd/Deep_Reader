@@ -1,5 +1,12 @@
 # scripts Checklist
 
+## Quoted range correction (2026-11-18)
+
+- [x] QUESTION-07: QUESTION-07 paired quote-role acceptance.
+  Status: Locally verified; external exact-SHA question review remains open.
+  Evidence: At exact 56bbadd baseline, external quoted-positive suite: 4 methods /2 failed sub-assertions, zero errors/skips; fixed 4/4. Expanded formal scope suite: 12 methods /23 baseline failures -> 12/12; cumulative 12 suites: 96/96, zero skips. QUESTION-05 extent and QUESTION-06 envelope 4/4 each; original QUESTION-01–04 probes 6/4/5/4 pass and current-contract smoke 11/11. Sixteen bounded immutable-book flows pass with full backup hashes unchanged. Overlapping groups are not unique-case totals. `/tmp/question-quoted-56bbadd/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Question follow-up (2026-11-18)
 
 - [x] QUESTION-05/06: Verify extent and complete-envelope regressions with isolated fixtures.
