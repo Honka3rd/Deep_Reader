@@ -1,5 +1,15 @@
 # app Detailed Design
 
+## SESSION-01 ordinary QA completion (2026-11-18, locally verified)
+
+`QACoordinator.ask` retains the detached session snapshot with immutable identity
+obtained before prepare and its captured anchor for context selection. After answer generation it submits
+that snapshot to SessionManager's atomic generation check. Stale completion still
+returns the original answer, but does not update the current document, anchor or
+history and never retries the provider. Diagnostics report update acceptance,
+not the captured snapshot's anchor as if it were current. Lifecycle ownership and
+locking stay in session; preparation/model work stays outside that lock.
+
 ## TASK-05 legacy output validation (2026-11-15, locally verified)
 
 Legacy summary/quiz orchestration validates usable content before artifact construction and reuses strict question parsing for section/chapter/task-unit cache checks. Invalid refresh returns failure before repository mutation, preserving the previous valid result. Invalid persisted caches are unavailable; only an explicit generation request may replace them. Source bindings and the owner mutation boundary remain unchanged.

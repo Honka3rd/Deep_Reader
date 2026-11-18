@@ -1,5 +1,36 @@
 # session Detailed Design
 
+## SESSION-01: generation-bound ordinary QA (2026-11-18, locally verified)
+
+`ReadingSession` has immutable scalar fields (session ID, document name, opaque
+generation and anchor) plus detached, bounded history lists. The manager owns current
+snapshots; callers cannot mutate its state through returned references. Creation,
+document switch and explicit reset allocate a new generation, including A→B→A.
+A same-document update retains the generation and merges into current history,
+not the request's older history. Same-generation concurrent turns apply in completion
+order; this is a lifecycle fence, not a turn-order scheduler.
+
+Get/create, read, reset, and compare-and-update use one short in-process lock.
+Update verifies captured session ID, document and generation against the current
+snapshot before changing any field; it returns false without mutation if stale.
+Chunk lookup happens outside the lock; no preparation, retrieval, model call or
+retry is performed while holding it. Empty/missing-record results still append
+the question and preserve the current anchor. Histories retain the configured
+positive limit. Reads return detached snapshots, so tests/callers seed progress
+through `update_session`, and inspect current state through `get_session`.
+
+QA captures its snapshot before preparation. A late successful answer is returned
+normally, but its stale state update is discarded without another model call.
+Reset does not cancel work or recreate history on completion. This is memory-only,
+single-process coordination, not database persistence, multiworker synchronization
+or the separate critical-thinking session system.
+
+Acceptance: Event-controlled actual manager/coordinator/FAISS/context and isolated
+ASGI ask tests for switch, ABA, reset, independent sessions and subsequent local
+routing; same-document concurrent history, fixed identity, isolated histories,
+positive limits, empty/missing results and sequential controls. Local tests do not grant external
+approval or authorize Docker/push.
+
 ## 1. Module Purpose
 
 `session/` 管理閱讀 session 的 in-memory 狀態，追蹤 active chunk、近期 chunk 與近期提問，支援 local reading context 的連續性。 **[Code-Confirmed]**
@@ -58,7 +89,7 @@ No known legacy compatibility responsibility.
 
 2. risk：同 session_id 跨 doc 重用語義
 - why：若重置規則誤用可能造成上下文錯配
-- guardrail：目前已在 doc_name 改變時 reset
+- guardrail：SESSION-01 的 switch/reset generation fencing（已本地驗證，待精確 SHA 外審）
 
 ## 12. Open Questions for Maintainer
 

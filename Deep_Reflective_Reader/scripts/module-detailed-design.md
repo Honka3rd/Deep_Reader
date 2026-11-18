@@ -1,5 +1,17 @@
 # scripts Detailed Design
 
+## SESSION-01 ordinary QA race regression (2026-11-18, locally verified)
+
+`test_session_lifecycle.py` exercises real SessionManager/QACoordinator/context,
+FAISS records and the production synchronous ask function in isolated ASGI with
+controlled providers and Events. It asserts complete current-state preservation,
+provider counts, subsequent local routing, ABA/reset rejection and independent
+sessions. Helper controls cover immutable snapshots, same-generation merging,
+history limits and empty/missing-record hits. Context capacity fixtures seed the
+anchor through the manager's write contract instead of mutating a read snapshot;
+all original capacity assertions remain. No private data, live model, SQL, Docker
+or network deployment is needed for this in-process lifecycle invariant.
+
 ## BUILD-CACHE-04 apt bootstrap (2026-11-18, locally verified)
 
 Before installing the registry-derived OCR packages, upgrade installed `apt` and

@@ -27,7 +27,8 @@ from question.question_scope_resolver import QuestionScopeResolver
 from question.standardized.question_standardizer import QuestionStandardizer
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from retrieval.node_record import NodeRecord
-from session.session_manager import SessionManager
+from retrieval.search_metadata import SearchMetadata
+from session.session_manager import SessionManager, SessionUpdateResult
 from scripts.test_question_output_boundary import route_app
 
 
@@ -107,10 +108,19 @@ def make_case(query="Explain this sentence.", texts=None):
     )
 
 
+def seed_session_anchor(case):
+    manager = case.coordinator.session_manager
+    snapshot = manager.get_or_create_session("isolated", "synthetic")
+    manager.update_session(snapshot, SessionUpdateResult(
+        question="seed", bundle=case.bundle,
+        results=[SearchMetadata(0, "0", "controlled source", 0.0)],
+    ))
+
+
 def ask(case, active=False):
     session_id = "isolated" if active else None
     if active:
-        case.coordinator.session_manager.get_or_create_session(session_id, "synthetic").active_chunk_index = 0
+        seed_session_anchor(case)
     with contextlib.redirect_stdout(io.StringIO()):
         return case.coordinator.ask(case.query, "synthetic", session_id=session_id)
 
@@ -168,7 +178,7 @@ class ContextCapacityTests(unittest.TestCase):
                 captured = io.StringIO()
                 with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
                     if active:
-                        case.coordinator.session_manager.get_or_create_session("isolated", "synthetic").active_chunk_index = 0
+                        seed_session_anchor(case)
                     with TestClient(route_app(case.coordinator)) as client:
                         response = client.post("/documents/ask", json={
                             "doc_name": "synthetic", "query": case.query, "session_id": "isolated",

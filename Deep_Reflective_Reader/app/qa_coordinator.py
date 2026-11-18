@@ -228,7 +228,7 @@ class QACoordinator:
             answer_text = self.llm_provider.complete_text(prompt)
 
         if session is not None:
-            self.session_manager.update_session(
+            session_updated = self.session_manager.update_session(
                 session=session,
                 result=SessionUpdateResult(
                     question=question,
@@ -239,7 +239,7 @@ class QACoordinator:
             print(
                 f"QACoordinator#ask after: session_id={session.session_id}, "
                 f"active_chunk_index_before={session_active_chunk_index}, "
-                f"active_chunk_index_after={session.active_chunk_index}, "
+                f"session_update_accepted={session_updated}, "
                 f"context_mode={context_result.prompt_mode}"
             )
 

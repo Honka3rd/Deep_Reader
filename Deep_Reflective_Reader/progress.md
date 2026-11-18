@@ -1,5 +1,22 @@
 # Deep Reflective Reader Progress
 
+## SESSION-01 ordinary QA lifecycle correction (2026-11-18)
+
+Session identity/generation is captured before preparation; switch/reset allocate a
+fresh generation, including A→B→A. Short locked compare-and-update merges current
+same-generation history and discards stale completions. The original answer still
+returns without provider retry; histories read through detached snapshots.
+
+External race reproduction: baseline 5 methods/7 failed subassertions -> 5/5 pass.
+Formal scoped regression: 70/70 (session 12, capacity 9, retained context 9, question
+routing/output/requested-scope 40), zero errors/skips. External lifecycle controls
+5/5 after explicit snapshot-read fixture adaptation; original value assertions
+retained. Evidence/commands/diffs: `/tmp/session-01-3dab1fa/report.txt`.
+Controlled providers, real FAISS/context/coordinator, isolated ASGI; no live models,
+SQL, private-book semantics, TCP, UI, multiworker or Docker acceptance. Latest local
+review SHA requires external approval; this task does not advance module gates or
+approve unrelated Docker work. Only session/app/scripts entries are synchronized.
+
 ## Apt Bootstrap Memory Correction (2026-11-18)
 
 BUILD-CACHE-04 upgrades apt/libapt before bulk OCR installation; command-local
@@ -850,7 +867,7 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 64 | 11 | TASK-03/05 support locally verified; section_tasks external review open; unrelated unresolved items retained (2026-11-15 recount) |
+| `app/` | package | `app/module-checklist.md` | 65 | 11 | SESSION-01 QA support locally verified; unrelated unresolved items retained |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
 | `config/` | package | `config/module-checklist.md` | 12 | 9 | APP-02 raw-source support locally verified; app external review pending; unrelated checklist items retained (2026-11-14 recount excludes templates) |
 | `context/` | package | `context/module-checklist.md` | 14 | 0 | CONTEXT-01–03 locally verified; external context review pending |
@@ -867,9 +884,9 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 92 | 2 | BUILD-CACHE-04 source/package verified; new exact-SHA review and image/cache acceptance pending |
+| `scripts/` | package | `scripts/module-checklist.md` | 93 | 2 | SESSION-01 regression verified; existing build/DOCLOAD gates retained |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `session/` | package | `session/module-checklist.md` | 4 | 0 | SESSION-01 locally verified; exact-SHA external review pending |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 42 | 3 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 5 | 0 | PREP runtime handoff locally verified |
@@ -943,11 +960,11 @@ Evidence and dependencies are in owner designs/checklists.
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `APP-01–06 locally verified; new exact-SHA external review pending`
-- Completed item count: `62` (direct owner recount, 2026-11-14).
+- Status: `SESSION-01 QA support locally verified; unrelated unresolved items retained`
+- Completed item count: `65` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `11`
 - Unchecked item count: `11` (historical unresolved items retained).
-- Latest evidence: `/tmp/app06-fix-eaae891/report.txt`; mapping 20/20 plus custom rerun 2/2,
+- Prior APP-01–06 evidence: `/tmp/app06-fix-eaae891/report.txt`; mapping 20/20 plus custom rerun 2/2,
   targets 15/15, focused 77/77, interaction 96/96, reading support 118/118 and
   app 321 pass/six private opt-in skips/zero failures/errors.
 - Unit 1 evidence: 180 passing executions/zero skips, original external APP-01 and
@@ -970,6 +987,11 @@ Evidence and dependencies are in owner designs/checklists.
   Explicit page evidence reuses source-validated persisted spans without extraction/LLM.
 
 #### Completed Work
+
+- [x] SESSION-01: Generation-bound ordinary QA state completion and scoped regression.
+  Evidence: `/tmp/session-01-3dab1fa/report.txt`; 70/70 regression, external races 5/5,
+  adapted lifecycle controls 5/5. Local verification only; exact-SHA review pending.
+  Timestamp: 2026-11-18
 
 - [x] Implements QA orchestration via `QACoordinator` across prepare, retrieval, prompt, and session update paths.
 - [x] Implements section/chapter task orchestration via `SectionTaskCoordinator`, including task-layout projection assembly.
@@ -1666,12 +1688,17 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `BUILD-CACHE-04 source/package verified; new exact-SHA review/image acceptance pending`
-- Completed item count: `92` (direct owner recount, 2026-11-18).
+- Status: `SESSION-01 regression verified; existing build/DOCLOAD gates retained`
+- Completed item count: `93` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `2`
 - Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] SESSION-01: Generation-bound ordinary QA state completion and scoped regression.
+  Evidence: `/tmp/session-01-3dab1fa/report.txt`; 70/70 regression, external races 5/5,
+  adapted lifecycle controls 5/5. Local verification only; exact-SHA review pending.
+  Timestamp: 2026-11-18
 
 - [x] BUILD-CACHE-04: Apt/libapt bootstrap with fixed-version gate before OCR install.
   Evidence: `/tmp/apt-upgrade-2ec31af/report.txt`; 16/16 recipe; 68 pass/3 image skips;
@@ -1809,11 +1836,16 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `session/module-checklist.md`
 - Detailed Design: `session/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `SESSION-01 locally verified; exact-SHA external review pending`
+- Completed item count: `4` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `0`
 
 #### Completed Work
+
+- [x] SESSION-01: Generation-bound ordinary QA state completion and scoped regression.
+  Evidence: `/tmp/session-01-3dab1fa/report.txt`; 70/70 regression, external races 5/5,
+  adapted lifecycle controls 5/5. Local verification only; exact-SHA review pending.
+  Timestamp: 2026-11-18
 
 - [x] Defines in-memory reading session state model (`ReadingSession`).
 - [x] Implements session lifecycle operations (create, hit, reset) in `SessionManager`.

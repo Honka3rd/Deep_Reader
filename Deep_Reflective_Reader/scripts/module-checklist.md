@@ -1,5 +1,15 @@
 # scripts Checklist
 
+## SESSION-01 (2026-11-18)
+
+- [x] Reproduce SESSION-01 with actual QA/ASGI and lifecycle controls.
+  Evidence: `scripts/test_session_lifecycle.py` (12/12); cumulative scoped regression
+  70/70, no skips. External races: 7 baseline failed subassertions -> 5/5 methods;
+  lifecycle controls 5/5 with documented snapshot-read fixture adaptation.
+  `/tmp/session-01-3dab1fa/report.txt`; original capacity assertions retained.
+  Status: Locally verified; exact-SHA external review required; no deployment/push.
+  Timestamp: 2026-11-18
+
 ## Apt retry memory correction (2026-11-18)
 
 - [x] BUILD-CACHE-04: Upgrade apt/libapt before OCR downloads and enforce fixed versions.
