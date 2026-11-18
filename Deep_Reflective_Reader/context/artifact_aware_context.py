@@ -102,7 +102,6 @@ class ArtifactAwareContextBuilder:
 
         selected: list[ArtifactContextSummary] = []
         seen_artifact_ids: set[str] = set()
-        coverage_counts: dict[str, int] = {}
         skipped_count = 0
         duplicate_count = 0
 
@@ -128,7 +127,6 @@ class ArtifactAwareContextBuilder:
 
             seen_artifact_ids.add(artifact_id)
             selected.append(artifact)
-            coverage_counts[target_level] = coverage_counts.get(target_level, 0) + 1
 
         if not selected:
             reason = None
@@ -150,23 +148,13 @@ class ArtifactAwareContextBuilder:
             )
 
         lines: list[str] = ["Secondary lower-level artifact context:"]
-        referenced_artifact_ids: list[str] = []
-        referenced_artifact_types: list[str] = []
-        referenced_artifact_target_levels: list[str] = []
-        has_deduplication_signal = False
-        has_abstraction_signal = False
         budget_pruned_count = 0
 
         for index, artifact in enumerate(selected, start=1):
-            artifact_id = artifact.artifact_id.strip()
             artifact_type = artifact.artifact_type.strip()
             target_level = artifact.target_level.strip()
             target_id = artifact.target_id.strip()
             status = artifact.status.strip()
-
-            referenced_artifact_ids.append(artifact_id)
-            referenced_artifact_types.append(artifact_type)
-            referenced_artifact_target_levels.append(target_level)
 
             concepts = ", ".join(
                 concept.strip()
@@ -190,11 +178,7 @@ class ArtifactAwareContextBuilder:
 
             lines.append("; ".join(parts))
 
-            if artifact_type == "quiz" or concepts:
-                has_deduplication_signal = True
-            if artifact_type in {"analysis", "critical_thinking_session"} or focus or outcome:
-                has_abstraction_signal = True
-
+        retained = selected
         if max_context_chars is not None:
             budgeted_lines = self._apply_context_char_budget(
                 lines=lines,
@@ -203,15 +187,24 @@ class ArtifactAwareContextBuilder:
             kept_artifact_count = max(0, len(budgeted_lines) - 1)
             budget_pruned_count = max(0, len(selected) - kept_artifact_count)
             lines = budgeted_lines
-            if kept_artifact_count < len(referenced_artifact_ids):
-                referenced_artifact_ids = referenced_artifact_ids[:kept_artifact_count]
-                referenced_artifact_types = referenced_artifact_types[:kept_artifact_count]
-                referenced_artifact_target_levels = referenced_artifact_target_levels[
-                    :kept_artifact_count
-                ]
-                coverage_counts = self._coverage_counts_for_selected(
-                    selected[:kept_artifact_count]
-                )
+            retained = selected[:kept_artifact_count]
+
+        # All provenance and guidance describe the same post-budget selection.
+        referenced_artifact_ids = [artifact.artifact_id.strip() for artifact in retained]
+        referenced_artifact_types = [artifact.artifact_type.strip() for artifact in retained]
+        referenced_artifact_target_levels = [artifact.target_level.strip() for artifact in retained]
+        coverage_counts = self._coverage_counts_for_selected(retained)
+        has_deduplication_signal = any(
+            artifact.artifact_type.strip() == "quiz"
+            or any(concept.strip() for concept in artifact.concepts)
+            for artifact in retained
+        )
+        has_abstraction_signal = any(
+            artifact.artifact_type.strip() in {"analysis", "critical_thinking_session"}
+            or (artifact.focus or "").strip()
+            or (artifact.outcome or "").strip()
+            for artifact in retained
+        )
 
         pruned_reason = None
         if skipped_count or duplicate_count or budget_pruned_count:

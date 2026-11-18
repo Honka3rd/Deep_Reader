@@ -1,5 +1,23 @@
 # Deep Reflective Reader Progress
 
+## Context Retained-Provenance Correction (2026-11-18)
+
+CONTEXT-02/03 locally verified against `923447174e03cc56f4a41a234d4e73342d74db57`.
+Primary compact evidence IDs now follow retained entries, including clipped entries,
+without interpreting embedded newlines as extra evidence. Secondary artifact IDs,
+coverage and guidance flags derive from the same post-budget set. Explicit injected
+quiz/critical-thinking consumers omit guidance for removed signals and retain it
+for selected signals; primary target/source identity is unchanged. No default runtime
+wiring, storage migration or provider retry was introduced. CONTEXT-01 remains intact.
+
+Exact 9234471 baseline: new formal suite 9 methods /15 failed sub-assertions -> 9/9; unchanged external auxiliary suite 6 methods /3 failures -> 6/6. CONTEXT-01 formal 9/9, existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 8 bounded helper checks pass with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit2-9234471/report.txt`.
+
+Recount: context 14 checked/0 unchecked; scripts 89/1, excluding templates. Existing
+scripts deployment fixture gate remains unresolved. This is helper/injected-service
+acceptance, not default HTTP, SQL, live model or whole-book semantic acceptance.
+Latest cumulative context SHA requires external approval before deployment/push.
+
+
 ## Context Exhausted-Capacity Correction (2026-11-18)
 
 CONTEXT-01 locally verified against `38d00ddb46d5820311f1685430d831dd5ba20a38`.
@@ -12,8 +30,7 @@ Exact 38d00dd baseline: new formal suite 9 methods /11 failed sub-assertions -> 
 
 Direct recount: context 12 checked/0 unchecked (previous progress 3/0 omitted eight
 existing interaction-context items); scripts 88/1. Templates excluded; no historical
-completion dates inferred. CONTEXT-02/03 remain known nonblocking auxiliary-interface
-findings outside this unit. Local tests are not external approval. The prior question
+completion dates inferred. CONTEXT-02/03 were outside that unit; their subsequent correction is recorded above. Local tests are not external approval. The prior question
 Docker build was stopped when this audit arrived, before service replacement; no
 push occurred. Latest context review SHA must be approved before deployment resumes.
 
@@ -774,7 +791,7 @@ It is used to:
 | `app/` | package | `app/module-checklist.md` | 64 | 11 | TASK-03/05 support locally verified; section_tasks external review open; unrelated unresolved items retained (2026-11-15 recount) |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
 | `config/` | package | `config/module-checklist.md` | 12 | 9 | APP-02 raw-source support locally verified; app external review pending; unrelated checklist items retained (2026-11-14 recount excludes templates) |
-| `context/` | package | `context/module-checklist.md` | 12 | 0 | CONTEXT-01 locally verified; external context review pending; P3 observations open |
+| `context/` | package | `context/module-checklist.md` | 14 | 0 | CONTEXT-01–03 locally verified; external context review pending |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
 | `db/` | package + design module | `db/module-checklist.md` | 70 | 4 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
@@ -788,7 +805,7 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 88 | 1 | CONTEXT-01 locally verified; external context review pending (2026-11-18 recount) |
+| `scripts/` | package | `scripts/module-checklist.md` | 89 | 1 | CONTEXT-01–03 locally verified; external context review pending (2026-11-18 recount) |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -971,11 +988,15 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `context/module-checklist.md`
 - Detailed Design: `context/module-detailed-design.md`
-- Status: `CONTEXT-01 locally verified; external review pending; CONTEXT-02/03 open (nonblocking)`
-- Completed item count: `12` (direct owner recount, 2026-11-18; eight pre-existing interaction-context items included).
+- Status: `CONTEXT-01–03 locally verified; external context review pending`
+- Completed item count: `14` (direct owner recount, 2026-11-18; eight pre-existing interaction-context items included).
 - Needs confirmation count: `0`
 
 #### Completed Work
+
+- [x] CONTEXT-02/03: Project evidence IDs and artifact guidance from actual retained content.
+  Evidence: `scripts/test_context_retained_provenance.py`; `/tmp/context-unit2-9234471/report.txt`. Local verification only.
+  Timestamp: 2026-11-18
 
 - [x] CONTEXT-01: Preserve explicit zero/negative context allowances and refuse exhausted QA answer dispatch.
   Evidence: `scripts/test_context_capacity.py`; `/tmp/context-unit1-38d00dd/report.txt`. Local verification only.
@@ -1583,12 +1604,16 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `CONTEXT-01 locally verified; external context review pending`
-- Completed item count: `88` (direct owner recount, 2026-11-18).
+- Status: `CONTEXT-01–03 locally verified; external context review pending`
+- Completed item count: `89` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `1`
 - Unchecked item count: `1` (existing DOCLOAD deployment fixture gate remains open).
 
 #### Completed Work
+
+- [x] CONTEXT-02/03: Retained primary evidence and secondary artifact signal regressions.
+  Evidence: `scripts/test_context_retained_provenance.py`; `/tmp/context-unit2-9234471/report.txt`.
+  Timestamp: 2026-11-18
 
 - [x] CONTEXT-01: Cover actual capacity helpers, FAISS/coordinator refusal and safe ASGI propagation with red/green evidence.
   Evidence: `scripts/test_context_capacity.py`; `/tmp/context-unit1-38d00dd/report.txt`.

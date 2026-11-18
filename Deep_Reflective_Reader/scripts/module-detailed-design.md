@@ -1,5 +1,16 @@
 # scripts Detailed Design
 
+## CONTEXT-02/03 projection regression (2026-11-18, locally verified)
+
+Use actual primary/secondary context builders and explicit injected quiz/critical-
+thinking services to verify retained-entry evidence and post-pruning signals.
+Preserve prior assertions, compare full metadata as well as output text, and verify
+source/target identity and zero extra generation. Keep red/green external probes in
+new evidence directories; immutable-book copies supply bounded helper samples only.
+Do not claim default HTTP integration, database persistence or live model acceptance.
+
+Verification: Exact 9234471 baseline: new formal suite 9 methods /15 failed sub-assertions -> 9/9; unchanged external auxiliary suite 6 methods /3 failures -> 6/6. CONTEXT-01 formal 9/9, existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 8 bounded helper checks pass with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit2-9234471/report.txt`. Exact-SHA external context review remains pending.
+
 ## CONTEXT-01 capacity regression (2026-11-18, locally verified)
 
 Add actual TokenBudgetManager/DocumentContextBuilder and FAISS-backed

@@ -193,16 +193,16 @@ class ReadingInteractionContextBuilder:
             selected_texts.append(f"[{evidence_id}] {chunks[chunk_index]}")
             selected_evidence_ids.append(evidence_id)
 
-        context_text, used_tokens, truncated = (
-            self.token_budget_manager.join_texts_with_budget(
+        retained_texts, used_tokens, truncated = (
+            self.token_budget_manager.select_texts_with_budget(
                 selected_texts,
                 default_max_context_tokens=effective_budget,
                 max_context_tokens=effective_budget,
             )
         )
-        selected_count = len(context_text.split("\n")) if context_text else 0
+        selected_count = len(retained_texts)
         return ReadingInteractionContextResult(
-            context_text=context_text,
+            context_text="\n".join(retained_texts),
             context_mode=CONTEXT_MODE_SEMANTIC_COMPACT,
             token_estimate=target_token_estimate,
             used_context_tokens=used_tokens,

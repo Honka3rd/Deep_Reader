@@ -1,5 +1,30 @@
 # context Detailed Design
 
+## CONTEXT-02/03 retained-context provenance (2026-11-18, locally verified)
+
+Compact primary-context evidence IDs must follow the actual selected text entries,
+including a clipped first entry, rather than count newlines in serialized text.
+TokenBudgetManager exposes ordered retained entries with used tokens/truncation;
+the existing join API delegates to that same selection and retains its tuple contract.
+Semantic chunk ordering, target/source identity, token policy and CONTEXT-01 zero
+allowance behavior remain unchanged.
+
+Secondary-context IDs/types/levels, coverage and deduplication/abstraction flags all
+come from artifacts retained after count and character-budget pruning. Pruned quiz,
+concept, analysis, focus or outcome signals cannot enable guidance. Empty retained
+sets have empty source/IDs/coverage and false flags; preserve pruning reasons and
+existing mode semantics. Real injected quiz and critical-thinking services must
+therefore omit signal guidance and applied metadata when the relevant signal was
+removed, while retained signals continue working. No default-container wiring,
+provider call, source mutation or persisted-data migration is added.
+
+Acceptance covers multiline/single-line compact entries, coverage order, clipped
+first entry, zero result, all/partial/no artifact pruning and explicit service
+consumers. These are auxiliary contracts; no default reader HTTP defect or deployment
+acceptance is claimed. External exact-SHA approval remains required.
+
+Verification: Exact 9234471 baseline: new formal suite 9 methods /15 failed sub-assertions -> 9/9; unchanged external auxiliary suite 6 methods /3 failures -> 6/6. CONTEXT-01 formal 9/9, existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 8 bounded helper checks pass with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit2-9234471/report.txt`. Exact-SHA external context review remains pending.
+
 ## CONTEXT-01 exhausted QA capacity (2026-11-18, locally verified)
 
 Only `None` selects the configured context default. Explicit zero/negative budgets
@@ -20,8 +45,8 @@ Acceptance uses real budget/builder/orchestrator/coordinator/FAISS objects with
 controlled providers: None/zero/negative/positive helpers, retrieval/local exhaustion
 and exact boundaries, positive/full-text/global controls, safe errors and zero answer
 calls on refusal. Immutable-book samples validate bounded helper behavior only.
-CONTEXT-02/03 remain known nonblocking auxiliary-interface findings, outside this
-unit; local verification must not be described as external approval.
+CONTEXT-02/03 were outside the CONTEXT-01 unit; their current correction is tracked
+above. Local verification must not be described as external approval.
 
 Verification: Exact 38d00dd baseline: new formal suite 9 methods /11 failed sub-assertions -> 9/9; external QA 3 methods /3 failures -> 3/3 with the documented early-capacity-error diagnostic adaptation; builders 7 methods /2 failures -> 7/7. Existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 4 bounded helper checks, 2 baseline zero-budget failures -> 4/4 with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit1-38d00dd/report.txt`. Exact-SHA external context review is pending. Isolated ASGI uses the unchanged production ask function/schema; no full main lifecycle, live model, SQL, TCP/UI or Docker acceptance.
 

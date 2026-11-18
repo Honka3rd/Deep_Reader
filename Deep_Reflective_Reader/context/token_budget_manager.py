@@ -79,9 +79,25 @@ class TokenBudgetManager:
         max_context_tokens: int | None = None,
     ) -> tuple[str, int, bool]:
         """Join ordered texts while respecting context token budget."""
+        kept, used_tokens, truncated = self.select_texts_with_budget(
+            texts, default_max_context_tokens, max_context_tokens
+        )
+        return "\n".join(kept), used_tokens, truncated
+
+    def select_texts_with_budget(
+        self,
+        texts: List[str],
+        default_max_context_tokens: int,
+        max_context_tokens: int | None = None,
+    ) -> tuple[List[str], int, bool]:
+        """Retain ordered entries (including a clipped first entry) before rendering.
+
+        Entry boundaries are preserved even when an entry contains newlines, so
+        consumers can project provenance from the actual selection.
+        """
         budget = default_max_context_tokens if max_context_tokens is None else max_context_tokens
         if budget <= 0:
-            return "", 0, any(texts)
+            return [], 0, any(texts)
         kept: List[str] = []
         used_tokens = 0
         truncated = False
@@ -100,7 +116,7 @@ class TokenBudgetManager:
             kept.append(text)
             used_tokens += text_tokens
 
-        return "\n".join(kept), used_tokens, truncated
+        return kept, used_tokens, truncated
 
     def estimate_non_context_prompt_tokens(
         self,

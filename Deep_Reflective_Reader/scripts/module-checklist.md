@@ -1,5 +1,14 @@
 # scripts Checklist
 
+## Context auxiliary-interface audit unit (2026-11-18)
+
+- [x] CONTEXT-02/03: Verify retained evidence and artifact signals with real helpers/services.
+  Acceptance: Red/green provenance matrices, injected quiz/critical-thinking metadata,
+  prior capacity/question/interaction controls and immutable-book samples.
+  Status: Locally verified; external exact-SHA context review pending.
+  Evidence: `scripts/test_context_retained_provenance.py`; Exact 9234471 baseline: new formal suite 9 methods /15 failed sub-assertions -> 9/9; unchanged external auxiliary suite 6 methods /3 failures -> 6/6. CONTEXT-01 formal 9/9, existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 8 bounded helper checks pass with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit2-9234471/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Context audit unit 1 (2026-11-18)
 
 - [x] CONTEXT-01: Verify zero-budget helpers and exhausted QA refusal.

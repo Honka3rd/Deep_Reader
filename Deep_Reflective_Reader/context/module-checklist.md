@@ -1,5 +1,21 @@
 # context Checklist
 
+## Context auxiliary-interface audit unit (2026-11-18)
+
+- [x] CONTEXT-02: Derive compact evidence IDs from actual retained entries.
+  Acceptance: Multiline/single-line source, ordered selection, first-entry clipping,
+  zero budget, metadata and unchanged target/source; retain CONTEXT-01.
+  Status: Locally verified; external exact-SHA context review pending.
+  Evidence: `scripts/test_context_retained_provenance.py`; Exact 9234471 baseline: new formal suite 9 methods /15 failed sub-assertions -> 9/9; unchanged external auxiliary suite 6 methods /3 failures -> 6/6. CONTEXT-01 formal 9/9, existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 8 bounded helper checks pass with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit2-9234471/report.txt`.
+  Timestamp: 2026-11-18
+
+- [x] CONTEXT-03: Derive artifact flags and provenance after budget pruning.
+  Acceptance: All/partial/no pruning, signal-specific flags, IDs/coverage and injected
+  quiz/critical-thinking guidance/metadata; no runtime wiring or source mutation.
+  Status: Locally verified; external exact-SHA context review pending.
+  Evidence: `scripts/test_context_retained_provenance.py`; Exact 9234471 baseline: new formal suite 9 methods /15 failed sub-assertions -> 9/9; unchanged external auxiliary suite 6 methods /3 failures -> 6/6. CONTEXT-01 formal 9/9, existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 8 bounded helper checks pass with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit2-9234471/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Context audit unit 1 (2026-11-18)
 
 - [x] CONTEXT-01: Preserve explicit zero budgets and refuse exhausted QA dispatch.
