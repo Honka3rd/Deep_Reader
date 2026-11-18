@@ -1,5 +1,28 @@
 # Deep Reflective Reader Progress
 
+## Apt Bootstrap Memory Correction (2026-11-18)
+
+BUILD-CACHE-04 upgrades apt/libapt before bulk OCR installation; command-local
+bootstrap retries are disabled and both installed versions must be >= 3.0.4.
+Failed upgrades/old or missing versions stop before OCR. Existing caches, registry
+selection, offline verification and launcher remain intact. Investigation reproduced
+old apt's delayed-item warning accumulation; the fixed retry control completed at
+10364 kB RSS. `/tmp/apt-memory-investigation-20261118-211223/report.txt`.
+
+Final recipe suite: six failed baseline sub-assertions -> 16/16, original ten methods
+AST-identical. Support 71 executed: 68 pass/3 rebuilt-image opt-in skips. Actual RUN
+in a disposable existing-base container: apt/libapt 3.0.3 -> 3.0.4, 21 packaged OCR
+models installed, 11.91 s and 117648 kB peak apt RSS. Network disabled: update used
+captured repository lists and cached archives. This is package acceptance, not a
+fresh-index/Proton/full-application image/deployment result. Evidence and commands:
+`/tmp/apt-upgrade-2ec31af/report.txt`. During the preceding investigation existing
+API/PostgreSQL containers were observed absent; this task did not remove or recover
+them. PostgreSQL's named data volume remains; no application data volume is used
+by the package probe. No deployment/push. New exact-SHA external approval required.
+
+Scripts recount: 92 checked/2 unchecked. BUILD-CACHE-02 and existing DOCLOAD gate
+remain unresolved; source verification does not close image acceptance.
+
 ## Manual Docker Startup Diagnostics (2026-11-18)
 
 BUILD-CACHE-03 adds manual help, explicit build/runtime proxy distinctions, default
@@ -844,7 +867,7 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 91 | 2 | BUILD-CACHE-03 source verified; new exact-SHA review and image/cache acceptance pending |
+| `scripts/` | package | `scripts/module-checklist.md` | 92 | 2 | BUILD-CACHE-04 source/package verified; new exact-SHA review and image/cache acceptance pending |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -1643,12 +1666,18 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `BUILD-CACHE-03 source verified; new exact-SHA review/image acceptance pending`
-- Completed item count: `91` (direct owner recount, 2026-11-18).
+- Status: `BUILD-CACHE-04 source/package verified; new exact-SHA review/image acceptance pending`
+- Completed item count: `92` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `2`
 - Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] BUILD-CACHE-04: Apt/libapt bootstrap with fixed-version gate before OCR install.
+  Evidence: `/tmp/apt-upgrade-2ec31af/report.txt`; 16/16 recipe; 68 pass/3 image skips;
+  real isolated package upgrade/install, peak apt RSS 117648 kB.
+  Status: Local source/package checks only; exact-SHA review and image acceptance pending.
+  Timestamp: 2026-11-18
 
 - [x] BUILD-CACHE-03: Manual startup help, build/runtime network distinction and safe failure guidance.
   Evidence: `/tmp/docker-deploy-c35299a/retry/launcher-*.log`; original launcher assertions preserved.

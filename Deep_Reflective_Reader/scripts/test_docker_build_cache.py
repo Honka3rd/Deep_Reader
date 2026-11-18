@@ -2,6 +2,7 @@
 
 These tests do not substitute for approved cold/warm image and deployment acceptance.
 """
+import json
 import os
 from pathlib import Path
 import re
@@ -161,6 +162,120 @@ class RegistryManifestTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(manifest, '')
         self.assertIn('ocr_registry_mapping_missing', result.stderr)
+
+
+class AptBootstrapTests(unittest.TestCase):
+    """Execute the production RUN shell; apt/dpkg ports cannot change this host.
+
+    The small version port covers release ordering, not Debian version syntax.
+    Real Debian comparator/package execution is separate container acceptance.
+    """
+
+    def run_recipe(self, **settings):
+        recipe = next(line for line in stages()['ocr-runtime']['instructions']
+                      if line.startswith('RUN ') and 'apt-get' in line)
+        recipe = re.sub(r'--mount=\S+\s*', '', recipe[4:])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / 'ocr-packages'
+            manifest.write_text('tesseract-ocr-eng\ntesseract-ocr-chi-tra\n')
+            recipe = recipe.replace('/tmp/ocr-packages', str(manifest))
+            command = root / 'command'
+            command.write_text('#!' + sys.executable + '\n' + r'''
+import json, os, sys
+from pathlib import Path
+name = Path(sys.argv[0]).name
+args = sys.argv[1:]
+root = Path(os.environ['APT_TEST_ROOT'])
+with (root / 'calls').open('a') as stream:
+    stream.write(json.dumps([name, *args]) + '\n')
+if name == 'apt-get':
+    bootstrap = '--only-upgrade' in args
+    updating = 'update' in args
+    if bootstrap or updating:
+        if os.environ.get('FAIL_STAGE') == ('upgrade' if bootstrap else 'update'):
+            sys.exit(100)
+    if bootstrap:
+        (root / 'upgraded').touch()
+    elif not updating:
+        (root / 'ocr-called').touch()
+elif name == 'dpkg-query':
+    if os.environ.get('QUERY_FAIL') == args[-1]:
+        sys.exit(1)
+    version = os.environ.get('APT_VERSION' if args[-1] == 'apt' else 'LIB_VERSION', '3.0.4')
+    print(version if (root / 'upgraded').exists() else '3.0.3')
+elif name == 'dpkg':
+    def release(value):
+        return tuple(int(n) for n in value.split('.'))
+    sys.exit(0 if release(args[1]) >= release(args[3]) else 1)
+''')
+            command.chmod(0o755)
+            for name in ('apt-get', 'dpkg-query', 'dpkg'):
+                (root / name).symlink_to(command)
+            result = subprocess.run(['sh', '-c', recipe], capture_output=True, text=True,
+                                    env={**os.environ, **settings, 'APT_TEST_ROOT': str(root),
+                                         'PATH': str(root) + os.pathsep + os.environ['PATH']}, timeout=10)
+            calls = [json.loads(line) for line in (root / 'calls').read_text().splitlines()]
+            return result, calls, (root / 'ocr-called').exists(), manifest.exists()
+
+    def test_upgrade_and_both_version_checks_precede_ocr(self):
+        result, calls, installed, manifest = self.run_recipe()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(installed)
+        self.assertFalse(manifest)
+        apt_calls = [call for call in calls if call[0] == 'apt-get']
+        self.assertEqual(len(apt_calls), 3)
+        self.assertIn('update', apt_calls[0])
+        self.assertIn('Acquire::Retries=0', apt_calls[0])
+        self.assertIn('--only-upgrade', apt_calls[1])
+        self.assertIn('Acquire::Retries=0', apt_calls[1])
+        self.assertIn('apt', apt_calls[1])
+        self.assertIn('libapt-pkg7.0', apt_calls[1])
+        self.assertIn('tesseract-ocr-chi-tra', apt_calls[2])
+        self.assertNotIn('Acquire::Retries=0', apt_calls[2])
+        self.assertEqual([call[-1] for call in calls if call[0] == 'dpkg-query'],
+                         ['apt', 'libapt-pkg7.0'])
+        self.assertEqual(sum(call[0] == 'dpkg' for call in calls), 2)
+        self.assertLess(max(i for i, call in enumerate(calls) if call[0] == 'dpkg'),
+                        calls.index(apt_calls[2]))
+
+    def test_later_patch_versions_are_accepted(self):
+        result, _, installed, _ = self.run_recipe(APT_VERSION='3.0.5', LIB_VERSION='3.0.5')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(installed)
+
+    def test_each_old_version_stops_before_ocr(self):
+        for key in ('APT_VERSION', 'LIB_VERSION'):
+            with self.subTest(package=key):
+                result, _, installed, manifest = self.run_recipe(**{key: '3.0.3'})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('apt_bootstrap_version_unsupported', result.stderr)
+                self.assertFalse(installed)
+                self.assertTrue(manifest)
+
+    def test_missing_package_version_stops_before_ocr(self):
+        for package in ('apt', 'libapt-pkg7.0'):
+            with self.subTest(package=package):
+                result, _, installed, manifest = self.run_recipe(QUERY_FAIL=package)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('apt_bootstrap_version_unsupported', result.stderr)
+                self.assertFalse(installed)
+                self.assertTrue(manifest)
+
+    def test_update_failure_stops_without_upgrade_or_ocr(self):
+        result, calls, installed, manifest = self.run_recipe(FAIL_STAGE='update')
+        self.assertEqual(result.returncode, 100)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(installed)
+        self.assertTrue(manifest)
+
+    def test_upgrade_failure_stops_without_checks_or_ocr(self):
+        result, calls, installed, manifest = self.run_recipe(FAIL_STAGE='upgrade')
+        self.assertEqual(result.returncode, 100)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(call[0] == 'apt-get' for call in calls))
+        self.assertFalse(installed)
+        self.assertTrue(manifest)
 
 
 if __name__ == '__main__':

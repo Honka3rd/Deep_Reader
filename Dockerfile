@@ -31,9 +31,17 @@ COPY --from=ocr-manifest /ocr-packages /tmp/ocr-packages
 # cache mount. Cache directories stay in BuildKit, not in the runtime image.
 RUN rm -f /etc/apt/apt.conf.d/docker-clean \
     && printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' > /etc/apt/apt.conf.d/keep-cache
+# Old trixie apt/libapt can accumulate delayed-retry warnings until OOM. Bootstrap
+# without retries, then require the fixed release before the large OCR download.
 RUN --mount=type=cache,id=deep-reader-apt-py311-${TARGETARCH},target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=deep-reader-apt-lists-py311-${TARGETARCH},target=/var/lib/apt,sharing=locked \
-    apt-get update \
+    apt-get -o Acquire::Retries=0 update \
+    && apt-get -o Acquire::Retries=0 install -y --no-install-recommends --only-upgrade apt libapt-pkg7.0 \
+    && for package in apt libapt-pkg7.0; do \
+        version="$(dpkg-query -W -f='${Version}' "$package")" \
+        && dpkg --compare-versions "$version" ge 3.0.4 \
+        || { echo "apt_bootstrap_version_unsupported: $package" >&2; exit 1; }; \
+    done \
     && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         $(cat /tmp/ocr-packages) \

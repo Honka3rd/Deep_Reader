@@ -1,5 +1,53 @@
 # scripts Detailed Design
 
+## BUILD-CACHE-04 apt bootstrap (2026-11-18, locally verified)
+
+Before installing the registry-derived OCR packages, upgrade installed `apt` and
+`libapt-pkg7.0` from the base image's authenticated Debian repositories. Run update
+and this bootstrap install with command-local `Acquire::Retries=0`: the old apt
+must not enter its faulty delayed-download retry loop while upgrading itself.
+Check both installed versions with Debian's version comparator; each must be at
+least 3.0.4 before any OCR package install. Missing packages, upgrade failure or
+older repository candidates stop the RUN. Do not pin an architecture-specific deb,
+disable authentication, silently downgrade, change proxies or increase VM memory.
+This bootstrap targets the current Debian trixie/libapt7 base; a future base ABI
+change requires explicit review and fails closed if that package is absent.
+
+Keep the existing locked architecture-specific apt archives/lists cache mounts.
+Only bootstrap overrides retries; OCR installation uses the fixed apt's normal
+configuration. The minimum admits later Debian patch versions, not only 3.0.4.
+Keep registry authority, pinned vertical models and final offline verification.
+The launcher already uses this Dockerfile; no alternate startup path is needed.
+
+Investigation: Debian bugs 1111554/1152704 identify the delayed-item warning
+accumulation fixed in apt 3.0.4. In the isolated 21-package retry reproduction,
+3.0.3 reached 197860 kB RSS with 38819 captured warnings before a bounded stop;
+3.0.4 completed the same queue at 10364 kB with no such warnings. Full cached OCR
+installation on 3.0.4 completed at 114596 kB apt RSS. This supports the prior OOM
+root cause without claiming inspection of the killed production process's heap.
+Evidence: `/tmp/apt-memory-investigation-20261118-211223/report.txt`.
+
+Acceptance: execute the actual Docker RUN shell with isolated command ports to
+verify ordering, old/missing-version rejection, bootstrap failure and no OCR
+dispatch after failure. Run a real apt upgrade/install against isolated cached
+packages in the existing base container; retain measured retry evidence separately.
+These are package/recipe checks, not a rebuilt application image or deployment.
+BUILD-CACHE-02 and latest-SHA external review remain required.
+
+Verification: Exact 2ec31af Dockerfile with the final 16-test suite yields six
+failed sub-assertions; fixed recipe passes 16/16. Original ten test methods remain
+AST-identical. Four support suites execute 71 tests: 68 pass, three rebuilt-image
+opt-in skips (startup/asset verification, missing asset, corrupt asset). A copied
+real tokenizer asset passes offline setup/startup. The actual Docker RUN, executed
+in the existing arm64 base with network disabled and authenticated captured apt
+lists/archives, upgrades both packages 3.0.3 -> 3.0.4 and installs all 21 packaged
+OCR models in 11.91 s; peak apt RSS 117648 kB. Update intentionally falls back to
+cached indexes; this does not verify fresh remote indexes or Proton connectivity.
+No package-manager stubs are used in that container. Two vertical ADD models and
+final application integration are retained recipe checks, not newly installed by
+this package-only test. `/tmp/apt-upgrade-2ec31af/report.txt` contains commands and
+limits. No application image build/deployment, service recovery or push is claimed.
+
 ## BUILD-CACHE-03 manual startup diagnostics (2026-11-18, locally verified)
 
 The existing `scripts/start_local_dev.sh [--backend-only]` remains the manual and
@@ -44,7 +92,8 @@ in `/tmp/docker-deploy-c35299a/retry/cache-recovery-evidence.json` and build log
 The bounded retry subsequently failed: Debian 502 and exit 137; the VM kernel
 identified apt-get as an OOM victim (about 3.2 GB anonymous RSS in a 4 GB Docker VM
 on an 8 GB host). This confirms memory exhaustion, not its underlying allocation
-cause or a justified new memory limit. Do not automatically raise VM memory or
+cause at that time or a justified new memory limit; BUILD-CACHE-04 records the
+subsequent isolated apt investigation. Do not automatically raise VM memory or
 infer that a proxy/cache change makes the entire build successful.
 Launcher validation uses the actual shell with isolated command stubs, retaining
 existing assertions plus help, progress override, failure guidance and no-secret

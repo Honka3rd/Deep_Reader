@@ -1,5 +1,18 @@
 # scripts Checklist
 
+## Apt retry memory correction (2026-11-18)
+
+- [x] BUILD-CACHE-04: Upgrade apt/libapt before OCR downloads and enforce fixed versions.
+  Acceptance: Actual RUN ordering/failure/version guards, preserved caches and
+  registry models; isolated real-package upgrade/install and retry-memory evidence.
+  Status: Locally verified; exact-SHA external review and BUILD-CACHE-02 remain required.
+  Evidence: Final 16-test recipe suite: six baseline failed sub-assertions -> 16/16;
+  ten original methods AST-identical. Support 71 executed: 68 pass/3 rebuilt-image
+  opt-in skips. Actual RUN in isolated base upgrades both packages to 3.0.4, installs
+  21 packaged OCR models, peak apt RSS 117648 kB. Cached-index fallback only;
+  no online/full-image/deployment claim. `/tmp/apt-upgrade-2ec31af/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Manual Docker startup diagnostics (2026-11-18)
 
 - [x] BUILD-CACHE-03: Make manual startup network/cache failures actionable.
