@@ -1,5 +1,18 @@
 # question Checklist
 
+## Question audit unit 1 (2026-11-17)
+
+- [x] QUESTION-01/02: Fix lexical boundaries and preserve explicit requested scope.
+  Status: Locally verified; external question review pending.
+  Evidence: New routing suite: baseline 9 methods / 50 failed sub-assertions / zero errors or skips; fixed 10/10 (one new extent-registry interface test). External lexical 6/6; external context routing 4/4 methods, with the separate invalid-standardization method retaining five QUESTION-03 failures. Ten formal suites: 69/69 executions, zero skips; offline smoke 11/11 and standalone context-builder CLI pass. Two hash-verified complete book copies supply four bounded routing flows; backup hashes unchanged. Evidence groups overlap and are not summed as unique cases. `/tmp/question-unit1-252db05/report.txt`.
+  Timestamp: 2026-11-18
+
+- [x] QUESTION-03/04: Validate standardized outputs and safe diagnostic/error propagation.
+  Status: Locally verified; cumulative exact-SHA external question review pending.
+  Acceptance: Root/type/duplicate/non-finite matrices, no retrieval on invalid response, safe logs/errors/HTTP detail, one-call/fallback controls.
+  Evidence: New output-boundary suite: exact baseline 15 methods / 85 failed sub-assertions / zero errors or skips; corrected 15/15. Cumulative 11 formal suites: 84/84, zero skips. Original external lexical 6/6, standardizer 4/4, context 5/5 and diagnostic/ASGI route 4/4 pass. Original offline smoke retains two failures in one method expecting free-form model reason; a separately recorded copy changes only the method expectation plus output directory and passes 11/11, retaining routing/call/budget assertions. Full immutable book hashes unchanged; ten bounded deterministic routing/admission/diagnostic flows pass. Evidence groups overlap; not unique-case totals. `/tmp/question-unit2-252db05/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `question` module.
@@ -31,9 +44,10 @@ It is used to:
   Evidence: `Deep_Reflective_Reader/question/qa_enums.py; Deep_Reflective_Reader/question/standardized/standardized_question.py; Deep_Reflective_Reader/question/module-detailed-design.md (Important Data Structures / Contracts)`
   Notes: Scope and prompt modes are formalized as enums.
 
-- [x] Implements LLM-based question standardization with strict JSON parsing and language normalization.
+- [x] Implements LLM-based question standardization with strict JSON/type validation and language normalization.
   Evidence: `Deep_Reflective_Reader/question/standardized/question_standardizer.py; Deep_Reflective_Reader/question/module-detailed-design.md (Main Responsibilities)`
-  Notes: Standardizer returns normalized query and user/document language codes.
+  Notes: QUESTION-03/04 closes the audited baseline admission gap; invalid completed outputs fail before retrieval with safe diagnostics. Current evidence is recorded above.
+  Timestamp: 2026-11-18
 
 - [x] Implements scope resolution using lexical, semantic, and optional LLM fallback paths with diagnostics.
   Evidence: `Deep_Reflective_Reader/question/question_scope_resolver.py; Deep_Reflective_Reader/question/module-detailed-design.md (Main Flows)`
@@ -41,7 +55,7 @@ It is used to:
 
 ## Needs Confirmation
 
-No unresolved confirmation items identified in this pass.
+QUESTION-01–04 are locally verified and await cumulative exact-SHA external review. Four pre-existing rich-content future tasks below remain unchecked.
 
 ## Future Task Policy
 

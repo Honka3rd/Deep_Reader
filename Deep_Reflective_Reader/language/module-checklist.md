@@ -1,5 +1,12 @@
 # language Checklist
 
+## Question audit unit 1 (2026-11-17)
+
+- [x] QUESTION-01/02: Supply distinct multilingual document-extent query cues.
+  Status: Locally verified; external question review pending.
+  Evidence: New routing suite: baseline 9 methods / 50 failed sub-assertions / zero errors or skips; fixed 10/10 (one new extent-registry interface test). External lexical 6/6; external context routing 4/4 methods, with the separate invalid-standardization method retaining five QUESTION-03 failures. Ten formal suites: 69/69 executions, zero skips; offline smoke 11/11 and standalone context-builder CLI pass. Two hash-verified complete book copies supply four bounded routing flows; backup hashes unchanged. Evidence groups overlap and are not summed as unique cases. `/tmp/question-unit1-252db05/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Language audit unit 1 (2026-11-17)
 
 - [x] LANG-01/02: Reject unknown detector authority and avoid content-bearing diagnostics.

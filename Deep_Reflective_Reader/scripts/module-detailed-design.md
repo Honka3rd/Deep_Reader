@@ -1,5 +1,17 @@
 # scripts Detailed Design
 
+## QUESTION-03/04 boundary regression support (2026-11-18, locally verified)
+
+Add strict completed-output and non-content diagnostic matrices using real question/context/coordinator code and deterministic providers. Mount the unchanged production ask route function with actual API schemas in isolated ASGI; no main lifespan, storage, TCP or paid model needed. Capture logging/tracebacks as well as stdout/stderr/HTTP detail. Retain original external assertions and record any deliberate diagnostic-contract expectation changes separately from originals. Verify one-call behavior and that invalid standardization cannot dispatch retrieval/relevance/answers.
+
+Verification: New output-boundary suite: exact baseline 15 methods / 85 failed sub-assertions / zero errors or skips; corrected 15/15. Cumulative 11 formal suites: 84/84, zero skips. Original external lexical 6/6, standardizer 4/4, context 5/5 and diagnostic/ASGI route 4/4 pass. Original offline smoke retains two failures in one method expecting free-form model reason; a separately recorded copy changes only the method expectation plus output directory and passes 11/11, retaining routing/call/budget assertions. Full immutable book hashes unchanged; ten bounded deterministic routing/admission/diagnostic flows pass. Evidence groups overlap; not unique-case totals. `/tmp/question-unit2-252db05/report.txt`. No live service or full-main lifecycle acceptance.
+
+## QUESTION-01/02 scope regression support (2026-11-18, locally verified)
+
+Add offline production resolver/standardizer/ContextOrchestrator regressions with controlled vectors/model output and recording retrieval/context ports. Assert exact source query preservation, provider counts, local top_k/window versus global coverage and explicit extent precedence. Retain independent external red/green and positive controls; no live provider or formal Library data mutation. QUESTION-03/04 was deferred at this historical checkpoint; the current second-unit evidence is recorded above.
+
+Verification: New routing suite: baseline 9 methods / 50 failed sub-assertions / zero errors or skips; fixed 10/10 (one new extent-registry interface test). External lexical 6/6; external context routing 4/4 methods, with the separate invalid-standardization method retaining five QUESTION-03 failures. Ten formal suites: 69/69 executions, zero skips; offline smoke 11/11 and standalone context-builder CLI pass. Two hash-verified complete book copies supply four bounded routing flows; backup hashes unchanged. Evidence groups overlap and are not summed as unique cases. `/tmp/question-unit1-252db05/report.txt`. External question review remains pending; no live model, full-book semantic, SQL, HTTP/UI or deployment acceptance is claimed by this unit.
+
 ## LANG-03 script boundary regression (2026-11-17, locally verified)
 
 Add conservative Chinese/Japanese and mixed/null controls plus real file/PostgreSQL claim/dispatch/checkpoint/assemble/commit/reload tests. Verify empty-with-omissions reuse, failed-refresh preservation, old/new policy key isolation, unchanged source and provider counts. Keep prior language detector red/green and adjacent source/fence regressions; immutable real-book samples validate deterministic boundaries, not model semantics.

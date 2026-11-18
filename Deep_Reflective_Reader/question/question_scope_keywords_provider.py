@@ -14,3 +14,8 @@ class QuestionScopeKeywordsProvider:
     def get_all_keywords() -> tuple[str, ...]:
         """Return deduplicated keyword set across all supported languages."""
         return LanguageProfileRegistry.get_all_scope_keywords()
+
+    @staticmethod
+    def get_document_extent_signals(language: LanguageCode) -> tuple[str, ...]:
+        """Explicit extent, separate from generic operations and semantic cues."""
+        return LanguageProfileRegistry.get_document_extent_signals(language)

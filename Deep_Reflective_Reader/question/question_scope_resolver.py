@@ -1,4 +1,3 @@
-import json
 import re
 from dataclasses import dataclass
 
@@ -9,7 +8,9 @@ from embeddings.embedding_similarity_service import EmbeddingSimilarityService
 from language.language_code import LanguageCode, LanguageCodeResolver
 from language.language_profile_registry import LanguageProfileRegistry
 from llm.llm_provider import LLMProvider
+from question.model_output import ModelJSONSyntaxError, parse_model_object
 from question.qa_enums import LocalSignalQuality, QuestionScope
+from question.scope_lexical_matching import contains_cue
 from question.question_scope_keywords_provider import QuestionScopeKeywordsProvider
 from question.standardized.standardized_question import StandardizedQuestion
 
@@ -91,12 +92,7 @@ class QuestionScopeResolver:
     @staticmethod
     def _contains_keyword(query: str, keywords: tuple[str, ...]) -> str | None:
         """Return first lexical keyword hit if any."""
-        compact = " ".join(query.lower().split())
-        for keyword in keywords:
-            keyword_compact = " ".join(keyword.lower().split())
-            if keyword_compact and keyword_compact in compact:
-                return keyword
-        return None
+        return contains_cue(query, keywords)
 
     @staticmethod
     def _resolve_query_language(question: StandardizedQuestion) -> LanguageCode:
@@ -212,14 +208,10 @@ class QuestionScopeResolver:
         best_idx, best_similarity = best
         return used_anchors[best_idx], best_similarity
 
-    def _has_local_reference_signal(
-        self,
-        query: str,
-        query_language: LanguageCode,
-        session_active_chunk_index: int | None,
-    ) -> LocalReferenceSignalResolution:
-        """Detect local-reading hints with strong/weak signal quality grading."""
-        lowered = query.lower()
+    def _strong_local_reference_signal(
+        self, query: str, query_language: LanguageCode,
+    ) -> LocalReferenceSignalResolution | None:
+        """Pure lexical target evidence, before generic task/similarity routing."""
         if query_language == LanguageCode.UNKNOWN:
             strong_local_markers = (
                 LanguageProfileRegistry.get_all_strong_local_reference_signals()
@@ -230,15 +222,22 @@ class QuestionScopeResolver:
                     query_language
                 )
             )
-        for marker in strong_local_markers:
-            if marker.lower() in lowered:
-                return LocalReferenceSignalResolution(
-                    matched=True,
-                    quality=LocalSignalQuality.STRONG,
-                    method="strong_lexical_local_marker",
-                    matched_text=marker,
-                    similarity=1.0,
-                )
+        marker = contains_cue(query, strong_local_markers)
+        if marker is not None:
+            return LocalReferenceSignalResolution(
+                matched=True, quality=LocalSignalQuality.STRONG,
+                method="strong_lexical_local_marker", matched_text=marker, similarity=1.0,
+            )
+        return None
+
+    def _has_local_reference_signal(
+        self, query: str, query_language: LanguageCode,
+        session_active_chunk_index: int | None,
+    ) -> LocalReferenceSignalResolution:
+        """Strong references are unconditional; weak anchors require a session."""
+        strong = self._strong_local_reference_signal(query, query_language)
+        if strong is not None:
+            return strong
         if session_active_chunk_index is None:
             return LocalReferenceSignalResolution(
                 matched=False,
@@ -250,15 +249,12 @@ class QuestionScopeResolver:
         session_anchor_markers = LanguageProfileRegistry.get_weak_session_local_anchor_signals(
             query_language
         )
-        for marker in session_anchor_markers:
-            if marker.lower() in lowered:
-                return LocalReferenceSignalResolution(
-                    matched=True,
-                    quality=LocalSignalQuality.WEAK,
-                    method="weak_session_lexical_anchor",
-                    matched_text=marker,
-                    similarity=1.0,
-                )
+        marker = contains_cue(query, session_anchor_markers)
+        if marker is not None:
+            return LocalReferenceSignalResolution(
+                matched=True, quality=LocalSignalQuality.WEAK,
+                method="weak_session_lexical_anchor", matched_text=marker, similarity=1.0,
+            )
 
         matched_anchor, similarity = self._semantic_local_anchor_match(
             query=query,
@@ -315,44 +311,34 @@ class QuestionScopeResolver:
             f"document_summary: {summary if summary else '[none]'}\n"
         )
         try:
-            raw = self.llm_provider.complete_text(prompt).strip()
-            # Accept direct JSON or a JSON block embedded in response text.
-            parsed: dict[str, str] | None = None
+            raw = self.llm_provider.complete_text(prompt)
+        except Exception:
+            print("Warn:QuestionScopeResolver#resolve: llm_scope_provider_failed")
+            return None, None
+
+        try:
             try:
-                candidate = json.loads(raw)
-                if isinstance(candidate, dict):
-                    parsed = candidate
-            except Exception:
+                parsed = parse_model_object(raw)
+            except ModelJSONSyntaxError:
+                # Preserve legacy JSON-block responses; no content from the
+                # response or decoder may enter diagnostics.
                 match = re.search(r"\{[\s\S]*\}", raw)
-                if match:
-                    candidate = json.loads(match.group(0))
-                    if isinstance(candidate, dict):
-                        parsed = candidate
+                if not match:
+                    raise ValueError("invalid_json_object") from None
+                parsed = parse_model_object(match.group(0))
+        except ValueError:
+            print("Warn:QuestionScopeResolver#resolve: llm_scope_parse_failed")
+            return None, None
 
-            if parsed is None:
-                print(
-                    "Warn:QuestionScopeResolver#resolve: llm_scope_parse_failed, "
-                    f"raw={raw[:180]}"
-                )
-                return None, None
-
-            scope_value = str(parsed.get("scope", "")).strip().lower()
-            reason_value = str(parsed.get("reason", "")).strip()
+        scope_value = parsed.get("scope")
+        if isinstance(scope_value, str):
+            scope_value = scope_value.strip().lower()
             if scope_value == QuestionScope.GLOBAL.value:
-                return QuestionScope.GLOBAL, reason_value
+                return QuestionScope.GLOBAL, None
             if scope_value == QuestionScope.LOCAL.value:
-                return QuestionScope.LOCAL, reason_value
-            print(
-                "Warn:QuestionScopeResolver#resolve: llm_scope_invalid_value, "
-                f"scope={scope_value}"
-            )
-            return None, None
-        except Exception as e:
-            print(
-                "Warn:QuestionScopeResolver#resolve: llm_scope_failed, "
-                f"error={e}"
-            )
-            return None, None
+                return QuestionScope.LOCAL, None
+        print("Warn:QuestionScopeResolver#resolve: llm_scope_invalid_value")
+        return None, None
 
     def resolve(
         self,
@@ -377,6 +363,22 @@ class QuestionScopeResolver:
             if language == LanguageCode.UNKNOWN
             else self.keywords_provider.get_keywords(language)
         )
+
+        extent = self._contains_keyword(
+            query, self.keywords_provider.get_document_extent_signals(language),
+        )
+        if extent is not None:
+            return QuestionScopeResolution(
+                scope=QuestionScope.GLOBAL, query_language=language,
+                matched_keyword=extent, similarity=1.0, method="lexical_keyword",
+            )
+        strong = self._strong_local_reference_signal(query, language)
+        if strong is not None:
+            return QuestionScopeResolution(
+                scope=QuestionScope.LOCAL, query_language=language,
+                matched_keyword=strong.matched_text, similarity=1.0,
+                method="strong_local_reference",
+            )
 
         lexical_hit = self._contains_keyword(query, keywords)
         if lexical_hit is not None:
@@ -417,7 +419,7 @@ class QuestionScopeResolver:
             and self.llm_fallback_enabled
             and not local_signal.matched
         ):
-            llm_scope, llm_reason = self._llm_decide_scope(
+            llm_scope, _ = self._llm_decide_scope(
                 question=question,
                 query_language=language,
                 matched_keyword=matched_keyword,
@@ -426,15 +428,12 @@ class QuestionScopeResolver:
                 session_active_chunk_index=session_active_chunk_index,
             )
             if llm_scope is not None:
-                method = "llm_fallback"
-                if llm_reason:
-                    method = f"{method}:{llm_reason[:80]}"
                 return QuestionScopeResolution(
                     scope=llm_scope,
                     query_language=language,
                     matched_keyword=matched_keyword,
                     similarity=similarity,
-                    method=method,
+                    method="llm_fallback",
                 )
 
         if is_gray_zone and local_signal.matched:

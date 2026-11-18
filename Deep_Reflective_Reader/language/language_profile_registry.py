@@ -38,6 +38,10 @@ class LanguageProfileRegistry:
                 "that paragraph",
                 "this sentence",
                 "that sentence",
+                "this whole paragraph", "this entire paragraph",
+                "that whole paragraph", "that entire paragraph",
+                "this whole sentence", "this entire sentence",
+                "that whole sentence", "that entire sentence",
                 "the passage",
                 "this section",
                 "here",
@@ -189,6 +193,37 @@ class LanguageProfileRegistry:
             detector_labels=("thai",),
         ),
     }
+    # Explicit document extent is distinct from generic operations (list/summary).
+    _DOCUMENT_EXTENT_SIGNALS: dict[LanguageCode, tuple[str, ...]] = {
+        LanguageCode.EN: ('whole book', 'entire book', 'whole document', 'entire document',
+            'across the document', 'across documents', 'across the books', 'across chapters',
+            'throughout the book', 'throughout the document', 'whole novel', 'entire novel'),
+        LanguageCode.ZH: ('全書', '全书', '整本書', '整本书', '全文', '整篇', '跨章節', '跨章节', '跨文件'),
+        LanguageCode.JA: ('全書', '本全体', '文書全体', '複数の文書', '全章'),
+        LanguageCode.KO: ('책 전체', '전체 책', '문서 전체', '전체 문서', '여러 문서'),
+        LanguageCode.ES: ('todo el libro', 'libro entero', 'todo el documento', 'varios documentos'),
+        LanguageCode.PT: ('todo o livro', 'livro inteiro', 'todo o documento', 'vários documentos'),
+        LanguageCode.FR: ('tout le livre', 'livre entier', 'tout le document', 'ensemble du livre', 'plusieurs documents'),
+        LanguageCode.DE: ('gesamten buch', 'ganze buch', 'ganzen buch', 'gesamte dokument', 'mehrere dokumente'),
+        LanguageCode.IT: ('tutto il libro', 'intero libro', 'intero documento', 'più documenti'),
+        LanguageCode.RU: ('всей книги', 'всю книгу', 'всего документа', 'нескольких документов'),
+        LanguageCode.AR: ('الكتاب كله', 'الكتاب بأكمله', 'المستند بأكمله', 'عدة مستندات'),
+        LanguageCode.HI: ('पूरी किताब', 'पूरे दस्तावेज़', 'कई दस्तावेज़'),
+        LanguageCode.TR: ('kitabın tamamı', 'kitabın tamamını', 'tüm kitap', 'belgenin tamamı', 'birden fazla belge'),
+        LanguageCode.NL: ('hele boek', 'gehele boek', 'hele document', 'meerdere documenten'),
+        LanguageCode.PL: ('całej książki', 'całą książkę', 'całego dokumentu', 'wielu dokumentów'),
+        LanguageCode.UK: ('всієї книги', 'всю книгу', 'всього документа', 'кількох документів'),
+        LanguageCode.ID: ('seluruh buku', 'seluruh dokumen', 'beberapa dokumen'),
+        LanguageCode.VI: ('toàn bộ cuốn sách', 'toàn bộ tài liệu', 'nhiều tài liệu'),
+        LanguageCode.TH: ('หนังสือทั้งเล่ม', 'เอกสารทั้งหมด', 'หลายเอกสาร'),
+    }
+
+    @classmethod
+    def get_document_extent_signals(cls, language: LanguageCode) -> tuple[str, ...]:
+        if language == LanguageCode.UNKNOWN:
+            return tuple(dict.fromkeys(cue for cues in cls._DOCUMENT_EXTENT_SIGNALS.values() for cue in cues))
+        return cls._DOCUMENT_EXTENT_SIGNALS.get(language, ())
+
     _SESSION_LOCAL_ANCHOR_SIGNALS: dict[LanguageCode, tuple[str, ...]] = {
         LanguageCode.EN: ("here", "in this part"),
         LanguageCode.ZH: ("這裡", "这里", "此處", "此处"),

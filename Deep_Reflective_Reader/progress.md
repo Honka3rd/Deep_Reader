@@ -1,5 +1,21 @@
 # Deep Reflective Reader Progress
 
+## Question Audit Final Local Review (2026-11-18)
+
+QUESTION-01–04 locally verified against `252db05b2f2fb59ea344f3b0181664616ef8a107`. Unit 1 fixes multilingual cue boundaries/whitespace and explicit extent/local precedence. Unit 2 rejects ambiguous, non-finite, non-object or wrong-type completed outputs before retrieval; errors and scope methods use fixed identifiers. Query DTO diagnostic repr omits text while retrieval fields remain intact. No hidden retry, source mutation or new language/parser authority. Existing main error mapping remains unchanged.
+
+New output-boundary suite: exact baseline 15 methods / 85 failed sub-assertions / zero errors or skips; corrected 15/15. Cumulative 11 formal suites: 84/84, zero skips. Original external lexical 6/6, standardizer 4/4, context 5/5 and diagnostic/ASGI route 4/4 pass. Original offline smoke retains two failures in one method expecting free-form model reason; a separately recorded copy changes only the method expectation plus output directory and passes 11/11, retaining routing/call/budget assertions. Full immutable book hashes unchanged; ten bounded deterministic routing/admission/diagnostic flows pass. Evidence groups overlap; not unique-case totals. `/tmp/question-unit2-252db05/report.txt`.
+
+Owner recount: question 5 checked/4 pending future tasks; language 8/0; scripts 84/1 (templates excluded). The scripts DOCLOAD gate stays open. Owned design/checklists and the seven affected Markdown files are synchronized; added/status-updated items carry 2026-11-18 timestamps. Current step is a cumulative local review commit, then exact-SHA external review; no deployment, push or next-module work. Unit 1 below is a historical checkpoint. Providers/vectors and runtime bundle ports are controlled fixtures; real ASGI route-function tests do not include full main lifespan/TCP. No live model, whole-book semantics/OCR, SQL, UI or Docker acceptance.
+
+## Question Audit Unit 1 (2026-11-18)
+
+QUESTION-01/02 locally verified against `252db05b2f2fb59ea344f3b0181664616ef8a107`: Unicode-aware cue boundaries and consistent whitespace preserve query text; explicit document extent precedes strong local targets, which precede generic task words/similarity. Language supplies bounded extent vocabulary; context consumes the unchanged scope interface. No persistence or automatic model retry added.
+
+New routing suite: baseline 9 methods / 50 failed sub-assertions / zero errors or skips; fixed 10/10 (one new extent-registry interface test). External lexical 6/6; external context routing 4/4 methods, with the separate invalid-standardization method retaining five QUESTION-03 failures. Ten formal suites: 69/69 executions, zero skips; offline smoke 11/11 and standalone context-builder CLI pass. Two hash-verified complete book copies supply four bounded routing flows; backup hashes unchanged. Evidence groups overlap and are not summed as unique cases. `/tmp/question-unit1-252db05/report.txt`.
+
+QUESTION-03/04 remains pending developer confirmation for unit 2. No cumulative review commit yet, deployment or push. This checkpoint is local evidence, not external question approval. Prior language approval is unchanged by the new question audit. Owner counts: question 4 checked/5 pending, language 8/0, scripts 83/1 (templates excluded). Question previously reported 3/0 while omitting its four existing unchecked future tasks; this recount restores those pending items without claiming implementation or changing their dates. The existing scripts DOCLOAD deployment gate remains open. Deterministic providers and recording retrieval/context ports only; no live LLM/embedding, full-book semantics, SQL, HTTP/UI/TCP or Docker acceptance in this unit.
+
 ## Language Audit Final Local Review (2026-11-17)
 
 LANG-01/02 and LANG-03 are locally verified against `847f0d63d31862cb4b1f1ece8f39c0bd9ae2034c`. Unknown detector output cannot invent English authority or publish newly generated profile/structure; diagnostics contain fixed reasons/counts only. Hints now use explicit conservative script compatibility instead of interpreting Chinese mixed defaults as approval. Policy v6 isolates v5 cache records without deleting them, migrating on read or adding automatic retry. Source/settings/fence, assessment and failed-refresh contracts remain.
@@ -721,14 +737,14 @@ It is used to:
 | `document_structure/` | package | `document_structure/module-checklist.md` | 102 | 18 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `language/` | package | `language/module-checklist.md` | 7 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
+| `language/` | package | `language/module-checklist.md` | 8 | 0 | Question audit locally verified; cumulative external review pending (2026-11-18 recount) |
 | `learning/` | application package | `learning/module-checklist.md` | 6 | 0 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
 | `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
 | `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `question/` | package | `question/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `question/` | package | `question/module-checklist.md` | 5 | 4 | Question audit locally verified; cumulative external review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 82 | 1 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
+| `scripts/` | package | `scripts/module-checklist.md` | 84 | 1 | Question audit locally verified; cumulative external review pending (2026-11-18 recount) |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -1378,8 +1394,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `language/module-checklist.md`
 - Detailed Design: `language/module-detailed-design.md`
-- Status: `Language audit support locally verified; exact-SHA external language review pending`
-- Completed item count: `7` (direct owner recount, 2026-11-17).
+- Status: `Question audit locally verified; cumulative external review pending`
+- Completed item count: `8` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -1477,19 +1493,19 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `question/module-checklist.md`
 - Detailed Design: `question/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
-- Needs confirmation count: `0`
+- Status: `Question audit locally verified; cumulative external review pending`
+- Completed item count: `5` (direct owner recount, 2026-11-18).
+- Needs confirmation count: `4`
 
 #### Completed Work
 
 - [x] Defines query-related enums and standardized question contract.
-- [x] Implements LLM-based question standardization with strict JSON parsing and language normalization.
+- [x] Implements LLM-based standardization with strict completed-output validation and language normalization.
 - [x] Implements scope resolution using lexical, semantic, and optional LLM fallback paths with diagnostics.
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+Four existing rich-content future tasks remain unchecked; QUESTION-01–04 await external review. Current evidence is recorded above.
 
 #### Future Direction Preparation
 
@@ -1519,8 +1535,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `Language audit support locally verified; exact-SHA external language review pending`
-- Completed item count: `82` (direct owner recount, 2026-11-17).
+- Status: `Question audit locally verified; cumulative external review pending`
+- Completed item count: `84` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `1`
 - Unchecked item count: `1` (existing DOCLOAD deployment fixture gate remains open).
 

@@ -1,4 +1,4 @@
-import json
+from question.model_output import parse_model_object
 
 from language.language_code import LanguageCode, LanguageCodeResolver
 from question.standardized.standardized_question import StandardizedQuestion
@@ -31,13 +31,7 @@ Returns:
     Language-aligned question payload for retrieval and prompting."""
         document_language_code = LanguageCodeResolver.resolve(document_language)
         if document_language_code == LanguageCode.UNKNOWN:
-            print(
-                "Warn:QuestionStandardizer#standardize: unknown document language",
-                f"raw={document_language}",
-            )
-            raise ValueError(
-                f"Unsupported document language: {document_language}"
-            )
+            raise ValueError("question_standardization_unknown_document_language")
 
         prompt = f"""
 You are a language processor.
@@ -59,33 +53,28 @@ Target document language: {document_language_code.value}
 User query: {query}
 """
 
-        raw_response: str = self.llm_provider.complete_text(prompt).strip()
+        try:
+            raw_response = self.llm_provider.complete_text(prompt)
+        except Exception:
+            # Provider exceptions can contain request/response content. Suppress
+            # their traceback chain at this question-owned boundary; never retry.
+            raise RuntimeError("question_standardization_provider_failed") from None
 
         try:
-            payload: dict = json.loads(raw_response)
-        except json.JSONDecodeError as e:
-            raise RuntimeError(
-                f"QuestionStandardizer#standardize: failed to parse JSON response: {raw_response}"
-            ) from e
+            payload = parse_model_object(raw_response)
+        except ValueError:
+            raise RuntimeError("question_standardization_invalid_output:invalid_json_object") from None
 
         user_language = payload.get("user_language")
         standardized_query = payload.get("standardized_query")
+        if not isinstance(user_language, str) or not user_language.strip():
+            raise RuntimeError("question_standardization_invalid_output:user_language")
+        if not isinstance(standardized_query, str) or not standardized_query.strip():
+            raise RuntimeError("question_standardization_invalid_output:standardized_query")
 
-        if not user_language or not standardized_query:
-            raise RuntimeError(
-                f"QuestionStandardizer#standardize: invalid payload: {payload}"
-            )
-
-        user_language_code = LanguageCodeResolver.resolve(str(user_language))
+        user_language_code = LanguageCodeResolver.resolve(user_language)
         if user_language_code == LanguageCode.UNKNOWN:
-            print(
-                "Warn:QuestionStandardizer#standardize: unknown user language",
-                f"raw={user_language}",
-                f"query={query}",
-            )
-            raise ValueError(
-                f"Unsupported user language: {user_language}"
-            )
+            raise ValueError("question_standardization_unknown_user_language")
 
         return StandardizedQuestion(
             original_query=query,

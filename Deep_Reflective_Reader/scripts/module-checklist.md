@@ -1,5 +1,20 @@
 # scripts Checklist
 
+## Question audit unit 2 (2026-11-18)
+
+- [x] QUESTION-03/04: Verify strict output admission and safe diagnostics through context and HTTP.
+  Status: Locally verified; cumulative exact-SHA external question review pending.
+  Acceptance: Invalid model matrices, no downstream dispatch, safe logs/errors/HTTP, multilingual controls, no retry and cumulative unit 1 regression.
+  Evidence: New output-boundary suite: exact baseline 15 methods / 85 failed sub-assertions / zero errors or skips; corrected 15/15. Cumulative 11 formal suites: 84/84, zero skips. Original external lexical 6/6, standardizer 4/4, context 5/5 and diagnostic/ASGI route 4/4 pass. Original offline smoke retains two failures in one method expecting free-form model reason; a separately recorded copy changes only the method expectation plus output directory and passes 11/11, retaining routing/call/budget assertions. Full immutable book hashes unchanged; ten bounded deterministic routing/admission/diagnostic flows pass. Evidence groups overlap; not unique-case totals. `/tmp/question-unit2-252db05/report.txt`.
+  Timestamp: 2026-11-18
+
+## Question audit unit 1 (2026-11-17)
+
+- [x] QUESTION-01/02: Verify scope red/green and actual context routing.
+  Status: Locally verified; external question review pending.
+  Evidence: New routing suite: baseline 9 methods / 50 failed sub-assertions / zero errors or skips; fixed 10/10 (one new extent-registry interface test). External lexical 6/6; external context routing 4/4 methods, with the separate invalid-standardization method retaining five QUESTION-03 failures. Ten formal suites: 69/69 executions, zero skips; offline smoke 11/11 and standalone context-builder CLI pass. Two hash-verified complete book copies supply four bounded routing flows; backup hashes unchanged. Evidence groups overlap and are not summed as unique cases. `/tmp/question-unit1-252db05/report.txt`.
+  Timestamp: 2026-11-18
+
 ## LANG-03 support (2026-11-17)
 
 - [x] LANG-03: Verify script filtering, persistence and policy isolation on file and real PostgreSQL.

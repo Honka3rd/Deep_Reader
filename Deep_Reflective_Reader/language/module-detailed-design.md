@@ -1,5 +1,11 @@
 # language Detailed Design
 
+## QUESTION-01/02 extent vocabulary support (2026-11-18, locally verified)
+
+Expose explicit document-extent phrases separately from existing generic scope keywords, for every supported language. UNKNOWN combines known entries; it does not invent a new supported language. These are query-routing cues owned as language data, not document language/parser authority. Question owns boundary-aware matching and extent precedence; existing detector/script/proficiency contracts remain unchanged. Verify coverage and genuine broad intent with local references.
+
+Verification: New routing suite: baseline 9 methods / 50 failed sub-assertions / zero errors or skips; fixed 10/10 (one new extent-registry interface test). External lexical 6/6; external context routing 4/4 methods, with the separate invalid-standardization method retaining five QUESTION-03 failures. Ten formal suites: 69/69 executions, zero skips; offline smoke 11/11 and standalone context-builder CLI pass. Two hash-verified complete book copies supply four bounded routing flows; backup hashes unchanged. Evidence groups overlap and are not summed as unique cases. `/tmp/question-unit1-252db05/report.txt`. External question review remains pending; no live model, full-book semantic, SQL, HTTP/UI or deployment acceptance is claimed by this unit.
+
 ## LANG-03 script compatibility boundary (2026-11-17, locally verified)
 
 `detect_script_system` remains advisory: Chinese neutral/mixed defaults do not prove that observed text is Chinese. Add a separate conservative compatibility predicate consumed by hints. For Chinese, zero Han (including Extension A), at least 40 Latin letters and at least eight Latin words is an obvious contradiction; shorter/uncertain text and Han with names remain compatible. Other languages retain existing script comparisons, including Japanese/Korean mixed compatibility. This is not universal language recognition or parser authority.
