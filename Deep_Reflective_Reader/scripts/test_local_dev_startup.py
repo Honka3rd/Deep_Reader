@@ -39,6 +39,7 @@ if name == 'lsof':
     sys.exit(0 if os.environ.get('OCCUPIED') == '1' else 1)
 with open(os.environ['COMMAND_LOG'], 'a') as out:
     out.write(json.dumps({'name': name, 'args': sys.argv[1:],
+        'build_progress': os.environ.get('BUILDKIT_PROGRESS'),
         'proxy': os.environ.get('DEEP_READER_CONTAINER_PROXY'),
         'key': os.environ.get('OPENAI_API_KEY'), 'cwd': os.getcwd()}) + '\\n')
 if name == 'docker' and '--wait' in sys.argv and sys.argv[-1] == 'api':
@@ -61,6 +62,7 @@ if name == 'npm':
                     "DEEP_READER_CONTAINER_PROXY": "http://stale.invalid:1234"}
         for name in ("OPENAI_API_KEY", "DEEP_READER_LLM_API_KEY"):
             self.env.pop(name, None)
+        self.env.pop("BUILDKIT_PROGRESS", None)
 
     def run_start(self, *args, proxy="http://host.docker.internal:7897"):
         (self.root / ".env.local").write_text(
@@ -157,6 +159,54 @@ if name == 'npm':
     def test_unknown_argument_fails_before_startup(self):
         self.assertEqual(self.run_start("--typo").returncode, 2)
         self.assertEqual(self.commands(), [])
+
+    def test_help_explains_manual_network_and_cache_without_setup(self):
+        (self.root / "bin/docker").unlink()
+        result = subprocess.run(
+            ["/bin/bash", str(self.root / "scripts/start_local_dev.sh"), "--help"],
+            env=self.env, cwd="/tmp", text=True, capture_output=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / ".env.local").exists())
+        self.assertEqual(self.commands(), [])
+        for expected in ("Docker Desktop", "builder", "DEEP_READER_CONTAINER_PROXY",
+                         "BUILDKIT_PROGRESS", "cache", "--backend-only"):
+            self.assertIn(expected, result.stdout)
+
+    def test_unset_or_empty_progress_defaults_to_plain(self):
+        for value in (None, ""):
+            with self.subTest(value=value):
+                self.log.unlink(missing_ok=True)
+                if value is not None:
+                    self.env["BUILDKIT_PROGRESS"] = value
+                result = self.run_start("--backend-only")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(all(c["build_progress"] == "plain" for c in self.commands()))
+
+    def test_explicit_progress_is_preserved(self):
+        self.env["BUILDKIT_PROGRESS"] = "auto"
+        result = self.run_start("--backend-only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all(c["build_progress"] == "auto" for c in self.commands()))
+
+    def test_build_or_health_failure_guidance_preserves_status_and_no_retry(self):
+        self.env["API_EXIT"] = "37"
+        result = self.run_start()
+        self.assertEqual(result.returncode, 37)
+        self.assertEqual(len(self.commands()), 3)
+        self.assertNotIn("npm", [c["name"] for c in self.commands()])
+        for expected in ("build/start/health", "Docker Desktop", "RUN", "health",
+                         "cache", "volumes", "--backend-only", "137", "memory"):
+            self.assertIn(expected, result.stderr)
+        for secret in ("fake-test-key", "host.docker.internal:7897"):
+            self.assertNotIn(secret, result.stdout + result.stderr)
+
+    def test_success_distinguishes_build_network_from_api_proxy(self):
+        result = self.run_start("--backend-only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Build network", result.stdout)
+        self.assertIn("does not configure image/build downloads", result.stdout)
+        self.assertNotIn("build/start/health failed", result.stderr)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,64 @@
 # scripts Detailed Design
 
+## BUILD-CACHE-03 manual startup diagnostics (2026-11-18, locally verified)
+
+The existing `scripts/start_local_dev.sh [--backend-only]` remains the manual and
+agent entry point. Its help must explain three distinct network consumers: Docker
+image/frontend pulls (Docker Desktop/daemon proxy), build-step package/resource
+downloads (builder network), and API outbound calls (`DEEP_READER_CONTAINER_PROXY`).
+An API proxy setting alone does not configure the first two. On Docker Desktop,
+the operator may explicitly configure Resources/Proxies and verify actual build
+traffic. On Linux/remote builders, use that builder's supported proxy configuration.
+The launcher must not change host proxies, restart Docker or silently switch routes.
+
+Default `BUILDKIT_PROGRESS` to `plain` only when unset/empty, retaining an explicit
+caller value. Print a brief build-network distinction before API build/start. If
+the combined Compose build/start/health command fails, preserve its exit status,
+stop before connectivity/UI startup, and provide bounded static troubleshooting:
+inspect the failing step; image download versus RUN download versus service health;
+check Docker/host memory and daemon logs for a killed/137 build process;
+preserve caches/volumes; rerun the same launcher after correcting the cause. Do not
+diagnose every failure as a proxy issue, promise rollback of partially started
+services, echo environment values, retry automatically or add destructive cleanup.
+PostgreSQL readiness, transactional migrations, API health, connectivity warning
+and `--backend-only` behavior retain their existing ordering and contracts.
+
+Manual use: `scripts/start_local_dev.sh --help`, then
+`scripts/start_local_dev.sh --backend-only` (or omit the flag to start the UI).
+BuildKit's `CACHED` lines show layer reuse; package-download cache reuse is a
+different observation. First population/new builders/cache eviction still require
+downloads; metadata requests remain possible. Do not use `--no-cache`, builder
+prune or volume deletion as routine retry steps. Keep local proxy URLs private.
+
+Observed approved-c35299a trial: frontend download repeatedly reset before the
+package steps. Explicit host-local Docker Desktop proxy configuration allowed it
+to complete; Docker backend logs confirmed Registry/PyPI/Debian used that route.
+Both vertical OCR ADD resources were cached. Initial pip/apt population remained
+network-bound, with Debian connection/502 failures. After interruption, BuildKit
+reported 46.2 MB pip, 116.8 MB apt archive and 21.51 MB apt-list cache mounts
+(cache accounting is not unique downloaded bytes). The same approved launcher retry
+requested 34.0 MB of the 61.7 MB apt archives instead of all 61.7 MB and emitted
+pip `Using cached` entries. This demonstrates partial-download recovery, not a
+completed warm/application-only or dependency-change acceptance. Evidence lives
+in `/tmp/docker-deploy-c35299a/retry/cache-recovery-evidence.json` and build logs.
+The bounded retry subsequently failed: Debian 502 and exit 137; the VM kernel
+identified apt-get as an OOM victim (about 3.2 GB anonymous RSS in a 4 GB Docker VM
+on an 8 GB host). This confirms memory exhaustion, not its underlying allocation
+cause or a justified new memory limit. Do not automatically raise VM memory or
+infer that a proxy/cache change makes the entire build successful.
+Launcher validation uses the actual shell with isolated command stubs, retaining
+existing assertions plus help, progress override, failure guidance and no-secret
+checks. A changed launcher requires a new exact-SHA review before deployment.
+
+Verification: 16 launcher tests: five failing sub-assertions on the old launcher
+become 16/16 passing; the 11 original test methods are AST-identical. Three support
+suites in the final run execute 42 tests: 39 pass, three rebuilt-image opt-in skips.
+The local-asset check runs against a copied real tokenizer asset with sockets denied.
+An earlier run had four opt-in skips; that local-asset skip was resolved by the
+explicit final run. Shell syntax and diff checks pass.
+Evidence: `/tmp/docker-deploy-c35299a/retry/launcher-*.log`. These shell tests use
+isolated command stubs; they do not claim deployment of the changed launcher.
+
 ## BUILD-CACHE-01 dependency and resource isolation (2026-11-18, source verified; image acceptance pending)
 
 The root Dockerfile is the build owner; existing start_local_dev.sh/Compose keep

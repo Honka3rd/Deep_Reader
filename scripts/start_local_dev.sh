@@ -9,13 +9,37 @@ UI_DIR="${ROOT_DIR}/Deep_Reader_UI"
 ENV_LOADER="${ROOT_DIR}/scripts/load_local_env.sh"
 BACKEND_ONLY=false
 
+show_help() {
+  cat <<'HELP'
+Usage: scripts/start_local_dev.sh [--backend-only]
+
+Loads .env.local, waits for PostgreSQL, applies reviewed migrations, builds and
+waits for the API, then starts the UI. --backend-only leaves the host UI unchanged.
+
+Build network and API network are configured separately:
+  Image/frontend pulls: configure Docker Desktop Resources > Proxies, or the
+    Docker daemon/remote builder proxy. Check the actual builder's network.
+  RUN package/resource downloads: use the builder's supported network/proxy setup.
+  DEEP_READER_CONTAINER_PROXY: API outbound calls only; this does not configure
+    image/build downloads. This script never changes host proxy settings.
+
+BuildKit progress defaults to plain. Set BUILDKIT_PROGRESS=auto to override.
+First builds/new builders need downloads. CACHED means layer reuse; package
+download caches are separate, and network metadata checks may still occur.
+After fixing a network problem, rerun this command and retain caches/volumes.
+Do not routinely prune the builder, use --no-cache or delete data volumes.
+For a killed/137 build process, check Docker/host memory and daemon logs before
+retrying; do not assume every build failure is a proxy problem.
+HELP
+}
+
 if [[ "$#" -gt 1 ]]; then
   printf 'Usage: %s [--backend-only]\n' "$0" >&2
   exit 2
 fi
 case "${1:-}" in
   --backend-only) BACKEND_ONLY=true ;;
-  --help|-h) printf 'Usage: %s [--backend-only]\n' "$0"; exit 0 ;;
+  --help|-h) show_help; exit 0 ;;
   '') ;;
   *) printf 'Usage: %s [--backend-only]\n' "$0" >&2; exit 2 ;;
 esac
@@ -32,6 +56,7 @@ fi
 
 # shellcheck disable=SC1090
 source "${ENV_LOADER}" "${ENV_FILE}"
+export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
 
 : "${DEEP_READER_UI_PORT:?DEEP_READER_UI_PORT is required in .env.local}"
 
@@ -57,7 +82,17 @@ cat "${ROOT_DIR}/Deep_Reflective_Reader/db/migrations/003_interaction_version_gu
   | docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T postgres \
       sh -c 'exec psql -X -v ON_ERROR_STOP=1 --single-transaction -f - -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 printf 'Building verified tokenizer assets; API startup will verify them offline...\n'
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --build --wait api
+printf 'Build network: Docker Desktop/daemon and builder settings; the API proxy does not configure image/build downloads.\n'
+if docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --build --wait api; then
+  :
+else
+  startup_status=$?
+  printf 'API build/start/health failed (exit %s). No automatic retry; inspect the failing step above.\n' "${startup_status}" >&2
+  printf 'Image/frontend download: check Docker Desktop/daemon proxy. RUN download: check builder network. Service health: inspect API logs.\n' >&2
+  printf 'Killed/137 build process: check Docker/host memory and daemon logs; the exit code alone does not prove the cause.\n' >&2
+  printf 'Preserve build caches and data volumes. After fixing the cause, rerun scripts/start_local_dev.sh --backend-only (omit the flag to start the UI).\n' >&2
+  exit "${startup_status}"
+fi
 
 printf 'Checking model API connectivity from the API container...\n'
 if ! docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T api \

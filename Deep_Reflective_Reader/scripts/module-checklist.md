@@ -1,5 +1,17 @@
 # scripts Checklist
 
+## Manual Docker startup diagnostics (2026-11-18)
+
+- [x] BUILD-CACHE-03: Make manual startup network/cache failures actionable.
+  Acceptance: Help works without Docker/env setup; default plain progress and explicit
+  override; distinct build/runtime proxy guidance; original exit status, startup
+  ordering and no UI after failure; no secrets, automatic proxy changes or retries.
+  Status: Locally verified; new exact-SHA review required. Existing approved image trial remains separate.
+  Evidence: Launcher 16/16 (five old-launcher failures become green); original 11 methods AST-identical.
+  Final support 42 executed: 39 pass/3 rebuilt-image opt-in skips; copied local asset verified offline.
+  Shell/diff checks pass. `/tmp/docker-deploy-c35299a/retry/launcher-*.log`.
+  Timestamp: 2026-11-18
+
 ## Build dependency cache isolation (2026-11-18)
 
 - [x] BUILD-CACHE-01: Isolate dependency/resource inputs and preserve package download caches.

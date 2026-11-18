@@ -1,5 +1,27 @@
 # Deep Reflective Reader Progress
 
+## Manual Docker Startup Diagnostics (2026-11-18)
+
+BUILD-CACHE-03 adds manual help, explicit build/runtime proxy distinctions, default
+plain BuildKit progress with caller override, and failure guidance preserving exit
+status and startup ordering. No proxy mutation, automatic retry, cache pruning or
+volume deletion. Implemented in an isolated worktree so the approved c35299a Docker
+trial retains exact inputs. That trial reached package installation after an
+authorized host-local Docker Desktop proxy adjustment. Interrupted-download recovery
+reused pip entries and reduced apt's archive request from 61.7 MB to 34.0 MB;
+complete image/warm-cache acceptance is still incomplete and is not claimed by
+these source tests. `/tmp/docker-deploy-c35299a/retry/cache-recovery-evidence.json`.
+
+Launcher 16/16; five old-launcher failing sub-assertions become green, with 11 original
+test methods AST-identical. Final support 42 executed: 39 pass/3 rebuilt-image skips;
+copied local assets verified offline. The recovery build failed with Debian 502 and
+kernel-confirmed apt-get OOM (137) in the 4 GB Docker VM; no new image was deployed.
+Existing containers/mounts and database data remain unchanged; only the runtime log
+appended. Three rebuilt-image cases remain pending. Evidence: `/tmp/docker-deploy-c35299a/retry/launcher-*.log`.
+Scripts recount: 91 checked/2 unchecked excluding templates. New exact-SHA review
+is required before deploying the changed launcher. BUILD-CACHE-02 and the existing
+DOCLOAD gate remain unresolved. No push.
+
 ## Docker Build Cache Isolation (2026-11-18)
 
 BUILD-CACHE-01 source implementation verified against
@@ -822,7 +844,7 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 90 | 2 | BUILD-CACHE-01 source verified; external review and image/cache acceptance pending |
+| `scripts/` | package | `scripts/module-checklist.md` | 91 | 2 | BUILD-CACHE-03 source verified; new exact-SHA review and image/cache acceptance pending |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -1621,12 +1643,17 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `BUILD-CACHE-01 source verified; external review/image acceptance pending`
-- Completed item count: `90` (direct owner recount, 2026-11-18).
+- Status: `BUILD-CACHE-03 source verified; new exact-SHA review/image acceptance pending`
+- Completed item count: `91` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `2`
 - Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] BUILD-CACHE-03: Manual startup help, build/runtime network distinction and safe failure guidance.
+  Evidence: `/tmp/docker-deploy-c35299a/retry/launcher-*.log`; original launcher assertions preserved.
+  Status: Locally verified; new exact-SHA review required.
+  Timestamp: 2026-11-18
 
 - [x] BUILD-CACHE-01: Dependency/resource isolation and persistent build download caches.
   Evidence: `scripts/test_docker_build_cache.py`; `/tmp/docker-cache-b4c8418/report.txt`.
