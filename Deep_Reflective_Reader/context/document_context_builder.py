@@ -172,7 +172,7 @@ class DocumentContextBuilder:
         max_context_tokens: int | None = None,
     ) -> tuple[List[str], int, bool, int]:
         """Build local window by dynamic expansion under token budget."""
-        budget = max_context_tokens or bundle.max_context_tokens
+        budget = bundle.max_context_tokens if max_context_tokens is None else max_context_tokens
         center_faiss_id = center.faiss_id if isinstance(center, SearchMetadata) else int(center)
         center_record = self._record_from_faiss_id(bundle, center_faiss_id)
         if center_record is None:

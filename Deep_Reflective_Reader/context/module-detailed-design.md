@@ -1,5 +1,30 @@
 # context Detailed Design
 
+## CONTEXT-01 exhausted QA capacity (2026-11-18, locally verified)
+
+Only `None` selects the configured context default. Explicit zero/negative budgets
+in shared joining and local/full-text helpers return no source text and zero used
+tokens; positive ordering, center retention/clipping and truncation remain intact.
+
+The full-text suitability probe may return no candidate at zero budget. Once local
+or retrieval is selected, an exhausted context allowance raises the context-owned
+`ContextCapacityError` with fixed code `context_capacity_exceeded` before returning
+an answer context. This includes fixed instructions/profile/question plus the
+existing output reserve exhausting the combined prompt allowance. QACoordinator
+propagates that failure before answer dispatch/session advancement; standardization
+and retrieval may already have occurred. Do not send an oversized empty-context
+prompt, retry a provider, or silently expand the budget. Existing full-text
+capability/utilization policy and heuristic token estimation remain unchanged.
+
+Acceptance uses real budget/builder/orchestrator/coordinator/FAISS objects with
+controlled providers: None/zero/negative/positive helpers, retrieval/local exhaustion
+and exact boundaries, positive/full-text/global controls, safe errors and zero answer
+calls on refusal. Immutable-book samples validate bounded helper behavior only.
+CONTEXT-02/03 remain known nonblocking auxiliary-interface findings, outside this
+unit; local verification must not be described as external approval.
+
+Verification: Exact 38d00dd baseline: new formal suite 9 methods /11 failed sub-assertions -> 9/9; external QA 3 methods /3 failures -> 3/3 with the documented early-capacity-error diagnostic adaptation; builders 7 methods /2 failures -> 7/7. Existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 4 bounded helper checks, 2 baseline zero-budget failures -> 4/4 with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit1-38d00dd/report.txt`. Exact-SHA external context review is pending. Isolated ASGI uses the unchanged production ask function/schema; no full main lifecycle, live model, SQL, TCP/UI or Docker acceptance.
+
 ## FULL-01 Capacity Consumer Migration (2026-10-20)
 
 Reading interaction context uses input_token_limit(output_reserve) before deducting

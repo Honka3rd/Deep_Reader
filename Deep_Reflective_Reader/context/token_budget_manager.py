@@ -8,6 +8,13 @@ from question.qa_enums import PromptMode
 from question.standardized.standardized_question import StandardizedQuestion
 
 
+class ContextCapacityError(RuntimeError):
+    """The selected QA prompt has no remaining source-context allowance."""
+
+    def __init__(self):
+        super().__init__("context_capacity_exceeded")
+
+
 class TokenBudgetManager:
     """Stateless token/budget utility service for context construction."""
 
@@ -72,7 +79,9 @@ class TokenBudgetManager:
         max_context_tokens: int | None = None,
     ) -> tuple[str, int, bool]:
         """Join ordered texts while respecting context token budget."""
-        budget = max_context_tokens or default_max_context_tokens
+        budget = default_max_context_tokens if max_context_tokens is None else max_context_tokens
+        if budget <= 0:
+            return "", 0, any(texts)
         kept: List[str] = []
         used_tokens = 0
         truncated = False
@@ -147,4 +156,3 @@ class TokenBudgetManager:
             - effective_output_reserve
         )
         return max(0, min(effective_context_limit, available_by_total))
-

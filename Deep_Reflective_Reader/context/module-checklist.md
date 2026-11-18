@@ -1,5 +1,15 @@
 # context Checklist
 
+## Context audit unit 1 (2026-11-18)
+
+- [x] CONTEXT-01: Preserve explicit zero budgets and refuse exhausted QA dispatch.
+  Acceptance: Real helpers and orchestrator/coordinator retrieval/local boundaries;
+  safe capacity failure, zero answer calls, normal ordering/clipping/routing controls,
+  immutable-book samples and retained question regressions.
+  Status: Locally verified; exact-SHA external context review required.
+  Evidence: Exact 38d00dd baseline: new formal suite 9 methods /11 failed sub-assertions -> 9/9; external QA 3 methods /3 failures -> 3/3 with the documented early-capacity-error diagnostic adaptation; builders 7 methods /2 failures -> 7/7. Existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 4 bounded helper checks, 2 baseline zero-budget failures -> 4/4 with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit1-38d00dd/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `context` module.

@@ -4,7 +4,7 @@ from typing import Any
 
 from context.document_context_builder import DocumentContextBuilder
 from context.coverage_oriented_context_builder import CoverageOrientedContextBuilder
-from context.token_budget_manager import TokenBudgetManager
+from context.token_budget_manager import ContextCapacityError, TokenBudgetManager
 from evaluated_answer.answer_mode import AnswerMode
 from evaluated_answer.question_relevance import QuestionRelevanceEvaluator
 from retrieval.faiss_index_bundle import FaissIndexBundle
@@ -388,6 +388,8 @@ class ContextOrchestrator:
                     answer_mode=answer_mode,
                     prompt_mode=prompt_mode,
                 )
+                if context_budget <= 0:
+                    raise ContextCapacityError()
                 local_texts, used_tokens, truncated, used_radius = (
                     self.document_context_builder.build_local_window_dynamic(
                         bundle=bundle,
@@ -436,6 +438,8 @@ class ContextOrchestrator:
             answer_mode=answer_mode,
             prompt_mode=prompt_mode,
         )
+        if context_budget <= 0:
+            raise ContextCapacityError()
         print(
             "FaissIndexBundle#context_mode: retrieval_mode "
             f"(active={session_active_chunk_index}, best={best_chunk_index}, "

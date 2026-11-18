@@ -1,5 +1,23 @@
 # Deep Reflective Reader Progress
 
+## Context Exhausted-Capacity Correction (2026-11-18)
+
+CONTEXT-01 locally verified against `38d00ddb46d5820311f1685430d831dd5ba20a38`.
+Explicit zero/negative helper budgets no longer restore defaults. Selected local or
+retrieval QA raises fixed `context_capacity_exceeded` before answer dispatch when
+its allowance is exhausted; positive/one-token and full-text/global controls remain.
+Existing coordinator/route propagation needs no production change.
+
+Exact 38d00dd baseline: new formal suite 9 methods /11 failed sub-assertions -> 9/9; external QA 3 methods /3 failures -> 3/3 with the documented early-capacity-error diagnostic adaptation; builders 7 methods /2 failures -> 7/7. Existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 4 bounded helper checks, 2 baseline zero-budget failures -> 4/4 with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit1-38d00dd/report.txt`.
+
+Direct recount: context 12 checked/0 unchecked (previous progress 3/0 omitted eight
+existing interaction-context items); scripts 88/1. Templates excluded; no historical
+completion dates inferred. CONTEXT-02/03 remain known nonblocking auxiliary-interface
+findings outside this unit. Local tests are not external approval. The prior question
+Docker build was stopped when this audit arrived, before service replacement; no
+push occurred. Latest context review SHA must be approved before deployment resumes.
+
+
 ## Quoted Term-Role Correction (2026-11-18)
 
 QUESTION-08 locally verified against `4763650dc1db0ee5c9c9b80be3cb28e69b74771b`. Preserve explicit term/meaning role across adjacent comparison operands and inspect trailing target qualifiers before broad admission. Target-specific checks retain genuine broad requests containing local phrase subjects. QUESTION-01–07 boundaries, source text and call limits remain; finite English vocabulary does not claim universal grammar.
@@ -756,7 +774,7 @@ It is used to:
 | `app/` | package | `app/module-checklist.md` | 64 | 11 | TASK-03/05 support locally verified; section_tasks external review open; unrelated unresolved items retained (2026-11-15 recount) |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
 | `config/` | package | `config/module-checklist.md` | 12 | 9 | APP-02 raw-source support locally verified; app external review pending; unrelated checklist items retained (2026-11-14 recount excludes templates) |
-| `context/` | package | `context/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `context/` | package | `context/module-checklist.md` | 12 | 0 | CONTEXT-01 locally verified; external context review pending; P3 observations open |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
 | `db/` | package + design module | `db/module-checklist.md` | 70 | 4 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
@@ -770,7 +788,7 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 87 | 1 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
+| `scripts/` | package | `scripts/module-checklist.md` | 88 | 1 | CONTEXT-01 locally verified; external context review pending (2026-11-18 recount) |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -953,11 +971,15 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `context/module-checklist.md`
 - Detailed Design: `context/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `CONTEXT-01 locally verified; external review pending; CONTEXT-02/03 open (nonblocking)`
+- Completed item count: `12` (direct owner recount, 2026-11-18; eight pre-existing interaction-context items included).
 - Needs confirmation count: `0`
 
 #### Completed Work
+
+- [x] CONTEXT-01: Preserve explicit zero/negative context allowances and refuse exhausted QA answer dispatch.
+  Evidence: `scripts/test_context_capacity.py`; `/tmp/context-unit1-38d00dd/report.txt`. Local verification only.
+  Timestamp: 2026-11-18
 
 - [x] Implements context-mode orchestration for local window, retrieval, and full-text paths.
 - [x] Builds ordered context chunks with budget controls via `DocumentContextBuilder`.
@@ -1561,12 +1583,16 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `QUESTION-08 locally verified; external question review pending`
-- Completed item count: `87` (direct owner recount, 2026-11-18).
+- Status: `CONTEXT-01 locally verified; external context review pending`
+- Completed item count: `88` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `1`
 - Unchecked item count: `1` (existing DOCLOAD deployment fixture gate remains open).
 
 #### Completed Work
+
+- [x] CONTEXT-01: Cover actual capacity helpers, FAISS/coordinator refusal and safe ASGI propagation with red/green evidence.
+  Evidence: `scripts/test_context_capacity.py`; `/tmp/context-unit1-38d00dd/report.txt`.
+  Timestamp: 2026-11-18
 
 - [x] Maintains regression script suite for hierarchy, task-layout, artifact persistence, and profile metadata.
 - [x] Includes real-document and REST smoke script coverage for end-to-end verification paths.

@@ -1,5 +1,19 @@
 # scripts Detailed Design
 
+## CONTEXT-01 capacity regression (2026-11-18, locally verified)
+
+Add actual TokenBudgetManager/DocumentContextBuilder and FAISS-backed
+ContextOrchestrator -> QACoordinator coverage; deterministic model/embedding ports
+are permitted, replacing budget or assembly decisions is not. Test explicit None,
+zero, negative and positive allowances, fixed-prompt exhaustion/equality, no answer
+calls, safe errors and normal local/retrieval/full-text controls. External zero-budget
+probes may accept the specified early capacity exception while retaining no-dispatch
+assertions; preserve originals and record the diagnostic-only harness diff. Isolate
+all evidence and mutable fixtures. Complete immutable book copies supply bounded
+samples, not live-model or whole-book semantic acceptance.
+
+Verification: Exact 38d00dd baseline: new formal suite 9 methods /11 failed sub-assertions -> 9/9; external QA 3 methods /3 failures -> 3/3 with the documented early-capacity-error diagnostic adaptation; builders 7 methods /2 failures -> 7/7. Existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 4 bounded helper checks, 2 baseline zero-budget failures -> 4/4 with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit1-38d00dd/report.txt`. Exact-SHA external context review is pending. Isolated ASGI uses the unchanged production ask function/schema; no full main lifecycle, live model, SQL, TCP/UI or Docker acceptance.
+
 ## QUESTION-08 complete quoted-target role (2026-11-18, locally verified)
 
 Add paired resolver and actual context checks for explicit phrase/meaning comparisons and trailing phrase qualifiers; retain quoted/unquoted broad controls including local phrase subjects, term definitions and exclusions. Check exact source query, top_k/window/coverage and zero extra lexical dispatch. Preserve all prior assertions and isolated evidence paths.

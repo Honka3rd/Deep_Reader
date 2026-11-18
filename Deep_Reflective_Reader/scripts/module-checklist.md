@@ -1,5 +1,14 @@
 # scripts Checklist
 
+## Context audit unit 1 (2026-11-18)
+
+- [x] CONTEXT-01: Verify zero-budget helpers and exhausted QA refusal.
+  Acceptance: Failing-before/passing-after actual helpers and coordinator paths,
+  retained positive/context/question controls and immutable-book sample evidence.
+  Status: Locally verified; external context review required; no deployment or push.
+  Evidence: Exact 38d00dd baseline: new formal suite 9 methods /11 failed sub-assertions -> 9/9; external QA 3 methods /3 failures -> 3/3 with the documented early-capacity-error diagnostic adaptation; builders 7 methods /2 failures -> 7/7. Existing focused context/capacity 26/26 and question 40/40 pass. Zero errors/skips. Two complete immutable book copies: 4 bounded helper checks, 2 baseline zero-budget failures -> 4/4 with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/context-unit1-38d00dd/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Quoted term-role correction (2026-11-18)
 
 - [x] QUESTION-08: Preserve target-specific term and meaning roles.
