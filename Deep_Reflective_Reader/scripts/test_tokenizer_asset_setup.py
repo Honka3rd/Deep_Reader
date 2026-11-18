@@ -131,7 +131,9 @@ class TokenizerAssetSetupTests(unittest.TestCase):
         (self.directory / "Deep_Reader_UI").mkdir()
         migration = self.directory / "Deep_Reflective_Reader/db/migrations"
         migration.mkdir(parents=True)
-        (migration / "003_interaction_version_guards.sql").write_text("SELECT 1;")
+        for filename in ("003_interaction_version_guards.sql", "004_reading_preferences.sql",
+                         "005_learning_persistence.sql"):
+            (migration / filename).write_text("SELECT 1;\n")
         (self.directory / ".env.local").write_text(
             "DEEP_READER_UI_PORT=5173\nDEEP_READER_API_PORT=8000\nDEEP_READER_POSTGRES_PORT=5433\n")
         bin_dir = self.directory / "bin"
@@ -147,6 +149,8 @@ if name == 'lsof':
     sys.exit(1)
 with open(os.environ['CALL_LOG'], 'a') as stream:
     stream.write(json.dumps([name, *sys.argv[1:]]) + '\\n')
+if name == 'docker' and 'exec' in sys.argv and 'postgres' in sys.argv:
+    sys.stdin.read()
 if name == 'docker' and sys.argv[-1] == 'api' and os.environ['FAIL_API'] == '1':
     sys.exit(1)
 """)

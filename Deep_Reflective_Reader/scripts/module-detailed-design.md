@@ -1,5 +1,49 @@
 # scripts Detailed Design
 
+## BUILD-CACHE-01 dependency and resource isolation (2026-11-18, source verified; image acceptance pending)
+
+The root Dockerfile is the build owner; existing start_local_dev.sh/Compose keep
+startup, migration, data-volume and approval behavior. Use BuildKit multi-stage
+construction: shared Python base, registry-derived OCR package manifest, isolated
+Python dependency environment, OCR runtime, tokenizer assets, then application.
+The manifest stage executes the existing loader-owned --debian-packages command
+and emits a sorted unique package file. Only that file crosses into OCR installation;
+non-resource registry edits must not become OCR installation inputs. The full
+registry remains runtime authority and final offline verification checks completeness.
+
+Python dependencies install into /opt/venv, copied at the same absolute path into
+the final image with PATH selecting it. Dependency-stage inputs are the common base
+and requirements.txt, never application/registry source. OCR runtime installs apt
+packages independently. Named architecture-scoped BuildKit pip/apt cache mounts
+retain downloads outside image layers; remove PIP_NO_CACHE_DIR and apt docker-clean,
+use sharing=locked, and retain downloaded debs and apt lists in the mounts. No cache
+pruning or data-volume changes. Base/requirements/package-set changes still warrant
+installation; cache eviction or a new builder may require downloads. Metadata/index
+network checks are allowed; this is not a guaranteed offline build or a full lockfile.
+
+Pinned vertical OCR models and hashes remain image content. Tokenizer preparation
+runs in a stage based on Python dependencies, before full application copying, and
+its verified assets are copied to /opt/deep-reader/tokenizer-assets. Its unchanged
+recipe can reuse that stage; no runtime resource download or mounted build-cache
+requirement is introduced. The final image retains full OCR model loading and
+explicit offline tokenizer verification using the actual final Python environment.
+Existing startup command and offline fail-closed gate remain unchanged.
+
+Pre-review validation: execute manifest generation with real registry/adapter files;
+prove non-resource edits retain package bytes, changed language sets change bytes,
+and unmapped codes fail. Static recipe tests assert the dependency graph, cache
+mounts, asset inclusion and final verification. Existing setup/OCR/startup tests
+must pass. These do not prove real BuildKit cache hits or Linux image execution.
+The two launcher test fixtures must supply all three current migration filenames
+(003/004/005) and consume piped SQL in the fake PostgreSQL command. Preserve their
+startup ordering/failure assertions; no real database execution or launcher change.
+After exact-SHA external approval, rebuild via scripts/start_local_dev.sh
+--backend-only, preserve data, record cold/warm and application-only/cache-invalidation
+behavior, verify final packages/entrypoint and offline assets. Pending Docker
+acceptance must remain explicit; no pre-review image build or deployment.
+
+Verification: New recipe/registry suite: 7 baseline failures + 3 passing projection controls -> 10/10. Setup/OCR/launcher support: 50 executions, 47 pass and 3 rebuilt-image opt-in skips after fixture correction; real local tokenizer asset verification runs offline. Original fixture assertions are AST-identical. Docker RUN shell syntax and changed Python AST checks pass. `/tmp/docker-cache-b4c8418/report.txt`. No actual image build/cache-hit/deployment result is claimed.
+
 ## CONTEXT-02/03 projection regression (2026-11-18, locally verified)
 
 Use actual primary/secondary context builders and explicit injected quiz/critical-

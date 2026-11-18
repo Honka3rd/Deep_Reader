@@ -21,7 +21,9 @@ class LocalDevStartupTests(unittest.TestCase):
         (self.root / "Deep_Reader_UI").mkdir()
         migration = self.root / "Deep_Reflective_Reader/db/migrations"
         migration.mkdir(parents=True)
-        (migration / "003_interaction_version_guards.sql").write_text("SELECT 1;\n")
+        for filename in ("003_interaction_version_guards.sql", "004_reading_preferences.sql",
+                         "005_learning_persistence.sql"):
+            (migration / filename).write_text("SELECT 1;\n")
         for name in ("start_local_dev.sh", "load_local_env.sh"):
             shutil.copyfile(ROOT / "scripts" / name, self.root / "scripts" / name)
         shutil.copyfile(ROOT / "docker-compose.yml", self.root / "docker-compose.yml")
@@ -44,6 +46,7 @@ if name == 'docker' and '--wait' in sys.argv and sys.argv[-1] == 'api':
 if name == 'docker' and '--wait' in sys.argv and sys.argv[-1] == 'postgres':
     sys.exit(int(os.environ.get('POSTGRES_EXIT', '0')))
 if name == 'docker' and 'exec' in sys.argv and 'postgres' in sys.argv:
+    sys.stdin.read()
     sys.exit(int(os.environ.get('MIGRATION_EXIT', '0')))
 if name == 'docker' and sys.argv[-1] == 'scripts.check_llm_connectivity':
     sys.exit(int(os.environ.get('CONNECTIVITY_EXIT', '0')))

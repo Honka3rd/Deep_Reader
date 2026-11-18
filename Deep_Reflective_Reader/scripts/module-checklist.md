@@ -1,5 +1,22 @@
 # scripts Checklist
 
+## Build dependency cache isolation (2026-11-18)
+
+- [x] BUILD-CACHE-01: Isolate dependency/resource inputs and preserve package download caches.
+  Acceptance: Real registry manifest invariance/change/fail-closed tests; recipe graph,
+  cache mount and final asset/verification tests; existing setup/OCR/startup controls.
+  Scope: Dockerfile, regression scripts and owned delivery documents; no runtime mutation.
+  Status: Source verified; external review and BUILD-CACHE-02 remain required.
+  Evidence: New recipe/registry suite: 7 baseline failures + 3 passing projection controls -> 10/10. Setup/OCR/launcher support: 50 executions, 47 pass and 3 rebuilt-image opt-in skips after fixture correction; real local tokenizer asset verification runs offline. Original fixture assertions are AST-identical. Docker RUN shell syntax and changed Python AST checks pass. `/tmp/docker-cache-b4c8418/report.txt`. No actual image build/cache-hit/deployment result is claimed.
+  Timestamp: 2026-11-18
+
+- [ ] BUILD-CACHE-02: Verify approved image builds, cache reuse and offline deployment.
+  Depends on BUILD-CACHE-01 and external approval of the exact latest SHA.
+  Acceptance: Existing startup script rebuild, warm/application-only/dependency-change
+  cache evidence, final venv/package/OCR/tokenizer checks, offline startup, existing
+  data preservation and matching deployed revision. Static tests are insufficient.
+  Timestamp: 2026-11-18
+
 ## Context auxiliary-interface audit unit (2026-11-18)
 
 - [x] CONTEXT-02/03: Verify retained evidence and artifact signals with real helpers/services.

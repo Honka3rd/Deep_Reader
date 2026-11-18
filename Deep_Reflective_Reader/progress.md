@@ -1,5 +1,22 @@
 # Deep Reflective Reader Progress
 
+## Docker Build Cache Isolation (2026-11-18)
+
+BUILD-CACHE-01 source implementation verified against
+`b4c841866c1f474a7e3db3e884a8a46358a8a9fc`. Dockerfile isolates Python dependencies,
+registry-derived OCR manifest/runtime and tokenizer preparation. BuildKit pip/apt
+mounts retain downloads across installation reruns; final image owns required assets
+and preserves offline verification. Startup script, Compose, application behavior
+and data destinations are unchanged. Two stale test fixtures now supply all current
+migration filenames and consume piped SQL; original assertions remain intact.
+
+New recipe/registry suite: 7 baseline failures + 3 passing projection controls -> 10/10. Setup/OCR/launcher support: 50 executions, 47 pass and 3 rebuilt-image opt-in skips after fixture correction; real local tokenizer asset verification runs offline. Original fixture assertions are AST-identical. Docker RUN shell syntax and changed Python AST checks pass. `/tmp/docker-cache-b4c8418/report.txt`. No actual image build/cache-hit/deployment result is claimed.
+
+Scripts recount: 90 checked/2 unchecked, excluding templates. BUILD-CACHE-02 remains
+Needs Confirmation pending latest-SHA external approval and real image/cache/offline
+deployment acceptance; existing DOCLOAD deployment item remains open. Prior context
+review status is unchanged. No Docker work, deployment or push performed in this task.
+
 ## Context Retained-Provenance Correction (2026-11-18)
 
 CONTEXT-02/03 locally verified against `923447174e03cc56f4a41a234d4e73342d74db57`.
@@ -805,7 +822,7 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 89 | 1 | CONTEXT-01–03 locally verified; external context review pending (2026-11-18 recount) |
+| `scripts/` | package | `scripts/module-checklist.md` | 90 | 2 | BUILD-CACHE-01 source verified; external review and image/cache acceptance pending |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -1604,12 +1621,17 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `CONTEXT-01–03 locally verified; external context review pending`
-- Completed item count: `89` (direct owner recount, 2026-11-18).
-- Needs confirmation count: `1`
-- Unchecked item count: `1` (existing DOCLOAD deployment fixture gate remains open).
+- Status: `BUILD-CACHE-01 source verified; external review/image acceptance pending`
+- Completed item count: `90` (direct owner recount, 2026-11-18).
+- Needs confirmation count: `2`
+- Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] BUILD-CACHE-01: Dependency/resource isolation and persistent build download caches.
+  Evidence: `scripts/test_docker_build_cache.py`; `/tmp/docker-cache-b4c8418/report.txt`.
+  Status: Source verified only; image/cache acceptance pending.
+  Timestamp: 2026-11-18
 
 - [x] CONTEXT-02/03: Retained primary evidence and secondary artifact signal regressions.
   Evidence: `scripts/test_context_retained_provenance.py`; `/tmp/context-unit2-9234471/report.txt`.
@@ -1652,6 +1674,10 @@ No unresolved confirmation items identified in module checklist.
   Evidence: `Deep_Reflective_Reader/scripts/test_manual_structure_commit_source_evidence.py`.
 
 #### Needs Confirmation
+
+- [ ] BUILD-CACHE-02: Approved image build/cache/offline deployment acceptance.
+  Dependency: exact-SHA external review; preserve existing data and deployment gates.
+  Timestamp: 2026-11-18
 
 DOCLOAD deployment fixture acceptance remains unresolved in the scripts checklist.
 
