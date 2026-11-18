@@ -1,5 +1,14 @@
 # scripts Checklist
 
+## EMBED-01 (2026-11-18)
+
+- [x] Verify real SDK INFO/DEBUG privacy, dispatch and error contracts in isolated sinks.
+  Evidence: `/tmp/embed-01-121cc96/report.txt`; new SDK/sink suite 13/13,
+  scoped formal regression 72/72, zero skips. External DEBUG red -> green,
+  INFO control and SDK adapter 8/8; numeric 17/17 and caller 16/16 named controls.
+  Status: Locally verified; exact-SHA external review required. No deployment/push.
+  Timestamp: 2026-11-18
+
 ## SESSION-01 (2026-11-18)
 
 - [x] Reproduce SESSION-01 with actual QA/ASGI and lifecycle controls.

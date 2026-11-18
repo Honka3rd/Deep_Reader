@@ -38,6 +38,24 @@ class ExternalResponseFilter(logging.Filter):
         return True
 
 
+class ProviderPayloadFilter(logging.Filter):
+    """Exclude raw SDK diagnostics from application-owned output sinks.
+
+    Ancestor logger levels/filters do not protect handlers from a child logger
+    explicitly enabled at DEBUG. Reject these records before formatting any args
+    or exception text. Safe exchange metadata is emitted separately by the httpx
+    observer; application stages and DEBUG records keep their normal behavior.
+    """
+
+    _NAMESPACES = ("openai", "httpx", "httpcore", "llama_index")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not any(
+            record.name == name or record.name.startswith(name + ".")
+            for name in self._NAMESPACES
+        )
+
+
 class RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id_context.get()
@@ -95,6 +113,7 @@ def configure_logging() -> Path:
 
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
+    stream_handler.addFilter(ProviderPayloadFilter())
     stream_handler.addFilter(RequestContextFilter())
     file_handler = RotatingFileHandler(
         log_path,
@@ -103,6 +122,7 @@ def configure_logging() -> Path:
         encoding="utf-8",
     )
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(ProviderPayloadFilter())
     file_handler.addFilter(RequestContextFilter())
     root_logger.addHandler(stream_handler)
     root_logger.addHandler(file_handler)

@@ -1,5 +1,25 @@
 # Deep Reflective Reader Progress
 
+## EMBED-01 provider diagnostic boundary (2026-11-18)
+
+Both configured handlers exclude raw OpenAI/llama-index/httpx/httpcore records,
+including explicitly enabled DEBUG children. Safe exchange endpoint/status/stage
+metadata and application DEBUG remain; vectors, batching and errors are unchanged.
+Original external DEBUG: 1 failed assertion -> 1/1 pass; INFO control 1/1.
+New suite: 13 methods, 22 baseline failing sink subassertions -> 13/13 pass.
+Scoped formal regression 72/72 (privacy 13, logging 10, context 9, question 40),
+zero skips. Separate external SDK 8/8; numeric 17/17 and caller 16/16 named controls.
+Groups overlap; not a unique business-case total. Evidence and commands:
+`/tmp/embed-01-121cc96/report.txt`. Real installed SDK/MockTransport with synthetic
+sources/credentials, sockets forbidden; no live provider, private-book semantics,
+SQL, full application/TCP/UI or Docker acceptance. Local review pending; no push,
+deployment or next-module work. Scripts independent module audit remains exempt.
+
+Owner recount: embeddings 4 checked/0 unchecked, main 50/1, scripts 94/2, excluding
+templates. Main's stale detail count 43/0 is reconciled with its existing aggregate
+49/1 plus this one verified item; existing unresolved gates and historical dates
+are retained. Only these three owners are synchronized.
+
 ## SESSION-01 ordinary QA lifecycle correction (2026-11-18)
 
 Session identity/generation is captured before preparation; switch/reset allocate a
@@ -875,7 +895,7 @@ It is used to:
 | `db/` | package + design module | `db/module-checklist.md` | 70 | 4 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
 | `document_structure/` | package | `document_structure/module-checklist.md` | 102 | 18 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
-| `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
+| `embeddings/` | package | `embeddings/module-checklist.md` | 4 | 0 | EMBED-01 locally verified; external review pending |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 11 | 0 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `learning/` | application package | `learning/module-checklist.md` | 6 | 0 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
@@ -884,7 +904,7 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 93 | 2 | SESSION-01 regression verified; existing build/DOCLOAD gates retained |
+| `scripts/` | package | `scripts/module-checklist.md` | 94 | 2 | EMBED-01 regression verified; existing build/DOCLOAD gates retained |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 4 | 0 | SESSION-01 locally verified; exact-SHA external review pending |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -892,7 +912,7 @@ It is used to:
 | `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 5 | 0 | PREP runtime handoff locally verified |
 | `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 4 | 0 | PREP runtime facade locally verified |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 4 | 0 | PREP-05 support locally verified; external review pending |
-| `main.py` | root-python-module | `main.module-checklist.md` | 49 | 1 | MAIN-06 pending identity recovery verified; historical unchecked items retained; external review pending (2026-11-11 recount) |
+| `main.py` | root-python-module | `main.module-checklist.md` | 50 | 1 | EMBED-01 logging boundary locally verified; external review pending |
 
 ## 5. Package Module Progress
 
@@ -1501,11 +1521,17 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `embeddings/module-checklist.md`
 - Detailed Design: `embeddings/module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
+- Status: `EMBED-01 locally verified; external review pending`
+- Completed item count: `4` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `0`
 
 #### Completed Work
+
+- [x] EMBED-01: Configured SDK diagnostic exclusion with preserved application diagnostics.
+  Evidence: `/tmp/embed-01-121cc96/report.txt`; 72/72 formal, DEBUG red/green,
+  INFO control, SDK 8/8 and separate 17 numeric/16 caller controls.
+  Status: Locally verified; exact-SHA external review required.
+  Timestamp: 2026-11-18
 
 - [x] Defines embedding backend interface (`Embedder`) with single/batch/dimension probes.
 - [x] Implements OpenAI embedding provider integration via `OpenAIEmbedder`.
@@ -1688,12 +1714,18 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `SESSION-01 regression verified; existing build/DOCLOAD gates retained`
-- Completed item count: `93` (direct owner recount, 2026-11-18).
+- Status: `EMBED-01 regression verified; existing build/DOCLOAD gates retained`
+- Completed item count: `94` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `2`
 - Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] EMBED-01: Configured SDK diagnostic exclusion with preserved application diagnostics.
+  Evidence: `/tmp/embed-01-121cc96/report.txt`; 72/72 formal, DEBUG red/green,
+  INFO control, SDK 8/8 and separate 17 numeric/16 caller controls.
+  Status: Locally verified; exact-SHA external review required.
+  Timestamp: 2026-11-18
 
 - [x] SESSION-01: Generation-bound ordinary QA state completion and scoped regression.
   Evidence: `/tmp/session-01-3dab1fa/report.txt`; 70/70 regression, external races 5/5,
@@ -1992,9 +2024,9 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `main.module-checklist.md`
 - Detailed Design: `main.module-detailed-design.md`
-- Status: `Persisted Block Translation Read/Generate API Exposed`
-- Completed item count: `43` (direct owner recount including TRUI-05).
-- Needs confirmation count: `0`
+- Status: `EMBED-01 logging boundary locally verified; external review pending`
+- Completed item count: `50` (direct owner recount, 2026-11-18).
+- Needs confirmation count: `1`
 - Unchecked item count: `1` (historical item; TRUI-05 accepted).
 - 2026-10-15 PDF-MODE-01: `1/1`; enum/default, route pass-through, typed failures
   and provenance contract verified by 11 tests. PDF-MODE-05 removes the staged
@@ -2003,6 +2035,12 @@ No unresolved confirmation items identified in module checklist.
   Timestamp: 2026-10-15
 
 #### Completed Work
+
+- [x] EMBED-01: Configured SDK diagnostic exclusion with preserved application diagnostics.
+  Evidence: `/tmp/embed-01-121cc96/report.txt`; 72/72 formal, DEBUG red/green,
+  INFO control, SDK 8/8 and separate 17 numeric/16 caller controls.
+  Status: Locally verified; exact-SHA external review required.
+  Timestamp: 2026-11-18
 
 - [x] Defines FastAPI entrypoint and route registration for prepare/ask/task-layout/summary/quiz/reparse endpoints.
 - [x] Maps API schemas to coordinator execution paths and response payload construction.

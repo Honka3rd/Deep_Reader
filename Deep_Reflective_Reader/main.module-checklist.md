@@ -1,5 +1,14 @@
 # main.py Checklist
 
+## EMBED-01 (2026-11-18)
+
+- [x] Filter raw SDK namespaces at both configured handlers and retain safe exchange diagnostics.
+  Evidence: `/tmp/embed-01-121cc96/report.txt`; new SDK/sink suite 13/13,
+  scoped formal regression 72/72, zero skips. External DEBUG red -> green,
+  INFO control and SDK adapter 8/8; numeric 17/17 and caller 16/16 named controls.
+  Status: Locally verified; exact-SHA external review required. No deployment/push.
+  Timestamp: 2026-11-18
+
 - [x] MAIN-06 pending recovery: reject same-byte reimports using durable file generations and move-stage identity.
   Evidence: `scripts/test_main_rename_audit.py`: 120 file/real PostgreSQL rename cases including 10 TCP cases; before/after-move same-byte reimport and simulated inode/stat reuse leave replacement/journal unchanged. All existing normal recovery stages plus new stage-write/ack cases pass. Related regression: 393 tests, no skips; nine route/schema scripts and compile/diff checks pass. Red/green evidence: `/tmp/audit-main-b6d5df24/`; external review pending.
   Timestamp: 2026-11-11

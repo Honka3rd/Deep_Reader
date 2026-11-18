@@ -1,5 +1,29 @@
 # embeddings Detailed Design
 
+## EMBED-01 SDK diagnostic boundary (2026-11-18, locally verified)
+
+Embedding single/batch/dimension-probe calls retain their installed SDK behavior,
+order, batching and exception propagation. Shared `logging_config` (main owner)
+protects configured file/stream sinks at INFO and DEBUG: raw records from OpenAI,
+llama-index, httpx and httpcore namespaces are not application diagnostics and must
+not expose request/response bodies, source strings, credentials or arbitrary SDK
+exception text. Application DEBUG remains available. Existing embedding stage IDs,
+request correlation, duration/type and one safe completed-exchange event per HTTP
+response remain; no vector/index/persistence/provider dispatch changes.
+
+Acceptance uses real configure_logging, installed llama-index/OpenAI SDK and
+MockTransport with synthetic source/key/provider markers and forbidden sockets.
+Cover INFO/DEBUG, single/batch success/failure, probe, empty batch and partitioned
+batch order/counts. Capture both configured sinks and check safe diagnostic counts.
+No private books or live models are needed to reproduce this logging boundary.
+
+Local evidence: `/tmp/embed-01-121cc96/report.txt`. New sink/SDK suite 13/13;
+scoped formal regression 72 methods/functions passed, zero skips. Original external
+DEBUG privacy assertion failed before the change and passes afterward; INFO control
+and eight SDK adapter methods pass. Numeric 17/17 and caller 16/16 named controls
+pass separately. No live model, private-book semantics, SQL, full app/TCP/UI or
+Docker acceptance. Latest local review SHA still requires external approval.
+
 ## 1. Module Purpose
 
 `embeddings/` 提供 embedding backend 抽象、OpenAI 實作，以及向量正規化/相似度計算工具。 **[Code-Confirmed]**

@@ -1,5 +1,25 @@
 # scripts Detailed Design
 
+## EMBED-01 real SDK logging regression (2026-11-18, locally verified)
+
+`test_embedding_logging_privacy.py` uses real configure_logging and installed
+OpenAIEmbedder/llama-index/OpenAI, offline MockTransport and socket prohibition.
+Assert file AND stream exclusion of complete synthetic source, key/token and
+provider-error markers for INFO/DEBUG and single/batch success/failure; retain
+ordering, exact HTTP counts, stage/request IDs, duration, safe endpoint/status,
+probe and empty/205-input batch controls. Check configured sink filtering of SDK
+children and reconfiguration without duplicate exchange events. Restore global
+logging state between tests; never target application data/logs. Existing SDK,
+similarity/caller and application logging assertions are retained. This is support
+for embeddings; scripts' independent module audit remains user-exempt.
+
+Local evidence: `/tmp/embed-01-121cc96/report.txt`. New sink/SDK suite 13/13;
+scoped formal regression 72 methods/functions passed, zero skips. Original external
+DEBUG privacy assertion failed before the change and passes afterward; INFO control
+and eight SDK adapter methods pass. Numeric 17/17 and caller 16/16 named controls
+pass separately. No live model, private-book semantics, SQL, full app/TCP/UI or
+Docker acceptance. Latest local review SHA still requires external approval.
+
 ## SESSION-01 ordinary QA race regression (2026-11-18, locally verified)
 
 `test_session_lifecycle.py` exercises real SessionManager/QACoordinator/context,

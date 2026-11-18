@@ -1,5 +1,31 @@
 # main.py Detailed Design
 
+## EMBED-01 shared provider logging policy (2026-11-18, locally verified)
+
+Both configured stream and rotating-file handlers reject raw records from the
+`openai`, `httpx`, `httpcore` and `llama_index` logger namespaces, including children
+and all levels. Filtering is at the output boundary, not an ancestor logger filter
+or only a root/SDK level adjustment; explicitly enabled SDK DEBUG cannot bypass it.
+No raw payload inspection, regex credential guessing, or body formatting is needed.
+This covers these configured sinks; it is not a claim to sanitize arbitrary
+application messages or third-party custom sinks outside configure_logging.
+
+The existing httpx exchange observer remains upstream of the output filters and
+emits only the allowlisted endpoint label, integer status and current stage ID via
+`external_exchange`; full URL, query, userinfo, headers, reason phrase, body and
+SDK exception text are excluded. Request ID is attached by the existing context
+filter. Count each completed exchange once, independently of the two sinks; stage
+completion/failure duration and safe error type remain available. Application
+DEBUG and safe application metadata are retained. Reconfiguration must not duplicate
+exchange observers. No changes to API error propagation, vectors or retries.
+
+Local evidence: `/tmp/embed-01-121cc96/report.txt`. New sink/SDK suite 13/13;
+scoped formal regression 72 methods/functions passed, zero skips. Original external
+DEBUG privacy assertion failed before the change and passes afterward; INFO control
+and eight SDK adapter methods pass. Numeric 17/17 and caller 16/16 named controls
+pass separately. No live model, private-book semantics, SQL, full app/TCP/UI or
+Docker acceptance. Latest local review SHA still requires external approval.
+
 ## CONFIG-01 name-resolution dependency (2026-11-12)
 
 Raw candidates keep their source suffix unless the active repository proves a

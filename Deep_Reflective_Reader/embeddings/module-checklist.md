@@ -1,5 +1,14 @@
 # embeddings Checklist
 
+## EMBED-01 (2026-11-18)
+
+- [x] Preserve embedding dispatch while excluding source/provider content from configured logs.
+  Evidence: `/tmp/embed-01-121cc96/report.txt`; new SDK/sink suite 13/13,
+  scoped formal regression 72/72, zero skips. External DEBUG red -> green,
+  INFO control and SDK adapter 8/8; numeric 17/17 and caller 16/16 named controls.
+  Status: Locally verified; exact-SHA external review required. No deployment/push.
+  Timestamp: 2026-11-18
+
 ## Purpose
 
 This checklist records completed, code-confirmed or design-confirmed tasks for the `embeddings` module.
