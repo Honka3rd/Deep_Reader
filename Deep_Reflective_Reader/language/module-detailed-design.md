@@ -1,5 +1,12 @@
 # language Detailed Design
 
+## QUESTION-05 requested-extent vocabulary (2026-11-18, locally verified)
+
+Extend explicit extent phrases with all/every chapter/section requests. Provide bounded prefix/postfix exclusion cues consumed by question; they are query interpretation data only, never language detection or document/parser authority. Preserve existing 19-language extent entries and Unicode matching. New range/exclusion support is enumerated for English, Chinese, French, Japanese and Korean; all 19 existing extent tables remain. Prefix exclusions must immediately precede a cue, postfix exclusions immediately follow it; this is not full clause/verb negation or a complete grammar for all languages.
+
+
+Verification: Exact 57a7d76 baseline: new formal suite 9 methods / 53 failed sub-assertions / zero errors or skips; fixed 9/9. External extent 4 methods / 6 failures and envelope 4 methods / 2 failures become 4/4 each. Cumulative 12 formal suites: 93/93 executions, zero skips; original external lexical/standardizer/context/diagnostic 6/4/5/4 pass; fixed-method smoke 11/11. Actual envelope context probe and twelve bounded immutable-book flows pass; full backup hashes unchanged. Groups overlap and are not unique-case totals. `/tmp/question-followup-57a7d76/report.txt`. Exact-SHA external question review remains open.
+
 ## QUESTION-01/02 extent vocabulary support (2026-11-18, locally verified)
 
 Expose explicit document-extent phrases separately from existing generic scope keywords, for every supported language. UNKNOWN combines known entries; it does not invent a new supported language. These are query-routing cues owned as language data, not document language/parser authority. Question owns boundary-aware matching and extent precedence; existing detector/script/proficiency contracts remain unchanged. Verify coverage and genuine broad intent with local references.

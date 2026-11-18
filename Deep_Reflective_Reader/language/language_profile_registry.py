@@ -197,13 +197,14 @@ class LanguageProfileRegistry:
     _DOCUMENT_EXTENT_SIGNALS: dict[LanguageCode, tuple[str, ...]] = {
         LanguageCode.EN: ('whole book', 'entire book', 'whole document', 'entire document',
             'across the document', 'across documents', 'across the books', 'across chapters',
-            'throughout the book', 'throughout the document', 'whole novel', 'entire novel'),
-        LanguageCode.ZH: ('全書', '全书', '整本書', '整本书', '全文', '整篇', '跨章節', '跨章节', '跨文件'),
-        LanguageCode.JA: ('全書', '本全体', '文書全体', '複数の文書', '全章'),
-        LanguageCode.KO: ('책 전체', '전체 책', '문서 전체', '전체 문서', '여러 문서'),
+            'throughout the book', 'throughout the document', 'whole novel', 'entire novel',
+            'all chapters', 'all sections', 'every chapter', 'every section', 'each chapter', 'each section'),
+        LanguageCode.ZH: ('全書', '全书', '整本書', '整本书', '全文', '整篇', '跨章節', '跨章节', '跨文件', '所有章節', '所有章节', '每一章', '每個章節', '每个章节'),
+        LanguageCode.JA: ('全書', '本全体', '文書全体', '複数の文書', '全章', 'すべての章', '各章'),
+        LanguageCode.KO: ('책 전체', '전체 책', '문서 전체', '전체 문서', '여러 문서', '모든 장', '각 장'),
         LanguageCode.ES: ('todo el libro', 'libro entero', 'todo el documento', 'varios documentos'),
         LanguageCode.PT: ('todo o livro', 'livro inteiro', 'todo o documento', 'vários documentos'),
-        LanguageCode.FR: ('tout le livre', 'livre entier', 'tout le document', 'ensemble du livre', 'plusieurs documents'),
+        LanguageCode.FR: ('tout le livre', 'livre entier', 'tout le document', 'ensemble du livre', 'plusieurs documents', 'tous les chapitres', 'toutes les sections', 'chaque chapitre'),
         LanguageCode.DE: ('gesamten buch', 'ganze buch', 'ganzen buch', 'gesamte dokument', 'mehrere dokumente'),
         LanguageCode.IT: ('tutto il libro', 'intero libro', 'intero documento', 'più documenti'),
         LanguageCode.RU: ('всей книги', 'всю книгу', 'всего документа', 'нескольких документов'),
@@ -217,6 +218,23 @@ class LanguageProfileRegistry:
         LanguageCode.VI: ('toàn bộ cuốn sách', 'toàn bộ tài liệu', 'nhiều tài liệu'),
         LanguageCode.TH: ('หนังสือทั้งเล่ม', 'เอกสารทั้งหมด', 'หลายเอกสาร'),
     }
+
+    # Bounded, adjacent exclusion phrases, not a general negation grammar.
+    _EXTENT_EXCLUSIONS: dict[LanguageCode, tuple[tuple[str, ...], tuple[str, ...]]] = {
+        LanguageCode.EN: (("not", "not the", "not a", "not an", "rather than", "rather than the",
+            "instead of", "instead of the", "excluding", "excluding the", "except", "except the"), ()),
+        LanguageCode.ZH: (("不是", "而不是", "並非", "并非", "而非", "不包括"), ()),
+        LanguageCode.FR: (("pas", "pas de", "pas le", "pas les", "plutôt que", "plutôt que le"), ()),
+        LanguageCode.JA: ((), ("ではなく", "ではない")),
+        LanguageCode.KO: ((), ("말고", "아니라", "이 아니라", "가 아니라")),
+    }
+
+    @classmethod
+    def get_extent_exclusions(cls, language: LanguageCode) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        if language == LanguageCode.UNKNOWN:
+            return tuple(tuple(dict.fromkeys(cue for pair in cls._EXTENT_EXCLUSIONS.values()
+                                            for cue in pair[index])) for index in (0, 1))
+        return cls._EXTENT_EXCLUSIONS.get(language, ((), ()))
 
     @classmethod
     def get_document_extent_signals(cls, language: LanguageCode) -> tuple[str, ...]:

@@ -1,6 +1,7 @@
 """Strict, non-content-bearing JSON boundary for question model replies."""
 import json
 import math
+import re
 
 
 class ModelJSONSyntaxError(ValueError):
@@ -43,3 +44,24 @@ def parse_model_object(response: str) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError("invalid_json_object")
     return payload
+
+
+def parse_scope_object(response: str) -> dict[str, object]:
+    """Unwrap a complete fence or short prose label, never a nested JSON value.
+
+    Supported prose labels end in a colon (e.g. Result:, Here is the result:).
+    The complete remainder must be one JSON object, including trailing checks.
+    """
+    try:
+        return parse_model_object(response)
+    except ModelJSONSyntaxError:
+        text = response.strip()
+        fence = re.fullmatch(r"```(?:json)?\s*([\s\S]*)\s*```", text, re.IGNORECASE)
+        label = re.fullmatch(r"[^\W\d_][\w \t-]{0,63}[:：]\s*([\s\S]+)", text)
+        if fence is not None:
+            payload = fence.group(1)
+        elif label is not None:
+            payload = label.group(1)
+        else:
+            raise ValueError("invalid_scope_envelope") from None
+        return parse_model_object(payload)

@@ -1,4 +1,3 @@
-import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -8,7 +7,8 @@ from embeddings.embedding_similarity_service import EmbeddingSimilarityService
 from language.language_code import LanguageCode, LanguageCodeResolver
 from language.language_profile_registry import LanguageProfileRegistry
 from llm.llm_provider import LLMProvider
-from question.model_output import ModelJSONSyntaxError, parse_model_object
+from question.model_output import parse_scope_object
+from question.requested_extent import requested_extent
 from question.qa_enums import LocalSignalQuality, QuestionScope
 from question.scope_lexical_matching import contains_cue
 from question.question_scope_keywords_provider import QuestionScopeKeywordsProvider
@@ -317,15 +317,7 @@ class QuestionScopeResolver:
             return None, None
 
         try:
-            try:
-                parsed = parse_model_object(raw)
-            except ModelJSONSyntaxError:
-                # Preserve legacy JSON-block responses; no content from the
-                # response or decoder may enter diagnostics.
-                match = re.search(r"\{[\s\S]*\}", raw)
-                if not match:
-                    raise ValueError("invalid_json_object") from None
-                parsed = parse_model_object(match.group(0))
+            parsed = parse_scope_object(raw)
         except ValueError:
             print("Warn:QuestionScopeResolver#resolve: llm_scope_parse_failed")
             return None, None
@@ -364,8 +356,8 @@ class QuestionScopeResolver:
             else self.keywords_provider.get_keywords(language)
         )
 
-        extent = self._contains_keyword(
-            query, self.keywords_provider.get_document_extent_signals(language),
+        extent = requested_extent(
+            query, self.keywords_provider.get_document_extent_signals(language), language,
         )
         if extent is not None:
             return QuestionScopeResolution(

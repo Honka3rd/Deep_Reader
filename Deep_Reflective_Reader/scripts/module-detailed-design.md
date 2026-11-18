@@ -1,5 +1,12 @@
 # scripts Detailed Design
 
+## QUESTION-05/06 scope correction regression (2026-11-18, locally verified)
+
+Retain original negative/positive assertions and add scope plus actual context tests for requested versus quoted/excluded extents and complete wrapped JSON roots. Verify exact source text, top_k/window/coverage and single-call limits. Run mutable profile fixtures in temporary cwd; only the source-inspection-only cleanup suite may use backend cwd. Preserve historical logs and identify stale/overwritten summaries rather than claiming all old red JSON unchanged. Real-book checks use immutable copies and bounded deterministic samples.
+
+
+Verification: Exact 57a7d76 baseline: new formal suite 9 methods / 53 failed sub-assertions / zero errors or skips; fixed 9/9. External extent 4 methods / 6 failures and envelope 4 methods / 2 failures become 4/4 each. Cumulative 12 formal suites: 93/93 executions, zero skips; original external lexical/standardizer/context/diagnostic 6/4/5/4 pass; fixed-method smoke 11/11. Actual envelope context probe and twelve bounded immutable-book flows pass; full backup hashes unchanged. Groups overlap and are not unique-case totals. `/tmp/question-followup-57a7d76/report.txt`. Exact-SHA external question review remains open.
+
 ## QUESTION-03/04 boundary regression support (2026-11-18, locally verified)
 
 Add strict completed-output and non-content diagnostic matrices using real question/context/coordinator code and deterministic providers. Mount the unchanged production ask route function with actual API schemas in isolated ASGI; no main lifespan, storage, TCP or paid model needed. Capture logging/tracebacks as well as stdout/stderr/HTTP detail. Retain original external assertions and record any deliberate diagnostic-contract expectation changes separately from originals. Verify one-call behavior and that invalid standardization cannot dispatch retrieval/relevance/answers.

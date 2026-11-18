@@ -1,5 +1,12 @@
 # question Checklist
 
+## Question follow-up (2026-11-18)
+
+- [x] QUESTION-05/06: Correct requested extent and complete wrapped JSON admission.
+  Status: Locally verified; exact-SHA external question review remains open.
+  Evidence: Exact 57a7d76 baseline: new formal suite 9 methods / 53 failed sub-assertions / zero errors or skips; fixed 9/9. External extent 4 methods / 6 failures and envelope 4 methods / 2 failures become 4/4 each. Cumulative 12 formal suites: 93/93 executions, zero skips; original external lexical/standardizer/context/diagnostic 6/4/5/4 pass; fixed-method smoke 11/11. Actual envelope context probe and twelve bounded immutable-book flows pass; full backup hashes unchanged. Groups overlap and are not unique-case totals. `/tmp/question-followup-57a7d76/report.txt`.
+  Timestamp: 2026-11-18
+
 ## Question audit unit 1 (2026-11-17)
 
 - [x] QUESTION-01/02: Fix lexical boundaries and preserve explicit requested scope.

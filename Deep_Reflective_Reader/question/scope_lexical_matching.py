@@ -1,4 +1,5 @@
 """Comparison-only multilingual cue matching; never rewrite the user's query."""
+from collections.abc import Iterator
 import re
 import unicodedata
 
@@ -12,7 +13,7 @@ _KOREAN_PARTICLES = frozenset((
 ))
 
 
-def _comparison(text: str) -> str:
+def comparison_text(text: str) -> str:
     return ' '.join(unicodedata.normalize('NFC', text.casefold()).split())
 
 
@@ -32,16 +33,16 @@ def _right_boundary(query: str, end: int, cue: str) -> bool:
     return False
 
 
-def contains_cue(query: str, cues: tuple[str, ...]) -> str | None:
-    """Return the first configured cue with valid boundaries in a normalized view.
+def cue_matches(query: str, cues: tuple[str, ...]) -> Iterator[tuple[str, int, int]]:
+    """Yield configured cues and their spans in the normalized comparison view.
 
     Combining marks count as part of words; an ASCII-only regex boundary would
     wrongly split Hindi/Arabic and decomposed accented text. This is not a full
     tokenizer or inflection engine for all supported languages.
     """
-    query = _comparison(query)
+    query = comparison_text(query)
     for cue in cues:
-        normalized = _comparison(cue)
+        normalized = comparison_text(cue)
         if not normalized:
             continue
         start = query.find(normalized)
@@ -49,6 +50,10 @@ def contains_cue(query: str, cues: tuple[str, ...]) -> str | None:
             end = start + len(normalized)
             left_ok = start == 0 or not _word_character(query[start-1]) or _UNSPACED.fullmatch(normalized[0])
             if left_ok and _right_boundary(query, end, normalized):
-                return cue
+                yield cue, start, end
             start = query.find(normalized, start+1)
-    return None
+
+
+def contains_cue(query: str, cues: tuple[str, ...]) -> str | None:
+    """Return the first configured boundary-valid cue, preserving cue priority."""
+    return next((cue for cue, _, _ in cue_matches(query, cues)), None)
