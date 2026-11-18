@@ -1,5 +1,13 @@
 # Deep Reflective Reader Progress
 
+## Quoted Term-Role Correction (2026-11-18)
+
+QUESTION-08 locally verified against `4763650dc1db0ee5c9c9b80be3cb28e69b74771b`. Preserve explicit term/meaning role across adjacent comparison operands and inspect trailing target qualifiers before broad admission. Target-specific checks retain genuine broad requests containing local phrase subjects. QUESTION-01–07 boundaries, source text and call limits remain; finite English vocabulary does not claim universal grammar.
+
+Exact 4763650 baseline: core external 3 methods /2 failed sub-assertions; supporting 4 methods /4 failed sub-assertions; fixed 3/3 and 4/4, zero errors/skips. Expanded requested-scope suite 15 methods /33 baseline failures -> 15/15; cumulative 12 suites 99/99, zero skips. Prior quoted-positive/extent/envelope 4/4 each; QUESTION-01–04 probes 6/4/5/4 and current-contract smoke 11/11 pass. Twenty-one bounded immutable-book flows pass with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/question-terms-4763650/report.txt`.
+
+Recount: question 8 checked/4 future unchecked, language 11/0, scripts 87/1; templates excluded. Seven owned Markdown files synchronized with Timestamp: 2026-11-18 on the three new items. Existing unresolved tasks retained. Fresh red/green evidence uses isolated paths; historical evidence-output qualification remains historical and is not used as current red proof. No live model/full-book semantic, deployment, push or next-module acceptance; external exact-SHA approval required.
+
 ## Quoted Requested Range Correction (2026-11-18)
 
 QUESTION-07 locally verified against `56bbaddc7e8ac1274f48e881d33ff6f0023f5d64`. Quoted explicit summarization/comparison targets retain broad extent; locally explained quoted terms and excluded ranges remain conservative. Finite English command-role vocabulary is language-owned, interpretation is question-owned. QUESTION-06 complete-root and QUESTION-01–04 validation/privacy boundaries are unchanged.
@@ -755,14 +763,14 @@ It is used to:
 | `document_structure/` | package | `document_structure/module-checklist.md` | 102 | 18 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `embeddings/` | package | `embeddings/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `language/` | package | `language/module-checklist.md` | 10 | 0 | QUESTION-07 locally verified; external question review pending (2026-11-18 recount) |
+| `language/` | package | `language/module-checklist.md` | 11 | 0 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `learning/` | application package | `learning/module-checklist.md` | 6 | 0 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
 | `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
 | `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
-| `question/` | package | `question/module-checklist.md` | 7 | 4 | QUESTION-07 locally verified; external question review pending (2026-11-18 recount) |
+| `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 86 | 1 | QUESTION-07 locally verified; external question review pending (2026-11-18 recount) |
+| `scripts/` | package | `scripts/module-checklist.md` | 87 | 1 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -1412,8 +1420,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `language/module-checklist.md`
 - Detailed Design: `language/module-detailed-design.md`
-- Status: `QUESTION-07 locally verified; external question review pending`
-- Completed item count: `10` (direct owner recount, 2026-11-18).
+- Status: `QUESTION-08 locally verified; external question review pending`
+- Completed item count: `11` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `0`
 
 #### Completed Work
@@ -1511,8 +1519,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `question/module-checklist.md`
 - Detailed Design: `question/module-detailed-design.md`
-- Status: `QUESTION-07 locally verified; external question review pending`
-- Completed item count: `7` (direct owner recount, 2026-11-18).
+- Status: `QUESTION-08 locally verified; external question review pending`
+- Completed item count: `8` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `4`
 
 #### Completed Work
@@ -1523,7 +1531,7 @@ No unresolved confirmation items identified in module checklist.
 
 #### Needs Confirmation
 
-Four existing rich-content future tasks remain unchecked; QUESTION-01–07 await external review. Current evidence is recorded above.
+Four existing rich-content future tasks remain unchecked; QUESTION-01–08 await external review. Current evidence is recorded above.
 
 #### Future Direction Preparation
 
@@ -1553,8 +1561,8 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `QUESTION-07 locally verified; external question review pending`
-- Completed item count: `86` (direct owner recount, 2026-11-18).
+- Status: `QUESTION-08 locally verified; external question review pending`
+- Completed item count: `87` (direct owner recount, 2026-11-18).
 - Needs confirmation count: `1`
 - Unchecked item count: `1` (existing DOCLOAD deployment fixture gate remains open).
 

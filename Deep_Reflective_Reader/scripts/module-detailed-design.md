@@ -1,5 +1,11 @@
 # scripts Detailed Design
 
+## QUESTION-08 complete quoted-target role (2026-11-18, locally verified)
+
+Add paired resolver and actual context checks for explicit phrase/meaning comparisons and trailing phrase qualifiers; retain quoted/unquoted broad controls including local phrase subjects, term definitions and exclusions. Check exact source query, top_k/window/coverage and zero extra lexical dispatch. Preserve all prior assertions and isolated evidence paths.
+
+Verification: Exact 4763650 baseline: core external 3 methods /2 failed sub-assertions; supporting 4 methods /4 failed sub-assertions; fixed 3/3 and 4/4, zero errors/skips. Expanded requested-scope suite 15 methods /33 baseline failures -> 15/15; cumulative 12 suites 99/99, zero skips. Prior quoted-positive/extent/envelope 4/4 each; QUESTION-01–04 probes 6/4/5/4 and current-contract smoke 11/11 pass. Twenty-one bounded immutable-book flows pass with canonical/raw/manifest hashes preserved. Groups overlap. `/tmp/question-terms-4763650/report.txt`. External exact-SHA question review remains pending.
+
 ## QUESTION-07 paired quote-role acceptance (2026-11-18, locally verified)
 
 Add paired resolver and actual ContextOrchestrator checks for quoted/unquoted broad targets, local quoted-term explanations and exclusions. Verify source preservation, top_k/window/coverage and zero extra lexical dispatch. Retain all QUESTION-01–06 assertions and isolated mutable fixtures. Record baseline red and fixed green evidence independently.

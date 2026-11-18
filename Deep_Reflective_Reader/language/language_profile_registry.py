@@ -239,6 +239,24 @@ class LanguageProfileRegistry:
         ),
     }
 
+    _QUOTED_TERM_ROLES = {
+        LanguageCode.EN: (
+            ("phrase", "the phrase", "phrases", "the phrases", "term", "the term",
+             "terms", "the terms", "word", "the word", "words", "the words",
+             "expression", "the expression", "expressions", "the expressions",
+             "meaning of", "the meaning of", "meanings of", "the meanings of"),
+            ("phrase", "phrases", "term", "terms", "word", "words", "expression",
+             "expressions", "meaning", "meanings"),
+        ),
+    }
+
+    @classmethod
+    def get_quoted_term_roles(cls, language: LanguageCode) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        if language == LanguageCode.UNKNOWN:
+            return tuple(tuple(dict.fromkeys(cue for groups in cls._QUOTED_TERM_ROLES.values()
+                                            for cue in groups[index])) for index in (0, 1))
+        return cls._QUOTED_TERM_ROLES.get(language, ((), ()))
+
     @classmethod
     def get_quoted_extent_commands(cls, language: LanguageCode) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
         if language == LanguageCode.UNKNOWN:

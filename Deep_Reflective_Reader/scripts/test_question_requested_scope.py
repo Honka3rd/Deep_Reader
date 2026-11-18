@@ -40,6 +40,21 @@ QUOTED_REQUESTS = (
 )
 
 
+TERM_REQUESTS = (
+    ('Compare the phrase "entire document" with "whole book" in this sentence.', 'local'),
+    ('Compare the meaning of "entire document" with "whole book" in this sentence.', 'local'),
+    ('Summarize the "whole book" phrase in this paragraph.', 'local'),
+    ('Compare this sentence with the "whole book" phrase in this paragraph.', 'local'),
+    ('Compare this paragraph with the "whole book".', 'global'),
+    ('Compare this paragraph with the whole book.', 'global'),
+    ('Compare this phrase with the "whole book".', 'global'),
+    ('Compare the phrase "entire document" in this sentence with the "whole book".', 'global'),
+    ('Summarize the "whole book", including this phrase in this paragraph.', 'global'),
+    ('Explain the phrase "entire document" in this paragraph.', 'local'),
+    ('Explain this sentence, not the "whole book".', 'local'),
+)
+
+
 def resolver(query, reply=None, score=0.0):
     provider = Provider(reply)
     embedder = Embedder(query, score)
@@ -75,6 +90,39 @@ class RequestedScopeTests(unittest.TestCase):
         self.assertEqual(len(provider.calls), scope_calls)
         self.assertEqual(result.mode.value, 'local_window_mode' if expected=='local' else 'retrieval_mode')
         return result, log
+
+    def test_term_target_roles_resolver(self):
+        for query, expected in TERM_REQUESTS:
+            for score in (0.0, .99):
+                with self.subTest(query=query, score=score):
+                    scope, provider, embedder = resolver(query, score=score)
+                    question = StandardizedQuestion(query, query, LanguageCode.EN, LanguageCode.EN)
+                    result = scope.resolve(question, session_active_chunk_index=10)
+                    self.assertEqual(result.scope.value, expected)
+                    self.assertEqual((question.original_query, question.standardized_query), (query, query))
+                    self.assertEqual((provider.calls, embedder.calls), ([], []))
+
+    def test_term_target_roles_actual_context(self):
+        for query, expected in TERM_REQUESTS:
+            for score in (0.0, .99):
+                with self.subTest(query=query, score=score):
+                    self.assert_route(query, expected, score=score)
+
+    def test_term_roles_are_adjacent_and_operand_specific(self):
+        for left, right in (('"','"'), ("'","'"), ('“','”'), ('「','」')):
+            a, b = left+'entire document'+right, left+'whole book'+right
+            for query, expected in (
+                (f'Please compare the meaning of {a} to {b} in this sentence.', 'local'),
+                (f'Compare {a} phrase with {b} in this sentence.', 'local'),
+                (f'Compare the terms {a} against {b} in this sentence.', 'local'),
+                (f'Compare this sentence with the {b} expression in this paragraph.', 'local'),
+                (f'Compare the phrase {a} in this sentence with the {b}.', 'global'),
+                (f'Summarize the {b}, including this paragraph about phrase meanings.', 'global'),
+                (f'Explain the phrase {a} in this sentence, then summarize the whole book.', 'global'),
+            ):
+                with self.subTest(query=query):
+                    self.assert_route(query, expected)
+        self.assert_route('Compare the meaning of "entire document"\twith\n"whole book" in this sentence.', 'local')
 
     def test_quoted_request_roles_resolver(self):
         for query, expected in QUOTED_REQUESTS:
