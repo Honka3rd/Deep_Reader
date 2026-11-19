@@ -1,5 +1,46 @@
 # Deep Reflective Reader Progress
 
+## LLM-01/02 cumulative correction (2026-11-19)
+
+Shared completion admission rejects interrupted/refused/unavailable text before
+QA session or summary publication. Nano canonical/enum/aliases now fail provider
+construction before SDK dispatch; historical enum/capacity/tokenizer facts remain.
+Official shutdown verified on 2026-11-19; no replacement model or capacity change.
+
+LLM-01 original external provider/QA and file summary: 20 failed subassertions ->
+5/5 and 2/2 methods. LLM-02 external canonical/alias: 2 failures -> 4/4 methods;
+valid-model fixture gained completion metadata required by LLM-01, assertions intact.
+Cumulative formal 105/105 methods/functions, zero skips (includes actual SDK, once,
+capacity, planner, QA, safe logging, model/DI admission, full offline tokenizer/book
+counting, excerpt and transient checks). External independent tokenizer 8/8 remains
+separate; groups overlap. Immutable backups/assets retain hashes; earlier 24 bounded
+book protocol flows remain valid with unchanged completion logic. Evidence:
+`/tmp/llm-fix-fb7f9dc/report.txt`. No live API/semantic/SQL/full lifespan/TCP/UI or
+Docker acceptance, no deployment/push/next module. Local review SHA requires external
+approval. Scripts independent audit remains exempt. Owner recount: llm 7/2; scripts
+96/2, excluding templates and retaining historical unresolved items.
+
+
+## LLM-01 completion status admission (2026-11-18)
+
+Ordinary/schema/once share endpoint status validation before returning text.
+Fixed failures stop session progression and summary publication; refresh preserves
+valid cached artifacts. Budgets, timeout and once single-dispatch/close remain.
+External provider/QA 10 failed subassertions -> 5/5 methods; file summary 10 -> 2/2.
+New matrix initial 12 methods/94 failed assertions -> expanded final 13/13.
+Scoped regression 82/82, zero skips. Two full immutable backups hash-verified;
+24 deterministic protocol flows on [0,1024) samples pass, not semantic acceptance.
+Evidence: `/tmp/llm-01-fb7f9dc/report.txt`. No live model, SQL, full application/TCP/UI,
+deployment or push. At this historical checkpoint, unit 2 LLM-02 awaited developer
+confirmation; the 2026-11-19 cumulative checkpoint above supersedes that unit gate.
+External llm review remains open.
+
+Recount: llm 6 checked/3 unchecked (two retained future items plus LLM-02), scripts
+95/2. Llm's stale detail 4/0 reconciled against prior actual 5/2, plus this verified
+unit and the newly recorded pending requirement. Scripts independent audit is exempt;
+existing unrelated build/DOCLOAD gates are retained.
+
+
 ## EMBED-01 provider diagnostic boundary (2026-11-18)
 
 Both configured handlers exclude raw OpenAI/llama-index/httpx/httpcore records,
@@ -899,12 +940,12 @@ It is used to:
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 11 | 0 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `learning/` | application package | `learning/module-checklist.md` | 6 | 0 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
-| `llm/` | package | `llm/module-checklist.md` | 5 | 0 | WAIT 1/1; 2 unchecked items in owner checklist |
+| `llm/` | package | `llm/module-checklist.md` | 7 | 2 | LLM-01/02 locally verified; external review pending |
 | `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 94 | 2 | EMBED-01 regression verified; existing build/DOCLOAD gates retained |
+| `scripts/` | package | `scripts/module-checklist.md` | 96 | 2 | LLM-01/02 regression verified; existing gates retained |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 4 | 0 | SESSION-01 locally verified; exact-SHA external review pending |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -1591,11 +1632,21 @@ No unresolved implementation items; external language review remains pending.
 
 - Checklist: `llm/module-checklist.md`
 - Detailed Design: `llm/module-detailed-design.md`
-- Status: `FULL-01 Capacity Migration Delivered`
-- Completed item count: `4`
-- Needs confirmation count: `0`
+- Status: `LLM-01/02 locally verified; external review pending`
+- Completed item count: `7` (direct recount, 2026-11-19).
+- Needs confirmation count: `2`
 
 #### Completed Work
+
+- [x] LLM-02: Explicit retired-model refusal with preserved historical metadata.
+  Evidence: `/tmp/llm-fix-fb7f9dc/report.txt`; new 7/7, external 4/4, cumulative
+  105/105 zero skips. Exact-SHA external review pending; no deployment/push.
+  Timestamp: 2026-11-19
+
+- [x] LLM-01: Reject partial completion before QA/session/summary publication.
+  Evidence: `/tmp/llm-01-fb7f9dc/report.txt`; 82/82 regression, external red/green,
+  24 bounded immutable-book SDK flows; cumulative external review pending.
+  Timestamp: 2026-11-19
 
 - [x] Defines LLM provider abstraction contract for completion and capability reporting.
 - [x] Implements OpenAI-backed provider with model-capability mapping and endpoint routing.
@@ -1605,7 +1656,7 @@ No unresolved implementation items; external language review remains pending.
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+Two historical future items remain unchecked; cumulative llm review pending.
 
 ### `profile/`
 
@@ -1714,12 +1765,22 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `EMBED-01 regression verified; existing build/DOCLOAD gates retained`
-- Completed item count: `94` (direct owner recount, 2026-11-18).
+- Status: `LLM-01/02 regression verified; existing gates retained`
+- Completed item count: `96` (direct recount, 2026-11-19).
 - Needs confirmation count: `2`
 - Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] LLM-02: Explicit retired-model refusal with preserved historical metadata.
+  Evidence: `/tmp/llm-fix-fb7f9dc/report.txt`; new 7/7, external 4/4, cumulative
+  105/105 zero skips. Exact-SHA external review pending; no deployment/push.
+  Timestamp: 2026-11-19
+
+- [x] LLM-01: Reject partial completion before QA/session/summary publication.
+  Evidence: `/tmp/llm-01-fb7f9dc/report.txt`; 82/82 regression, external red/green,
+  24 bounded immutable-book SDK flows; cumulative external review pending.
+  Timestamp: 2026-11-19
 
 - [x] EMBED-01: Configured SDK diagnostic exclusion with preserved application diagnostics.
   Evidence: `/tmp/embed-01-121cc96/report.txt`; 72/72 formal, DEBUG red/green,

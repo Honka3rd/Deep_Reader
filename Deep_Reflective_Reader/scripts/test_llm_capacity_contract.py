@@ -54,6 +54,11 @@ class CapacityContractTests(unittest.TestCase):
         key.get.return_value = "fixture-not-a-key"
         with patch("llm.openai_llm_provider.OpenAIResponses") as client:
             client.return_value.complete.return_value.text = " result "
+            client.return_value.complete.return_value.raw = {
+                "status": "completed",
+                "output": [{"type": "message", "status": "completed",
+                            "content": [{"type": "output_text", "text": " result "}]}],
+            }
             provider = OpenAILLMProvider(key)
             self.assertEqual(provider.effective_output_budget, 3276)
             self.assertEqual(provider.complete_text("fixture"), "result")

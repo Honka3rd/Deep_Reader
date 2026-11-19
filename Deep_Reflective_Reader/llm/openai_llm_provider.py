@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from enum import StrEnum
 from openai import OpenAI as OpenAIClient
 from llama_index.llms.openai import OpenAI
@@ -30,6 +31,9 @@ class OpenAILLMProvider(LLMProvider):
     effective_output_budget: int
     output_budget_floor_ratio: float
 
+    # Historical capability facts are not a live-dispatch allowlist. Keep these
+    # identities available for stored provenance and offline tokenizer consumers.
+    RETIRED_MODELS = frozenset({OpenAIModelName.GPT_4_1_NANO})
     MODEL_CAPABILITIES_BY_NAME: dict[OpenAIModelName, LLMModelCapabilities] = {
         OpenAIModelName.GPT_4_1: LLMModelCapabilities(
             model_name=OpenAIModelName.GPT_4_1.value,
@@ -66,22 +70,20 @@ class OpenAILLMProvider(LLMProvider):
 
     @classmethod
     def _resolve_model_name(cls, model: OpenAIModelName | str) -> OpenAIModelName:
-        if isinstance(model, OpenAIModelName):
-            return model
-
         normalized = model.strip().lower()
         if not normalized:
             raise ValueError("Model name cannot be empty.")
-
-        if normalized in OpenAIModelName._value2member_map_:
-            return OpenAIModelName(normalized)
-
         # Compatibility path: accept underscore-typed names (e.g. gpt_4.1_mini).
         alias = normalized.replace("_", "-")
         if alias in OpenAIModelName._value2member_map_:
-            return OpenAIModelName(alias)
+            resolved = OpenAIModelName(alias)
+            if resolved in cls.RETIRED_MODELS:
+                raise ValueError(
+                    "llm_model_retired: gpt-4.1-nano; select an available model explicitly"
+                )
+            return resolved
 
-        supported = ", ".join(model_name.value for model_name in OpenAIModelName)
+        supported = ", ".join(name.value for name in OpenAIModelName if name not in cls.RETIRED_MODELS)
         raise ValueError(
             f"Unsupported llm model '{model}'. Supported models: {supported}"
         )
@@ -113,9 +115,9 @@ Args:
     model: Model.
     target_max_output_tokens: App-level output-token target before model clamp.
 """
-        api_key = api_key_provider.get()
         self.model_name = self._resolve_model_name(model)
         self.model_capabilities = self._resolve_model_capabilities(self.model_name)
+        api_key = api_key_provider.get()
         if target_max_output_tokens <= 0:
             raise ValueError("target_max_output_tokens must be > 0")
         self.output_budget_floor_ratio = self.OUTPUT_BUDGET_FLOOR_RATIO
@@ -185,7 +187,67 @@ Returns:
                 max_completion_tokens=output_tokens,
                 **request_options,
             )
-        return response.text.strip()
+        return self._completed_text(response.raw, response.text)
+
+    @staticmethod
+    def _field(value, name, default=None):
+        """Read SDK objects or llama-index raw dictionaries without coercion."""
+        if isinstance(value, Mapping):
+            return value.get(name, default)
+        return getattr(value, name, default)
+
+    def _completed_text(self, response, text) -> str:
+        """Admit completed plain text using endpoint evidence, never text guesses.
+
+        Run after the ordinary adapter returns and inside the once client lifetime.
+        Failures contain fixed identifiers only; they do not authorize another call.
+        """
+        field = self._field
+        if self.model_capabilities.endpoint_kind == ENDPOINT_KIND_RESPONSES:
+            status = field(response, "status")
+            if status != "completed":
+                code = "completion_incomplete" if status in (
+                    "incomplete", "failed", "cancelled", "queued", "in_progress"
+                ) else "completion_status_unavailable"
+                raise ValueError(code)
+            if field(response, "error") is not None or field(response, "incomplete_details") is not None:
+                raise ValueError("completion_incomplete")
+            messages = [item for item in (field(response, "output") or [])
+                        if field(item, "type") == "message"]
+            if not messages:
+                raise ValueError("completion_text_unavailable")
+            has_text = False
+            for message in messages:
+                if field(message, "status") != "completed":
+                    raise ValueError("completion_incomplete")
+                if any(field(item, "type") == "refusal" for item in (field(message, "content") or [])):
+                    raise ValueError("completion_refused")
+                has_text |= any(
+                    field(item, "type") == "output_text"
+                    and isinstance(field(item, "text"), str) and field(item, "text").strip()
+                    for item in (field(message, "content") or [])
+                )
+            if not has_text:
+                raise ValueError("completion_text_unavailable")
+        else:
+            choices = field(response, "choices")
+            if not choices:
+                raise ValueError("completion_status_unavailable")
+            choice = choices[0]
+            reason = field(choice, "finish_reason")
+            if reason != "stop":
+                code = "completion_incomplete" if reason in (
+                    "length", "content_filter", "tool_calls", "function_call"
+                ) else "completion_status_unavailable"
+                raise ValueError(code)
+            message = field(choice, "message")
+            if field(message, "refusal") is not None:
+                raise ValueError("completion_refused")
+            if field(message, "tool_calls") or field(message, "function_call"):
+                raise ValueError("completion_text_unavailable")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("completion_text_unavailable")
+        return text.strip()
 
     def get_model_capabilities(self) -> LLMModelCapabilities:
         """Return current model static capability metadata."""
@@ -207,14 +269,12 @@ Returns:
             if caps.endpoint_kind == ENDPOINT_KIND_RESPONSES:
                 response = client.responses.create(model=caps.model_name, input=prompt,
                     max_output_tokens=output_tokens, temperature=self.llm.temperature)
-                return response.output_text.strip()
+                return self._completed_text(response, response.output_text)
             response = client.chat.completions.create(model=caps.model_name,
                 messages=[{"role": "user", "content": prompt}],
                 max_completion_tokens=output_tokens, temperature=self.llm.temperature)
-            content = response.choices[0].message.content
-            if not isinstance(content, str):
-                raise ValueError("completion_text_unavailable")
-            return content.strip()
+            content = response.choices[0].message.content if response.choices else None
+            return self._completed_text(response, content)
 
     def count_input_tokens(self, text: str) -> int | None:
         return TOKEN_COUNTER.count(self.model_capabilities.model_name, text)

@@ -1,5 +1,64 @@
 # scripts Detailed Design
 
+## LLM-02 dispatch availability (2026-11-19, locally verified)
+
+Official OpenAI documentation checked on 2026-11-19 lists gpt-4.1-nano and its
+2025-04-14 snapshot as shut down on 2026-10-23:
+[deprecations](https://developers.openai.com/api/docs/deprecations),
+[model status](https://developers.openai.com/api/docs/models/gpt-4.1-nano).
+Reject the known nano canonical name, enum and underscore aliases at provider
+construction before adapter creation/dispatch, with a fixed understandable
+configuration error. No fallback or model substitution. Other four configured
+models and their existing aliases retain current endpoint/capacity/timeout behavior;
+future retirement dates are not treated as already elapsed.
+
+Enum serialization, static capacity facts and offline tokenizer mappings retain
+historical compatibility; these are not an allowlist for live dispatch. Inert
+AppDIConfig serialization remains possible and runtime admission stays with llm.
+No changes to stored provenance, cache keys, data or offline counting. Regression
+covers direct and actual config/DI construction, no key.get/client/HTTP for denied
+settings, unchanged valid model choices and legacy identifiers. No live API or
+simulated 404 is evidence of remote retirement; the official pages establish that.
+
+
+Final evidence (2026-11-19): `/tmp/llm-fix-fb7f9dc/report.txt`. LLM-02 external
+canonical/alias failures -> 4/4 methods, with LLM-01 completed-envelope fixture
+adaptation only; original assertions retained. New admission suite: 7 methods,
+15 baseline failed assertions -> 7/7. Cumulative formal regression 105/105
+methods/functions, zero skips; external tokenizer 8/8 and LLM-01 5/5 + 2/2 remain
+separate overlapping groups. Real verified tokenizer asset and complete immutable
+snapshot counts pass with hashes preserved. No live API/SQL/full application/TCP/UI
+or Docker acceptance; exact-SHA external review required before deployment/push.
+
+## LLM-01 completion admission (2026-11-18, locally verified)
+
+HTTP success is not completed generation. Ordinary, per-call schema and once calls
+share endpoint-aware validation of the actual SDK envelope before returning text.
+Responses requires completed status, no error/incomplete details, completed message
+output and no refusal; Chat requires a selected choice with finish_reason=stop,
+no refusal/tool invocation and usable string content. Missing/unknown completion
+metadata fails closed; whitespace/empty/refusal output is not successful text.
+Fixed ValueError codes exclude prompt, partial text, provider reasons and payloads.
+No semantic inference, automatic continuation or extra dispatch. Existing complete
+text/schema output, per-call budgets and timeout policy remain. Once still uses
+one request-local max_retries=0 client and closes on success or admission failure.
+
+Regression uses installed SDK/llama-index with MockTransport, actual QA/isolated
+ASGI and temporary file summary publication. Failed completion must not advance
+QA history or create/overwrite a summary; preserved valid summary remains a cache
+hit. Source/epoch/CAS boundaries and ordinary retry policy remain unchanged.
+Tests retain original assertions and separate synthetic protocol evidence from
+live model/semantic quality. LLM-02 dispatch admission is documented above.
+
+
+Local unit evidence: `/tmp/llm-01-fb7f9dc/report.txt`. Original external provider/QA
+10 failed subassertions -> 5/5 methods; file summary 10 failed subassertions ->
+2/2 methods. New matrix baseline 12 methods/94 failed assertions -> final 13/13;
+82 scoped regression methods pass with no skips. Two complete immutable backups
+hash-verified; 24 bounded protocol flows using [0,1024) samples pass with controlled
+SDK responses. No live-model semantic, SQL, full application/TCP/UI or deployment
+acceptance. This records unit-1 evidence; cumulative delivery and review limits are above.
+
 ## EMBED-01 real SDK logging regression (2026-11-18, locally verified)
 
 `test_embedding_logging_privacy.py` uses real configure_logging and installed

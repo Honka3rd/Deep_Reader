@@ -1,5 +1,24 @@
 # scripts Checklist
 
+## LLM-02 (2026-11-19)
+
+- [x] Verify retired nano admission and preserved model/history contracts.
+  Evidence: `/tmp/llm-fix-fb7f9dc/report.txt`; 7/7 admission, external 4/4,
+  cumulative 105/105 zero skips; real asset/full immutable snapshot counting.
+  Status: Locally verified; external review pending; scripts audit remains exempt.
+  Timestamp: 2026-11-19
+
+
+## LLM-01 (2026-11-18)
+
+- [x] Reject incomplete or unavailable completion before successful publication.
+  Evidence: `/tmp/llm-01-fb7f9dc/report.txt`; external provider/QA 5/5 and file
+  summary 2/2 red-to-green; new 13/13; scoped regression 82/82, zero skips.
+  Two immutable books: 24 bounded deterministic SDK flows, preserved hashes.
+  Status: Locally verified; cumulative exact-SHA external review pending.
+  Timestamp: 2026-11-19
+
+
 ## EMBED-01 (2026-11-18)
 
 - [x] Verify real SDK INFO/DEBUG privacy, dispatch and error contracts in isolated sinks.

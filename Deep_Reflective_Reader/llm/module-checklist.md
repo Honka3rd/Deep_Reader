@@ -1,5 +1,22 @@
 # llm Checklist
 
+## LLM-01 (2026-11-18)
+
+- [x] Reject incomplete or unavailable completion before successful publication.
+  Evidence: `/tmp/llm-01-fb7f9dc/report.txt`; external provider/QA 5/5 and file
+  summary 2/2 red-to-green; new 13/13; scoped regression 82/82, zero skips.
+  Two immutable books: 24 bounded deterministic SDK flows, preserved hashes.
+  Status: Locally verified; cumulative exact-SHA external review pending.
+  Timestamp: 2026-11-19
+
+
+- [x] LLM-02: Reject retired nano configuration before external dispatch.
+  Evidence: `/tmp/llm-fix-fb7f9dc/report.txt`; official status verified 2026-11-19;
+  external 2 failures -> 4/4, new admission 15 failed assertions -> 7/7.
+  Canonical/enum/alias, real DI, other models, history/offline mapping preserved.
+  Status: Locally verified; cumulative 105/105, zero skips; external review pending.
+  Timestamp: 2026-11-19
+
 ## Offline Preflight Follow-up (2026-10-24)
 
 Shared WAIT track: 5/5 implemented and accepted (100%); backend 4/4, UI 1/1.

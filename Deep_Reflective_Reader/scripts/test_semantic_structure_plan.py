@@ -147,6 +147,11 @@ class SemanticTests(unittest.TestCase):
         provider.effective_output_budget = 3276
         provider.llm = Mock()
         provider.llm.complete.return_value.text = "accepted"
+        provider.llm.complete.return_value.raw = {
+            "status": "completed",
+            "output": [{"type": "message", "status": "completed",
+                        "content": [{"type": "output_text", "text": "accepted"}]}],
+        }
         wrapper = SemanticPlanProvider(provider)
         self.assertEqual(enforce_prompt_budget("text", wrapper)["output_reserve"], 32768)
         self.assertEqual(wrapper.complete_text("text"), "accepted")
