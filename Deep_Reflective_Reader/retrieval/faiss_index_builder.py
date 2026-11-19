@@ -65,6 +65,7 @@ Args:
             target_max_context_tokens=target_max_context_tokens,
             input_budget_utilization_ratio=input_budget_utilization_ratio,
             context_budget_utilization_ratio=context_budget_utilization_ratio,
+            declared_output_tokens=getattr(self.llm_provider, "get_default_output_budget", lambda: None)(),
         )
         print(
             "TokenBudget#builder:",

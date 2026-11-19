@@ -1,5 +1,55 @@
 # Deep Reflective Reader Progress
 
+## RETRIEVAL-01–03 cumulative correction (2026-11-19)
+
+All three units locally verified. Shared index admission checks FAISS IDs, JSON
+keys and record IDs; search no longer prints returned source; cold/warm budgets
+consume the ordinary provider allowance. Final QA prompt admission uses a local
+precise count when available (conservative byte bound for unavailable counters;
+legacy no-counter providers retain heuristic limitations), rejecting overflow
+before answer dispatch/session advancement. No smaller model output or retry.
+Original external ID 5/5, privacy 2/2 plus 9 controls, budget 3/3 now pass.
+Final 15-suite regression: 188/188, zero skips (real PostgreSQL, offline tokenizer).
+Unit 3 immutable-book copies: 8 bounded cold/warm QA flows; hashes preserved.
+Prior unit evidence is retained separately, not added as unique-case totals.
+Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`, plus unit1/unit2 reports.
+The 3200 combined cap with Responses output floor 3276 now reports capacity failure;
+configured caps/provider output were not silently changed. No live model, semantic
+full-book/OCR, full server/TCP, UI or Docker acceptance. Next: local cumulative
+review commit and external exact-SHA approval; no deployment/push/next module.
+Counts: retrieval 9/0, llm 8/2, config 13/9, context 15/0, app 66/11, scripts 99/2.
+Config detail's stale 11 was reconciled with its pre-existing 12-item checklist
+before this one added item; no historical completion or unresolved status invented.
+
+
+## RETRIEVAL-02 unit checkpoint (2026-11-19)
+
+Removed only the source-bearing search print; full hit/source/context/prompt data,
+ranking and dispatch counts remain intact. External privacy 4 failed subassertions
+-> 2/2 methods; 9 original search controls pass. New formal 13/13; scoped regression
+74/74, zero skips (13 privacy, 24 ID integrity file/real PostgreSQL, 9 capacity,
+15 question output, 13 SDK logging). Groups overlap and are not unique-case totals.
+Two full immutable-book copies retain hashes; 8 bounded direct/ASGI QA sample
+flows preserve data while excluding source/query markers from stdout/stderr/file.
+Evidence: `/tmp/retrieval-unit2-51813cd/report.txt`. No live model/semantic QA,
+full-server/TCP/UI/Docker acceptance. Counts: retrieval 8/1; scripts 98/2.
+Locally verified only. RETRIEVAL-03 awaits developer confirmation; cumulative
+commit/external review still pending, no deployment/push/next module.
+
+
+## RETRIEVAL-01 unit checkpoint (2026-11-19)
+
+Shared store admission now checks unique physical FAISS IDs, canonical JSON keys
+and integer record node_id before constructing the runtime map. Active, pending
+previous and staged candidate loads share the gate. No read-time repair; invalid
+candidate leaves the old trio intact. Non-contiguous IDs remain valid.
+External 4 failed subassertions -> 5/5 methods; new file/SQL 24/24; selected cumulative
+78/78 zero skips. Two full immutable backups pass warm zero-generation, corrupt
+read-only rejection and one explicit recovery build. `/tmp/retrieval-unit1-51813cd/report.txt`.
+Locally verified, not external approval. RETRIEVAL-02/03 await subsequent unit
+confirmation; no review commit until all units complete, no deployment/push.
+Counts: retrieval 7/2; scripts 97/2 (templates excluded, existing gates preserved).
+
 ## LLM-01/02 cumulative correction (2026-11-19)
 
 Shared completion admission rejects interrupted/refused/unavailable text before
@@ -928,10 +978,10 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 65 | 11 | SESSION-01 QA support locally verified; unrelated unresolved items retained |
+| `app/` | package | `app/module-checklist.md` | 66 | 11 | RETRIEVAL-03 support locally verified; existing gates retained |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
-| `config/` | package | `config/module-checklist.md` | 12 | 9 | APP-02 raw-source support locally verified; app external review pending; unrelated checklist items retained (2026-11-14 recount excludes templates) |
-| `context/` | package | `context/module-checklist.md` | 14 | 0 | CONTEXT-01–03 locally verified; external context review pending |
+| `config/` | package | `config/module-checklist.md` | 13 | 9 | RETRIEVAL-03 support locally verified; existing gates retained |
+| `context/` | package | `context/module-checklist.md` | 15 | 0 | RETRIEVAL-03 support locally verified; existing gates retained |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
 | `db/` | package + design module | `db/module-checklist.md` | 70 | 4 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
@@ -940,12 +990,12 @@ It is used to:
 | `evaluated_answer/` | package | `evaluated_answer/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `language/` | package | `language/module-checklist.md` | 11 | 0 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `learning/` | application package | `learning/module-checklist.md` | 6 | 0 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
-| `llm/` | package | `llm/module-checklist.md` | 7 | 2 | LLM-01/02 locally verified; external review pending |
+| `llm/` | package | `llm/module-checklist.md` | 8 | 2 | RETRIEVAL-03 support locally verified; existing gates retained |
 | `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
-| `retrieval/` | package | `retrieval/module-checklist.md` | 6 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
-| `scripts/` | package | `scripts/module-checklist.md` | 96 | 2 | LLM-01/02 regression verified; existing gates retained |
+| `retrieval/` | package | `retrieval/module-checklist.md` | 9 | 0 | RETRIEVAL-01–03 locally verified; external review pending |
+| `scripts/` | package | `scripts/module-checklist.md` | 99 | 2 | RETRIEVAL-03 support locally verified; existing gates retained |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 4 | 0 | SESSION-01 locally verified; exact-SHA external review pending |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -1021,8 +1071,8 @@ Evidence and dependencies are in owner designs/checklists.
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `SESSION-01 QA support locally verified; unrelated unresolved items retained`
-- Completed item count: `65` (direct owner recount, 2026-11-18).
+- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
+- Completed item count: `66` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `11`
 - Unchecked item count: `11` (historical unresolved items retained).
 - Prior APP-01–06 evidence: `/tmp/app06-fix-eaae891/report.txt`; mapping 20/20 plus custom rerun 2/2,
@@ -1048,6 +1098,10 @@ Evidence and dependencies are in owner designs/checklists.
   Explicit page evidence reuses source-validated persisted spans without extraction/LLM.
 
 #### Completed Work
+
+- [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
+  Timestamp: 2026-11-19
 
 - [x] SESSION-01: Generation-bound ordinary QA state completion and scoped regression.
   Evidence: `/tmp/session-01-3dab1fa/report.txt`; 70/70 regression, external races 5/5,
@@ -1107,11 +1161,15 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `config/module-checklist.md`
 - Detailed Design: `config/module-detailed-design.md`
-- Status: `PROFILE publication support locally verified; external review pending; unrelated checklist items retained`
-- Completed item count: `11`
+- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
+- Completed item count: `13` (direct owner recount, 2026-11-19).
 - Unresolved checklist count: `9` (templates excluded)
 
 #### Completed Work
+
+- [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
+  Timestamp: 2026-11-19
 
 - [x] Defines grouped runtime policy dataclasses in `AppDIConfig` and related config types.
 - [x] Assembles core dependencies through `ApplicationLookupContainer`.
@@ -1119,7 +1177,7 @@ No unresolved confirmation items identified in module checklist.
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+Nine existing unresolved checklist items remain; no status changed by this integration.
 
 #### Future Direction Preparation
 
@@ -1133,11 +1191,15 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `context/module-checklist.md`
 - Detailed Design: `context/module-detailed-design.md`
-- Status: `CONTEXT-01–03 locally verified; external context review pending`
-- Completed item count: `14` (direct owner recount, 2026-11-18; eight pre-existing interaction-context items included).
+- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
+- Completed item count: `15` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `0`
 
 #### Completed Work
+
+- [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
+  Timestamp: 2026-11-19
 
 - [x] CONTEXT-02/03: Project evidence IDs and artifact guidance from actual retained content.
   Evidence: `scripts/test_context_retained_provenance.py`; `/tmp/context-unit2-9234471/report.txt`. Local verification only.
@@ -1632,11 +1694,15 @@ No unresolved implementation items; external language review remains pending.
 
 - Checklist: `llm/module-checklist.md`
 - Detailed Design: `llm/module-detailed-design.md`
-- Status: `LLM-01/02 locally verified; external review pending`
-- Completed item count: `7` (direct recount, 2026-11-19).
+- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
+- Completed item count: `8` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `2`
 
 #### Completed Work
+
+- [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
+  Timestamp: 2026-11-19
 
 - [x] LLM-02: Explicit retired-model refusal with preserved historical metadata.
   Evidence: `/tmp/llm-fix-fb7f9dc/report.txt`; new 7/7, external 4/4, cumulative
@@ -1747,11 +1813,23 @@ Four existing rich-content future tasks remain unchecked; QUESTION-01–08 await
 
 - Checklist: `retrieval/module-checklist.md`
 - Detailed Design: `retrieval/module-detailed-design.md`
-- Status: `Language audit support locally verified; exact-SHA external language review pending`
-- Completed item count: `6` (direct owner recount, 2026-11-17).
+- Status: `RETRIEVAL-01–03 locally verified; external review pending`
+- Completed item count: `9` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `0`
 
 #### Completed Work
+
+- [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-02: Source-free search diagnostics with full data handoff.
+  Evidence: `/tmp/retrieval-unit2-51813cd/report.txt`; 74/74 scoped regression, zero skips; external red/green and 8 bounded immutable-book flows; external review pending.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-01: Unique index/record identities at runtime and publication gates.
+  Evidence: `/tmp/retrieval-unit1-51813cd/report.txt`; 78/78, real file/SQL and immutable-backup controls; external review pending.
+  Timestamp: 2026-11-19
 
 - [x] Parses raw text into node sequence with positional metadata through `NodeProvider`.
 - [x] Builds FAISS bundles from parsed nodes with capability-aware token budgets.
@@ -1759,18 +1837,30 @@ Four existing rich-content future tasks remain unchecked; QUESTION-01–08 await
 
 #### Needs Confirmation
 
-No unresolved confirmation items identified in module checklist.
+All audit items locally verified; final cumulative review required.
 
 ### `scripts/`
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `LLM-01/02 regression verified; existing gates retained`
-- Completed item count: `96` (direct recount, 2026-11-19).
+- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
+- Completed item count: `99` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `2`
 - Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-02: Source-free search diagnostics with full data handoff.
+  Evidence: `/tmp/retrieval-unit2-51813cd/report.txt`; 74/74 scoped regression, zero skips; external red/green and 8 bounded immutable-book flows; external review pending.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-01: Unique index/record identities at runtime and publication gates.
+  Evidence: `/tmp/retrieval-unit1-51813cd/report.txt`; 78/78, real file/SQL and immutable-backup controls; external review pending.
+  Timestamp: 2026-11-19
 
 - [x] LLM-02: Explicit retired-model refusal with preserved historical metadata.
   Evidence: `/tmp/llm-fix-fb7f9dc/report.txt`; new 7/7, external 4/4, cumulative

@@ -1,5 +1,34 @@
 # config Detailed Design
 
+## RETRIEVAL-03 ordinary output reserve (2026-11-19, locally verified)
+
+resolve_effective_token_budgets accepts an optional declared output allowance
+separately from the configured output target. Preserve target diagnostics and
+existing configured input/context caps and ratios. A declared allowance must be a
+positive integer and cannot exceed a known model output maximum; reject invalid
+values with a fixed safe error instead of clamping below actual dispatch. Absent
+allowance retains legacy target/clamp fallback. combined_token_limit still adapts
+to QA's downstream single output deduction; no new configuration or model policy.
+
+Acceptance: near-limit red/green and cold/warm consistency, no automatic retry or
+smaller provider allowance; bounded real-input copies and scoped regressions.
+Cumulative external review required before deployment/push.
+
+
+Local evidence: `/tmp/retrieval-unit3-51813cd/report.txt`. Original near-limit
+reproduction 3 methods /1 failure -> 3/3 unchanged; configured reserve 500 -> 1638,
+actual dispatched output remains 1638. Expanded Responses boundary exposed a
+newline-count underestimate; final prompt admission now rejects that candidate
+before answer dispatch/session update. New suite 10/10, cumulative 15 suites
+188/188 executions, zero skips, including real PostgreSQL and verified offline
+encoding. Two full immutable-book copies retain hashes; 8 bounded cold/warm QA
+flows pass for both endpoints. Groups overlap earlier evidence, not unique cases.
+3200 combined tokens cannot accommodate the 3276 Responses default output allowance;
+this setting now fails safely, without changing configured caps or provider output.
+No live models, semantic/full-book QA, full server/TCP, UI or deployment acceptance.
+All three retrieval units locally verified; cumulative exact-SHA external review
+pending. No deployment, push or next-module work before that review.
+
 ## APP-02 raw source resolution support (2026-11-14, locally verified)
 
 StorageNamespaceHelper owns a pure raw-source selection port: validate the logical

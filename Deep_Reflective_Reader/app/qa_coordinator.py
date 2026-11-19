@@ -2,6 +2,7 @@ from dataclasses import dataclass, replace
 
 from config.app_DI_config import AppDIConfig
 from config.container import ApplicationLookupContainer
+from context.token_budget_manager import TokenBudgetManager
 from document_preparation.prepared_document_result import PreparedDocumentResult
 from language.language_code import LanguageCode
 from language.language_profile_registry import LanguageProfileRegistry
@@ -224,6 +225,12 @@ class QACoordinator:
                 profile=bundle.profile,
                 answer_mode=context_result.answer_mode,
                 prompt_mode=context_result.prompt_mode,
+            )
+            TokenBudgetManager.require_prompt_capacity(
+                prompt,
+                max_prompt_tokens=bundle.max_prompt_tokens,
+                reserved_output_tokens=bundle.reserved_output_tokens,
+                token_counter=getattr(self.llm_provider, "count_input_tokens", None),
             )
             answer_text = self.llm_provider.complete_text(prompt)
 

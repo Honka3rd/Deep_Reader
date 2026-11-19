@@ -1,5 +1,14 @@
 # config Checklist
 
+## RETRIEVAL-03 support (2026-11-19)
+
+- [x] Align ordinary output allowance and retrieval budgeting (config ownership).
+  Acceptance: Public provider contract, target-preserving resolver, cold/warm endpoint and capacity regressions in the affected owner.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; new 10/10, cumulative 188/188 zero skips; original external red/green and bounded immutable-book controls.
+  Status: Locally verified supporting integration; external review pending.
+  Timestamp: 2026-11-19
+
+
 ## App source resolution support (2026-11-14)
 
 - [x] APP-02 support: share exact qualified and unambiguous legacy raw-source resolution with boundary protection and no read-time mutation.

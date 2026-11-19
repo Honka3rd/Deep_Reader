@@ -150,7 +150,6 @@ Returns:
                 )
             )
 
-        print("FaissIndexBundle#search:", results)
         return results
 
     def _record_from_faiss_id(self, faiss_id: int) -> NodeRecord | None:

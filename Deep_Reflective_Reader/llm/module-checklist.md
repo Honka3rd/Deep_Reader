@@ -1,5 +1,14 @@
 # llm Checklist
 
+## RETRIEVAL-03 support (2026-11-19)
+
+- [x] Align ordinary output allowance and retrieval budgeting (llm ownership).
+  Acceptance: Public provider contract, target-preserving resolver, cold/warm endpoint and capacity regressions in the affected owner.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; new 10/10, cumulative 188/188 zero skips; original external red/green and bounded immutable-book controls.
+  Status: Locally verified supporting integration; external review pending.
+  Timestamp: 2026-11-19
+
+
 ## LLM-01 (2026-11-18)
 
 - [x] Reject incomplete or unavailable completion before successful publication.

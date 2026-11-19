@@ -1,5 +1,34 @@
 # app Detailed Design
 
+## RETRIEVAL-03 final prompt admission (2026-11-19, locally verified)
+
+After assembling the exact QA answer prompt and before answer dispatch/session
+update, validate the combined prompt/output allowance. Context owns the safe
+ContextCapacityError and capacity helper; app invokes it with the bundle's limits
+and the provider's existing public local token counter. Use an available precise
+count; if that counter is unavailable, use a conservative UTF-8 byte bound.
+Legacy providers with no counting port retain the existing heuristic limitation. Invalid counts
+fail closed. Output is counted once. No source truncation, extra model call, retry,
+provider policy change, persistence or session update on failure. This supplements
+assembly estimates for near-capacity prompts (e.g. newline-heavy CJK) without
+changing local/global/full-text selection. Tests accept explicit capacity refusal
+with zero answer calls, retaining normal positive and session/diagnostic controls.
+
+
+Local evidence: `/tmp/retrieval-unit3-51813cd/report.txt`. Original near-limit
+reproduction 3 methods /1 failure -> 3/3 unchanged; configured reserve 500 -> 1638,
+actual dispatched output remains 1638. Expanded Responses boundary exposed a
+newline-count underestimate; final prompt admission now rejects that candidate
+before answer dispatch/session update. New suite 10/10, cumulative 15 suites
+188/188 executions, zero skips, including real PostgreSQL and verified offline
+encoding. Two full immutable-book copies retain hashes; 8 bounded cold/warm QA
+flows pass for both endpoints. Groups overlap earlier evidence, not unique cases.
+3200 combined tokens cannot accommodate the 3276 Responses default output allowance;
+this setting now fails safely, without changing configured caps or provider output.
+No live models, semantic/full-book QA, full server/TCP, UI or deployment acceptance.
+All three retrieval units locally verified; cumulative exact-SHA external review
+pending. No deployment, push or next-module work before that review.
+
 ## SESSION-01 ordinary QA completion (2026-11-18, locally verified)
 
 `QACoordinator.ask` retains the detached session snapshot with immutable identity

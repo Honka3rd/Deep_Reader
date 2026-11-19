@@ -1,5 +1,14 @@
 # context Checklist
 
+## RETRIEVAL-03 integration (2026-11-19)
+
+- [x] Validate assembled QA prompt before answer dispatch (context boundary).
+  Acceptance: Exact local count when available, safe capacity refusal without answer/session effects, unchanged positive routes and no retries.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; final prompt capacity refusal preserves session and zero answer dispatch; cumulative 188/188 zero skips.
+  Status: Locally verified supporting integration; external review pending.
+  Timestamp: 2026-11-19
+
+
 ## Context auxiliary-interface audit unit (2026-11-18)
 
 - [x] CONTEXT-02: Derive compact evidence IDs from actual retained entries.

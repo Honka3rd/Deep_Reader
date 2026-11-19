@@ -1,5 +1,30 @@
 # scripts Checklist
 
+## RETRIEVAL-03 support (2026-11-19)
+
+- [x] Align ordinary output allowance and retrieval budgeting (scripts ownership).
+  Acceptance: Public provider contract, target-preserving resolver, cold/warm endpoint and capacity regressions in the affected owner.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; new 10/10, cumulative 188/188 zero skips; original external red/green and bounded immutable-book controls.
+  Status: Locally verified supporting integration; external review pending.
+  Timestamp: 2026-11-19
+
+
+## Retrieval audit unit 2 (2026-11-19)
+
+- [x] Verify source-free direct/QA search diagnostics with full returned hits.
+  Acceptance: INFO/ERROR stdout/stderr/file captures, marker absence, content/prompt/call-count preservation, no-hit/ranking/neighbor/dedupe controls.
+  Evidence: `/tmp/retrieval-unit2-51813cd/report.txt`; 13/13 new, scoped 74/74 zero skips, external red/green and 8 immutable-book sample flows.
+  Status: Unit 2 locally verified; no scripts independent audit claim.
+  Timestamp: 2026-11-19
+
+## Retrieval audit unit 1 (2026-11-19)
+
+- [x] Exercise ID integrity through actual FAISS read, candidate publication and runtime readiness.
+  Acceptance: Original external red/green and new malformed/non-contiguous/journal/recovery controls; preserve existing PREP assertions and isolated data.
+  Evidence: `/tmp/retrieval-unit1-51813cd/report.txt`; new 24/24 file/SQL, cumulative 78/78 zero skips; external 5/5 and full immutable-book controls.
+  Status: Unit 1 locally verified; scripts independent audit remains exempt.
+  Timestamp: 2026-11-19
+
 ## LLM-02 (2026-11-19)
 
 - [x] Verify retired nano admission and preserved model/history contracts.

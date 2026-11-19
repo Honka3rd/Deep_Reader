@@ -1,4 +1,5 @@
 import re
+from collections.abc import Callable
 from typing import List
 
 from evaluated_answer.answer_mode import AnswerMode
@@ -23,6 +24,23 @@ class TokenBudgetManager:
     def __init__(self, prompt_assembler: PromptAssembler):
         """Initialize manager with prompt assembler dependency."""
         self.prompt_assembler = prompt_assembler
+
+    @classmethod
+    def require_prompt_capacity(
+        cls, prompt: str, *, max_prompt_tokens: int, reserved_output_tokens: int,
+        token_counter: Callable[[str], int | None] | None = None,
+    ) -> None:
+        """Admit the assembled prompt; a local counter never dispatches a model."""
+        counted = token_counter(prompt) if token_counter is not None else None
+        if counted is None:
+            # A provider declaring local counting may lack its asset. Keep that
+            # path conservative instead of silently trusting the assembly estimate.
+            counted = (len(prompt.encode("utf-8")) if token_counter is not None
+                       else cls.estimate_tokens(prompt))
+        if (type(counted) is not int or counted < 0
+                or (prompt and counted == 0)
+                or counted + reserved_output_tokens > max_prompt_tokens):
+            raise ContextCapacityError()
 
     @staticmethod
     def estimate_tokens(text: str) -> int:

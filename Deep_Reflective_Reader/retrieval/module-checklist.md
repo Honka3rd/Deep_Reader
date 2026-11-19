@@ -1,5 +1,25 @@
 # retrieval Checklist
 
+## Retrieval audit correction (2026-11-19)
+
+- [x] RETRIEVAL-01: Validate unique FAISS/map/record identities at all load/publication gates.
+  Acceptance: Red/green real store/pipeline, non-contiguous positive controls, previous snapshot and candidate rejection, old trio preservation; no read-time rebuild.
+  Evidence: `/tmp/retrieval-unit1-51813cd/report.txt`; external 4 failures -> 5/5; new file/SQL 24/24; cumulative 78/78, zero skips; immutable-book recovery controls.
+  Status: Locally verified; cumulative external review pending.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-02: Remove source-bearing search diagnostics while preserving full hits.
+  Acceptance: Direct/QA INFO/ERROR sink privacy and unchanged ranking/content/call counts.
+  Evidence: `/tmp/retrieval-unit2-51813cd/report.txt`; external 4 failures -> 2/2 plus 9 controls; new 13/13, scoped 74/74 zero skips, 8 immutable-book sample flows. INFO/ERROR/DEBUG sinks preserve privacy and complete returned data.
+  Status: Unit 2 locally verified; cumulative external review pending.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-03: Use provider dispatch allowance for cold/warm bundle output reserve.
+  Acceptance: Near-limit red/green, default/floor controls, both endpoints, capacity and completion regressions.
+  Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; original 3/3 red-to-green, new 10/10, cumulative 188/188 zero skips; both endpoints, cold/warm, precise capacity refusal, 8 immutable-book sample flows.
+  Status: All units locally verified; cumulative external review pending.
+  Timestamp: 2026-11-19
+
 ## Language audit unit 1 (2026-11-17)
 
 - [x] LANG-01/02: Reject unknown detector authority and avoid content-bearing diagnostics.
@@ -62,7 +82,7 @@ It is used to:
 
 ## Needs Confirmation
 
-No unresolved confirmation items identified in this pass.
+No unimplemented retrieval audit items; cumulative external review pending.
 
 ## Future Task Policy
 

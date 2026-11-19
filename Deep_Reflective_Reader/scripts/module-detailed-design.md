@@ -1,5 +1,95 @@
 # scripts Detailed Design
 
+## RETRIEVAL-03 ordinary output reserve (2026-11-19, locally verified)
+
+Validate RETRIEVAL-03 with real builder/store/FAISS and actual QA orchestration,
+controlled adapter output and offline tokenizer. Cover near-capacity input, small
+configured caps, target at/above floor, both endpoints, cold and validated persisted
+reload, no warm embedding/write, invalid declarations and legacy fallback. Preserve
+prior completion/privacy/source/publication tests and original external negatives.
+
+Acceptance: near-limit red/green and cold/warm consistency, no automatic retry or
+smaller provider allowance; bounded real-input copies and scoped regressions.
+Cumulative external review required before deployment/push.
+
+
+Local evidence: `/tmp/retrieval-unit3-51813cd/report.txt`. Original near-limit
+reproduction 3 methods /1 failure -> 3/3 unchanged; configured reserve 500 -> 1638,
+actual dispatched output remains 1638. Expanded Responses boundary exposed a
+newline-count underestimate; final prompt admission now rejects that candidate
+before answer dispatch/session update. New suite 10/10, cumulative 15 suites
+188/188 executions, zero skips, including real PostgreSQL and verified offline
+encoding. Two full immutable-book copies retain hashes; 8 bounded cold/warm QA
+flows pass for both endpoints. Groups overlap earlier evidence, not unique cases.
+3200 combined tokens cannot accommodate the 3276 Responses default output allowance;
+this setting now fails safely, without changing configured caps or provider output.
+No live models, semantic/full-book QA, full server/TCP, UI or deployment acceptance.
+All three retrieval units locally verified; cumulative exact-SHA external review
+pending. No deployment, push or next-module work before that review.
+
+## RETRIEVAL-02 search diagnostic privacy (2026-11-19, locally verified)
+
+The unconditional SearchMetadata repr dump is removed from FaissIndexBundle.search.
+Search remains a data-returning operation: full text/source/chapter/position,
+ranking, scores, top_k/deduplication and query embedding counts are unchanged.
+Do not redact returned hits or alter context to suppress logs. Existing bounded
+context/stage diagnostics remain; no new per-hit/content diagnostic is required.
+Regression captures stdout, stderr and actual configure_logging file sinks at
+INFO, ERROR and DEBUG for direct search and the production ask function in isolated ASGI.
+Assert synthetic body/query/source markers absent from diagnostics while context
+and prompt retain full hits, answer remains unchanged, embedding/answer calls stay
+fixed. Retain empty results, sparse-ID ranking, neighbor and dedupe controls.
+Use temporary sinks, restore logging/environment, and no network/paid provider.
+This is retrieval-owned output removal, not a global logger or HTTP error refactor.
+At the unit 2 checkpoint, RETRIEVAL-01 remained intact and RETRIEVAL-03 awaited confirmation.
+
+Local evidence: `/tmp/retrieval-unit2-51813cd/report.txt`. Production change is
+removal of the search-result print only. External privacy 2 methods /4 failed
+subassertions -> 2/2; original 9 search controls remain green. New formal suite
+13 methods /10 failed subassertions -> 13/13, covering INFO/ERROR/DEBUG, all three
+sinks and unchanged body/query/source handoff. Scoped regression 74/74, zero skips:
+privacy 13, ID integrity file/real PostgreSQL 24, context capacity 9, question output
+15 and embedding logging 13. Counts overlap external and focused groups.
+Two full hash-verified immutable-book copies supply bounded English/Chinese samples
+for 8 direct/ASGI QA flows. Full returned/context/prompt text preserved; diagnostic
+sinks exclude sample/query/source markers. Controlled providers/vectors; no live
+model, semantic QA, full server lifespan/TCP, UI or Docker acceptance.
+Unit 2 checkpoint: RETRIEVAL-03 awaited developer confirmation. No commit,
+deployment, push or next-module work; latest cumulative SHA needs external review.
+
+## RETRIEVAL-01 index/record identity (2026-11-19, locally verified)
+
+One retrieval-owned admission boundary validates the persisted FAISS ID map,
+JSON record keys and each record's integer node_id as the same unique set, with
+key/node_id equality per row. Non-contiguous IDs remain valid; count/dimension,
+exact canonical fingerprint and slice checks remain independent requirements.
+Reject duplicate JSON keys and integer-key aliases before dictionary construction
+can hide collisions. Unsupported ID representation fails closed; no inferred ID
+renumbering or read-time repair. Validated active reads, journal previous snapshots
+and staged candidate reload use this same gate. Invalid runtime data reports
+explicit_prepare readiness; explicit Prepare may rebuild. Invalid candidates must
+leave active index/records/meta bytes and journal state unchanged.
+
+Regression: real FAISS/store/pipeline, shifted keys, swapped rows, duplicate FAISS
+IDs/record IDs/JSON keys, alias keys, noninteger IDs, valid non-contiguous IDs,
+interrupted publication previous snapshots, explicit recovery and zero warm work.
+Retain source/fingerprint/coordinate guards, real publication rollback tests and
+old trio hashes. Controlled embeddings are protocol evidence, not semantic quality.
+At the unit 1 checkpoint, logging and output budgeting remained separate later units.
+No deployment/push/next module; final cumulative SHA requires external review.
+
+Local evidence: `/tmp/retrieval-unit1-51813cd/report.txt`. Original external
+5 methods / 4 failed subassertions -> 5/5; new file matrix 12 methods /17 failed
+subassertions -> file/real PostgreSQL 24/24. Cumulative selected regression 78/78,
+zero skips, including PREP runtime 24, exact identity 10, context capacity 9 and
+completion admission 11. Groups overlap; external flock control is separate.
+Two full immutable-book copies (652001/147401 canonical chars; 700/147 chunks)
+preserve valid warm zero-generation, reject swapped records without writes, then
+recover with exactly one explicit rebuild. Hashes preserved; deterministic vectors
+are not semantic QA. Unit 1 locally verified; units 2/3 and external review pending.
+No commit/deploy/push or next-module work at this unit gate.
+
+
 ## LLM-02 dispatch availability (2026-11-19, locally verified)
 
 Official OpenAI documentation checked on 2026-11-19 lists gpt-4.1-nano and its

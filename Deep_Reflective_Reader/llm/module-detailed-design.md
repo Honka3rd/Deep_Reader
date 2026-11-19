@@ -1,5 +1,33 @@
 # llm Detailed Design
 
+## RETRIEVAL-03 ordinary output reserve (2026-11-19, locally verified)
+
+LLMProvider exposes get_default_output_budget() -> int | None as a read-only
+ordinary-completion contract. None is the legacy provider's undeclared allowance.
+OpenAILLMProvider returns the same effective allowance used by complete_text;
+per-call schema/once overrides never mutate it. Preserve the model-specific floor,
+clamp, endpoint, completion admission, timeout and single-attempt close behavior.
+No private provider implementation access or newly duplicated floor policy.
+
+Acceptance: near-limit red/green and cold/warm consistency, no automatic retry or
+smaller provider allowance; bounded real-input copies and scoped regressions.
+Cumulative external review required before deployment/push.
+
+
+Local evidence: `/tmp/retrieval-unit3-51813cd/report.txt`. Original near-limit
+reproduction 3 methods /1 failure -> 3/3 unchanged; configured reserve 500 -> 1638,
+actual dispatched output remains 1638. Expanded Responses boundary exposed a
+newline-count underestimate; final prompt admission now rejects that candidate
+before answer dispatch/session update. New suite 10/10, cumulative 15 suites
+188/188 executions, zero skips, including real PostgreSQL and verified offline
+encoding. Two full immutable-book copies retain hashes; 8 bounded cold/warm QA
+flows pass for both endpoints. Groups overlap earlier evidence, not unique cases.
+3200 combined tokens cannot accommodate the 3276 Responses default output allowance;
+this setting now fails safely, without changing configured caps or provider output.
+No live models, semantic/full-book QA, full server/TCP, UI or deployment acceptance.
+All three retrieval units locally verified; cumulative exact-SHA external review
+pending. No deployment, push or next-module work before that review.
+
 ## LLM-02 dispatch availability (2026-11-19, locally verified)
 
 Official OpenAI documentation checked on 2026-11-19 lists gpt-4.1-nano and its

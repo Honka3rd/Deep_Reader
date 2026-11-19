@@ -60,6 +60,7 @@ Args:
             target_max_context_tokens=target_max_context_tokens,
             input_budget_utilization_ratio=input_budget_utilization_ratio,
             context_budget_utilization_ratio=context_budget_utilization_ratio,
+            declared_output_tokens=getattr(self.llm_provider, "get_default_output_budget", lambda: None)(),
         )
         print(
             "TokenBudget#store:",
@@ -156,12 +157,49 @@ Returns:
         from retrieval.index_publication import recover
         recover(config)
 
+    @staticmethod
+    def _unique_json_object(pairs):
+        """Do not let JSON decoding silently collapse duplicate record keys."""
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("index_not_ready:explicit_prepare_required:index_records_mismatch")
+            result[key] = value
+        return result
+
+    @staticmethod
+    def _validate_record_ids(index, records):
+        """Validate physical-to-record identity before constructing the ID map.
+
+        The builder persists IndexIDMap IDs, not implicit row ordinals. These
+        may be non-contiguous, but each physical ID must own exactly one row.
+        """
+        error = "index_not_ready:explicit_prepare_required:index_records_mismatch"
+        if not isinstance(index, faiss.IndexIDMap) or not isinstance(records, dict):
+            raise ValueError(error)
+        physical_ids = faiss.vector_to_array(index.id_map).tolist()
+        if len(physical_ids) != index.ntotal or len(set(physical_ids)) != len(physical_ids):
+            raise ValueError(error)
+        record_ids = set()
+        for key, record in records.items():
+            if not isinstance(record, dict) or type(record.get("node_id")) is not int:
+                raise ValueError(error)
+            node_id = record["node_id"]
+            # Canonical decimal keys prevent aliases such as '01' or '+1'
+            # from collapsing when converted to the runtime integer map.
+            if key != str(node_id) or node_id in record_ids:
+                raise ValueError(error)
+            record_ids.add(node_id)
+        if set(physical_ids) != record_ids:
+            raise ValueError(error)
+
     def _load_files(self, config):
         loaded_index = faiss.read_index(config.get_raw_index_path())
 
         with open(config.get_raw_records_path(), "r", encoding="utf-8") as f:
-            payload: dict = json.load(f)
+            payload: dict = json.load(f, object_pairs_hook=self._unique_json_object)
 
+        self._validate_record_ids(loaded_index, payload["records"])
         id_to_record: Dict[int, NodeRecord] = {
             int(node_id): NodeRecord.from_persisted_dict(record_dict)
             for node_id, record_dict in payload["records"].items()

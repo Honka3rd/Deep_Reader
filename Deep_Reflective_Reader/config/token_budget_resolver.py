@@ -30,6 +30,8 @@ def resolve_effective_token_budgets(
     target_max_context_tokens: int,
     input_budget_utilization_ratio: float = 0.2,
     context_budget_utilization_ratio: float = 0.9,
+    *,
+    declared_output_tokens: int | None = None,
 ) -> EffectiveTokenBudgets:
     """Compute effective budgets using model-capability ratio policy with target fallback."""
     if target_max_input_tokens <= 0:
@@ -43,11 +45,22 @@ def resolve_effective_token_budgets(
     if not (0 < context_budget_utilization_ratio <= 1):
         raise ValueError("context_budget_utilization_ratio must be in (0, 1]")
 
+    if declared_output_tokens is not None and (
+        type(declared_output_tokens) is not int or declared_output_tokens <= 0
+        or (capabilities is not None and declared_output_tokens > capabilities.max_output_tokens)
+    ):
+        raise ValueError("invalid_provider_output_budget")
+    output_budget = target_max_output_tokens
+    if declared_output_tokens is not None:
+        output_budget = declared_output_tokens
+    elif capabilities is not None:
+        output_budget = min(output_budget, capabilities.max_output_tokens)
+
     if capabilities is None:
-        # Fallback path uses app-level target budgets directly.
-        # This keeps a single source of truth in AppDIConfig.
+        # Input/context fall back to configured targets. A provider-declared
+        # output allowance remains authoritative even without capability metadata.
         effective_input_budget = target_max_input_tokens
-        effective_output_budget = target_max_output_tokens
+        effective_output_budget = output_budget
         effective_context_budget = target_max_context_tokens
         fallback_used = True
         capability_model_name = None
@@ -58,11 +71,11 @@ def resolve_effective_token_budgets(
         model_based_input_budget = max(
             1,
             math.floor(capabilities.combined_token_limit(
-                min(target_max_output_tokens, capabilities.max_output_tokens)
+                output_budget
             ) * input_budget_utilization_ratio),
         )
         effective_input_budget = min(target_max_input_tokens, model_based_input_budget)
-        effective_output_budget = min(target_max_output_tokens, capabilities.max_output_tokens)
+        effective_output_budget = output_budget
         model_based_context_budget = max(
             1,
             math.floor(effective_input_budget * context_budget_utilization_ratio),

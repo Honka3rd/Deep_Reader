@@ -14,6 +14,10 @@ def is_transient_provider_error(error: Exception) -> bool:
 class LLMProvider(ABC):
     """Abstract interface for text completion backends."""
 
+    def get_default_output_budget(self) -> int | None:
+        """Ordinary completion allowance; None retains legacy configured budgeting."""
+        return None
+
     def count_input_tokens(self, text: str) -> int | None:
         """Optional local count; None requests conservative budgeting fallback."""
         return None

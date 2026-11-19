@@ -41,6 +41,7 @@ def setup_pipeline(path):
     embedder.get_text_embedding_batch.side_effect = lambda texts: [[1.0, float(len(t))] for t in texts]
     llm = Mock()
     llm.get_model_capabilities.return_value = None
+    llm.get_default_output_budget.return_value = None
     budgets = dict(target_max_input_tokens=4096, target_max_output_tokens=512,
         target_max_context_tokens=2048, input_budget_utilization_ratio=.8,
         context_budget_utilization_ratio=.5)
