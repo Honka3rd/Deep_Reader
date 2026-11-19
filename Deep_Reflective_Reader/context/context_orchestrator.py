@@ -25,6 +25,9 @@ class ContextBuildResult:
     standardized_question: StandardizedQuestion
     answer_mode: AnswerMode
     results: list[SearchMetadata]
+    # Selected combined prompt/output cap, not remaining source-context tokens.
+    # None preserves the bundle fallback for legacy constructed results.
+    max_prompt_tokens: int | None = None
 
 
 class ContextOrchestrator:
@@ -272,6 +275,7 @@ class ContextOrchestrator:
             standardized_question=question,
             answer_mode=answer_mode,
             results=[],
+            max_prompt_tokens=effective_input_budget,
         )
 
     def build(
@@ -340,6 +344,7 @@ class ContextOrchestrator:
                 standardized_question=standardized_question,
                 answer_mode=answer_mode,
                 results=results,
+                max_prompt_tokens=bundle.max_prompt_tokens,
             )
 
         full_text_result = self._maybe_build_full_text_context(
@@ -366,6 +371,7 @@ class ContextOrchestrator:
                 standardized_question=standardized_question,
                 answer_mode=answer_mode,
                 results=results,
+                max_prompt_tokens=full_text_result.max_prompt_tokens,
             )
 
         near_chunk_threshold = self._resolve_near_chunk_threshold(
@@ -428,6 +434,7 @@ class ContextOrchestrator:
                         standardized_question=standardized_question,
                         answer_mode=answer_mode,
                         results=results,
+                        max_prompt_tokens=bundle.max_prompt_tokens,
                     )
 
         best_chunk_index = self._extract_chunk_index(bundle, results[0]) if results else None
@@ -494,4 +501,5 @@ class ContextOrchestrator:
             standardized_question=standardized_question,
             answer_mode=answer_mode,
             results=results,
+            max_prompt_tokens=bundle.max_prompt_tokens,
         )

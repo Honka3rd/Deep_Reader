@@ -183,8 +183,9 @@ class OutputReserveTests(unittest.TestCase):
                     self.assertEqual(case.context.result.mode.value, "retrieval_mode")
                     self.assertLess(len(case.context.result.context_text), 127000)
 
-    def test_default_small_input_cap_both_endpoints(self):
-        # Responses floor exceeds a 3200 combined cap: deliberate capacity failure,
+    def test_explicit_small_input_cap_both_endpoints(self):
+        # An explicit 3200 cap (not the app default) is below the Responses floor:
+        # deliberate capacity failure,
         # not a smaller provider allowance or a dispatched over-budget request.
         from context.token_budget_manager import ContextCapacityError
 

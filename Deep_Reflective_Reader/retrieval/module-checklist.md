@@ -1,23 +1,37 @@
 # retrieval Checklist
 
+## RETRIEVAL-04 default QA correction (2026-11-19)
+
+- [x] RETRIEVAL-04: Verify compatible default QA and preserve explicit inadequate-cap rejection.
+  Acceptance: Real default DI, cold/warm HTTP 200, one answer, successful session; explicit 3200 safe rejection, unchanged trio/warm reuse, bounded source-copy evidence.
+  Evidence: `/tmp/retrieval-unit4-d698ab5/report.txt`; external 3/3 red-to-green, formal 5/5, scoped 193/193 zero skips (real PostgreSQL), four immutable-book default-DI sample flows.
+  Status: Locally verified; RETRIEVAL-04/05 cumulative external review pending.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-05: Validate final dispatch against the selected context mode's effective budget.
+  Acceptance: Legal GLOBAL full-text, local/retrieval caps, actual output reserved once, genuine overflow refusal; actual QA/context controls.
+  Evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`; external 4/4 red-to-green, dedicated 9/9, cumulative 202/202 zero skips, 8 immutable-book GLOBAL flows.
+  Status: Locally verified; cumulative exact-SHA external review pending.
+  Timestamp: 2026-11-19
+
 ## Retrieval audit correction (2026-11-19)
 
 - [x] RETRIEVAL-01: Validate unique FAISS/map/record identities at all load/publication gates.
   Acceptance: Red/green real store/pipeline, non-contiguous positive controls, previous snapshot and candidate rejection, old trio preservation; no read-time rebuild.
   Evidence: `/tmp/retrieval-unit1-51813cd/report.txt`; external 4 failures -> 5/5; new file/SQL 24/24; cumulative 78/78, zero skips; immutable-book recovery controls.
-  Status: Locally verified; cumulative external review pending.
+  Status: Externally verified on d698ab5 for RETRIEVAL-01; RETRIEVAL-04/05 corrections locally verified, cumulative candidate review pending.
   Timestamp: 2026-11-19
 
 - [x] RETRIEVAL-02: Remove source-bearing search diagnostics while preserving full hits.
   Acceptance: Direct/QA INFO/ERROR sink privacy and unchanged ranking/content/call counts.
   Evidence: `/tmp/retrieval-unit2-51813cd/report.txt`; external 4 failures -> 2/2 plus 9 controls; new 13/13, scoped 74/74 zero skips, 8 immutable-book sample flows. INFO/ERROR/DEBUG sinks preserve privacy and complete returned data.
-  Status: Unit 2 locally verified; cumulative external review pending.
+  Status: Externally verified on d698ab5 for RETRIEVAL-02; RETRIEVAL-04/05 corrections locally verified, cumulative candidate review pending.
   Timestamp: 2026-11-19
 
 - [x] RETRIEVAL-03: Use provider dispatch allowance for cold/warm bundle output reserve.
-  Acceptance: Near-limit red/green, default/floor controls, both endpoints, capacity and completion regressions.
+  Acceptance: Near-limit red/green, explicit-small-cap/floor controls, both endpoints, capacity and completion regressions.
   Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; original 3/3 red-to-green, new 10/10, cumulative 188/188 zero skips; both endpoints, cold/warm, precise capacity refusal, 8 immutable-book sample flows.
-  Status: All units locally verified; cumulative external review pending.
+  Status: Core reserve alignment externally verified on d698ab5; RETRIEVAL-04/05 corrections locally verified and await cumulative external review.
   Timestamp: 2026-11-19
 
 ## Language audit unit 1 (2026-11-17)

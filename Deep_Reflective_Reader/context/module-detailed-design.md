@@ -1,10 +1,45 @@
 # context Detailed Design
 
+## RETRIEVAL-05 selected-mode dispatch capacity (2026-11-19, locally verified)
+
+The frozen ContextBuildResult carries max_prompt_tokens: the combined cap actually
+selected during context assembly, not the remaining source allowance. Full-text
+results carry their effective_input_budget; wrapping the result preserves it.
+Local-window/retrieval results carry bundle.max_prompt_tokens, even for a GLOBAL
+query that did not qualify for full text. Legacy constructed results with None
+retain the bundle fallback; no query-text or mutable diagnostic metadata inference.
+
+QA final admission uses that selected cap and the bundle's actual ordinary output
+allowance exactly once, with the existing precise/conservative counting contract.
+Full-text selection retains its model-capability ratio, context ratio and conservative
+maximum-output headroom; this change does not enlarge selected source or alter the
+provider's dispatch allowance. Invalid/over-budget final prompts still fail before
+answer/session update, without retry. No storage format, source or model changes.
+
+Acceptance: actual splitter/FAISS/store cold/warm + context/coordinator/HTTP, long
+legal GLOBAL at different retrieval caps, small global/local, active local window,
+GLOBAL falling back to retrieval, precise overflow including assembly underestimate,
+one-reserve equality boundary and unavailable-counter fallback. Keep prior unit tests and
+bounded immutable-book evidence. External exact-SHA review remains required.
+
+Local evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`. Original external
+GLOBAL runner: 4 methods / 1 failure -> 4/4; new legal-full-text test initially
+fails 4 cold/warm endpoint subassertions, final dedicated suite 9/9. Cumulative
+17 suites / 202 executions pass, zero skips, including real PostgreSQL. Re-run
+external default QA 3/3. Groups overlap and are not unique business cases.
+Two complete immutable-book copies preserve hashes; 8 bounded GLOBAL HTTP flows
+at retrieval caps 3200/10000 choose the same 64000 cap and identical prompt, with
+one answer each. Exact prompt counts3319(en)/5395(zh), actual output1638; ordinary
+small-cap final validation would reject these valid selected-mode requests.
+No live model/embedding, full-book semantics/OCR, full main/TCP, UI or deployment.
+RETRIEVAL-04/05 locally verified; submit cumulative new SHA for external review.
+
 ## RETRIEVAL-03 final prompt admission (2026-11-19, locally verified)
 
 After assembling the exact QA answer prompt and before answer dispatch/session
 update, validate the combined prompt/output allowance. Context owns the safe
-ContextCapacityError and capacity helper; app invokes it with the bundle's limits
+ContextCapacityError and capacity helper; app invokes it with the selected context
+result's combined cap and the bundle's actual output allowance
 and the provider's existing public local token counter. Use an available precise
 count; if that counter is unavailable, use a conservative UTF-8 byte bound.
 Legacy providers with no counting port retain the existing heuristic limitation. Invalid counts
@@ -24,7 +59,8 @@ before answer dispatch/session update. New suite 10/10, cumulative 15 suites
 encoding. Two full immutable-book copies retain hashes; 8 bounded cold/warm QA
 flows pass for both endpoints. Groups overlap earlier evidence, not unique cases.
 3200 combined tokens cannot accommodate the 3276 Responses default output allowance;
-this setting now fails safely, without changing configured caps or provider output.
+this explicit setting fails safely. Its use as the application default was the
+RETRIEVAL-04 regression; config now defaults to 10000 without changing explicit caps.
 No live models, semantic/full-book QA, full server/TCP, UI or deployment acceptance.
 All three retrieval units locally verified; cumulative exact-SHA external review
 pending. No deployment, push or next-module work before that review.

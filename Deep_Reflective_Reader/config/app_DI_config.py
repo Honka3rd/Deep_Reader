@@ -151,9 +151,10 @@ class AppDIConfig:
     # Chat/completion model used for answer generation.
     # Introduced so answer quality/cost/latency tradeoff can be tuned without code changes.
     llm_model: OpenAIModelName | str = OpenAIModelName.GPT_4_1_MINI
-    # App-level target for max prompt/input tokens in normal retrieval/local paths.
-    # Introduced as fallback when model capability is unavailable or when retrieval budget should stay conservative.
-    target_max_input_tokens: int = 3200
+    # Combined prompt + output cap for normal retrieval/local paths.
+    # Accommodates the default model's 3276-token output floor plus prompt/context;
+    # explicit caller caps remain unchanged and may be rejected as insufficient.
+    target_max_input_tokens: int = 10_000
     # App-level target for max generated tokens in normal retrieval/local paths.
     # Introduced to control output length/cost with a conservative default policy.
     target_max_output_tokens: int = 500

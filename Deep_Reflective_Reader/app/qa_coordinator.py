@@ -228,7 +228,11 @@ class QACoordinator:
             )
             TokenBudgetManager.require_prompt_capacity(
                 prompt,
-                max_prompt_tokens=bundle.max_prompt_tokens,
+                max_prompt_tokens=(
+                    context_result.max_prompt_tokens
+                    if context_result.max_prompt_tokens is not None
+                    else bundle.max_prompt_tokens
+                ),
                 reserved_output_tokens=bundle.reserved_output_tokens,
                 token_counter=getattr(self.llm_provider, "count_input_tokens", None),
             )

@@ -1,5 +1,13 @@
 # config Checklist
 
+## RETRIEVAL-04 default QA correction (2026-11-19)
+
+- [x] RETRIEVAL-04: Verify compatible default QA and preserve explicit inadequate-cap rejection.
+  Acceptance: Real default DI, cold/warm HTTP 200, one answer, successful session; explicit 3200 safe rejection, unchanged trio/warm reuse, bounded source-copy evidence.
+  Evidence: `/tmp/retrieval-unit4-d698ab5/report.txt`; external 3/3 red-to-green, formal 5/5, scoped 193/193 zero skips (real PostgreSQL), four immutable-book default-DI sample flows.
+  Status: Locally verified; RETRIEVAL-04/05 cumulative external review pending.
+  Timestamp: 2026-11-19
+
 ## RETRIEVAL-03 support (2026-11-19)
 
 - [x] Align ordinary output allowance and retrieval budgeting (config ownership).

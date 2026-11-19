@@ -1,5 +1,64 @@
 # retrieval Detailed Design
 
+## RETRIEVAL-05 selected-mode dispatch capacity (2026-11-19, locally verified)
+
+The frozen ContextBuildResult carries max_prompt_tokens: the combined cap actually
+selected during context assembly, not the remaining source allowance. Full-text
+results carry their effective_input_budget; wrapping the result preserves it.
+Local-window/retrieval results carry bundle.max_prompt_tokens, even for a GLOBAL
+query that did not qualify for full text. Legacy constructed results with None
+retain the bundle fallback; no query-text or mutable diagnostic metadata inference.
+
+QA final admission uses that selected cap and the bundle's actual ordinary output
+allowance exactly once, with the existing precise/conservative counting contract.
+Full-text selection retains its model-capability ratio, context ratio and conservative
+maximum-output headroom; this change does not enlarge selected source or alter the
+provider's dispatch allowance. Invalid/over-budget final prompts still fail before
+answer/session update, without retry. No storage format, source or model changes.
+
+Acceptance: actual splitter/FAISS/store cold/warm + context/coordinator/HTTP, long
+legal GLOBAL at different retrieval caps, small global/local, active local window,
+GLOBAL falling back to retrieval, precise overflow including assembly underestimate,
+one-reserve equality boundary and unavailable-counter fallback. Keep prior unit tests and
+bounded immutable-book evidence. External exact-SHA review remains required.
+
+Local evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`. Original external
+GLOBAL runner: 4 methods / 1 failure -> 4/4; new legal-full-text test initially
+fails 4 cold/warm endpoint subassertions, final dedicated suite 9/9. Cumulative
+17 suites / 202 executions pass, zero skips, including real PostgreSQL. Re-run
+external default QA 3/3. Groups overlap and are not unique business cases.
+Two complete immutable-book copies preserve hashes; 8 bounded GLOBAL HTTP flows
+at retrieval caps 3200/10000 choose the same 64000 cap and identical prompt, with
+one answer each. Exact prompt counts3319(en)/5395(zh), actual output1638; ordinary
+small-cap final validation would reject these valid selected-mode requests.
+No live model/embedding, full-book semantics/OCR, full main/TCP, UI or deployment.
+RETRIEVAL-04/05 locally verified; submit cumulative new SHA for external review.
+
+## RETRIEVAL-04 compatible default QA budget (2026-11-19, locally verified)
+
+Consume the compatible AppDIConfig default combined cap of 10,000 with the
+unchanged provider allowance and context target. Both cold construction and
+validated persisted reload must support ordinary short QA through default DI.
+Explicit insufficient caps remain rejection cases, not default-success acceptance.
+RETRIEVAL-01/02 are externally verified on d698ab5; RETRIEVAL-03 reserve alignment
+is retained. RETRIEVAL-05 selected full-text final capacity was handled separately
+and is now locally verified above; unit 4 itself did not alter that gate.
+
+Acceptance: baseline red/green, formal HTTP cold/warm and explicit-cap controls,
+scoped regressions and bounded immutable-book samples. External review remains
+required; no deployment/push or next-module work.
+
+Local evidence: `/tmp/retrieval-unit4-d698ab5/report.txt`. Original external
+3-method runner: default cold/warm 2 failed subassertions -> 3/3 methods green.
+New formal suite 5/5; explicit 3200 negative keeps zero answer/session mutation.
+Scoped regression: 16 suites, 193/193 executions, zero skips, including actual
+PostgreSQL; groups overlap and are not unique business scenarios.
+Two complete immutable backups retain hashes; four bounded default-DI cold/warm
+HTTP sample flows pass with output 3276, cap 10000, one answer per flow.
+No live model, whole-book semantics, full main/TCP, UI or deployment acceptance.
+Unit 4 evidence is retained; RETRIEVAL-05 is now locally verified in the
+context/app/retrieval contracts. Cumulative exact-SHA external review remains pending.
+
 ## RETRIEVAL-03 ordinary output reserve (2026-11-19, locally verified)
 
 Cold builder and persisted store reload obtain the ordinary completion output
@@ -24,7 +83,9 @@ before answer dispatch/session update. New suite 10/10, cumulative 15 suites
 encoding. Two full immutable-book copies retain hashes; 8 bounded cold/warm QA
 flows pass for both endpoints. Groups overlap earlier evidence, not unique cases.
 3200 combined tokens cannot accommodate the 3276 Responses default output allowance;
-this setting now fails safely, without changing configured caps or provider output.
+this explicit setting fails safely, but using it as the default was a blocking
+RETRIEVAL-04 regression, not successful default acceptance. The correction above
+supersedes that default; explicit caps and provider output remain unchanged.
 No live models, semantic/full-book QA, full server/TCP, UI or deployment acceptance.
 All three retrieval units locally verified; cumulative exact-SHA external review
 pending. No deployment, push or next-module work before that review.

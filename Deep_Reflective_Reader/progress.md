@@ -1,5 +1,41 @@
 # Deep Reflective Reader Progress
 
+## RETRIEVAL-04/05 cumulative correction (2026-11-19)
+
+Default combined cap10000 restores normal default-model QA while preserving explicit
+caps, output policy and context1500. ContextBuildResult now carries the selected
+combined cap; final QA uses it with actual ordinary output reserved once. GLOBAL
+full-text retains capability ratio/headroom; GLOBAL fallback and local/retrieval
+retain configured caps. True exact-count overflow rejects before answer/session.
+External default3/3 and GLOBAL4/4 red-to-green; dedicated suites5/5 and9/9.
+Cumulative 17 suites / 202 executions pass, zero skips, including real PostgreSQL.
+Counts overlap inherited scenarios and are not unique business-case totals.
+Unit4: four short default-DI immutable-book HTTP flows. Unit5: eight longer GLOBAL
+flows at two retrieval caps, identical prompts/selected64000 budget. Full canonical,
+raw and backup manifest hashes preserved; no full-book semantic claim.
+Evidence: `/tmp/retrieval-unit5-d698ab5/report.txt` and unit4 report.
+All requested units locally verified; next is a cumulative local review commit and
+external approval of that exact SHA. No deployment/push/next-module work.
+No live LLM/embedding, full app lifespan/TCP, UI/build or Docker acceptance.
+Counts: retrieval11/0, config14/9, context16/0, app67/11, scripts101/2.
+
+## RETRIEVAL-04 unit checkpoint (2026-11-19)
+
+Default AppDIConfig combined cap is now 10000, preserving gpt-4.1-mini, actual
+output allowance 3276 and evidence context target 1500. Explicit caps remain
+unchanged. The old default rejection was a functional regression, not successful
+default acceptance; the historical RETRIEVAL-03 report below does not close it.
+External default QA runner: 2 failed cold/warm subassertions -> 3/3 methods pass.
+Scoped formal regression 16 suites / 193 executions passes with zero skips, including
+real PostgreSQL; overlapping groups are not unique business scenarios.
+New default-DI formal suite 5/5; explicit 3200 rejects without answer/session
+mutation. Four default-DI HTTP flows on two immutable-book samples pass; complete
+backup/source hashes preserved. Evidence: `/tmp/retrieval-unit4-d698ab5/report.txt`.
+No live model, full-book semantics, full server/TCP, UI or Docker acceptance.
+Unit 4 locally verified; RETRIEVAL-05 is unresolved and awaits developer next-unit
+confirmation. No new commit, deployment, push or next-module work.
+Counts: retrieval 10/1, config 14/9, scripts 100/2; existing unrelated gates retained.
+
 ## RETRIEVAL-01–03 cumulative correction (2026-11-19)
 
 All three units locally verified. Shared index admission checks FAISS IDs, JSON
@@ -978,10 +1014,10 @@ It is used to:
 
 | Module | Type | Checklist | Completed Items | Needs Confirmation Items | Progress Status |
 |---|---|---|---:|---:|---|
-| `app/` | package | `app/module-checklist.md` | 66 | 11 | RETRIEVAL-03 support locally verified; existing gates retained |
+| `app/` | package | `app/module-checklist.md` | 67 | 11 | RETRIEVAL-04/05 locally verified; cumulative external review pending |
 | `auth/` | package | `auth/module-checklist.md` | 4 | 0 | AUTH-01 locally verified; external review pending (2026-11-13 recount; template items excluded) |
-| `config/` | package | `config/module-checklist.md` | 13 | 9 | RETRIEVAL-03 support locally verified; existing gates retained |
-| `context/` | package | `context/module-checklist.md` | 15 | 0 | RETRIEVAL-03 support locally verified; existing gates retained |
+| `config/` | package | `config/module-checklist.md` | 14 | 9 | RETRIEVAL-04 locally verified; existing gates retained |
+| `context/` | package | `context/module-checklist.md` | 16 | 0 | RETRIEVAL-04/05 locally verified; cumulative external review pending |
 | `doc_loaders/` | package | `doc_loaders/module-checklist.md` | 65 | 0 | DOCLOAD-01/02/03 locally verified; external review pending (2026-11-13 recount; template excluded) |
 | `db/` | package + design module | `db/module-checklist.md` | 70 | 4 | TASK-04 supporting integration locally verified; section_tasks review open; unrelated unresolved items retained (2026-11-15 recount excludes templates) |
 | `document_preparation/` | package | `document_preparation/module-checklist.md` | 37 | 13 | PROFILE-05 publication coordination locally verified; external review pending; unrelated checklist items retained (2026-11-13 recount excludes templates) |
@@ -994,8 +1030,8 @@ It is used to:
 | `profile/` | package | `profile/module-checklist.md` | 10 | 0 | PROFILE-01–05 locally verified; external review pending; cache design questions retained (2026-11-13 recount excludes templates) |
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
-| `retrieval/` | package | `retrieval/module-checklist.md` | 9 | 0 | RETRIEVAL-01–03 locally verified; external review pending |
-| `scripts/` | package | `scripts/module-checklist.md` | 99 | 2 | RETRIEVAL-03 support locally verified; existing gates retained |
+| `retrieval/` | package | `retrieval/module-checklist.md` | 11 | 0 | RETRIEVAL-04/05 locally verified; cumulative external review pending |
+| `scripts/` | package | `scripts/module-checklist.md` | 101 | 2 | RETRIEVAL-04/05 locally verified; cumulative external review pending |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 4 | 0 | SESSION-01 locally verified; exact-SHA external review pending |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
@@ -1071,8 +1107,8 @@ Evidence and dependencies are in owner designs/checklists.
 
 - Checklist: `app/module-checklist.md`
 - Detailed Design: `app/module-detailed-design.md`
-- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
-- Completed item count: `66` (direct owner recount, 2026-11-19).
+- Status: `RETRIEVAL-04/05 locally verified; cumulative external review pending`
+- Completed item count: `67` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `11`
 - Unchecked item count: `11` (historical unresolved items retained).
 - Prior APP-01–06 evidence: `/tmp/app06-fix-eaae891/report.txt`; mapping 20/20 plus custom rerun 2/2,
@@ -1098,6 +1134,10 @@ Evidence and dependencies are in owner designs/checklists.
   Explicit page evidence reuses source-validated persisted spans without extraction/LLM.
 
 #### Completed Work
+
+- [x] RETRIEVAL-05: Carry selected mode capacity into final QA dispatch validation.
+  Evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`; external4/4, dedicated9/9, cumulative202/202 zero skips; 8 immutable-book GLOBAL flows, exact overflow/session controls. External review pending.
+  Timestamp: 2026-11-19
 
 - [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
   Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
@@ -1161,11 +1201,15 @@ No unresolved confirmation items identified in module checklist.
 
 - Checklist: `config/module-checklist.md`
 - Detailed Design: `config/module-detailed-design.md`
-- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
-- Completed item count: `13` (direct owner recount, 2026-11-19).
+- Status: `RETRIEVAL-04 locally verified; existing gates retained`
+- Completed item count: `14` (direct owner recount, 2026-11-19).
 - Unresolved checklist count: `9` (templates excluded)
 
 #### Completed Work
+
+- [x] RETRIEVAL-04: Compatible default QA with explicit cap preservation.
+  Evidence: `/tmp/retrieval-unit4-d698ab5/report.txt`; default-DI HTTP cold/warm, negative cap, serialization and immutable-book sample controls. RETRIEVAL-05 now locally verified; cumulative external review pending.
+  Timestamp: 2026-11-19
 
 - [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
   Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
@@ -1191,11 +1235,15 @@ Nine existing unresolved checklist items remain; no status changed by this integ
 
 - Checklist: `context/module-checklist.md`
 - Detailed Design: `context/module-detailed-design.md`
-- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
-- Completed item count: `15` (direct owner recount, 2026-11-19).
+- Status: `RETRIEVAL-04/05 locally verified; cumulative external review pending`
+- Completed item count: `16` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `0`
 
 #### Completed Work
+
+- [x] RETRIEVAL-05: Carry selected mode capacity into final QA dispatch validation.
+  Evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`; external4/4, dedicated9/9, cumulative202/202 zero skips; 8 immutable-book GLOBAL flows, exact overflow/session controls. External review pending.
+  Timestamp: 2026-11-19
 
 - [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
   Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
@@ -1813,11 +1861,19 @@ Four existing rich-content future tasks remain unchecked; QUESTION-01–08 await
 
 - Checklist: `retrieval/module-checklist.md`
 - Detailed Design: `retrieval/module-detailed-design.md`
-- Status: `RETRIEVAL-01–03 locally verified; external review pending`
-- Completed item count: `9` (direct owner recount, 2026-11-19).
+- Status: `RETRIEVAL-04/05 locally verified; cumulative external review pending`
+- Completed item count: `11` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `0`
 
 #### Completed Work
+
+- [x] RETRIEVAL-05: Carry selected mode capacity into final QA dispatch validation.
+  Evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`; external4/4, dedicated9/9, cumulative202/202 zero skips; 8 immutable-book GLOBAL flows, exact overflow/session controls. External review pending.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-04: Compatible default QA with explicit cap preservation.
+  Evidence: `/tmp/retrieval-unit4-d698ab5/report.txt`; default-DI HTTP cold/warm, negative cap, serialization and immutable-book sample controls. RETRIEVAL-05 now locally verified; cumulative external review pending.
+  Timestamp: 2026-11-19
 
 - [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
   Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.
@@ -1837,18 +1893,26 @@ Four existing rich-content future tasks remain unchecked; QUESTION-01–08 await
 
 #### Needs Confirmation
 
-All audit items locally verified; final cumulative review required.
+RETRIEVAL-04/05 locally verified; cumulative exact-SHA external review is still required.
 
 ### `scripts/`
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `RETRIEVAL-03 support locally verified; existing gates retained`
-- Completed item count: `99` (direct owner recount, 2026-11-19).
+- Status: `RETRIEVAL-04/05 locally verified; cumulative external review pending`
+- Completed item count: `101` (direct owner recount, 2026-11-19).
 - Needs confirmation count: `2`
 - Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] RETRIEVAL-05: Carry selected mode capacity into final QA dispatch validation.
+  Evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`; external4/4, dedicated9/9, cumulative202/202 zero skips; 8 immutable-book GLOBAL flows, exact overflow/session controls. External review pending.
+  Timestamp: 2026-11-19
+
+- [x] RETRIEVAL-04: Compatible default QA with explicit cap preservation.
+  Evidence: `/tmp/retrieval-unit4-d698ab5/report.txt`; default-DI HTTP cold/warm, negative cap, serialization and immutable-book sample controls. RETRIEVAL-05 now locally verified; cumulative external review pending.
+  Timestamp: 2026-11-19
 
 - [x] RETRIEVAL-03: Ordinary output reserve and final QA capacity admission.
   Evidence: `/tmp/retrieval-unit3-51813cd/report.txt`; 188/188 zero skips, near-limit red/green and 8 immutable-book sample flows; supporting changes follow owner boundaries.

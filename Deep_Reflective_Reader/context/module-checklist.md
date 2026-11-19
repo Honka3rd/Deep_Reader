@@ -1,5 +1,13 @@
 # context Checklist
 
+## RETRIEVAL-05 selected capacity (2026-11-19)
+
+- [x] RETRIEVAL-05: Preserve selected context capacity through final QA admission.
+  Acceptance: Actual global full-text/local/retrieval paths, cold/warm and explicit caps, true overflow rejects before answer/session, no retry or output change.
+  Evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`; external 4/4 red-to-green, dedicated 9/9, cumulative 202/202 zero skips, 8 immutable-book GLOBAL flows.
+  Status: Locally verified; cumulative exact-SHA external review pending.
+  Timestamp: 2026-11-19
+
 ## RETRIEVAL-03 integration (2026-11-19)
 
 - [x] Validate assembled QA prompt before answer dispatch (context boundary).

@@ -1,5 +1,30 @@
 # config Detailed Design
 
+## RETRIEVAL-04 compatible default QA budget (2026-11-19, locally verified)
+
+The default AppDIConfig combined retrieval/local prompt-plus-output cap becomes
+10,000 tokens. Keep gpt-4.1-mini, output target 500, actual ordinary allowance
+3276 and context target 1500 unchanged. This leaves 6724 tokens before prompt and
+context consumption; it does not increase the maximum evidence context or output.
+Only the dataclass default changes. Explicit constructor/serialized caps, including
+3200, remain authoritative and can fail safely without answer/session mutation.
+Grouped budget and DI serialization must carry the selected value unchanged.
+
+Acceptance: baseline red/green, formal HTTP cold/warm and explicit-cap controls,
+scoped regressions and bounded immutable-book samples. External review remains
+required; no deployment/push or next-module work.
+
+Local evidence: `/tmp/retrieval-unit4-d698ab5/report.txt`. Original external
+3-method runner: default cold/warm 2 failed subassertions -> 3/3 methods green.
+New formal suite 5/5; explicit 3200 negative keeps zero answer/session mutation.
+Scoped regression: 16 suites, 193/193 executions, zero skips, including actual
+PostgreSQL; groups overlap and are not unique business scenarios.
+Two complete immutable backups retain hashes; four bounded default-DI cold/warm
+HTTP sample flows pass with output 3276, cap 10000, one answer per flow.
+No live model, whole-book semantics, full main/TCP, UI or deployment acceptance.
+Unit 4 evidence is retained; RETRIEVAL-05 is now locally verified in the
+context/app/retrieval contracts. Cumulative exact-SHA external review remains pending.
+
 ## RETRIEVAL-03 ordinary output reserve (2026-11-19, locally verified)
 
 resolve_effective_token_budgets accepts an optional declared output allowance
@@ -24,7 +49,9 @@ before answer dispatch/session update. New suite 10/10, cumulative 15 suites
 encoding. Two full immutable-book copies retain hashes; 8 bounded cold/warm QA
 flows pass for both endpoints. Groups overlap earlier evidence, not unique cases.
 3200 combined tokens cannot accommodate the 3276 Responses default output allowance;
-this setting now fails safely, without changing configured caps or provider output.
+this explicit setting fails safely, but using it as the default was a blocking
+RETRIEVAL-04 regression, not successful default acceptance. The correction above
+supersedes that default; explicit caps and provider output remain unchanged.
 No live models, semantic/full-book QA, full server/TCP, UI or deployment acceptance.
 All three retrieval units locally verified; cumulative exact-SHA external review
 pending. No deployment, push or next-module work before that review.
