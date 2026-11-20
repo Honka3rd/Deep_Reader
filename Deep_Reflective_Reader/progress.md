@@ -1,5 +1,36 @@
 # Deep Reflective Reader Progress
 
+## FACTORY-01/02 cumulative correction (2026-11-20)
+
+Explicit guarded candidate publication preserves old trio/profile on failed rebuild.
+Every get_or_load now validates the requested physical publication, exact canonical
+text/config and current profile. LRU retains bounded returned objects only; warm
+reads incur disk IO but no parse/embedding/profile generation or persistence writes.
+Missing canonical evidence reports readiness; no unversioned fallback is accepted.
+Both units locally verified; new local review candidate requires external approval.
+Formal70/70 zero skips (real PostgreSQL included), adapted external6/6, prepared5/5
+and four immutable-book file/SQL sample scenarios pass. Baseline red9 and unit2 red3
+assertions remain preserved with the explicit source-guard fixture adaptation diff.
+Evidence: `/tmp/factory-unit2-5e8e142/report.txt`. Base5e8e142; branch
+`fix/bundle-factory-publication-5e8e142`. No deployment/push or next-module audit.
+Current counts: bundle_factory7/0, bundle_provider5/0, scripts103/2; scripts exempt
+from independent module audit. Local verification is not exact-SHA external approval.
+
+## FACTORY-01 unit checkpoint (2026-11-19)
+
+Retained explicit factory/facade builds now require the server-owned accepted-source
+guard and use retrieval candidate/journal publication. No active trio is cleared
+before parse/embed/profile admission. No-op/source-free write authorization is not
+introduced; unguarded invalid/missing assets return explicit preparation readiness.
+New file/real PostgreSQL20/20; scoped59/59 zero skips; prepared controls5/5; four
+immutable-book sample scenarios. External preservation assertions turn green after
+fixture authority handoff; FACTORY-02 retains three failures and is not completed.
+Evidence: `/tmp/factory-unit1-5e8e142/report.txt`. Base5e8e142; branch
+`fix/bundle-factory-publication-5e8e142`. Unit confirmation before FACTORY-02;
+no review commit/deployment/push at this checkpoint. Scripts independent audit exempt.
+Checkpoint counts: bundle_factory6/1, bundle_provider5/0, scripts102/2.
+
+
 ## RETRIEVAL-04/05 cumulative correction (2026-11-19)
 
 Default combined cap10000 restores normal default-model QA while preserving explicit
@@ -1031,13 +1062,13 @@ It is used to:
 | `prompts/` | package | `prompts/module-checklist.md` | 3 | 0 | Completed Baseline Captured |
 | `question/` | package | `question/module-checklist.md` | 8 | 4 | QUESTION-08 locally verified; external question review pending (2026-11-18 recount) |
 | `retrieval/` | package | `retrieval/module-checklist.md` | 11 | 0 | RETRIEVAL-04/05 locally verified; cumulative external review pending |
-| `scripts/` | package | `scripts/module-checklist.md` | 101 | 2 | RETRIEVAL-04/05 locally verified; cumulative external review pending |
+| `scripts/` | package | `scripts/module-checklist.md` | 103 | 2 | FACTORY-01/02 test support locally verified; independent audit exempt |
 | `section_tasks/` | package | `section_tasks/module-checklist.md` | 113 | 0 | Language audit support locally verified; exact-SHA external language review pending (2026-11-17 recount) |
 | `session/` | package | `session/module-checklist.md` | 4 | 0 | SESSION-01 locally verified; exact-SHA external review pending |
 | `shared/` | package | `shared/module-checklist.md` | 13 | 5 | TASK-05 support locally verified; existing future items retained; section_tasks external review open (2026-11-15 recount excludes templates) |
 | `api_schemas.py` | root-python-module | `api_schemas.module-checklist.md` | 42 | 3 | LEARN-03 locally verified; exact-SHA external learning review pending; unchanged unresolved items retained (2026-11-17 direct recount excludes templates) |
-| `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 5 | 0 | PREP runtime handoff locally verified |
-| `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 4 | 0 | PREP runtime facade locally verified |
+| `bundle_factory.py` | root-python-module | `bundle_factory.module-checklist.md` | 7 | 0 | FACTORY-01/02 locally verified; external review pending |
+| `bundle_provider.py` | root-python-module | `bundle_provider.module-checklist.md` | 5 | 0 | FACTORY-01 supporting admission locally verified |
 | `fingerprint_handler.py` | root-python-module | `fingerprint_handler.module-checklist.md` | 4 | 0 | PREP-05 support locally verified; external review pending |
 | `main.py` | root-python-module | `main.module-checklist.md` | 50 | 1 | EMBED-01 logging boundary locally verified; external review pending |
 
@@ -1899,12 +1930,20 @@ RETRIEVAL-04/05 locally verified; cumulative exact-SHA external review is still 
 
 - Checklist: `scripts/module-checklist.md`
 - Detailed Design: `scripts/module-detailed-design.md`
-- Status: `RETRIEVAL-04/05 locally verified; cumulative external review pending`
-- Completed item count: `101` (direct owner recount, 2026-11-19).
+- Status: `FACTORY-01/02 test support locally verified; independent audit exempt`
+- Completed item count: `103` (direct owner recount, 2026-11-20).
 - Needs confirmation count: `2`
 - Unchecked item count: `2` (BUILD-CACHE-02 and existing DOCLOAD deployment fixture gate).
 
 #### Completed Work
+
+- [x] FACTORY-01: Guarded candidate failure/readback and source/lifecycle regression evidence.
+  Evidence: `/tmp/factory-unit2-5e8e142/report.txt`; cumulative70/70 zero skips, file/SQL; exact-SHA external review pending.
+  Timestamp: 2026-11-20
+
+- [x] FACTORY-02: Current publication/profile admission on cold and warm reuse.
+  Evidence: Same cumulative report; new11/11 and adapted external6/6, original assertions retained.
+  Timestamp: 2026-11-20
 
 - [x] RETRIEVAL-05: Carry selected mode capacity into final QA dispatch validation.
   Evidence: `/tmp/retrieval-unit5-d698ab5/report.txt`; external4/4, dedicated9/9, cumulative202/202 zero skips; 8 immutable-book GLOBAL flows, exact overflow/session controls. External review pending.
@@ -2185,37 +2224,42 @@ checklist (41); this correction does not mark historical future tasks complete.
 
 - Checklist: `bundle_factory.module-checklist.md`
 - Detailed Design: `bundle_factory.module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
-- Needs confirmation count: `0`
+- Status: `FACTORY-01/02 locally verified; exact-SHA external review pending`
+- Completed item count: `7`
+- Unchecked item count: `0`
 
 #### Completed Work
 
-- [x] Implements bundle cache lifecycle (put, evict, invalidate, clear) for document-scoped runtime bundles.
-- [x] Implements profile readiness logic with existing-load and rebuild fallback.
-- [x] Implements index readiness with fingerprint matching and legacy-record-schema rebuild guard.
+- [x] FACTORY-01: Source-bound candidate publication preserves prior trio/profile on failure.
+  Evidence: `/tmp/factory-unit1-5e8e142/report.txt`; actual file/SQL and journal controls.
+  Timestamp: 2026-11-19
+- [x] FACTORY-02: Equal cold/warm validation of physical publication, exact source/config and current profile.
+  Evidence: `/tmp/factory-unit2-5e8e142/report.txt`; no stale memory fallback; external6/6, reuse11/11.
+  Timestamp: 2026-11-20
+- Existing five completed items remain in the owner checklist, including validated
+  PREP handoff and reuse-only profile readiness. Profile generation is never a
+  factory fallback; initial preparation/full reparse owns creation.
 
-#### Needs Confirmation
+#### Pending Work
 
-No unresolved confirmation items identified in module checklist.
+- Exact-SHA external review; no further module, deployment or push before applicable approval.
 
 ### `bundle_provider.py`
 
 - Checklist: `bundle_provider.module-checklist.md`
 - Detailed Design: `bundle_provider.module-detailed-design.md`
-- Status: `Completed Baseline Captured`
-- Completed item count: `3`
-- Needs confirmation count: `0`
+- Status: `FACTORY-01 supporting contract locally verified; not a full module audit`
+- Completed item count: `5`
+- Unchecked item count: `0`
 
 #### Completed Work
 
-- [x] Implements runtime object assembly (`FaissStorageConfig`, `FingerprintHandler`, `BundleFactory`) for bundle requests.
-- [x] Implements raw document loading path before bundle ensure-index flow.
-- [x] Implements force-rebuild invalidation behavior before index readiness execution.
-
-#### Needs Confirmation
-
-No unresolved confirmation items identified in module checklist.
+- [x] FACTORY-01: Pass accepted-source guard through retained explicit facade APIs.
+  Evidence: `/tmp/factory-unit1-5e8e142/report.txt`; guarded get_bundle avoids extraction,
+  get_bundle_from_raw_text cannot build without source authority.
+  Timestamp: 2026-11-19
+- Existing runtime assembly, raw-load compatibility, memory invalidation and
+  reuse-only prepared facade remain recorded in the four prior checklist items.
 
 ### `fingerprint_handler.py`
 

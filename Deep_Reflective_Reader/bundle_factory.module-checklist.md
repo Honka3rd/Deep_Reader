@@ -1,5 +1,20 @@
 # bundle_factory.py Checklist
 
+## FACTORY-01 safe publication (2026-11-19)
+
+- [x] FACTORY-01: Guard explicit builds and publish complete candidates without clearing active assets.
+  Acceptance: Real source/lifecycle evidence, failure preserves trio/profile and old validated reload, safe first-build refusal, retained warm/recovery controls.
+  Evidence: `/tmp/factory-unit1-5e8e142/report.txt`; new20/20, focused59/59 zero skips, prepared5/5 and four immutable-book scenarios; FACTORY-01 external preservation assertions green.
+  Status: Both units locally verified; cumulative70/70 and external6/6 at `/tmp/factory-unit2-5e8e142/report.txt`; exact-SHA external review pending.
+  Timestamp: 2026-11-20
+
+
+- [x] FACTORY-02: Bind reuse to storage/publication/source/config and current profile.
+  Acceptance: Alpha-to-Beta external publication, distinct roots, validated cold/warm reuse, capacity0/1 and memory-only cache lifecycle.
+  Evidence: `/tmp/factory-unit2-5e8e142/report.txt`; new11/11, cumulative70/70 zero skips, adapted external6/6, prepared5/5 and four immutable-book scenarios.
+  Status: Locally verified; exact-SHA external review pending.
+  Timestamp: 2026-11-20
+
 ## Preparation audit correction (2026-11-13)
 
 - [x] PREP runtime handoff: Load validated persisted index and profile without build/cache fallback.
@@ -51,7 +66,8 @@ It is used to:
 
 - [x] Implements index readiness with fingerprint matching and legacy-record-schema rebuild guard.
   Evidence: `Deep_Reflective_Reader/bundle_factory.py; Deep_Reflective_Reader/bundle_factory.module-detailed-design.md (Known Legacy / Compatibility Behavior)`
-  Notes: Rebuild is triggered when schema compatibility checks fail.
+  Notes: Missing/incompatible assets require explicit preparation or accepted-source guarded candidate publication; raw text alone cannot authorize rebuilding.
+  Timestamp: 2026-11-19
 
 ## Needs Confirmation
 

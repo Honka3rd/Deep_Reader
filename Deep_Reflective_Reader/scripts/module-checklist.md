@@ -1,5 +1,23 @@
 # scripts Checklist
 
+## FACTORY-02 reuse regression (2026-11-20)
+
+- [x] FACTORY-02: Verify equal cold/warm current-publication/profile admission and memory-only LRU.
+  Acceptance: External source/profile and cross-root failures turn green; corrupt/missing/legacy evidence safely rejects, journal previous snapshot and exact source/config checks preserved.
+  Evidence: `/tmp/factory-unit2-5e8e142/report.txt`; reuse11/11, cumulative70/70 zero skips, external6/6, prepared5/5 and four immutable-book scenarios.
+  Status: Locally verified; cumulative factory external review required.
+  Timestamp: 2026-11-20
+
+
+## FACTORY-01 safe publication (2026-11-19)
+
+- [x] FACTORY-01: Guard explicit builds and publish complete candidates without clearing active assets.
+  Acceptance: Real source/lifecycle evidence, failure preserves trio/profile and old validated reload, safe first-build refusal, retained warm/recovery controls.
+  Evidence: `/tmp/factory-unit1-5e8e142/report.txt`; new20/20, focused59/59 zero skips, prepared5/5 and four immutable-book scenarios; FACTORY-01 external preservation assertions green.
+  Status: Both units locally verified; cumulative70/70 and external6/6 at `/tmp/factory-unit2-5e8e142/report.txt`; exact-SHA external review pending.
+  Timestamp: 2026-11-20
+
+
 ## RETRIEVAL-05 selected capacity (2026-11-19)
 
 - [x] RETRIEVAL-05: Preserve selected context capacity through final QA admission.

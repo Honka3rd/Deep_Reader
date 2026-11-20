@@ -1,4 +1,8 @@
 from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from document_preparation.accepted_source_guard import AcceptedSourceGuard
 
 from bundle_factory import BundleFactory
 from doc_loaders.document_loader_factory import DocumentLoaderFactory
@@ -42,14 +46,21 @@ class BundleProvider:
 
         return config, fingerprint_handler, bundle_factory
 
-    def get_bundle(self, doc_name: str) -> FaissIndexBundle:
+    def get_bundle(
+        self, doc_name: str, *, source_guard: "AcceptedSourceGuard | None" = None
+    ) -> FaissIndexBundle:
         """Ensure index/profile readiness and return query-ready bundle."""
-        loader = self.loader_factory.get(doc_name)
-        raw_text: str = loader.load(doc_name)
+        if source_guard is None:
+            loader = self.loader_factory.get(doc_name)
+            raw_text = loader.load(doc_name)
+        else:
+            source_guard.verify_source()
+            raw_text = source_guard.snapshot.canonical_text
         return self.get_bundle_from_raw_text(
             doc_name=doc_name,
             raw_text=raw_text,
             force_rebuild=False,
+            source_guard=source_guard,
         )
 
     def load_prepared_bundle(self, doc_name: str, raw_text: str) -> FaissIndexBundle:
@@ -62,6 +73,8 @@ class BundleProvider:
         doc_name: str,
         raw_text: str,
         force_rebuild: bool = False,
+        *,
+        source_guard: "AcceptedSourceGuard | None" = None,
     ) -> FaissIndexBundle:
         """Ensure index/profile readiness and return query-ready bundle from canonical raw text."""
         config, _, bundle_factory = self._build_runtime_objects(doc_name)
@@ -70,4 +83,5 @@ class BundleProvider:
         return bundle_factory.ensure_index_ready(
             config=config,
             raw_text=raw_text,
+            source_guard=source_guard,
         )

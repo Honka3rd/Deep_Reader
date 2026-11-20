@@ -1,5 +1,14 @@
 # bundle_provider.py Checklist
 
+## FACTORY-01 safe publication (2026-11-19)
+
+- [x] FACTORY-01: Guard explicit builds and publish complete candidates without clearing active assets.
+  Acceptance: Real source/lifecycle evidence, failure preserves trio/profile and old validated reload, safe first-build refusal, retained warm/recovery controls.
+  Evidence: `/tmp/factory-unit1-5e8e142/report.txt`; new20/20, focused59/59 zero skips, prepared5/5 and four immutable-book scenarios; FACTORY-01 external preservation assertions green.
+  Status: Both units locally verified; cumulative70/70 and external6/6 at `/tmp/factory-unit2-5e8e142/report.txt`; exact-SHA external review pending.
+  Timestamp: 2026-11-20
+
+
 ## Preparation audit correction (2026-11-13)
 
 - [x] PREP runtime facade: Delegate accepted text to reuse-only bundle loading without extraction.

@@ -1,5 +1,29 @@
 # bundle_provider.py Detailed Design
 
+## FACTORY-01 supporting build admission (2026-11-19, locally verified)
+
+Retain get_bundle/get_bundle_from_raw_text and forward optional server-owned
+AcceptedSourceGuard to the factory. With that guard, get_bundle uses its accepted
+canonical text without another loader extraction; validate requested namespace.
+Without the guard, existing calls may reuse valid assets but cannot authorize a
+new build from raw text alone. Missing/invalid assets require explicit preparation.
+force_rebuild retains memory invalidation semantics and does not bypass admission.
+load_prepared_bundle stays unchanged, read-only and independent of legacy cache.
+This is necessary facade integration, not an independent bundle_provider audit.
+
+
+Local cumulative evidence (2026-11-20): `/tmp/factory-unit2-5e8e142/report.txt`.
+Formal70/70 executions, zero failures/errors/skips: reuse11, guarded publication20,
+preparation runtime24, exact index identity10 and profile lifecycle5. Real PostgreSQL
+runs in disposable schemas. Adapted external probe6/6 retains all original product
+assertions and explicit guard setup; before unit2 its three cache assertions failed.
+Original baseline9 failures and the guard-admission fixture diff are preserved in
+unit1 evidence. Prepared controls5/5 and four immutable-book file/SQL sample scenarios
+pass, now including external publication/current profile and zero-generation reuse.
+No live model, HTTP/TCP, UI or deployment acceptance. Exact-SHA external review pending.
+
+
+
 ## PREP runtime reuse-only handoff (2026-11-13)
 
 Implemented supporting load_prepared_bundle accepts owner-validated canonical text and

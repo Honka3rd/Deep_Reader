@@ -1,5 +1,39 @@
 # scripts Detailed Design
 
+## FACTORY-02 validated reuse acceptance (2026-11-20, locally verified)
+
+Exercise same-factory external source/profile publication, distinct physical roots,
+exact text/config/ID admission, current profile failures, previous journal snapshot,
+LRU0/1/recency and no writes/generation on warm reads. Retain FACTORY-01 actual
+file/SQL guard and publication regressions and immutable-book checks. New external
+evidence directories preserve previous red/green and fixture-authority diffs.
+No scripts independent audit or next-module claim.
+
+
+## FACTORY-01 publication regression support (2026-11-19, locally verified)
+
+Exercise retained factory/facade builds with real accepted-source guards and
+file/SQL hierarchy snapshots, true FAISS/SentenceSplitter and deterministic vectors.
+Assert old index/records/meta hashes and validated reload after parse/embed/profile/
+save/fingerprint/switch failures, first-build readiness, source/epoch rejection and
+profile preservation. Preserve external red evidence; adapting legacy probe setup
+to new explicit guard admission must keep original failure/readback assertions.
+Keep source preparation warm and journal recovery tests; no live model calls or
+production data. Scripts remains exempt from independent module audit.
+
+
+Local cumulative evidence (2026-11-20): `/tmp/factory-unit2-5e8e142/report.txt`.
+Formal70/70 executions, zero failures/errors/skips: reuse11, guarded publication20,
+preparation runtime24, exact index identity10 and profile lifecycle5. Real PostgreSQL
+runs in disposable schemas. Adapted external probe6/6 retains all original product
+assertions and explicit guard setup; before unit2 its three cache assertions failed.
+Original baseline9 failures and the guard-admission fixture diff are preserved in
+unit1 evidence. Prepared controls5/5 and four immutable-book file/SQL sample scenarios
+pass, now including external publication/current profile and zero-generation reuse.
+No live model, HTTP/TCP, UI or deployment acceptance. Exact-SHA external review pending.
+
+
+
 ## RETRIEVAL-05 selected-mode dispatch capacity (2026-11-19, locally verified)
 
 The frozen ContextBuildResult carries max_prompt_tokens: the combined cap actually

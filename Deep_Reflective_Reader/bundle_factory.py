@@ -1,5 +1,8 @@
 from collections import OrderedDict
-from typing import OrderedDict as OrderedDictType
+from typing import TYPE_CHECKING, OrderedDict as OrderedDictType
+
+if TYPE_CHECKING:
+    from document_preparation.accepted_source_guard import AcceptedSourceGuard
 
 from retrieval.faiss_index_bundle import FaissIndexBundle
 from retrieval.faiss_index_builder import FaissIndexBuilder
@@ -61,7 +64,7 @@ Args:
         self.bundle_cache.pop(doc_name, None)
 
     def clear(self) -> None:
-        """Remove persisted artifacts for clean rebuild."""
+        """Clear retained in-memory bundles without changing persisted artifacts."""
         self.bundle_cache.clear()
 
     def _evict_if_needed(self) -> None:
@@ -114,51 +117,72 @@ Returns:
         except Exception as error:
             raise RuntimeError("profile_unreadable: explicit reparse required") from error
 
-    def ensure_index_ready(self, config: FaissStorageConfig, raw_text: str) -> FaissIndexBundle:
-        """Ensure index artifacts are reusable; rebuild when needed.
+    def ensure_index_ready(
+        self,
+        config: FaissStorageConfig,
+        raw_text: str,
+        *,
+        source_guard: "AcceptedSourceGuard | None" = None,
+    ) -> FaissIndexBundle:
+        """Reuse assets, or explicitly publish a source-bound candidate.
 
-Args:
-    config: FaissStorageConfig describing filesystem artifact paths.
-    raw_text: Raw full document text before parsing/indexing.
-
-Returns:
-    Query-ready bundle guaranteed to match current document fingerprint."""
+        Raw text alone is not build authority. Callers needing a build must pass
+        the accepted-source owner's live guard; initial source/profile creation
+        still belongs to explicit document preparation.
+        """
         doc_name = config.get_doc_name()
-        has_position_metadata = self.store.has_position_metadata(config)
 
-        if config.exists() and self.fingerprint_handler.matches(
-            raw_text,
-            config.get_raw_meta_path(),
-        ) and has_position_metadata:
-            try:
-                return self.get_or_load(config, raw_text)
-            except Exception as e:
-                print(
-                    f"BundleFactory#ensure_index_ready: load failed for {doc_name}, rebuilding. error={e}"
+        def verify_source():
+            from document_preparation.accepted_source_guard import AcceptedSourceGuard
+
+            if not isinstance(source_guard, AcceptedSourceGuard):
+                raise RuntimeError(
+                    "index_not_ready:explicit_prepare_required:source_guard_required"
                 )
-                self.clear_artifacts(config, doc_name)
+            if (source_guard.snapshot.namespace != doc_name
+                    or source_guard.snapshot.canonical_text != raw_text):
+                raise RuntimeError(
+                    "index_not_ready:explicit_prepare_required:source_guard_mismatch"
+                )
+            source_guard.verify_source()
+
+        if source_guard is not None:
+            verify_source()
+        try:
+            bundle = self.get_or_load(config, raw_text)
+        except RuntimeError as error:
+            if not str(error).startswith("index_not_ready:explicit_prepare_required"):
+                raise
+            # Only explicit source-bound repair can follow an index-readiness
+            # failure. Profile errors never authorize a new candidate.
         else:
-            if config.exists() and not has_position_metadata:
-                print(
-                    "BundleFactory#ensure_index_ready: "
-                    f"legacy records schema detected for {doc_name}, rebuilding."
-                )
-            self.clear_artifacts(config, doc_name)
+            if source_guard is not None:
+                verify_source()
+            return bundle
 
+        verify_source()
+        profile = self.ensure_profile_ready(
+            config, raw_text, source_guard.snapshot.language
+        )
         parsed_document = self.node_provider.parse(raw_text, config)
+        verify_source()
         bundle = self.builder.build_from_parsed_document(parsed_document)
 
-        profile = self.ensure_profile_ready(
-            config=config,
-            raw_text=raw_text,
-            document_language=parsed_document.document_language,
+        def verify_publication():
+            nonlocal profile
+            verify_source()
+            # Profile readiness may change during expensive work; never replace
+            # active index assets for an already rejected runtime bundle.
+            profile = self.ensure_profile_ready(
+                config, raw_text, source_guard.snapshot.language
+            )
+
+        verify_publication()
+        self.store.publish(
+            bundle, config, text=raw_text, fingerprint=self.fingerprint_handler,
+            verify_source=verify_publication,
         )
-
-        bundle = bundle.set_profile(profile)
-
-        self.store.save(bundle, config)
-        self.fingerprint_handler.save(raw_text, config.get_raw_meta_path())
-
+        bundle.set_profile(profile)
         self._put_cache(doc_name, bundle)
         return bundle
 
@@ -173,48 +197,26 @@ Returns:
         config: FaissStorageConfig,
         raw_text: str | None = None,
     ) -> FaissIndexBundle:
-        """Return cached bundle or lazily load it from persisted artifacts.
+        """Reload validated current assets and retain their bounded LRU entry.
 
-Args:
-    config: FaissStorageConfig describing filesystem artifact paths.
-    raw_text: Raw full document text before parsing/indexing.
-
-Returns:
-    Cached or lazily loaded query-ready bundle for ``config``."""
-        doc_name: str = config.get_doc_name()
-
-        cached_bundle = self.bundle_cache.get(doc_name)
-        if cached_bundle is not None:
-            print(f"BundleFactory#get_or_load: cache hit for {doc_name}")
-            self.bundle_cache.pop(doc_name)
-            self.bundle_cache[doc_name] = cached_bundle
-            return cached_bundle
-
-        if not config.exists():
+        A logical-name hit is not evidence of a current publication. Read the
+        caller's physical storage under retrieval's coherent-read boundary on
+        every call, including warm lookups; no build or write fallback exists.
+        """
+        doc_name = config.get_doc_name()
+        # A rejected lookup must not leave a retained entry masquerading as ready.
+        self.invalidate(doc_name)
+        if not isinstance(raw_text, str):
             raise RuntimeError(
-                f"BundleFactory#get_or_load: storage for '{doc_name}' is not ready. "
-                f"Call ensure_index_ready(...) first."
+                "index_not_ready:explicit_prepare_required:canonical_source_required"
             )
-
-        print(f"BundleFactory#get_or_load: lazy loading persisted bundle for {doc_name}")
-        bundle = self.store.load(config)
-
-        document_language = getattr(bundle, "document_language", "en")
-        if raw_text is not None:
-            profile = self.ensure_profile_ready(
-                config=config,
-                raw_text=raw_text,
-                document_language=document_language,
+        try:
+            bundle = self.store.load_validated(
+                config, raw_text, self.fingerprint_handler
             )
-        else:
-            if self.profile_store.exists(config):
-                profile = self.profile_store.load(config)
-            else:
-                raise RuntimeError(
-                    f"BundleFactory#get_or_load: profile for '{doc_name}' is missing. "
-                    f"Provide raw_text or rebuild."
-                )
-
-        bundle = bundle.set_profile(profile)
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+            raise RuntimeError("index_not_ready:explicit_prepare_required") from error
+        profile = self.ensure_profile_ready(config, raw_text, bundle.document_language)
+        bundle.set_profile(profile)
         self._put_cache(doc_name, bundle)
         return bundle
